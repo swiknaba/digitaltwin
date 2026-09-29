@@ -199,3 +199,49 @@ flowchart TD
 Deploy two separate stacks for one shared project. Agent A receives an addressed task, publishes a branch, and requests review from agent B in the shared room. B fetches and reviews it using its own credentials, responds in the same task context, and publishes a contribution. Both humans can inspect the work, while each stack's private projects remain outside the shared workflow.
 
 [Buzz](https://github.com/block/buzz) is a useful reference for named human/agent participants, explicit mentions, agent identity, and project conversations. Its [current status](https://github.com/block/buzz#works-today--being-wired-up--strong-opinions-pending-code) lists mobile clients as still being wired up, so it does not presently replace the required iPhone flow.
+
+---
+
+# Phase 0 Extension: Master Controller
+
+## Control-plane boundary
+
+Herdr is the **local execution runtime**: it manages workspaces, panes, recognized agents, their live state, terminal I/O, and a local socket API. It is not the authoritative registry for cross-project tasks, approvals, Git artifacts, or collaboration across independently deployed stacks. The router/controller layer provides that control plane. Herdr's server and agent identifiers are scoped to one machine.
+
+The controller is a service with durable state and explicit tools; Gemini is its replaceable reasoning and conversation interface. A model's context window does not substitute for the task registry.
+
+```mermaid
+flowchart TD
+    Human["Human in #master"] --> Master["Controller service + Gemini"]
+    Master --> Registry["Project/task status registry"]
+    StackA["Stack A: router + Herdr"] -->|Status events| Registry
+    StackB["Stack B: router + Herdr"] -->|Status events| Registry
+    Master -->|Scoped task request| StackA
+    Master -->|Scoped task request| StackB
+```
+
+### State and tools
+
+Each stack publishes normalized project/task events to the registry: stack ID, project ID, task ID, assigned agent, task state, Herdr process state, last activity and update time, current branch/commit/PR, progress summary, blocker, and latest verification result. Preserve a distinction between an agent being `idle` or `done` in Herdr and a task being accepted or complete. Mark stale or unreachable stacks explicitly; do not report an old status as current.
+
+The `#master` room addresses `@controller`. For example: “What is blocked across my projects?”, “How is project A going?”, or “Ask agent B for an update.” Gemini uses typed tools such as `list_projects`, `list_tasks`, `get_task`, and `request_status_update` to retrieve current data and link to the underlying task conversation, commits, and PRs. It should fetch relevant history on demand, even with a large context window. Start with read-only status plus a scoped request for an update; creating, pausing, or redirecting work uses explicit task APIs and authorization, not terminal keystrokes generated from a chat message.
+
+One stack remains one permission boundary. An owner-level controller may aggregate several stacks only when each has explicitly enrolled and granted access. It receives the minimum status metadata needed for the master overview. Access to detailed conversations, files, and control actions is separately scoped per stack and project. It does not inherit filesystem access or Herdr sockets from other stacks. Store the registry durably and reconcile it against local router/Herdr state after restarts.
+
+Gemini is a sensible initial controller model because the API supports long context and function calling. Keep the model adapter replaceable (including a local model); the controller's status and authorization logic must be deterministic and model independent. [Herdr automation](https://herdr.dev/docs/agent-automation/) · [Herdr socket API](https://herdr.dev/docs/socket-api/) · [Gemini models and tools](https://ai.google.dev/gemini-api/docs/gemini-3)
+
+### Phase 0 acceptance test
+
+Run two project stacks and one master controller. Start concurrent tasks, block one agent, finish another, and disconnect one stack. In `#master`, the controller reports each task's current state with evidence and timestamps, identifies the disconnected status as stale, and requests an update from only the authorized target agent. The project conversations and local terminals remain independently accessible.
+
+# Phase 1: Voice Conversation with the Controller
+
+Voice is another interface to the **same controller service and tools**, so a spoken answer uses the same status registry, permissions, and task references as `#master`.
+
+For a real inbound or outbound telephone call, use a voice-capable Twilio number and Programmable Voice. Twilio Conversation Relay can transcribe caller speech, send text to the controller over a WebSocket, and speak its text responses. Support “call the controller” and a user-requested “call me with an update.” The voice gateway owns call setup, interruption, timeouts, and authentication; Gemini handles the question and calls the same typed status tools. Expose only the authenticated voice ingress publicly; keep Herdr and project routers private. Verify the call integration and caller identity (for example, an allowlisted number plus a PIN for sensitive details). Do not treat caller ID alone as authorization for project actions. [Outbound calls](https://www.twilio.com/docs/voice/tutorials/how-to-make-outbound-phone-calls) · [Conversation Relay](https://www.twilio.com/docs/voice/twiml/connect/conversationrelay)
+
+A browser/app call using WebRTC could avoid a telephone number but requires a voice UI and signaling path. Telegram's Bot API supports voice messages, useful for asynchronous spoken updates; its documented bot interface does not provide the live bot phone call required here. Keep voice transport behind an adapter so that PSTN, an app call, or voice messages can reuse the controller. [Telegram Bot API](https://core.telegram.org/bots/api)
+
+### Phase 1 acceptance test
+
+From an authorized phone, ask “What's blocked, and what changed since yesterday?” The controller gives a concise spoken answer with project and task names, distinguishes stale data, supports a follow-up question and interruption, and sends the referenced task links to `#master` after the call. A user-requested outbound call provides the same behavior. A caller who fails authentication receives no project details.
