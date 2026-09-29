@@ -11,10 +11,17 @@ This is the Phase 0 specification for a self-hosted fleet that can interview its
 - Campfire, Herdr, the router/controller, Headscale, and the other server-side infrastructure are open source and self-hosted. Codex CLI, Claude Code, and other agent/model providers are expressly allowed regardless of their licensing. Use the open-source Tailscale client components with self-hosted Headscale.
 - GitHub Free is the approved Git host for now. Use ordinary Git remotes and a forge adapter so a self-hosted Git service can replace GitHub later. The choice of Git host is not a Phase 0 blocker. Git backs specs, plans, code, research, memory, and durable decisions; live routing and delivery cursors may use a local database.
 
+## Machine baseline: Wagglebot
+
+The Digitaltwin server uses [Wagglebot](https://github.com/swiknaba/wagglebot) as its Linux machine and project provisioning baseline. Pin its version, connect the server's dedicated agent OS user to the chosen Wagglebot configuration repository, and run its update flow for that user. Initialize and update each project repository with Wagglebot. It supplies the supported harnesses' global and project instructions, curated skills and agents, hooks, and compatible MCP configuration. Its local credential file stays with that OS user and outside Git. Separate permission-boundary deployments use separate OS homes, credentials, configuration, and runtimes.
+
+Wagglebot's own phase numbers describe its product roadmap, not Digitaltwin's. Its current Phase 1 provisions environments and does not run agents; Digitaltwin owns the unattended agent runtime, Campfire routing, controller, task state, and cross-owner collaboration in this Phase 0. Do not make Digitaltwin depend on Wagglebot's planned shared memory or collaboration services merely because they address related needs.
+
 ## Components and authority
 
 | Component | Responsibility |
 | --- | --- |
+| Wagglebot | Provisions the server user's harness configuration and project instruction, memory, and changelog files. |
 | Campfire PWA and bot API | Human and agent conversation, explicit mentions, status messages, and links to artifacts. |
 | Router | Authenticates and routes messages to the correct task and agent; persists delivery IDs and session mappings. |
 | Herdr | Local workspace, pane, agent lifecycle, status, and SSH attachment. It is an execution surface, not the global task authority. |
@@ -37,7 +44,7 @@ flowchart TD
 
 ## Task lifecycle using Superpowers artifacts
 
-No new issue tracker or `tasks/<task-id>.md` is required. For architectural coding work, use the existing Superpowers flow: an approved design in `docs/superpowers/specs/`, an implementation plan in `docs/superpowers/plans/`, its checkable steps and execution ledger, then Git commits and review. Small bounded work can use the project's existing runbook and commits without a plan file. Research work produces a Markdown result, with a spec/plan only when its complexity warrants one. The existing `CHANGELOG.md` remains the human-readable summary of completed changes.
+No new issue tracker or `tasks/<task-id>.md` is required. For architectural coding work, use the existing Superpowers flow: an approved design in `docs/superpowers/specs/`, an implementation plan in `docs/superpowers/plans/`, its checkable steps and execution ledger, then Git commits and review. Small bounded work can use the project's existing runbook and commits without a plan file. Research work produces a Markdown result, with a spec/plan only when its complexity warrants one. The existing `CHANGELOG.md` remains the human-readable summary of completed changes. Wagglebot also creates `.agents/changelog.md` for meaningful changes during agent sessions; the project runbook defines how these two existing logs relate, without using either as a task queue.
 
 The router still needs a **small operational mapping**, not a new planning system: Campfire room/message or thread ID, project, active spec/plan or research artifact path, Herdr session, branch, assigned agent, approval revision, current status, and last activity. Store message delivery IDs and retry state locally. This allows concurrent tasks to resume and routes replies to the right session. Reconstruct status from Git artifacts, the existing Superpowers execution ledger when present, and Herdr after restarts. Superpowers' plan-scoped ledger is git-ignored scratch for execution resume; the Git commits and final artifacts are the durable cross-machine record.
 
@@ -47,7 +54,7 @@ A practical status view is `interview → plan/review → approved → working �
 
 ## Interview, execution, and completion
 
-The existing base prompts, skills, `AGENTS.md`, and project runbook define how an agent interviews the owner, plans work, tests it, and reports results. Keep those as the behavioral rules; the control plane records the resulting states and artifacts. Superpowers' bounded-work path may skip a formal plan; architectural work follows the approved spec and plan.
+Wagglebot-provisioned base prompts, skills, project instructions (including `AGENTS.md`), and the project runbook define how an agent interviews the owner, plans work, tests it, and reports results. Keep those as the behavioral rules; the control plane records the resulting states and artifacts. Superpowers' bounded-work path may skip a formal plan; architectural work follows the approved spec and plan.
 
 An approval names the task, action, and exact spec/plan commit. Completion requires the runbook's evidence, not merely an idle agent pane. For code this may be tests, a diff, and a PR; for research it may be a Markdown report with source links, access dates, and stated uncertainty. The agent posts a concise result and artifact links to its task conversation. Merge, deployment, or other external effects follow the project's authorization rules.
 
@@ -61,7 +68,7 @@ Herdr provides local agent state and controls; it does not supply the cross-stac
 
 ## Memory capture and grooming
 
-A project runbook tells agents when and what to write to the memory repository. The completion report or existing changelog links the memory commit or says that no durable memory was needed. The router verifies that required memory updates were committed and pushed before reporting completion.
+Wagglebot's committed `.agents/memory.md` holds durable facts local to each project. The separate memory repository holds knowledge meant to survive or inform work across projects; a project runbook tells agents when and what to write there. The memory-master grooms that shared repository, while project agents maintain their own local memory files. The completion report or existing changelog links the memory commit or says that no durable memory was needed. The router verifies that required memory updates were committed and pushed before reporting completion.
 
 The memory-master runs periodically and may also receive task-completion events. It reviews new notes, merges duplicates, improves titles and links, moves material into appropriate folders, records provenance, and maintains a lightweight index for retrieval. It writes changes on a branch and follows the memory repository's review rules for substantial reorganization. It must preserve source material and avoid inventing facts while summarizing. Project agents retrieve relevant notes on demand; they do not load the whole vault into every prompt.
 
@@ -79,4 +86,4 @@ Phase 0 is acceptable when the owner can start two concurrent tasks, answer an i
 
 ## Review decisions
 
-The initial review's routing, approval, recovery, and cross-stack findings are incorporated above. The agreed simplifications are: existing Superpowers specs/plans and the changelog instead of an issue tracker or new task files; existing prompts/skills/runbooks for behavior; natural agent-to-agent coordination over Campfire with explicit Git handoffs; a periodic memory-master; GitHub Free as the current swappable host; and the approved agent CLIs plus Headscale networking.
+The initial review's routing, approval, recovery, and cross-stack findings are incorporated above. The agreed simplifications are: Wagglebot as the server user's harness and project provisioning baseline; existing Superpowers specs/plans and the changelog instead of an issue tracker or new task files; existing prompts/skills/runbooks for behavior; natural agent-to-agent coordination over Campfire with explicit Git handoffs; a periodic memory-master; GitHub Free as the current swappable host; and the approved agent CLIs plus Headscale networking.
