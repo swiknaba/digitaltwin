@@ -22,12 +22,12 @@ They do not share filesystems, databases, sockets, private networks, or controll
 
 ## 2. Phase boundary
 
-Phase 0 covers one server and one deployment boundary.
+Phase 0 validates one target environment and one deployment boundary.
 All project agents share this boundary for the minimum viable product.
 
 Phase 0 includes:
 
-- One Ubuntu server deployment.
+- Dockerized application services for one deployment.
 - Campfire for human and agent chat.
 - Herdr for agent lifecycle management.
 - Codex CLI, Claude Code, OpenCode, and Gemini CLI.
@@ -41,7 +41,7 @@ Phase 0 includes:
 
 Phase 0 excludes:
 
-- Multiple server orchestration.
+- Multi-server scheduling and cross-server orchestration.
 - A second security boundary for individual projects or agents.
 - A built-in issue tracker.
 - Automatic pull request merge behavior.
@@ -51,13 +51,13 @@ Phase 0 excludes:
 - Provider login through Campfire.
 - Direct control APIs between independent deployments.
 
-## 3. Server baseline
+## 3. Hosting assumptions
 
-The initial server uses Ubuntu 24.04 LTS on AMD64.
-The current Hetzner server has two virtual CPUs, 4 GB RAM, and 80 GB storage.
+The initial operator environment uses Ubuntu 24.04 LTS on AMD64.
+The same application images can run on a compatible hosted container service.
 
-The implementation plan must define the minimum supported server size.
-The owner can resize the server when the measured load requires more resources.
+Digitaltwin does not enforce a minimum server size.
+The operator measures resource use and changes hosting capacity when necessary.
 
 The operator supplies these external facilities:
 
@@ -66,26 +66,38 @@ The operator supplies these external facilities:
 - Secure public endpoint routing.
 - The existing SSH bastion for raw server administration.
 
-The deployment installs every direct application dependency.
+Each application image contains its direct application dependencies.
 
-## 4. Deployment model
+## 4. Container delivery model
 
-The application repository owns its Dockerfiles and complete Docker Compose configuration.
-The infrastructure repository owns a thin Hetzner deployment wrapper.
+The application repository owns its Dockerfiles and deployable container images.
+It also documents environment, secret, volume, port, and health-check contracts.
+The repository includes a Docker Compose file for local development and integration tests.
+That file can start the required local dependencies with the application images.
 
-The deployment follows the existing infrastructure repository pattern.
-It uses Docker Compose and pinned container image versions.
+The application repository pins runtime tools and packages to exact versions in checked-in manifests.
+The infrastructure layer selects production application images by OCI digest.
+The operator upgrades those versions through reviewed manifest changes and rebuilt images.
 
-Campfire uses its official image.
-The deployment does not use ONCE or build Campfire from source.
+The infrastructure repository or hosting platform owns production orchestration.
+This includes production Compose files, networks, volumes, routing, restart policies, and backup schedules.
 
-The application uses portable OCI images and environment configuration.
-This design permits a later move to AWS ECS or another container platform.
+An operator can supply Campfire as an existing hosted service.
+If the operator deploys Campfire, the infrastructure layer uses its official image.
+
+The application provides portable OCI images and environment configuration.
+The images can run through Docker Compose, AWS ECS, or another compatible platform.
+
+Phase 0 delivers a Kirei application image and an agent runtime image.
+Campfire, PostgreSQL, Headscale, Tailscale networking, and S3 are external integration services.
 
 The Kirei control plane is a modular monolith.
 One application image runs as separate web and worker services.
 
-PostgreSQL stores control state and durable jobs.
+An operator-supplied PostgreSQL service stores control state and durable jobs.
+Kirei implements a jobs table and worker loop with short [`FOR UPDATE SKIP LOCKED`](https://www.postgresql.org/docs/current/sql-select.html) claims.
+Workers use bounded retries, idempotency keys, leases, and expired-lease recovery.
+Notifications can wake a worker, but job rows remain the durable source of truth.
 The design does not require a separate queue service for Phase 0.
 
 ## 5. Service architecture
@@ -118,6 +130,9 @@ The Kirei application owns these modules:
 
 Herdr remains the provider abstraction and execution surface.
 The control plane does not implement a task adapter for each agent CLI.
+The worker uses [Herdr's Unix socket API](https://herdr.dev/docs/socket-api/) through a task-local shared volume.
+The application pins the Herdr server and API schema to one compatible version.
+Production orchestration places the Kirei worker and agent runtime on the same host or task.
 
 ## 6. Runtime boundary and persistence
 
@@ -133,7 +148,7 @@ The runtime container has these restrictions:
 - A non-root runtime user.
 - Only required persistent volumes and network access.
 
-The deployment persists these items across container and host restarts:
+The runtime declares persistent volumes for these items:
 
 - Repository workspaces.
 - The runtime user home.
@@ -144,6 +159,11 @@ The deployment persists these items across container and host restarts:
 Repository workspaces use `/workspace/repos` as the default root.
 A repository slug determines its path under that root.
 
+PostgreSQL maps each workflow role to its current Herdr pane and live agent alias.
+Herdr aliases are runtime identifiers, not durable workflow identifiers.
+After a restart, the worker reconciles those mappings with Herdr and Git state.
+It treats Herdr's `unknown` state as uncertain, not as completion.
+
 ## 7. Supported agents
 
 Phase 0 installs and pins these agent CLIs:
@@ -153,23 +173,29 @@ Phase 0 installs and pins these agent CLIs:
 - OpenCode.
 - Gemini CLI.
 
-The deployment installs the corresponding Herdr integrations.
-It verifies each CLI through a startup health check or deployment check.
+The runtime image installs supported Herdr integrations for Codex, Claude Code, and OpenCode.
+Gemini CLI uses Herdr's screen-state detection until Herdr supplies a native integration.
+The local integration test verifies that each CLI starts through Herdr.
 
 The operator signs in to each provider through an interactive terminal session.
 The runtime persists the resulting login state.
 Campfire does not implement a provider authentication flow.
 
-Gemini CLI can start and monitor sessions through Herdr.
-If Herdr cannot restore a native Gemini session, the workflow restores context from committed artifacts.
+Gemini CLI can start and monitor sessions through Herdr after integration validation.
+Herdr does not guarantee native Gemini session restore.
+The workflow restores context from committed artifacts when it starts a fresh Gemini session.
 
 ## 8. Writer and reviewer policy
 
 Each workflow selects one writer configuration and one reviewer configuration.
 Each configuration identifies a provider and model.
 
-The writer and reviewer must use different providers and different base model families.
+The writer and reviewer must use different underlying model providers and base model families.
+Different CLI brands do not qualify when they use the same underlying model family.
 The default configuration uses Codex as writer and Claude Code as reviewer.
+
+The workflow records the CLI, model provider, model identifier, and model family for both roles.
+It rejects a writer and reviewer pair that does not meet the diversity rule.
 
 The owner can override both configurations for each workflow.
 This supports changes based on cost, available usage, or task fit.
@@ -195,6 +221,8 @@ Initial server setup uses this supported sequence:
 
 Wagglebot uses the same persistent runtime home as the agent CLIs.
 Its credentials remain outside Git.
+The runtime image pins the Wagglebot version.
+It updates Wagglebot only after an explicit operator command.
 
 ## 10. Campfire room model
 
@@ -218,8 +246,9 @@ The deployment uses two Campfire bot accounts:
 - `@agent` is the master controller.
 - `@worker` handles project workflow phases.
 
-The exact account handles remain configurable.
-The labels above describe the default handles for one deployment.
+The exact account handles remain configurable for each deployment.
+The default handles are `agent` and `worker` when those names are available.
+An operator selects unique handles when multiple fleets use one Campfire instance.
 
 Both bots have Campfire credentials and post their own messages.
 The system does not require a separate reply relay command.
@@ -324,8 +353,10 @@ The control plane permits the next gate only when the required approval matches 
 Any artifact change invalidates its earlier approval.
 The human approval gate accepts only a commit with an approving reviewer verdict.
 
-The proposed contextual approval command is `@worker approve`.
+The contextual approval command is `@worker approve`.
 The command is unambiguous because one room has one active workflow.
+Review findings and change requests use normal Campfire messages.
+The system does not define a separate rejection command.
 
 The control plane records transitions and rejects invalid transitions.
 The agent cannot bypass a gate through a prompt or a direct phase request.
@@ -337,21 +368,33 @@ The control plane owns this exclusion rule.
 
 For each review round, the control plane performs these actions:
 
-1. Send a review-start notification to the writer.
-2. Wait until the writer reaches a safe idle point.
-3. Block new writer prompts for the reviewed artifact.
-4. Give the reviewer the exact target commit.
-5. Restrict the reviewer to one review Markdown file.
-6. Wait for the committed review result.
-7. Send the review path and commit to the writer.
-8. Restore writer access for the correction phase.
+1. Stop dispatching new project work prompts to the writer.
+2. Send a review transition prompt to the writer.
+3. Wait for its artifact-ready callback and exact commit.
+4. Verify the commit, expected artifact, and clean Git worktree.
+5. Wait until Herdr reports the writer as idle or done.
+6. Lock the writer phase in PostgreSQL before the reviewer starts.
+7. Give the reviewer the exact target commit and review file path.
+8. Verify the reviewer changed only the review Markdown file.
+9. Send the committed review path and commit to the writer.
+10. Restore writer access for the correction phase.
+
+The runtime image installs a small Digitaltwin command for artifact-ready callbacks.
+The command uses the same Kirei application codebase.
+The command reports the artifact type and exact Git commit to a private Kirei endpoint.
+Kirei verifies the callback's session identity and current workflow phase.
+The reviewer uses the same command to report a committed review verdict.
+Herdr lifecycle events alone do not mark an artifact ready.
+
+If the writer stays active or Herdr reports an uncertain state, the worker does not start review.
+It reports the blocked transition in Campfire and waits for operator direction.
 
 The workflow has one committed review file.
 Each round appends one dated section to that file.
 
 Each section records these fields:
 
-- Reviewer provider and model.
+- Reviewer CLI, model provider, model identifier, and model family.
 - Target commit.
 - Findings.
 - Verdict.
@@ -366,7 +409,7 @@ The worker asks an authorized human in Campfire how to continue.
 
 ## 17. Master controller
 
-`@agent` routes messages from any room to one persistent Gemini controller.
+`@agent` routes messages from any room to one logical Gemini controller.
 The controller receives the source room context with each request.
 
 The controller is not bound to one repository.
@@ -375,7 +418,10 @@ It does not use the project specification and plan gates.
 The controller runs Gemini CLI through Herdr.
 It does not call the Gemini model API directly.
 
-The controller uses typed Digitaltwin operations through a Kirei tool bridge.
+The controller uses typed Digitaltwin operations through a [local MCP bridge](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md).
+The bridge uses the same Kirei application codebase.
+The bridge exposes a small set of tools to Gemini CLI and calls Kirei application operations.
+Kirei validates arguments, sender authority, workflow state, and required confirmations.
 Its operations include:
 
 - Show projects, workflows, sessions, and Git state.
@@ -384,7 +430,7 @@ Its operations include:
 - Send a prompt to an active phase.
 - Pause, resume, or cancel a workflow.
 - Perform authorized Git and GitHub actions.
-- Perform authorized deployment actions.
+- Invoke deployment operations that the operator explicitly supplies as tools.
 - Delete resources.
 - Change credential configuration.
 
@@ -400,15 +446,17 @@ The controller reconstructs current state from PostgreSQL and typed operations.
 Any room member can create ordinary work and send project instructions.
 Peer agents can send instructions through explicit Campfire mentions.
 
-Only an authorized human owner can perform these actions:
+Campfire owns user administration, room access, and room membership.
+An authorized human is a room member whose Campfire user ID is not a configured bot identity.
+Any authorized human can perform these actions:
 
 - Approve a specification.
 - Approve an implementation plan.
 - Confirm a destructive or irreversible operation.
-- Change the authorization configuration.
 
-The system verifies Campfire user identity for privileged messages.
-It does not infer authority from message text or an agent claim.
+The system verifies the sender's Campfire user ID for human-only actions.
+Configured local and peer bot identities cannot approve or confirm these actions.
+Digitaltwin does not maintain a separate human allowlist.
 
 ## 19. Independent deployment collaboration
 
@@ -451,10 +499,10 @@ Substantial reorganizations use a branch and pull request.
 1Password is the preferred secret source.
 It is not a required dependency.
 
-The deployment also supports an ignored `.env` file.
+Local development also supports an ignored `.env` file.
 The repository can store `op://` references, but it never stores plaintext secrets.
 
-The deployment materializes runtime environment files with root ownership and mode `0600`.
+The infrastructure layer materializes production runtime environment files with root ownership and mode `0600`.
 It does not place those files in a synchronized or committed directory.
 
 The runtime persists interactive CLI login state.
@@ -466,10 +514,11 @@ An operator signs in again after a disaster recovery.
 The existing SSH bastion remains the path for raw Hetzner server administration.
 It does not provide the Herdr tunnel.
 
-Headscale and a Tailscale sidecar provide private access to the runtime container.
+The infrastructure layer supplies Headscale and a Tailscale sidecar for private runtime access.
 The runtime runs OpenSSH for Herdr terminal attachment.
 
-The deployment does not publish the runtime SSH port to the public internet.
+The runtime contract does not require a public SSH port.
+The infrastructure layer does not publish that port to the public internet.
 
 Headscale uses a dedicated DNS-only hostname through Traefik.
 It uses a publicly trusted TLS certificate.
@@ -479,7 +528,18 @@ Campfire can remain behind the existing Cloudflare protection.
 
 ## 23. Backup scope
 
-The deployment sends encrypted backups to an S3-compatible object store.
+The infrastructure layer sends encrypted backups to an operator-configured S3-compatible bucket.
+It runs one backup each day.
+A single missed daily backup is acceptable.
+The infrastructure layer sends a Campfire alert after two consecutive backup failures.
+It uses an operator-configured Campfire webhook for that alert.
+
+The bucket lifecycle expires backup objects after 30 days.
+Digitaltwin does not schedule backups, delete old backups, or manage retention generations.
+Daily operation produces approximately 30 retained backups when all runs succeed.
+
+The infrastructure layer supplies the client-side encryption key through 1Password or `.env`.
+It never stores the encryption key in the backup bucket.
 
 Backups include:
 
@@ -498,64 +558,67 @@ Backups exclude:
 Git provides the recovery source for pushed project and memory repository data.
 The operator accepts the loss of unpushed repository work after a server loss.
 
-## 24. Phase 0 acceptance criteria
+The operator performs one restore test during initial deployment.
+The operator repeats the test after a backup configuration change.
+Digitaltwin does not schedule recurring restore tests.
+
+## 24. Monitoring and recovery
+
+Each image supplies a health-check contract.
+The infrastructure layer defines automatic restart policies and bounded log storage.
+
+The infrastructure layer reports two consecutive backup failures through its Campfire webhook.
+It does not include Prometheus, Grafana, or a separate alerting stack.
+
+Host monitoring and host-level alerts remain operator concerns.
+
+## 25. Phase 0 acceptance criteria
 
 Phase 0 is acceptable when all criteria in this section pass.
 
-1. A clean Ubuntu 24.04 LTS server can start the full stack with the documented deployment procedure.
-2. The stack starts from the application Compose file through the infrastructure wrapper.
-3. Campfire, PostgreSQL, Kirei web, Kirei worker, Herdr runtime, Headscale, and Tailscale report healthy states.
-4. The runtime has no Docker socket, privileged mode, or host root mount.
-5. The runtime process uses a non-root user.
-6. A host restart preserves repositories, Herdr state, Wagglebot state, and CLI login state.
-7. Each of the four supported agent CLIs starts through Herdr.
-8. The operator can attach to Herdr through the private tailnet.
-9. The public internet cannot connect directly to the runtime SSH port.
-10. `@agent` messages from any room reach the master controller with source room context.
-11. `@worker start` creates fresh writer and reviewer sessions for the mapped repository.
-12. A second start request requires confirmation when the earlier session actively works.
-13. A room slug maps to the expected repository path under the configured workspace root.
-14. A missing repository offers clone, private creation, and stop choices.
-15. The chat flow and shell command use the same enrollment service.
-16. A writer cannot implement before approval of the exact specification and plan commits.
-17. An artifact change invalidates its earlier approval.
-18. Only an authorized human can approve a specification or plan.
-19. A reviewer targets an exact commit and changes only the review Markdown file.
-20. The writer cannot receive work prompts while its artifact is under review.
-21. The writer receives the committed review path and commit after review completion.
-22. Three unsuccessful rounds at one gate block the workflow and request human direction.
-23. The final workflow uses one branch and one pull request.
-24. The application does not merge the pull request without a direct conversational instruction.
-25. A master restart creates a fresh Gemini session and restores status from durable state.
-26. A simulated peer bot completes a handoff through only Campfire and Git.
-27. An encrypted backup restores all included services without restoring excluded CLI credentials.
-28. The owner can complete an agent interview from a mobile Campfire client.
-29. A research workflow produces committed Markdown with sources and stated uncertainty.
-30. A workflow can commit and push a durable memory update to the configured memory repository.
+1. The published application images start in the existing infrastructure environment.
+2. Local development and integration tests run through the repository's Compose file.
+3. The same image contracts support production Compose and a hosted container platform.
+4. Campfire, PostgreSQL, Kirei web, Kirei worker, Herdr runtime, Headscale, and Tailscale report healthy states.
+5. The documented runtime contract requires no Docker socket, privileged mode, or host root mount.
+6. The runtime process uses a non-root user.
+7. A host restart preserves repositories, Herdr state, Wagglebot state, and CLI login state.
+8. Each of the four supported agent CLIs starts through Herdr.
+9. The operator can attach to Herdr through the private tailnet.
+10. The public internet cannot connect directly to the runtime SSH port.
+11. `@agent` messages from any room reach the master controller with source room context.
+12. `@worker start` creates fresh writer and reviewer sessions for the mapped repository.
+13. A second start request requires confirmation when the earlier session actively works.
+14. A room slug maps to the expected repository path under the configured workspace root.
+15. A missing repository offers clone, private creation, and stop choices.
+16. The chat flow and shell command use the same enrollment service.
+17. A writer cannot implement before approval of the exact specification and plan commits.
+18. An artifact change invalidates its earlier approval.
+19. A configured bot identity cannot approve a specification or plan.
+20. A reviewer targets an exact commit and changes only the review Markdown file.
+21. The validated Herdr handshake blocks review until the writer reports readiness and reaches a settled state.
+22. The writer cannot receive work prompts while its artifact is under review.
+23. The writer receives the committed review path and commit after review completion.
+24. Three unsuccessful rounds at one gate block the workflow and request human direction.
+25. The final workflow uses one branch and one pull request.
+26. The application does not merge the pull request without a direct conversational instruction.
+27. A master restart creates a fresh Gemini session and restores status from durable state.
+28. A simulated peer bot completes a handoff through only Campfire and Git.
+29. An encrypted backup restores all included services without restoring excluded CLI credentials.
+30. The owner can complete an agent interview from a mobile Campfire client.
+31. A research workflow produces committed Markdown with sources and stated uncertainty.
+32. A workflow can commit and push a durable memory update to the configured memory repository.
 
-## 25. Remaining design decisions
+## 26. Implementation validation
 
-The implementation plan must not silently choose these items.
-Resolve them during the next interview session.
+The remaining work concerns validation of the selected interfaces.
+The implementation plan must include these validation steps:
 
-1. Select the minimum CPU, memory, disk, and swap configuration.
-2. Select the exact image and package version pinning policy.
-3. Select the Wagglebot update policy after initial setup.
-4. Select the exact Kirei durable job implementation.
-5. Select the Herdr command interface and session state mapping.
-6. Select the Kirei tool bridge protocol for the master controller.
-7. Select the exact `@worker approve` syntax and rejection syntax.
-8. Define the safe idle signal before a writer review lock.
-9. Define the Campfire authorization list and collaborator privilege rules.
-10. Define bot handle namespacing for multiple fleets in one Campfire instance.
-11. Define Headscale device enrollment, access grants, and SSH authorization.
-12. Select the S3-compatible backup provider, schedule, retention, and encryption key custody.
-13. Define the restore test frequency and the required recovery objectives.
-14. Define monitoring, log retention, alert delivery, and service recovery behavior.
-15. Define the callback or event that reports an artifact and exact commit as ready.
-16. Define whether provider identity refers to the CLI vendor, model vendor, or both.
+1. Validate Herdr socket methods and state reporting against the pinned Herdr release.
+2. Validate the writer idle handshake with each supported agent CLI.
+3. Validate Gemini CLI startup and MCP tool calls through Herdr.
 
-## 26. Superseded decisions
+## 27. Superseded decisions
 
 The following earlier ideas no longer apply:
 
