@@ -14,6 +14,7 @@ Bundler.require(:test) if ENV["RACK_ENV"] == "test"
 Dir[File.join(__dir__, "config/initializers", "*.rb")].each { require(_1) }
 
 # Fourth: load all application code
+APP_ROOT = __dir__
 APP_LOADER = Zeitwerk::Loader.new
 APP_LOADER.tag = File.basename(__FILE__, ".rb")
 [
@@ -38,6 +39,15 @@ end
 class Digitaltwin < Kirei::App
   # Kirei configuration
   config.app_name = "digitaltwin"
+  config.sensitive_keys += [/text|body|authorization|credential/i]
+
+  def call(env)
+    RackCompatibility.new(super_method_app).call(env)
+  end
+
+  private def super_method_app
+    method(:call).super_method
+  end
 end
 
 APP_LOADER.eager_load

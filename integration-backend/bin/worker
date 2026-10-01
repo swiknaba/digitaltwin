@@ -1,0 +1,16 @@
+#!/usr/bin/env ruby
+require_relative "../app"
+Startup.validate!
+exit if ENV["BOOT_CHECK_ONLY"] == "1"
+require "async"
+Async do
+  db = Kirei::App.raw_db_connection
+  handlers = {}
+  if ENV["CHAT_VALIDATION_MODE"] == "1"
+    delivery = Domains::Mattermost::Delivery.from_env(db)
+    handlers["mattermost.post"] = delivery.method(:call)
+  end
+  Domains::Jobs::Worker.new(db, handlers: handlers).run
+ensure
+  Kirei::App.raw_db_connection.disconnect
+end.wait

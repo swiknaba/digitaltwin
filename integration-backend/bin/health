@@ -1,0 +1,18 @@
+#!/usr/bin/env ruby
+require "json"
+require "net/http"
+role = ARGV.fetch(0)
+if role == "web"
+  response = Net::HTTP.get_response(URI("http://127.0.0.1:#{ENV.fetch('PORT', '3000')}/readyz"))
+  exit(response.code == "200" ? 0 : 1)
+elsif %w[worker chat-listener].include?(role)
+  begin
+    state = JSON.parse(File.read("/tmp/digitaltwin-#{role}.json"))
+    Process.kill(0, state.fetch("pid"))
+    exit(Time.now.to_f - state.fetch("at") < 60 ? 0 : 1)
+  rescue StandardError
+    exit 1
+  end
+else
+  abort "Unknown process role"
+end

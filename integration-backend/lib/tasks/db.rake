@@ -41,7 +41,7 @@ namespace :db do
       puts("Dropping database #{db_name}...")
 
       reset_memoized_class_level_instance_vars(Digitaltwin)
-      url = Digitaltwin.default_db_url.dup  # frozen string
+      url = Digitaltwin.default_db_url.dup # frozen string
       url.gsub!(db_name, "postgres")
       puts("Connecting to #{url.gsub(%r{://.*@}, "_REDACTED_")}")
       db = Sequel.connect(url)
@@ -122,7 +122,8 @@ namespace :db do
 
     # Sanitize and format the migration name
     formatted_name = args[:name].to_s.gsub(/([a-z])([A-Z])/, '\1_\2').downcase
-    raise ArgumentError, "Migration name must contain only lowercase letters, digits, and underscores" unless formatted_name.match?(/\A[a-z][a-z0-9_]*\z/)
+    raise ArgumentError,
+          "Migration name must contain only lowercase letters, digits, and underscores" unless formatted_name.match?(/\A[a-z][a-z0-9_]*\z/)
 
     # Combine them to create the filename
     filename = "#{migration_number}_#{formatted_name}.rb"
@@ -173,7 +174,9 @@ namespace :db do
       # then a file "app/models/airport.rb" is loaded as "::Airport".
       # if it weren't a root namespace, it would be "::Models::Airport".
       #
-      root_dir_namespaces = APP_LOADER.dirs.filter_map { |dir| dir == app_dir ? nil : Pathname.new(dir).relative_path_from(Pathname.new(app_dir)).to_s }
+      root_dir_namespaces = APP_LOADER.dirs.filter_map { |dir|
+        dir == app_dir ? nil : Pathname.new(dir).relative_path_from(Pathname.new(app_dir)).to_s
+      }
       relative_path = Pathname.new(full_path).relative_path_from(Pathname.new(app_dir)).to_s
       root_dir_of_model = root_dir_namespaces.find { |root_dir| relative_path.start_with?(root_dir) }
       relative_path.sub!("#{root_dir_of_model}/", "") unless root_dir_of_model.nil? || root_dir_of_model.empty?
@@ -193,12 +196,14 @@ namespace :db do
       schema_comments = format_schema_comments(table_name, schema)
       file_content = File.read(model_path)
 
-      file_content_without_schema_info = file_content.sub(/# == Schema Info\n(.*?)(\n#\n)?\n(?=\s*(?:class|module))/m, "")
+      file_content_without_schema_info = file_content.sub(/# == Schema Info\n(.*?)(\n#\n)?\n(?=\s*(?:class|module))/m,
+                                                          "")
 
       # Insert the new schema comments before the module/class definition
       first_module = namespace_parts.first
       first_module_or_class = first_module.nil? ? "class #{klass_constant_name}" : "module #{first_module}"
-      modified_content = file_content_without_schema_info.sub(/(A|\n)(#{first_module_or_class})/m, "\\1#{schema_comments}\n\n\\2")
+      modified_content = file_content_without_schema_info.sub(/(A|\n)(#{first_module_or_class})/m,
+                                                              "\\1#{schema_comments}\n\n\\2")
 
       File.write(model_path, modified_content)
     end
