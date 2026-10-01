@@ -3,8 +3,10 @@ set -eu
 cd "$(dirname "$0")/.."
 : "${DATABASE_URL:?Set disposable digitaltwin_backend_test URL}"
 : "${MIGRATION_TEST_DATABASE_URL:?Set disposable digitaltwin_migration_test URL}"
-bundle exec rspec --exclude-pattern spec/integration/db_tasks_spec.rb
+bundle exec rspec --exclude-pattern 'spec/integration/{db_tasks,clean_migration}_spec.rb'
 # Generated helper regression uses its own isolated application bootstrap.
 bundle exec rspec spec/integration/db_tasks_spec.rb
+# A fresh subprocess must execute the actual application migrations from zero.
+bundle exec rspec spec/integration/clean_migration_spec.rb
 bundle exec rubocop --only Layout,Lint,Security
 bin/typecheck-contracts
