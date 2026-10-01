@@ -1,0 +1,6 @@
+.bundle
+vendor
+.git
+*.gem
+tmp
+.env*

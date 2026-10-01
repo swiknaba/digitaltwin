@@ -1,0 +1,42 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Standalone Runtime client, version 1; standard library only, Ruby >= 3.1.
+require "json"
+require "net/http"
+require "optparse"
+require "uri"
+
+begin
+  raise ArgumentError,
+        "Only say is available; artifact/review callbacks require live validation" unless ARGV.shift == "say"
+
+  options = {}
+  OptionParser.new do |parser|
+    parser.on("--text TEXT") { |value| options[:text] = value }
+    parser.on("--key KEY") { |value| options[:key] = value }
+  end.parse!(ARGV)
+  raise ArgumentError, "Expected --text and --key" unless ARGV.empty? && options[:text] && options[:key]
+
+  token = File.read(ENV.fetch("DIGITALTWIN_SESSION_TOKEN_FILE")).strip
+  raise ArgumentError, "Empty session credential" if token.empty?
+
+  base = URI(ENV.fetch("DIGITALTWIN_CALLBACK_URL"))
+  raise ArgumentError, "Expected private HTTP(S) base URL" unless %w[http
+                                                                     https].include?(base.scheme) && base.host && !base.userinfo && ["",
+                                                                                                                                     "/"].include?(base.path) && !base.query && !base.fragment
+
+  target = URI.join(base.to_s, "/internal/callbacks/say")
+  payload = { generation: Integer(ENV.fetch("DIGITALTWIN_SESSION_GENERATION")), key: options[:key],
+              text: options[:text] }
+  request = Net::HTTP::Post.new(target, "Authorization" => "Bearer #{token}", "Content-Type" => "application/json")
+  request.body = JSON.generate(payload)
+  response = Net::HTTP.start(target.host, target.port, use_ssl: target.scheme == "https", open_timeout: 5, read_timeout: 10, write_timeout: 10) { |http| http.request(request) }
+  raise "Callback rejected (HTTP #{response.code}); do not change the retry key" unless response.code == "202"
+
+  puts "Queued in bound thread"
+rescue StandardError => e
+  # Never print response bodies, request headers or credential values.
+  warn(e.is_a?(ArgumentError) ? e.message : "Callback failed or uncertain; retry only with the same key")
+  exit 1
+end
