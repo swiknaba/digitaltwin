@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Read-only REST identity/thread/history probe; emits checks, not user content."""
+import argparse
+import json
+from pathlib import Path
+import stat
+import sys
+from urllib.error import HTTPError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen, HTTPRedirectHandler, build_opener
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+from contracts import identifier, verify_post, history_posts, backfill_path
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Never leak the Authorization header through a redirected endpoint.
+        return None
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--url', required=True)
+    parser.add_argument('--token-file', type=Path, required=True)
+    parser.add_argument('--channel-id', required=True)
+    parser.add_argument('--post-id', required=True, help='existing ordinary human thread reply')
+    parser.add_argument('--checkpoint-ms', required=True, type=int)
+    parser.add_argument('--local-bot-id', action='append', default=[])
+    args = parser.parse_args()
+    url = urlsplit(args.url)
+    if url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
+        parser.error('URL must be a server origin without credentials')
+    if url.scheme != 'https' and not (url.scheme == 'http' and url.hostname in ('localhost', '127.0.0.1', '::1')):
+        parser.error('require HTTPS except on loopback')
+    if not args.token_file.is_file() or stat.S_IMODE(args.token_file.stat().st_mode) & 0o077:
+        parser.error('token file must be private (mode 0600 or stricter)')
+    token = args.token_file.read_text().strip()
+    if not token or any(c.isspace() for c in token):
+        parser.error('invalid token file')
+    channel = identifier(args.channel_id)
+    post_id = identifier(args.post_id)
+    bots = [identifier(x) for x in args.local_bot_id]
+    opener = build_opener(NoRedirect())
+
+    def get(path):
+        request = Request(args.url.rstrip('/') + path, headers={'Authorization': 'Bearer ' + token})
+        with opener.open(request, timeout=15) as response:
+            return json.load(response)
+
+    try:
+        me = get('/api/v4/users/me')
+        identifier(me['id'])
+        get('/api/v4/channels/' + channel + '/members/' + me['id'])
+        post = get('/api/v4/posts/' + post_id)
+        sender = identifier(post['user_id'])
+        member = get('/api/v4/channels/' + channel + '/members/' + sender)
+        user = get('/api/v4/users/' + sender)
+        root = get('/api/v4/posts/' + identifier(post.get('root_id') or post_id))
+        verified = verify_post(post, root, member, user, channel, bots)
+        if verified['bot'] or not post.get('root_id'):
+            raise ValueError('expected an existing human reply in an ordinary thread')
+        thread = history_posts(get('/api/v4/posts/' + root['id'] + '/thread?perPage=100&collapsedThreads=false'), channel)
+        if not any(p['id'] == post_id for p in thread):
+            raise ValueError('reply absent from selected thread page; provide a reply within this page')
+        history = history_posts(get(backfill_path(channel, args.checkpoint_ms)), channel)
+        print(json.dumps({'kind': 'live_authenticated_readonly_rest', 'checks': [
+            'credential_identity', 'reader_membership', 'sender_identity_and_membership',
+            'human_reply_root_channel', 'thread_read', 'since_backfill_read'],
+            'thread_posts_observed': len(thread), 'history_posts_observed': len(history),
+            'websocket_bot_post_reconnect': 'not_tested', 'writes': 0}, indent=2))
+    except HTTPError as error:
+        sys.exit('REST probe failed with HTTP ' + str(error.code) + '; no response content saved')
+    except (ValueError, KeyError, OSError):
+        sys.exit('REST probe failed identity/contract check; no response content saved')
+
+
+if __name__ == '__main__':
+    main()

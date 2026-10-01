@@ -1,0 +1,83 @@
+{
+  "evidence_kind": "synthetic_from_release_source_not_live_authenticated_capture",
+  "channel_id": "cccccccccccccccccccccccccc",
+  "root": {
+    "id": "rrrrrrrrrrrrrrrrrrrrrrrrrr",
+    "channel_id": "cccccccccccccccccccccccccc",
+    "user_id": "hhhhhhhhhhhhhhhhhhhhhhhhhh",
+    "root_id": "",
+    "message": "@worker start fixture",
+    "create_at": 1000,
+    "update_at": 1000,
+    "delete_at": 0,
+    "props": {},
+    "type": ""
+  },
+  "reply": {
+    "id": "pppppppppppppppppppppppppp",
+    "channel_id": "cccccccccccccccccccccccccc",
+    "user_id": "hhhhhhhhhhhhhhhhhhhhhhhhhh",
+    "root_id": "rrrrrrrrrrrrrrrrrrrrrrrrrr",
+    "message": "Ordinary reply without repeated mention",
+    "create_at": 2000,
+    "update_at": 2000,
+    "delete_at": 0,
+    "props": {},
+    "type": ""
+  },
+  "human": {
+    "id": "hhhhhhhhhhhhhhhhhhhhhhhhhh"
+  },
+  "member": {
+    "channel_id": "cccccccccccccccccccccccccc",
+    "user_id": "hhhhhhhhhhhhhhhhhhhhhhhhhh",
+    "roles": "channel_user"
+  },
+  "local_bot_ids": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ],
+  "backfill": {
+    "order": [
+      "pppppppppppppppppppppppppp",
+      "rrrrrrrrrrrrrrrrrrrrrrrrrr"
+    ],
+    "posts": {
+      "pppppppppppppppppppppppppp": {
+        "id": "pppppppppppppppppppppppppp",
+        "channel_id": "cccccccccccccccccccccccccc",
+        "user_id": "hhhhhhhhhhhhhhhhhhhhhhhhhh",
+        "root_id": "rrrrrrrrrrrrrrrrrrrrrrrrrr",
+        "message": "Ordinary reply without repeated mention",
+        "create_at": 2000,
+        "update_at": 2000,
+        "delete_at": 0,
+        "props": {},
+        "type": ""
+      },
+      "rrrrrrrrrrrrrrrrrrrrrrrrrr": {
+        "id": "rrrrrrrrrrrrrrrrrrrrrrrrrr",
+        "channel_id": "cccccccccccccccccccccccccc",
+        "user_id": "hhhhhhhhhhhhhhhhhhhhhhhhhh",
+        "root_id": "",
+        "message": "@worker start fixture",
+        "create_at": 1000,
+        "update_at": 1000,
+        "delete_at": 0,
+        "props": {},
+        "type": ""
+      }
+    }
+  },
+  "posted_event": {
+    "event": "posted",
+    "data": {
+      "post": "{\"id\": \"pppppppppppppppppppppppppp\", \"channel_id\": \"cccccccccccccccccccccccccc\", \"user_id\": \"hhhhhhhhhhhhhhhhhhhhhhhhhh\", \"root_id\": \"rrrrrrrrrrrrrrrrrrrrrrrrrr\", \"message\": \"Ordinary reply without repeated mention\", \"create_at\": 2000, \"update_at\": 2000, \"delete_at\": 0, \"props\": {}, \"type\": \"\"}"
+    },
+    "broadcast": {
+      "channel_id": "cccccccccccccccccccccccccc",
+      "user_id": "",
+      "omit_users": null
+    },
+    "seq": 12
+  }
+}

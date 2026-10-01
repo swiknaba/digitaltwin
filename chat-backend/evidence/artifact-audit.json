@@ -1,0 +1,111 @@
+{
+  "official": {
+    "image_id": "sha256:4c120e462487f754372e70daaebbb22fac6c1d76f455a132263eb89cfcd9569c",
+    "user": "mattermost",
+    "uid_gid": [
+      "2000",
+      "2000"
+    ],
+    "healthcheck": {
+      "Test": [
+        "CMD",
+        "/mattermost/bin/mmctl",
+        "system",
+        "status",
+        "--local"
+      ],
+      "Interval": 30000000000,
+      "Timeout": 10000000000
+    },
+    "version": [
+      "Version: 11.11.1",
+      "Build Number: 35958890150",
+      "Build Date: Thu Sep 24 05:18:16 UTC 2026",
+      "Build Hash: 3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9",
+      "Build Enterprise Ready: false"
+    ],
+    "sha256": {
+      "mattermost/MIT-COMPILED-LICENSE.md": "44d20d9f0c73774afb4d2189fc4fc8d97d945b8bb33744bee884a0f3a3531582",
+      "mattermost/NOTICE.txt": "da0d0ea9d34a75a00cefedd6e54312795c43e98c39c92a6251ce6d756f58d51e",
+      "mattermost/bin/mattermost": "c57cb50c2ef9a4ba68529699cd1d7af1baad4d90388c40f880bffff5c4729525",
+      "mattermost/bin/mmctl": "8904aad55e0a09858c0883c6d1ef16b5a13dabd6585e1e391f9f0954e4cad261"
+    },
+    "plugin_files": [
+      "mattermost/prepackaged_plugins/mattermost-plugin-agents-v2.6.1-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-agents-v2.6.1-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-boards-v9.4.0-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-boards-v9.4.0-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-calls-v1.12.3-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-calls-v1.12.3-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-channel-export-v1.3.0-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-channel-export-v1.3.0-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-github-v2.8.0-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-github-v2.8.0-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-gitlab-v1.13.0-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-gitlab-v1.13.0-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-jira-v4.8.1-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-jira-v4.8.1-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-metrics-v0.7.0-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-metrics-v0.7.0-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-mscalendar-v1.7.0-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-mscalendar-v1.7.0-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-msteams-meetings-v2.4.1-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-msteams-meetings-v2.4.1-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-playbooks-v2.11.2-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-playbooks-v2.11.2-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-servicenow-v2.4.0-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-servicenow-v2.4.0-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-user-survey-v1.1.1-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-user-survey-v1.1.1-linux-amd64.tar.gz.sig",
+      "mattermost/prepackaged_plugins/mattermost-plugin-zoom-v1.13.1-linux-amd64.tar.gz",
+      "mattermost/prepackaged_plugins/mattermost-plugin-zoom-v1.13.1-linux-amd64.tar.gz.sig"
+    ],
+    "notice_license_file_count": 103,
+    "notice_inventory_sha256": "c34e0ab22dcd7ee3a58f9e336674e31ff75ce9cdcca1b9137ec50447a6943d2f",
+    "filesystem_layer_count": 31
+  },
+  "derived": {
+    "image_id": "sha256:406afb9b77c8e8f2058e18ffd4a823ad15888ee115b759201cbb2fb366a9b008",
+    "user": "mattermost",
+    "uid_gid": [
+      "2000",
+      "2000"
+    ],
+    "healthcheck": {
+      "Test": [
+        "CMD",
+        "/mattermost/bin/mmctl",
+        "system",
+        "status",
+        "--local"
+      ],
+      "Interval": 30000000000,
+      "Timeout": 10000000000
+    },
+    "version": [
+      "Version: 11.11.1",
+      "Build Number: 35958890150",
+      "Build Date: Thu Sep 24 05:18:16 UTC 2026",
+      "Build Hash: 3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9",
+      "Build Enterprise Ready: false"
+    ],
+    "sha256": {
+      "mattermost/MIT-COMPILED-LICENSE.md": "44d20d9f0c73774afb4d2189fc4fc8d97d945b8bb33744bee884a0f3a3531582",
+      "mattermost/NOTICE.txt": "da0d0ea9d34a75a00cefedd6e54312795c43e98c39c92a6251ce6d756f58d51e",
+      "mattermost/bin/mattermost": "c57cb50c2ef9a4ba68529699cd1d7af1baad4d90388c40f880bffff5c4729525",
+      "mattermost/bin/mmctl": "8904aad55e0a09858c0883c6d1ef16b5a13dabd6585e1e391f9f0954e4cad261"
+    },
+    "plugin_files": [],
+    "notice_license_file_count": 103,
+    "notice_inventory_sha256": "c34e0ab22dcd7ee3a58f9e336674e31ff75ce9cdcca1b9137ec50447a6943d2f",
+    "filesystem_layer_count": 2
+  },
+  "saved_layer_audit": {
+    "layers_scanned": 2,
+    "entries_scanned": 7079,
+    "plugin_files": []
+  },
+  "result": "core_and_notices_unchanged_all_plugin_files_removed",
+  "transitive_license_audit": "open",
+  "checked_on": "2026-10-01"
+}
