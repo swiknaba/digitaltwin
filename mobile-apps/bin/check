@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+component=$(cd "$(dirname "$0")/.." && pwd)
+python3 -m unittest discover -s "$component/tests" -v
+if [[ ${1:-} == upstream ]]; then
+    if [[ -f "$component/upstream/.digitaltwin/prepared.json" ]]; then
+        "$component/bin/mobile" verify-prepared
+    else
+        "$component/bin/mobile" verify
+    fi
+    cd "$component/upstream"
+    [[ $(node --version) == v24.15.0 ]] || { echo 'Use Node 24.15.0' >&2; exit 1; }
+    NODE_OPTIONS=--max_old_space_size=12000 ./node_modules/.bin/jest --watchman=false --maxWorkers=4
+fi

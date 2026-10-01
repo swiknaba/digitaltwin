@@ -1,0 +1,41 @@
+{
+  "kind": "npm lock metadata inventory only; not a completed source/output license audit",
+  "packages": 1631,
+  "licenses": {
+    "(BSD-3-Clause OR GPL-2.0)": 1,
+    "(MIT OR Apache-2.0)": 1,
+    "(MIT OR CC0-1.0)": 3,
+    "0BSD": 2,
+    "Apache 2.0": 4,
+    "Apache-2.0": 37,
+    "BSD-2-Clause": 30,
+    "BSD-3-Clause": 40,
+    "BlueOak-1.0.0": 12,
+    "CC-BY-4.0": 1,
+    "CC0-1.0": 2,
+    "FSL-1.1-MIT": 9,
+    "ISC": 78,
+    "MISSING": 11,
+    "MIT": 1383,
+    "MIT AND Apache-2.0": 1,
+    "MPL-2.0": 12,
+    "Public Domain": 1,
+    "Python-2.0": 1,
+    "Unlicense": 2
+  },
+  "missing_license_paths": [
+    "node_modules/@mattermost/calls",
+    "node_modules/@mattermost/calls-native",
+    "node_modules/@mattermost/hardware-keyboard",
+    "node_modules/@mattermost/rnshare",
+    "node_modules/@mattermost/rnutils",
+    "node_modules/@mattermost/secure-pdf-viewer",
+    "node_modules/@nozbe/sqlite",
+    "node_modules/exit",
+    "node_modules/format",
+    "node_modules/mmjstool",
+    "node_modules/xss-filters"
+  ],
+  "private_intune_initialized": false,
+  "remaining": "Review exact installed dependencies, native Pods/Gradle components, bundled product modules, final outputs and trademark usage before distribution."
+}
