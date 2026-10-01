@@ -165,6 +165,10 @@ The runtime declares persistent volumes for these items:
 
 Repository workspaces use `/workspace/repos` as the default root.
 A repository slug determines its path under that root.
+Each workflow uses a separate Git worktree under `/workspace/worktrees/<workflow-uuid>`.
+Its writer and reviewer share that worktree and workflow branch.
+Worktrees provide checkout separation within the shared runtime trust boundary.
+They do not provide a separate security boundary.
 
 PostgreSQL maps each workflow role to its current Herdr pane and live agent alias.
 Herdr aliases are runtime identifiers, not durable workflow identifiers.
@@ -376,7 +380,9 @@ Any artifact change invalidates its earlier approval.
 The human approval gate accepts only a commit with an approving reviewer verdict.
 Specifications, plans, and reviews are Markdown documents in the workflow Git repository.
 The control plane checks the expected document path in the reported commit tree.
-An implementation review targets the entire reported commit tree.
+An implementation review binds the exact reported commit tree.
+Its review scope is the diff from a frozen default-branch merge-base to that commit.
+The review records both commits so later default-branch changes cannot move its scope.
 It also checks the clean worktree and review diff before accepting the revision.
 
 The contextual approval command is `@worker approve`.
@@ -542,6 +548,9 @@ An operator signs in again after a disaster recovery.
 
 The existing SSH bastion remains the path for raw Hetzner server administration.
 It does not provide the Herdr tunnel.
+Private Herdr attachment gives the human intentional raw access to the agents.
+The human acts as the controller and does not need a Master session for terminal work.
+Direct terminal input is unsupervised by the Kirei dispatch lock.
 
 The infrastructure layer supplies Headscale and a Tailscale sidecar for private runtime access.
 The runtime runs OpenSSH for Herdr terminal attachment.

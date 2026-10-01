@@ -11,3 +11,5 @@
 - Aligned the specification and plan with Alpine-preferred images, Kirei CLI bootstrap, Ruby/Node pins, built-in health routes, and PostgreSQL jobs.
 - Bound artifact approvals to Git commits and document paths; made Master configuration selectable and rejected duplicate starts in active threads.
 - Removed planning status and local session history from docs and README; aligned the Phase 1 voice reference.
+- Added workflow worktrees, an early integration spike, shared-type ordering, incremental schema constraints, and explicit correction/delivery transitions.
+- Clarified collaborator authority, raw terminal access, callback limits, review diff scope, queued-message acknowledgements, and durable recovery.
