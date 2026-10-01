@@ -353,6 +353,11 @@ It does not close a workflow from elapsed time, room silence, or an idle Herdr s
 
 `@worker cancel` explicitly terminates an incomplete workflow.
 `@worker pause` and `@worker resume` remain thread-scoped and do not bypass workflow gates.
+Pause immediately blocks new step dispatches and lets the current dispatched step finish.
+The control plane still accepts verified callbacks and records that step's result, revision, phase, and blockers.
+It does not dispatch the next step while paused.
+Resume continues from the saved phase and revision after normal gate and runtime checks.
+It does not clear blockers, reuse stale approvals, or skip required review.
 `unknown` and `missing` Herdr states block `finish` until reconciliation.
 Cancellation records the requested stop and reconciles the final runtime state before archival.
 

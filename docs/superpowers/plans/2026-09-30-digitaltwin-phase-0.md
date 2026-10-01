@@ -57,6 +57,7 @@ The following values and limits come from the spec; all tasks must comply with t
 - New workflow branches are named `digitaltwin/<workflow-uuid>`.
 - Approval binds the exact reported artifact commit and expected Markdown path in its Git tree. Review commits do not replace the target commit. Every new artifact-ready report requires renewed review/human approval.
 - Messages during review are stored but not sent to the Writer. Immediately acknowledge the queue through the deduplicated outbox. After review, deliver them after revision/phase checks.
+- Pause blocks new step dispatches while the current step finishes. Persist verified completion results; resume revalidates the saved phase, revision, and gates.
 - Destructive or irreversible Master operations use one-time, time-limited confirmations bound to sender, room, action, and parameter hash.
 - Job defaults: 30-second lease, heartbeat every 10 seconds, at most five attempts, backoff of 1/5/15/60 seconds. Task 3 checks the effects of slow calls.
 - Stale status after 60 seconds without a successful Herdr check; uncertain states remain explicitly uncertain.
@@ -109,9 +110,13 @@ Every transition checks workflow version, current phase, and verified event iden
 | `implementation_review` | Verified approving review of the frozen implementation target | `pr_ready` |
 | `pr_ready` | `Delivery.finalize` verifies push, final PR, and delivery evidence | `done` |
 | `done` | Explicit thread-specific `finish`; Runtime reconciled and sessions stopped/archived | `closed` |
+| Active workflow | Thread-specific `pause`; persist dispatch suppression and underlying phase | `paused`; current dispatched step may finish |
+| `paused` | Verified current-step completion/callback | Remain paused; record result, revision, underlying phase, and blockers under normal transition rules |
+| `paused` | Thread-specific `resume`; revalidate saved phase/revision and Runtime | Restore saved phase; dispatch only if its normal gates permit |
 
 Research uses the same gates. Its `implementation` produces research Markdown, and its final delivery includes the workflow PR.
-Pause/resume and cancellation retain their existing constraints; their additional behavior requires clarification before implementation.
+Pause suppresses dispatch, not verified result handling. Resume cannot clear a block or bypass a gate.
+Cancellation retains its separate stop/reconciliation requirements.
 
 ### Schema and Uniqueness Sketch
 
@@ -229,7 +234,8 @@ Workflow notices require a verified thread; Master replies may use source-room c
 - [ ] Reuse Task 8's callback authentication mechanism when integrated. Its credentials prevent accidental mix-ups within the shared Runtime, not malicious isolation.
 - [ ] Check `agent_any_room_preserves_source`, `worker_unactivated_thread_does_not_start`, `worker_thread_routes_without_repeat_mention`, and `worker_thread_cannot_route_to_another_workflow`; ordinary messages expose no internal workflow IDs.
 - [ ] Run `bundle exec rspec spec/domains/campfire_spec.rb`; expect missing router.
-- [ ] Implement `@agent` to Master and thread-specific `@worker start`/`approve`/`finish`/`cancel`/ordinary message to the active project phase. Activate only the thread root with `@worker start`; route later human thread messages without a repeated mention. Store inbox before dispatch.
+- [ ] Implement `@agent` to Master and thread-specific `@worker start`/`approve`/`pause`/`resume`/`finish`/`cancel`/ordinary message to the active project phase. Activate only the thread root with `@worker start`; route later human thread messages without a repeated mention. Store inbox before dispatch.
+- [ ] Persist messages received while paused. On resume, dispatch them only after phase/revision checks and normal workflow gates.
 - [ ] Check that sender/bot classification comes from Campfire; forged JSON/model fields cannot grant human authority.
 - [ ] Validate the maintained fork's signed events against the Task 1 contract. Reject cross-room root identities before workflow dispatch.
 - [ ] After review, commit: `feat: route authenticated Campfire mentions`.
@@ -277,16 +283,20 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 
 **Files:** Create `db/migrate/004_workflows.rb`, `app/domains/workflows/{machine,approvals,start}.rb`, `spec/domains/workflows_spec.rb`, `AGENTS.md`. Reuse Task 3 entities.
 
-**Interfaces:** `Workflows.start(actor:, project_id:, thread_id:, writer: RoleConfig, reviewer: RoleConfig) -> Outcome`; `finish(actor:, workflow_id:, expected_version:)`; `transition(workflow_id:, event:, expected_version:)`; `Approvals.approve(actor:, workflow_id:, kind:, target_commit:) -> Outcome`.
+**Interfaces:** `Workflows.start(actor:, project_id:, thread_id:, writer: RoleConfig, reviewer: RoleConfig) -> Outcome`; `pause(actor:, workflow_id:, expected_version:)`; `resume(actor:, workflow_id:, expected_version:)`; `finish(actor:, workflow_id:, expected_version:)`; `transition(workflow_id:, event:, expected_version:)`; `Approvals.approve(actor:, workflow_id:, kind:, target_commit:) -> Outcome`.
 
 - [ ] Write table-driven tests for all permitted/forbidden state transitions, spec/plan approval, and the reviewer prerequisite.
 - [ ] Add `same_family_across_cli_rejected`, `same_provider_rejected`, `bot_approval_rejected`, `artifact_change_invalidates`, `concurrent_approval_advances_once`, `active_thread_second_start_rejected_without_sessions`, `new_thread_starts_fresh_sessions`, `finish_only_delivered`, `unknown_blocks_finish`, and `cancel_reconciles_before_archive`.
+- [ ] Add `pause_allows_current_step_completion`, `pause_blocks_next_dispatch`, `paused_callback_preserves_result`, `resume_revalidates_revision`, and `resume_cannot_clear_block_or_skip_gate`.
 - [ ] Run `bundle exec rspec spec/domains/workflows_spec.rb`; expect missing state machine.
 - [ ] Implement state changes with workflow lock/version and audit. Contextual approval binds the presented revision on receipt, not a later moved HEAD.
 - [ ] Check approval rejects a missing specification/plan path in the reported commit tree, a changed target commit, and a dirty worktree. Do not add file upload or blob storage.
 - [ ] A thread-specific start creates fresh Writer/Reviewer sessions on one branch in its workflow worktree. Another thread uses its own worktree.
 - [ ] Reserve the active thread transactionally before creating sessions. Reject duplicate starts; uncertain creation remains reserved until reconciled.
 - [ ] Keep pause/resume/cancel/finish orthogonal to approvals. `finish` closes only a delivered workflow after an explicit command and stops/archives its sessions. Resume must not skip gates; idle chat does not end or start anything automatically.
+- [ ] Persist pause under the workflow lock before further dispatch. Let current work settle; record verified results and phase progress while paused.
+- [ ] Apply the same pause guard to chat, MCP, review-start, and subsequent workflow jobs. Continue reconciliation and required result notifications.
+- [ ] Resume the saved phase/revision only after normal checks. Keep uncertain Runtime states blocked and approvals bound to current artifacts.
 - [ ] Anchor required spec/plan rules in AGENTS.md; technical enforcement stays in Kirei.
 - [ ] After review, commit: `feat: enforce revision-bound workflow gates`.
 
@@ -358,6 +368,7 @@ Emergency operations use available typed tools. Keep existing destructive/irreve
 - [ ] Add missing pane, unknown provider state, old alias, and DB recovery with missing workspace; never mark automatically as done.
 - [ ] Run `bundle exec rspec spec/integration/recovery_spec.rb`; expect missing reconciliation.
 - [ ] Implement startup reconciliation from DB, Git, and Herdr; create a fresh Master. Reconstruct work from committed artifacts and reviews.
+- [ ] Restore paused dispatch suppression after restart. Reconcile the current step and preserve its result without starting the next step.
 - [ ] Test recovery with the ignored Superpowers ledger absent. When any project role needs a fresh session, restore phase, approved revisions, and review context.
 - [ ] Mark status stale after 60 seconds without a verified Runtime check. Surface blocked jobs and phases through a deduplicated outbox.
 - [ ] Check container restart with named volumes; two threads in one room and two independent rooms work at the same time. Finish only one delivered thread with explicit `finish` and check that its Herdr sessions are archived.
