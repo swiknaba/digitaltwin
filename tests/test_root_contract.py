@@ -64,5 +64,50 @@ class RootContractTest(unittest.TestCase):
             acceptance.stack(SimpleNamespace(project="test-stack", runtime_service=None))
 
 
+class CombinedRootContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        command = acceptance.COMPOSE + ["--profile", "push"]
+        for name in ["compose.yml", "compose.backend.yml", "compose.integration.yml"]:
+            command += ["-f", str(ROOT / name)]
+        cls.services = json.loads(acceptance.run(command + ["config", "--format", "json"]).stdout)["services"]
+
+    def test_runtime_is_private_and_nonroot(self):
+        runtime = self.services["agent-runtime"]
+        self.assertEqual(runtime["user"], "10001:10001")
+        self.assertNotIn("ports", runtime)
+        self.assertEqual(runtime["cap_drop"], ["ALL"])
+        self.assertTrue(all(volume["type"] == "volume" for volume in runtime["volumes"]))
+        self.assertEqual(runtime["build"]["target"], "with-callback")
+        self.assertIn("kirei-clients", runtime["build"]["additional_contexts"])
+
+    def test_worker_and_listener_wait_for_dependencies(self):
+        self.assertEqual(self.services["backend-worker"]["depends_on"]["agent-runtime"]["condition"], "service_healthy")
+        self.assertEqual(self.services["backend-chat-listener"]["depends_on"]["mattermost"]["condition"], "service_healthy")
+        for name in ["backend-worker", "backend-chat-listener"]:
+            self.assertEqual(self.services[name]["depends_on"]["backend-migrate"]["condition"], "service_completed_successfully")
+
+    def test_chat_derived_build_and_disabled_credentials_features(self):
+        chat = self.services["mattermost"]
+        self.assertEqual(chat["user"], "2000:2000")
+        self.assertEqual(chat["image"], "digitaltwin-chat-backend:local")
+        self.assertTrue(chat["build"]["context"].endswith("/chat-backend"))
+        self.assertEqual(chat["environment"]["MM_EMAILSETTINGS_SENDPUSHNOTIFICATIONS"], "false")
+        self.assertEqual(chat["environment"]["MM_PLUGINSETTINGS_ENABLE"], "false")
+
+    def test_only_initializer_requires_root_and_push_is_optional(self):
+        initializer = self.services["local-volume-init"]
+        self.assertEqual(initializer["user"], "0:0")
+        self.assertEqual(initializer["network_mode"], "none")
+        self.assertEqual(initializer["restart"], "no")
+        for volume in initializer["volumes"]:
+            if volume["type"] == "bind":
+                self.assertTrue(volume["read_only"])
+        push = self.services["push-proxy"]
+        self.assertEqual(push["profiles"], ["push"])
+        self.assertEqual(push["user"], "65534:65534")
+        self.assertNotIn("ports", push)
+
+
 if __name__ == "__main__":
     unittest.main()

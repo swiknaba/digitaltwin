@@ -90,3 +90,9 @@
 - Confirm callback generation environment, private base URL, CLI arguments, and HTTP acceptance from the backend owner's standalone client.
 - Prepare read-only combined-stack backend health/socket/status checks with an explicit project and Runtime service. No actual combined-stack or provider pass is claimed before reviewed component integration.
 - Verify seven root contract/safety checks, Compose configuration, Python syntax, and whitespace. Publication requires the renewed direct approval; no unreviewed component merge occurs here.
+
+## 2026-10-01 — Component handoff wiring preparation
+
+- Inspect fetched component PR handoffs without merging them; prepare local combined Compose for minimal derived chat, hash-checked single-source Runtime callback packaging, private socket/home/workspace volumes, and optional credential-disabled push.
+- Add network-free one-shot volume/config setup and callback context staging; leave component directories untouched and the existing dependency default intact pending review clearance.
+- Validate combined configuration and root contract tests. Actual image builds, fresh combined boot, authentication/provider roundtrip, and main-default handoff remain unclaimed until reviewed component integration.

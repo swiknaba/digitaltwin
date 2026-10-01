@@ -101,3 +101,24 @@ The command observes existing containers only. It verifies backend health, the s
 It creates no accounts, sessions, or credentials and changes no container lifecycle.
 This prepared command has not run against a combined stack; component merges and actual Runtime wiring remain prerequisites.
 It always reports authenticated chat/provider/roundtrip as untested. The final independent integration worker owns broader acceptance after component integration.
+
+### Prepared Combined Compose
+
+`compose.integration.yml` follows the inspected component PR handoffs, without merging their code:
+
+- Build the chat owner's minimal derived artifact; retain UID2000, native health, config/data/log volumes, and independent database ownership.
+- A network-free one-shot initializer seeds partial chat config into writable storage and assigns named-volume ownership.
+  It runs as root only for ownership changes; long-running Runtime/backend/chat/push processes keep their component UIDs.
+- Build Runtime target `with-callback` from `agent-runtime/`, using named context `kirei-clients` from ignored `.local/kirei-clients/`.
+  `scripts/prepare-callback-context` copies only the merged backend-owned client after its exact agreed SHA256 matches.
+  Run this only after component review/merge; it creates no credentials and does not change component source.
+- Persist Runtime home/workspace and share `/run/herdr` with the worker. Publish no Runtime ports or host mounts.
+- Wait for healthy Runtime before worker startup, and healthy Mattermost before listener startup. Preserve the backend migration gate.
+- Keep push/email disabled in chat. Optional `push` profile starts the private proxy with empty provider settings and process health only.
+  Do not infer provider readiness from `/version` or enable delivery without approved credentials and matching app identities.
+
+After review and prerequisite merges, prepare the callback context and run Compose with `compose.yml`,
+`compose.backend.yml`, and `compose.integration.yml`, in that order, using a fresh disposable project.
+The integrator will make this reviewed wiring the default before the promised main-branch boot handoff.
+Current configuration checks do not establish that build contexts, callback artifact, first boot, or callbacks work together.
+Never reuse old plugin volumes. Retain approved production/credential setup as separate steps.

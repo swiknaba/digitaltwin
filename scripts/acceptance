@@ -30,8 +30,9 @@ def run(args, timeout=120, check=True):
 
 
 def config():
-    for files in [["compose.yml"], ["compose.yml", "compose.backend.yml"]]:
-        args = COMPOSE.copy()
+    for files in [["compose.yml"], ["compose.yml", "compose.backend.yml"],
+                  ["compose.yml", "compose.backend.yml", "compose.integration.yml"]]:
+        args = COMPOSE + ["--profile", "*"]
         for name in files:
             args += ["-f", str(ROOT / name)]
         run(args + ["config", "--quiet"])
