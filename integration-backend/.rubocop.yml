@@ -1,0 +1,16 @@
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 4.0
+  SuggestExtensions: false
+  Exclude:
+    - vendor/**/*
+    - tmp/**/*
+# Long test fixture/envelope literals are intentionally kept together.
+Layout/LineLength:
+  Max: 280
+Lint/SuppressedException:
+  Exclude:
+    - spec/**/*
+Lint/EmptyBlock:
+  Exclude:
+    - spec/**/*

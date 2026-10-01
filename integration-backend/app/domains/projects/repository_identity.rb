@@ -1,0 +1,29 @@
+# frozen_string_literal: true
+
+module Domains
+  module Projects
+    class RepositoryIdentity
+      def self.slug!(slug)
+        raise ArgumentError,
+              "Expected owner/repository slug" unless slug.match?(%r{\A[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_.-]*\z}) && !slug.end_with?(
+                ".git", "."
+              )
+
+        slug
+      end
+
+      def self.remote!(remote, slug)
+        slug!(slug)
+        patterns = [
+          %r{\Ahttps://github\.com/([^/]+/[^/]+?)(?:\.git)?\z},
+          %r{\Agit@github\.com:([^/]+/[^/]+?)(?:\.git)?\z},
+          %r{\Assh://git@github\.com/([^/]+/[^/]+?)(?:\.git)?\z}
+        ]
+        actual = patterns.filter_map { |pattern| remote.match(pattern)&.[](1) }.first
+        raise ArgumentError, "Git remote identity mismatch" unless actual&.downcase == slug.downcase
+
+        "github.com/#{slug.downcase}"
+      end
+    end
+  end
+end

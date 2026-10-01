@@ -11,6 +11,14 @@
     "image": "ruby:4.0.7-alpine",
     "index_digest": "sha256:1ca7cb33e970630d571e0da6140e0bc925faec8f1f8f51f9f2cdf5e5f5eed7c9"
   },
-  "verification": "framework gem checksum matched and CLI generator ran using local Ruby 4.0.5; Ruby 4.0.7 image manifest resolved; Linux build/boot and full Gemfile.lock pending",
-  "checked_on": "2026-10-01"
+  "verification": "Ruby 4.0.7 Alpine builds on Linux ARM64 and AMD64; actual Falcon web and worker startup verified; component checks and shared-contract typing pass; whole-project RBI/type coverage remains open",
+  "checked_on": "2026-10-01",
+  "backend": {
+    "falcon": "0.57.0",
+    "bundler": "4.0.20",
+    "callback_client_version": 1,
+    "callback_client_sha256": "cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054",
+    "mattermost_source_commit": "3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9",
+    "mattermost_evidence_kind": "release-source-derived synthetic fixtures; not authenticated capture"
+  }
 }

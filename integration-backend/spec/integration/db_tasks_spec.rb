@@ -36,7 +36,9 @@ RSpec.describe "Numbered database migration tasks" do
           def self.raw_db_connection = @raw_db_connection ||= Sequel.connect(default_db_url)
         end
       RUBY
-      @db.tables.grep(/\A(?:migration_fixture_\d+|schema_info|schema_migrations)\z/).each { |table| @db.drop_table(table) }
+      @db.tables.grep(/\A(?:migration_fixture_\d+|schema_info|schema_migrations)\z/).each { |table|
+        @db.drop_table(table)
+      }
       ENV["DATABASE_URL"] = @url
       ENV["RACK_ENV"] = "test"
       ENV.delete("STEPS")
