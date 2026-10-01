@@ -6,6 +6,7 @@ A self-hosted remote AI team that can interview its owner, build code and resear
 
 - [Repository layout and parallel build](docs/repository-layout-and-parallel-build.md)
 - [Shared service boundaries and validation gates](docs/interfaces/service-boundaries.md)
+- [Local integration wiring and early real roundtrip](docs/interfaces/local-integration.md)
 - [Phase 0: agent fleet specification](docs/agent-fleet-architecture-and-review.md)
 - [Phase 0: implementation plan](docs/superpowers/plans/2026-09-30-digitaltwin-phase-0.md)
 - [Phase 1: group calls and AI voice](docs/phase-1-voice-controller.md)
@@ -31,5 +32,7 @@ Application process startup and live integration are not yet verified.
 Task 1's live compatibility slice remains a prerequisite for dependent implementation.
 
 Validate local dependency configuration with `docker compose --env-file .env.example config --quiet`.
+Run `scripts/acceptance config` for both dependency and prepared backend Compose contracts.
+Run `scripts/acceptance dependencies` for disposable live dependency checks using public samples.
 Copy `.env.example` to ignored `.env` before local startup. Docker must be running.
 The database initialization script runs only on a new local PostgreSQL volume; changing `.env` does not rotate existing roles.

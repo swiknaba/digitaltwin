@@ -1,0 +1,63 @@
+# Opt-in local backend wiring. Requires the component owner's real Dockerfile
+# and startup commands; it is not a placeholder application or a live gate.
+x-backend: &backend
+  image: digitaltwin-integration-backend:local
+  build:
+    context: ./integration-backend
+  user: "10001:10001"
+  environment: &backend-environment
+    RACK_ENV: development
+    PORT: "3000"
+    DATABASE_URL: postgres://kirei:${KIREI_DB_PASSWORD:?Set the local Kirei database password}@postgres:5432/digitaltwin_development
+    DB_POOL_SIZE: "5"
+    DB_POOL_TIMEOUT: "2"
+
+services:
+  backend-migrate:
+    <<: *backend
+    command: [bundle, exec, rake, "db:migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backend-web:
+    <<: *backend
+    command: [bin/web]
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-3000}:3000"
+    healthcheck:
+      test: [CMD, ruby, -rnet/http, -e, "exit(Net::HTTP.get_response(URI('http://127.0.0.1:3000/readyz')).code == '200' ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend-worker:
+    <<: *backend
+    command: [bin/worker]
+    environment:
+      <<: *backend-environment
+      HERDR_SOCKET_PATH: /run/herdr/herdr.sock
+    volumes:
+      - herdr-socket:/run/herdr
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+
+  backend-chat-listener:
+    <<: *backend
+    command: [bin/chat-listener]
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+      mattermost:
+        condition: service_started
+
+volumes:
+  herdr-socket:
+
+# Runtime image/startup and authenticated chat/callback settings must be added
+# from reviewed component handoffs before worker/listener integration startup.

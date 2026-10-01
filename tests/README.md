@@ -7,8 +7,10 @@ Shared service fixtures and acceptance checks belong here when they exercise mul
 ## API and Configuration Contract
 
 Run tests from the repository root against local Compose with disposable data and simulated providers by default.
-The integration worker chooses the lean runner after actual application contracts exist and documents its exact command here.
-No test runner or successful service integration is claimed by this scaffold.
+Run `python3 -m unittest discover -s tests -v` for root Compose agreement checks.
+These inspect resolved configuration; they do not build or boot applications.
+Run `scripts/acceptance dependencies` for disposable live PostgreSQL/Mattermost dependency checks.
+The final integration worker extends this harness after component merges; neither command proves the real provider roundtrip.
 
 Required checks include database-role separation, startup/readiness, shared socket access, verified callbacks, and correct concurrent thread routing.
 Cover duplicate events, review dispatch exclusion, crash/restart recovery, and rejected cross-session callbacks.

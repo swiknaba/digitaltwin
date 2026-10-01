@@ -76,3 +76,10 @@
 - Rename component folders to integration-backend, agent-runtime, chat-backend, push-service, and mobile-apps so directory ownership does not depend on implementation technology.
 - Update local links, path/branch conventions, mobile ignore rules, component README titles, and future packaging paths; preserve upstream image/API identifiers and source behavior.
 - Validate document links, stale-path references, Compose configuration, Ruby/shell syntax, schema/artifact identity, and the relocated live migration regression suite.
+
+## 2026-10-01 — Root integration preparation
+
+- Prepare opt-in backend Compose with agreed UID, port, database/pool settings, migration gate, worker-only Herdr socket volume, and actual process commands.
+- Add native Mattermost local-mode health and plugin/marketplace controls; retain the explicit upstream plugin archive audit/removal gap.
+- Add disposable dependency acceptance and root configuration tests; record received socket/callback/push contracts and a real roundtrip procedure without provider credentials.
+- Verify five root agreement tests, Compose configuration, own-database connections, denied cross-database connections, and Mattermost native health/ping/version. Remove disposable resources; retain live authenticated chat/provider/MCP gates.
