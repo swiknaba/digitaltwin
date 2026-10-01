@@ -11,6 +11,7 @@ x-backend: &backend
     DATABASE_URL: postgres://kirei:${KIREI_DB_PASSWORD:?Set the local Kirei database password}@postgres:5432/digitaltwin_development
     DB_POOL_SIZE: "5"
     DB_POOL_TIMEOUT: "2"
+    CHAT_VALIDATION_MODE: "0"
 
 services:
   backend-migrate:
@@ -54,7 +55,12 @@ services:
 
   backend-chat-listener:
     <<: *backend
+    profiles: [chat-validation]
     command: [bin/chat-listener]
+    environment:
+      <<: *backend-environment
+      CHAT_VALIDATION_MODE: "1"
+      MATTERMOST_URL: http://mattermost:8065
     healthcheck:
       test: [CMD, bin/health, chat-listener]
       interval: 5s

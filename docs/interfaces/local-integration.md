@@ -22,6 +22,10 @@ This agreement prevents independent workers from selecting incompatible values a
 The backend owner must verify these settings, image `net/http` availability, and entrypoint command forwarding.
 Worker/listener override the image's default web health with `bin/health worker` and `bin/health chat-listener`.
 Their actual combined health and restart/failure recovery still need integration testing.
+The listener requires opt-in profile `chat-validation`; credential-free startup excludes it.
+Its profile sets `CHAT_VALIDATION_MODE=1` and private `MATTERMOST_URL`; missing approved token files and identity/channel mappings must fail startup.
+Worker validation stays `0` by default, blocking unconfigured effects. An operator override must enable worker validation and mount bot credentials for transport/outbox checks.
+Use the backend's documented `MATTERMOST_*_TOKEN_FILE`, bot/local/peer IDs, and channel-ID settings; Runtime receives no bot tokens.
 No web server implementation is selected by this root overlay.
 
 Mattermost uses native `/mattermost/bin/mmctl system status --local` health with local mode enabled.

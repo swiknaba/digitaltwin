@@ -12,7 +12,7 @@ acceptance = SimpleNamespace(**runpy.run_path(str(ROOT / "scripts/acceptance")))
 class RootContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        command = acceptance.COMPOSE + ["-f", str(ROOT / "compose.yml"),
+        command = acceptance.COMPOSE + ["--profile", "chat-validation", "-f", str(ROOT / "compose.yml"),
                                         "-f", str(ROOT / "compose.backend.yml"),
                                         "config", "--format", "json"]
         cls.services = json.loads(acceptance.run(command).stdout)["services"]
@@ -41,6 +41,14 @@ class RootContractTest(unittest.TestCase):
     def test_nonweb_roles_override_image_web_probe(self):
         for service, role in [("backend-worker", "worker"), ("backend-chat-listener", "chat-listener")]:
             self.assertEqual(self.services[service]["healthcheck"]["test"], ["CMD", "bin/health", role])
+
+    def test_listener_requires_opt_in_and_worker_validation_stays_closed(self):
+        self.assertEqual(self.services["backend-chat-listener"]["profiles"], ["chat-validation"])
+        self.assertEqual(self.services["backend-chat-listener"]["environment"]["CHAT_VALIDATION_MODE"], "1")
+        self.assertEqual(self.services["backend-worker"]["environment"]["CHAT_VALIDATION_MODE"], "0")
+        command = acceptance.COMPOSE + ["-f", str(ROOT / "compose.yml"),
+                                        "-f", str(ROOT / "compose.backend.yml"), "config", "--services"]
+        self.assertNotIn("backend-chat-listener", acceptance.run(command).stdout.splitlines())
 
     def test_local_exposure_and_independent_databases(self):
         for name in ["backend-web", "mattermost"]:
@@ -77,7 +85,7 @@ class RootContractTest(unittest.TestCase):
 class CombinedRootContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        command = acceptance.COMPOSE + ["--profile", "push"]
+        command = acceptance.COMPOSE + ["--profile", "*"]
         for name in ["compose.yml", "compose.backend.yml", "compose.integration.yml"]:
             command += ["-f", str(ROOT / name)]
         cls.services = json.loads(acceptance.run(command + ["config", "--format", "json"]).stdout)["services"]

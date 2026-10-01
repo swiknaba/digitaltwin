@@ -119,3 +119,8 @@
 
 - Correct the independent integration review finding: worker/listener now override the backend image's web probe with their role-specific `bin/health` command.
 - Add a root regression for both role probes; verify 13 root tests and Compose configuration without merging the pending backend or claiming actual combined startup.
+
+## 2026-10-01 — Credential-free listener gate
+
+- Make the authenticated listener opt-in under `chat-validation`; set its private server URL and explicit validation mode without creating tokens or identities.
+- Keep worker validation disabled by default; document separate operator credential/identity wiring and fail-closed startup. Verify the listener is absent from default service selection and 14 root tests pass.
