@@ -21,7 +21,7 @@ RUN addgroup -g 10001 runtime && adduser -D -u 10001 -G runtime -s /bin/bash run
  && mkdir -p /workspace/repos /workspace/worktrees /run/herdr /home/runtime/.cache /home/runtime/.local/share \
  && chown -R 10001:10001 /workspace /run/herdr /home/runtime
 ENV HOME=/home/runtime SHELL=/bin/bash \
- PATH=/opt/runtime/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+ PATH=/opt/runtime/bin:/opt/runtime/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
  NODE_PATH=/opt/runtime/node_modules \
  HERDR_SOCKET_PATH=/run/herdr/herdr.sock PYTHONDONTWRITEBYTECODE=1 \
  USE_BUILTIN_RIPGREP=0

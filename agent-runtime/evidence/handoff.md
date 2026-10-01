@@ -31,9 +31,13 @@ Checks run:
   HTTP fixture checks for exact path/generation/key/text/Bearer, 202/403 handling,
   no automatic retry and no credential/body output. This is not live Kirei delivery.
 - Shell syntax and `git diff --check` passed.
+- Independent review fixes: runtime bin directory is on both PATH definitions;
+  bare provisioning command lookup/invocation passes in noninteractive/login
+  shells. Compound shell checks stop on early failure; deliberately failed first
+  assertions followed by `true` correctly return nonzero in both shell modes.
 
 Local callback image ID:
-`sha256:f0f9250c8aec6c2dcdc6a0b011241441f27d75a3ef06bd95fdf1859ad813749a`.
+`sha256:a566e7f23f0581cb4277040cbdacde04cfc98c34d644168ae4c16dec45b3223a`.
 It was built locally, not published as an OCI release digest. Image is about
 2.16 GB uncompressed; native CLI packages account for most of its size.
 

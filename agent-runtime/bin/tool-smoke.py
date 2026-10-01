@@ -17,6 +17,10 @@ def run(*args, expected=0, **kwargs):
     return result.stdout
 
 
+# Bare documented provisioning command must resolve in both actual shell modes.
+# Missing arguments are intentionally rejected before any company state is written.
+run('sh', '-ec', 'runtime-provision', expected=2)
+run('bash', '-elc', 'runtime-provision', expected=2)
 with tempfile.TemporaryDirectory(prefix='runtime-smoke-') as scratch:
     root = Path(scratch)
     fixture = root / 'space file.txt'
@@ -33,9 +37,9 @@ with tempfile.TemporaryDirectory(prefix='runtime-smoke-') as scratch:
     assert run('grep', '-o', 'needle', str(fixture)).strip() == 'needle'
     run('grep', 'absent', str(fixture), expected=1)
     assert run('sed', 's/needle/replaced/', str(fixture)).startswith('replaced\n')
-    assert run('bash', '-c', 'sort "$1" | uniq', 'smoke', str(fixture)) == 'beta\nneedle\n'
-    assert run('sh', '-c', "printf 'a b\\n' | awk '{print $2}'") == 'b\n'
-    assert run('bash', '-c', 'find "$1" -maxdepth 1 -type f -print0 | xargs -0 -r printf "%s\\n"', 'smoke', scratch).count('space file.txt') == 1
+    assert run('bash', '-euo', 'pipefail', '-c', 'sort "$1" | uniq', 'smoke', str(fixture)) == 'beta\nneedle\n'
+    assert run('sh', '-ec', "printf 'a b\\n' | awk '{print $2}'") == 'b\n'
+    assert run('bash', '-euo', 'pipefail', '-c', 'find "$1" -maxdepth 1 -type f -print0 | xargs -0 -r printf "%s\\n"', 'smoke', scratch).count('space file.txt') == 1
     assert int(run('stat', '-c', '%s', str(fixture))) == fixture.stat().st_size
     assert run('realpath', str(fixture)).strip() == str(fixture)
     assert run('sha256sum', str(fixture)).split()[0] == hashlib.sha256(fixture.read_bytes()).hexdigest()

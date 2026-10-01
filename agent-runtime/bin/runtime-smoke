@@ -20,8 +20,9 @@ import json,os
 from pathlib import Path
 assert json.loads(Path(os.environ['RUNTIME_SMOKE_DIR'],'schema.json').read_text()) == json.loads(Path('/opt/runtime/contracts/herdr-v0.9.3.schema.json').read_text())
 PY
+sh -ec 'test "$(command -v runtime-provision)" = /opt/runtime/bin/runtime-provision; test "$(command -v runtime-smoke)" = /opt/runtime/bin/runtime-smoke'
 for role in writer reviewer; do
-  RUNTIME_ROLE="$role" bash -lc 'test "$(command -v rg)" = /usr/bin/rg; test "$(command -v python3)" = /usr/bin/python3; test -x "$(command -v codex)"; test -x "$(command -v claude)"'
+  RUNTIME_ROLE="$role" bash -elc 'test "$(command -v runtime-provision)" = /opt/runtime/bin/runtime-provision; test "$(command -v runtime-smoke)" = /opt/runtime/bin/runtime-smoke; test "$(command -v rg)" = /usr/bin/rg; test "$(command -v python3)" = /usr/bin/python3; test -x "$(command -v codex)"; test -x "$(command -v claude)"'
 done
 python3 /opt/runtime/bin/tool-smoke.py
 # Herdr lifecycle/socket check is distinct from any provider authentication.
