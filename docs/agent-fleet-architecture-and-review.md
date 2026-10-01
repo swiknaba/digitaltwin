@@ -12,7 +12,7 @@ The owner controls project work through Campfire or an attached Herdr terminal.
 Each project workflow uses a writer and a reviewer from different model families.
 The system preserves specifications, plans, reviews, code, and research in Git.
 
-The deployment includes a persistent master controller for general questions and fleet operations.
+The deployment includes a persistent master controller for operational conversation, status, coordination, and targeted emergency changes.
 The controller uses the same local agent runtime as project work.
 
 Separate deployments communicate only through Campfire and Git.
@@ -82,15 +82,18 @@ The operator upgrades those versions through reviewed manifest changes and rebui
 The infrastructure repository or hosting platform owns production orchestration.
 This includes production Compose files, networks, volumes, routing, restart policies, and backup schedules.
 
-An operator can supply Campfire as an existing hosted service.
-If the operator deploys Campfire, the infrastructure layer uses its official image.
-Prefer an Alpine-compatible Campfire image when the official image supports it.
+Digitaltwin maintains a Rails fork of [Campfire](https://github.com/basecamp/once-campfire) under `apps/campfire/`.
+Keep its upstream MIT license and record the imported upstream commit.
+Campfire remains a separate application, image, database, and deployment service.
+The infrastructure layer orchestrates the fork image by OCI digest.
+Initially retain its upstream image base and independent Ruby/dependency pins.
+Review upstream updates and security fixes against the maintained patch set.
 
 The application provides portable OCI images and environment configuration.
 The images can run through Docker Compose, AWS ECS, or another compatible platform.
 
-Phase 0 delivers a Kirei application image and an agent runtime image.
-Campfire, PostgreSQL, Headscale, Tailscale networking, and S3 are external integration services.
+Phase 0 delivers Kirei, agent runtime, and maintained Campfire images.
+PostgreSQL, Headscale, Tailscale networking, and S3 remain external integration services.
 Prefer Alpine for the Kirei image when its pinned dependencies pass runtime checks.
 Select the agent runtime base after validating Herdr and all required CLIs.
 Use Ubuntu for an image only when a verified dependency or runtime need requires it.
@@ -104,8 +107,15 @@ Workers use bounded retries, idempotency keys, leases, and expired-lease recover
 Notifications can wake a worker, but job rows remain the durable source of truth.
 The worker dispatches Herdr work, reconciles uncertain effects, and sends outbox messages outside webhook requests.
 It does not wait for an entire interactive agent session before accepting the next job.
-Phase 0 requires neither Sidekiq nor Redis.
+Kirei requires neither Sidekiq nor Redis.
 An external effect with an unknown result stays blocked for reconciliation unless its idempotency is proven.
+
+Campfire uses the same PostgreSQL server, with a separate database and role.
+Each application owns its migrations and cannot read or modify the other's tables.
+Campfire's port replaces SQLite connection settings, FTS5 search, and database-file backup hooks.
+Validate schema creation, search behavior, concurrent writes, attachments, and restore against PostgreSQL.
+Campfire keeps its upstream Redis/Resque jobs, Action Cable, cache, and Kredis dependencies pending a separate backend decision.
+Attachments remain in Campfire's persistent storage volume.
 
 ## 5. Service architecture
 
@@ -113,7 +123,13 @@ An external effect with an unknown result stays blocked for reconciliation unles
 flowchart TD
     Human["Owner or collaborator"] --> Campfire["Campfire"]
     Campfire --> Web["Kirei web service"]
-    Web --> Database["PostgreSQL"]
+    subgraph PostgreSQL["Shared PostgreSQL server"]
+        Database["Kirei database and role"]
+        CampfireDB["Campfire database and role"]
+    end
+    Web --> Database
+    Campfire --> CampfireDB
+    Campfire --> Redis["Campfire Redis dependencies"]
     Worker["Kirei worker service"] --> Database
     Worker --> Runtime["Herdr and agent CLIs"]
     Runtime --> Repositories["Persistent Git workspaces"]
@@ -255,6 +271,10 @@ This mapping survives a later room rename.
 
 Task 1 must verify that the selected Campfire release supplies a server-authenticated thread ID or root-post ID.
 The router must not derive a thread identity from message text or model output.
+The maintained fork adds validated root/reply relationships, thread views, and thread-aware bot posting and history.
+Its authenticated events include ordinary human replies without repeated mentions.
+Campfire validates room membership and thread ownership; Kirei owns thread-to-workflow mapping and gates.
+Mobile replies and live updates must remain in their selected thread.
 
 ## 11. Campfire bot identities
 
@@ -446,6 +466,10 @@ The controller receives the source room context with each request.
 
 The controller is not bound to one repository.
 It does not use the project specification and plan gates.
+Master chat keeps the owner informed and coordinates work; it is not the ordinary coding agent.
+It can perform a targeted emergency change through the available operational tools.
+That operation does not require starting a coding workflow or passing its review and approval cycle.
+Ordinary coding uses the writer/reviewer workflow and retains all its gates.
 
 The Master uses `RoleConfig(cli, provider, model, family)`.
 Gemini CLI is the default; the selected CLI runs through Herdr.
@@ -472,6 +496,7 @@ Its operations include:
 The controller can perform broad fleet operations.
 It requests a second human confirmation before a destructive or irreversible action.
 It never displays secret values.
+This existing confirmation rule does not impose a coding review cycle on operational conversation or emergency changes.
 
 After a restart, the system starts a fresh session with the same Master configuration.
 The controller reconstructs current state from PostgreSQL and typed operations.
@@ -581,8 +606,8 @@ It never stores the encryption key in the backup bucket.
 
 Backups include:
 
-- PostgreSQL data.
-- Campfire data and attachments.
+- Both Kirei and Campfire PostgreSQL databases, with their independent roles and migration state.
+- Campfire attachments and application configuration.
 - Herdr configuration and session metadata.
 - Digitaltwin configuration and audit data.
 - Headscale state.
@@ -599,6 +624,8 @@ The operator accepts the loss of unpushed repository work after a server loss.
 The operator performs one restore test during initial deployment.
 The operator repeats the test after a backup configuration change.
 Digitaltwin does not schedule recurring restore tests.
+Campfire's SQLite snapshot and file-copy restore hooks do not apply to the PostgreSQL fork.
+Infrastructure restores its database and attachment storage together and verifies message-to-attachment integrity.
 
 ## 24. Monitoring and recovery
 

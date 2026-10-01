@@ -4,9 +4,9 @@
 
 **Goal:** A containerized, self-hosted agent fleet delivers code and research results through Campfire with approval bound to their exact revisions.
 
-**Architecture:** Kirei forms a modular Ruby monolith with separate web and worker processes. PostgreSQL stores workflow state and jobs; Herdr controls four CLIs in a shared Non-root runtime container. Campfire and Git are the only interfaces to independent deployments.
+**Architecture:** Kirei forms a modular Ruby monolith with separate web and worker processes. The maintained Campfire Rails fork runs separately. Both use one PostgreSQL server with separate databases and roles. Herdr controls four CLIs in a shared non-root runtime container. Campfire and Git are the only interfaces to independent deployments.
 
-**Tech Stack:** Ruby, Kirei, Sorbet, Rack/Puma, Sequel, PostgreSQL, Docker Compose, Herdr, Wagglebot, Codex CLI, Claude Code, OpenCode, Gemini CLI.
+**Tech Stack:** Ruby, Kirei, Sorbet, Rack/Puma, Sequel, PostgreSQL, Campfire Rails/Active Record, Campfire Redis/Resque, Docker Compose, Herdr, Wagglebot, Codex CLI, Claude Code, OpenCode, Gemini CLI.
 
 **Spec:** [Phase 0 agent fleet specification](../../agent-fleet-architecture-and-review.md).
 
@@ -15,9 +15,11 @@
 The following values and limits come from the spec; all tasks must comply with them.
 
 - Host target: `Ubuntu 24.04 LTS on AMD64`; no required minimum memory or fleet concurrency limit.
-- Prefer Alpine for Kirei and a compatible official Campfire image. Choose the Runtime base after Herdr/CLI validation; record any Ubuntu image requirement.
-- Two application images: Kirei and Runtime. Production selects OCI digests; the repository provides development/integration Compose only.
-- Exact tool and package versions in manifests; Ruby `4.0.7`; Wagglebot: `Node.js 22.20 or later, npm, and Git`.
+- Prefer Alpine for Kirei. Initially retain the Campfire upstream base image; choose the Runtime base after Herdr/CLI validation.
+- Three application images: Kirei, Runtime, and maintained Campfire. Production selects OCI digests; the repository provides development/integration Compose only.
+- Exact tool/package versions in manifests; Kirei Ruby `4.0.7`; Campfire retains its independent upstream Ruby pin. Wagglebot requires Node.js ≥22.20, npm, and Git.
+- Campfire uses a separate database and role on the same PostgreSQL server. Keep its Rails migrations separate from Kirei's Sequel migrations.
+- Campfire retains upstream Redis/Resque, Action Cable, cache, and Kredis dependencies. The PostgreSQL port does not authorize their replacement.
 - Runtime: `No Docker socket`, `No privileged mode`, `No host root mount`, non-root, required volumes and networks.
 - Default repository root: `/workspace/repos`; slug `owner/repository`; one workflow per verified Campfire thread. Multiple threads in a room can work at the same time.
 - Each workflow uses a separate Git worktree under `/workspace/worktrees/<workflow-uuid>`. Its Writer and Reviewer share that worktree and branch.
@@ -28,6 +30,7 @@ The following values and limits come from the spec; all tasks must comply with t
 - One workflow branch, one final PR; no automatic merge and no automatic post-merge synchronization.
 - All human room members are trusted collaborators with full capabilities, including approvals and destructive-operation confirmations. Configured local/peer bots cannot act as humans.
 - Master: configurable `RoleConfig(cli, provider, model, family)` through Herdr and a local MCP bridge; Gemini CLI is the default. No direct provider API call or login through Campfire.
+- Master chat handles operational conversation, status, coordination, and targeted emergency changes. It has no coding review/approval cycle; ordinary coding uses Writer/Reviewer workflows.
 - Memory only manually through `@agent`/base instructions; no cron, no required maintenance after each session.
 - GitHub remains the selected Git host. Headscale/Tailscale remain the selected private access base.
 - One shared Runtime trust domain; do not claim process or project isolation against malicious agents.
@@ -45,7 +48,9 @@ The following values and limits come from the spec; all tasks must comply with t
 ## Implementation Decisions and Prerequisites
 
 - Generate Kirei bootstrap files with its CLI in an empty staging directory, then copy them into this repository without replacing the existing docs. Add the Gemfile and test setup separately.
-- One Ruby codebase provides web, worker, `bin/digitaltwin` callback, and stdio MCP bridge. The Runtime includes the package required by the two small clients.
+- One Kirei Ruby codebase provides web, worker, `bin/digitaltwin` callback, and stdio MCP bridge. The Runtime includes its two small clients.
+- Keep Kirei paths at repository root and the Campfire fork under `apps/campfire/`. Each application has independent dependencies, tests, migrations, and image builds.
+- Connect Campfire and Kirei through authenticated HTTP/events. Do not share application tables or move workflow state into Rails.
 - PostgreSQL Sequel transactions coordinate gates, session generations, jobs, inbox, and outbox. Network calls run outside short DB locks.
 - Reviews reside in `docs/superpowers/reviews/<workflow-uuid>.md`; the UUID stays internal, while ordinary chat messages use project/phase and links.
 - New workflow branches are named `digitaltwin/<workflow-uuid>`.
@@ -69,7 +74,9 @@ All application paths below are **planned as new**, unless marked as existing.
 | `db/migrate/001_jobs.rb` through `006_confirmations.rb` | Incremental migrations: jobs/inbox/outbox/audit (3), projects (5), sessions (6), workflows/approvals (7), reviews (8), confirmations (9) |
 | `app/domains/{jobs,campfire,projects,workflows,reviews,runtime,forge,controller}/` | Typed entities, services, thin controllers, and adapters per domain |
 | `bin/{web,worker,digitaltwin,mcp}` | Process entry points and controlled operations |
-| `docker/{app,runtime}.Dockerfile`, `compose.yml`, `.dockerignore`, `.env.example` | Two OCI images and local integration |
+| `docker/{app,runtime}.Dockerfile`, `apps/campfire/Dockerfile`, `compose.yml`, `.dockerignore`, `.env.example` | Three OCI images and local integration |
+| `apps/campfire/` | Maintained upstream Rails app with independent license, Ruby/dependency pins, PostgreSQL migrations, thread UI/API, event delivery, and tests |
+| `docs/interfaces/campfire-fork.md` | Upstream SHA, patch inventory, database port evidence, and reviewed update procedure |
 | `spec/{domains,integration,contracts}/`, `spec/fixtures/` | Unit, PostgreSQL, adapter, and end-to-end evidence |
 | `docs/{interfaces,operations,acceptance}/` | Contracts, operations, validation results, infrastructure handoff |
 | `AGENTS.md`, `.agents/changelog.md`, `CHANGELOG.md` | Workflow rules and summaries, not a second task queue |
@@ -123,9 +130,39 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 
 ## Task 1: Interface Validation and Version Manifest
 
-**Files:** Create `config/runtime-tools.lock.yml`, `docs/interfaces/{herdr,campfire,cli-startup}.md`, `spec/contracts/{herdr,campfire}_spec.rb`, `spec/fixtures/contracts/`.
+**Files:** Import `apps/campfire/` from a verified upstream commit during implementation. Modify its database/search, message/thread, webhook, UI, build, and test files. Create `config/runtime-tools.lock.yml`, `docs/interfaces/{herdr,campfire,campfire-fork,cli-startup}.md`, `spec/contracts/{herdr,campfire}_spec.rb`, `spec/fixtures/contracts/`.
 
 **Interfaces:** Produces documented, release-bound Herdr operations for start, prompt, status, stop/archive, and Campfire authentication, membership, webhook ID, post ID, and thread or root post ID.
+
+### Campfire Fork and PostgreSQL Preparation
+
+Source baseline inspected: [`basecamp/once-campfire@90b3300`](https://github.com/basecamp/once-campfire/tree/90b330024dec3e757c79b6a7e6568f93da8e3148).
+Its [search concern](https://github.com/basecamp/once-campfire/blob/90b330024dec3e757c79b6a7e6568f93da8e3148/app/models/message/searchable.rb) uses SQLite FTS5 `MATCH` and `rowid`.
+Its initial migration creates an FTS5 virtual table; its [backup script](https://github.com/basecamp/once-campfire/blob/90b330024dec3e757c79b6a7e6568f93da8e3148/script/admin/prepare-backup) calls `SQLite3::Backup`.
+This evidence defines port work, not a claim that changing the adapter is sufficient.
+
+- [ ] Verify and pin the imported upstream commit. Preserve MIT notices, separate Ruby/Gemfile pins, and upstream history provenance.
+- [ ] Record the local patch inventory and repeatable upstream update procedure. Review security fixes and rerun fork tests before publication.
+- [ ] Add the PostgreSQL driver and connection configuration for development, test, performance, and production. Remove SQLite-specific timeout/transaction settings.
+- [ ] Make schema creation and migration history PostgreSQL-compatible, including the initial FTS5 migration. Test fresh creation and incremental migration separately.
+- [ ] Replace FTS5/index callbacks with PostgreSQL search. Test stemming, multiple terms, rich-text normalization, updates/deletes, message ordering, and room access filtering.
+- [ ] Keep Active Storage attachment files in their persistent volume. Verify PostgreSQL blob/attachment records and file access after restart and restore.
+- [ ] If existing SQLite data must migrate, plan offline export/import with preserved IDs, reset sequences, counts, foreign keys, and attachment integrity.
+- [ ] Retain a verified source snapshot until import and restore checks pass. Fresh installations require no SQLite database.
+- [ ] Replace or remove `script/admin/prepare-backup` and `hooks/{pre-backup,post-restore}` database-file behavior. Document infrastructure-owned PostgreSQL backup/restore instead.
+- [ ] Update setup, Docker dependencies, CI services, and storage documentation for PostgreSQL. Preserve media-loader protections unrelated to the database adapter.
+- [ ] Retain Redis/Resque, Action Cable, cache, and Kredis behavior. A queue/cache replacement needs a separate decision and plan.
+- [ ] Test PostgreSQL schema constraints, concurrent message writes, authentication, membership, attachments, and existing unit/system suites.
+- [ ] Add root/reply relationships with same-room validation and foreign keys. Define migration behavior for existing unthreaded messages.
+- [ ] Extend thread routes, bot posting/history, mobile views, pagination, and Turbo/Action Cable updates. Reject replies targeting another room.
+- [ ] Add authenticated events for subscribed rooms, including ordinary replies. Kirei routes active threads and ignores unactivated messages.
+- [ ] Define signed event payloads with delivery identity, timestamp, verified sender/role, room, post, and root/thread identity.
+- [ ] Keep webhook authentication secrets separate from bot reply credentials. Test invalid signatures, replay, revoked membership, and forged identities.
+- [ ] Test simultaneous threads, correct bot reply placement, duplicate delivery, and local-bot suppression. Preserve existing mention and DM behavior.
+- [ ] From `apps/campfire/`, run `bin/ci` with PostgreSQL and Redis. Adapt upstream CI paths; test migrations and image startup.
+- [ ] Commit the reviewed fork baseline and PostgreSQL port separately from thread/event changes during implementation.
+
+### Runtime and Chat Contract Evidence
 
 - [ ] Check selected releases against official documentation and installed artifacts. Record exact versions, origin, and digests/checksums. Select an exact supported Node release ≥22.20.0 for `.nvmrc`.
 - [ ] Write contract tests `starts_four_clis`, `writer_settles_after_ready`, `unknown_is_not_idle`, `selected_master_calls_local_mcp`, `campfire_verifies_delivery_and_sender`.
@@ -151,7 +188,8 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 - [ ] Run `bundle exec rspec spec/integration/boot_spec.rb`; expect failure because `bin/web` and `bin/worker` startup integration is missing, not because health routes are missing.
 - [ ] Add `bin/web` and `bin/worker` startup validation. Reject pending migrations before either process serves requests or dispatches jobs.
 - [ ] Prefer an Alpine Kirei base image. If the pinned dependencies fail on Alpine, record the evidence before selecting Ubuntu. Pin Bundler and set up Sorbet.
-- [ ] Define Compose services `web`, `worker`, `postgres`, and later `runtime`; no production routing and no real secrets.
+- [ ] Define Compose services `web`, `worker`, `postgres`, `campfire`, its Redis dependency, and later `runtime`. Use no real secrets or production routing.
+- [ ] Provision separate Kirei/Campfire databases and roles locally. Test that each role cannot read or modify the other database.
 - [ ] Check generated routes register `Router.add_health_routes!`. Run `docker compose config --quiet`, image builds, the boot test, and `bundle exec spoom srb tc`.
 - [ ] After review, commit: `build: bootstrap Kirei control plane and local compose`.
 
@@ -180,6 +218,7 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 - [ ] Run `bundle exec rspec spec/domains/campfire_spec.rb`; expect missing router.
 - [ ] Implement `@agent` to Master and thread-specific `@worker start`/`approve`/`finish`/`cancel`/ordinary message to the active project phase. Activate only the thread root with `@worker start`; route later human thread messages without a repeated mention. Store inbox before dispatch.
 - [ ] Check that sender/bot classification comes from Campfire; forged JSON/model fields cannot grant human authority.
+- [ ] Validate the maintained fork's signed events against the Task 1 contract. Reject cross-room root identities before workflow dispatch.
 - [ ] After review, commit: `feat: route authenticated Campfire mentions`.
 
 ## Task 5: Enrollment and Git Workspace
@@ -262,9 +301,14 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 
 **Interfaces:** Master `RoleConfig(cli: String, provider: String, model: String, family: String)` reaches `Sessions.start(workflow_id: nil, generation:, role: controller, config:, repo: nil)` unchanged. MCP tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `finish_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials` receive server-side Actor/Room/Thread context.
 
+Master conversation and targeted emergency operations do not enter the project specification, plan, review, or approval cycle.
+Starting or prompting a coding workflow is coordination; the target workflow retains its own gates.
+Emergency operations use available typed tools. Keep existing destructive/irreversible confirmations; add no emergency-specific approval gate.
+
 - [ ] Write `selected_master_config_reaches_sessions_start`: assert controller role, `workflow_id: nil`, `repo: nil`, and unchanged CLI/provider/model/family. Assert another Task 1-validated CLI/provider reaches the same interface unchanged.
 - [ ] Write `room_context_survives_tool_call`, `restart_creates_fresh_session_with_same_config`, `secret_values_never_returned`. Assert restart uses the same config in neutral Runtime home, reconstructs PostgreSQL status, and preserves sender/context checks.
 - [ ] Add `bot_cannot_confirm`, `confirmation_replay_rejected`, `changed_parameters_require_confirmation`, `unconfigured_deployment_tool_rejected`.
+- [ ] Test `master_status_needs_no_workflow` and `master_emergency_operation_needs_no_coding_cycle`. Ordinary coding still requires approved workflow revisions.
 - [ ] Run `bundle exec rspec spec/domains/controller_spec.rb`; expect missing Master/MCP server.
 - [ ] Implement the stdio MCP bridge against the same application services, with no raw shell or credential-read tools.
 - [ ] Route MCP `send_prompt` through the same review lock and queue as chat. Test that a Master request cannot bypass Writer exclusion.
@@ -312,13 +356,17 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 **Interfaces:** Contract documents list ENV, secret file, UID/GID, volumes, ports, healthcheck, and start command per image. Worker/Runtime require the same host/task socket volume.
 
 - [ ] Write `image_contract_spec`: non-root, healthcheck, persistent paths, no Docker/root mounts, no publicly exposed Runtime SSH ports, and version pins matching `.ruby-version`/`.nvmrc`. Assert Alpine Kirei or recorded dependency evidence for Ubuntu; assert the Runtime base follows Task 6 validation.
+- [ ] Check Campfire's image against `apps/campfire/.ruby-version` and its lockfile. Keep image build and test contexts independent from Kirei.
 - [ ] Run `bundle exec rspec spec/integration/image_contract_spec.rb`; expect missing complete image contracts.
-- [ ] Document PostgreSQL and existing/official Campfire as external services; local Compose can start test dependencies. No production Compose in the app repo.
+- [ ] Document one PostgreSQL server with separate Kirei/Campfire databases, roles, migrations, and secrets. Campfire is a separate maintained application service.
+- [ ] Document Campfire Redis/Resque, Action Cable, cache, and Kredis dependencies. Scope Kirei's no-Redis requirement to Kirei.
+- [ ] Document three independently built images and Campfire's upstream base/pins. Infrastructure owns production orchestration; local Compose supplies integration services.
 - [ ] Describe private Tailscale/OpenSSH access, Headscale DNS-only through Traefik with trusted TLS; neither Cloudflare Proxy nor Tunnel for Headscale.
 - [ ] Document intentional raw terminal access: the human controls agents directly. No owner-side status/approval CLI or Master session is required for attachment.
 - [ ] State that terminal input is unsupervised. Kirei's dispatch lock cannot prevent direct input; conflicting changes require review reconciliation.
 - [ ] Document ignored `.env`, optional `op://` references, and root/0600 production files in the infrastructure repo. No secret values or login states in images/Git.
-- [ ] Create backup/restore matrix: include DB, Campfire/attachments, Herdr, configuration/audit, and Headscale; exclude clones/worktrees/unpushed work/CLI logins.
+- [ ] Create backup/restore matrix: include both PostgreSQL databases/roles, Campfire attachments, Herdr, configuration/audit, and Headscale; exclude clones/worktrees/unpushed work/CLI logins.
+- [ ] Replace SQLite file-copy procedures with consistent PostgreSQL database backups and coordinated attachment restore. Verify relationships and application startup after restore.
 - [ ] Hand off daily S3 client-side encryption, external key, 30-day lifecycle, and second-failure alarm to Infra. Explicitly document re-login after restore.
 - [ ] Document an image-by-digest example for Production Compose and Hosted Task, including shared socket. Do not present portability as a tested ECS deployment.
 - [ ] After review, commit: `docs: define production image and recovery contracts`.
@@ -333,6 +381,7 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 - [ ] Add research flow, optional pushed memory change, peer handoff, and restart between gates. Forbidden approvals/transitions must fail.
 - [ ] Run `docker compose run --rm web bundle exec rspec spec/integration/phase0_spec.rb`; expect missing full integration before implementation.
 - [ ] Complete full integration and run `bundle exec rspec`, `bundle exec spoom srb tc`, `bundle exec rubocop`, `docker compose config --quiet`, and image builds.
+- [ ] From `apps/campfire/`, run `bin/ci` and PostgreSQL migration/restore checks. Complete two mobile interviews without crossed replies or repeated mentions.
 - [ ] Record output, commit, image digests, and test environment. Report live checks and simulated checks separately.
 - [ ] After separate deployment approval, the operator checks real CLIs, Campfire mobile access, Tailnet attachment, externally closed SSH port, all service health checks, and encrypted restore.
 - [ ] Check every acceptance row below; missing live evidence remains open and must not imply Phase 0 acceptance.
@@ -343,7 +392,7 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 | No. | Responsibility | Required evidence |
 | --- | --- | --- |
 | 1 | 12/13 + Infra | published OCI digests start in existing infrastructure; separate approval |
-| 2 | 2/13 | local Compose integration with exit 0 |
+| 2 | 1/2/13 | local Compose integration with fork, separate PostgreSQL databases, and Campfire Redis; exit 0 |
 | 3 | 12 | same ENV/volume/health contracts, Compose and Hosted Task definition |
 | 4 | 6/12/13 + Infra | health of Campfire, DB, Web, Worker, Runtime, Headscale, Tailscale |
 | 5–6 | 6/12 | contract test and inspected container UID/mount/capability state |
@@ -358,8 +407,8 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 | 25–26 | 10 | one branch/PR, no automatic merge |
 | 27 | 9/11 | fresh selected-controller session with same configuration and durably reconstructed status |
 | 28 | 10/13 | simulated peer and separate Git identity, chat/Git only |
-| 29 | 12/13 + Infra | encrypted restore of all included services; logins not restored |
-| 30 | 13 + Operator | interview completed from mobile Campfire client |
+| 29 | 1/12/13 + Infra | encrypted restore of both databases/roles and attachments; logins not restored |
+| 30 | 1/4/13 + Operator | mobile thread interviews, correct bot reply placement, authenticated ordinary replies |
 | 31 | 10/13 | committed research Markdown with sources and uncertainty |
 | 32 | 10/13 + Operator | memory commit and push verified for configured repo identity |
 
@@ -367,6 +416,6 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 
 1. **Herdr capability:** Task 1 determines whether four CLIs and the idle handshake are reliable enough. Without proof, do not implement Runtime/review based on assumptions.
 2. **Pins and credentials:** Operator provides company config, memory slug, model configuration, and test credentials. Secrets stay outside the plan. Select release pins after checking them.
-3. **Campfire contract:** Confirm webhook authentication, membership lookup, and post reconciliation for the deployed release. Missing secure sender checks block human approval.
+3. **Campfire contract:** Implement and validate the approved Rails fork, PostgreSQL port, thread UI/API, and authenticated events. Missing secure sender/thread checks block human approval. Redis/backend changes require a separate decision.
 4. **Infrastructure:** Production, image publication, Headscale, backup bucket, and restore test are separately authorized work in the infrastructure context. This plan provides contracts only.
 5. **Review exclusion:** Kirei prevents prompt dispatch, checks Git, and monitors Herdr. The accepted shared Runtime domain does not protect against intentional direct terminal/filesystem access. Such access blocks/invalidates review and does not count as approved work.

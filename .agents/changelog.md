@@ -13,3 +13,6 @@
 - Removed planning status and local session history from docs and README; aligned the Phase 1 voice reference.
 - Added workflow worktrees, an early integration spike, shared-type ordering, incremental schema constraints, and explicit correction/delivery transitions.
 - Clarified collaborator authority, raw terminal access, callback limits, review diff scope, queued-message acknowledgements, and durable recovery.
+- Planned a maintained Campfire Rails app with thread UI/API and authenticated events; added PostgreSQL search/schema/backup port and upstream maintenance checks.
+- Defined separate Campfire and Kirei databases/roles on one PostgreSQL server, three application images, and retained Campfire Redis dependencies pending a backend decision.
+- Clarified that Master operational chat and targeted emergency changes have no coding review cycle; ordinary project workflows retain their gates.
