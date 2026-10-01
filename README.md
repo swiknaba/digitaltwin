@@ -22,7 +22,7 @@ This repository provides application images and local development Compose. The i
 
 ## Implementation Scaffold
 
-Component contracts live in [kirei/](kirei/README.md), [runtime/](runtime/README.md), [mattermost/](mattermost/README.md), [push-proxy/](push-proxy/README.md), and [mobile/](mobile/README.md).
+Component contracts live in [integration-backend/](integration-backend/README.md), [agent-runtime/](agent-runtime/README.md), [chat-backend/](chat-backend/README.md), [push-service/](push-service/README.md), and [mobile-apps/](mobile-apps/README.md).
 Repository automation belongs in [scripts/](scripts/README.md); cross-service automated integration tests belong in [tests/](tests/README.md).
 
 The scaffold includes generated Kirei files, verified upstream artifact identities, and local PostgreSQL/Mattermost dependency Compose.

@@ -1,6 +1,7 @@
 # Repository Layout and Parallel Build
 
 Use one top-level folder per deployable or independently released client.
+Name folders by responsibility so implementation technology can change without another layout migration.
 Keep documentation in `docs/` and non-deployable automation in `scripts/`.
 This scaffold refines the merged Phase 0 plan and prepares component implementation.
 
@@ -11,30 +12,30 @@ Kirei includes its generated scaffold; root Compose configures local upstream de
 
 ```text
 digitaltwin/
-├── kirei/          # Ruby control plane: web, worker, event listener; one image
-├── runtime/        # Herdr, four agent CLIs, Wagglebot, tools; one image
-├── mattermost/     # Official Team Edition artifact pins and configuration
-├── push-proxy/     # Existing upstream push artifact pins and configuration
-├── mobile/         # Our iOS/Android build recipe, patches, tests, release pipeline
-├── docs/           # Specs, plans, interfaces, operations, acceptance evidence
-├── scripts/        # Local setup, integration checks, infrastructure handoff helpers
-├── tests/          # Automated integration tests across deployables
-├── .agents/        # Repository agent instructions/history
-├── compose.yml     # Local development and integration orchestration
-├── .env.example    # Local variable names and safe examples
+├── integration-backend/# Ruby control plane: web, worker, event listener; one image
+├── agent-runtime/      # Herdr, four agent CLIs, Wagglebot, tools; one image
+├── chat-backend/       # Official Team Edition artifact pins and configuration
+├── push-service/       # Existing upstream push artifact pins and configuration
+├── mobile-apps/        # Our iOS/Android build recipe, patches, tests, release pipeline
+├── docs/               # Specs, plans, interfaces, operations, acceptance evidence
+├── scripts/            # Local setup, integration checks, infrastructure handoff helpers
+├── tests/              # Automated integration tests across deployables
+├── .agents/            # Repository agent instructions/history
+├── compose.yml         # Local development and integration orchestration
+├── .env.example        # Local variable names and safe examples
 ├── .gitignore
-├── AGENTS.md       # When repository-specific instructions are needed
+├── AGENTS.md           # When repository-specific instructions are needed
 ├── README.md
-└── CHANGELOG.md    # When implementation produces deliverable changes
+└── CHANGELOG.md        # When implementation produces deliverable changes
 ```
 
 | Folder | Ownership and boundary |
 | --- | --- |
-| `kirei/` | Owns Ruby source, Gemfile/lockfile, Ruby pin, migrations, tests, Dockerfile, and process entry points. Web/worker/listener share this codebase. |
-| `runtime/` | Owns Dockerfile, entrypoint, exact tool manifest, Node pin, provisioning, and executable Runtime smoke checks. Herdr remains upstream. |
-| `mattermost/` | Records the official unmodified Team Edition release/digest, configuration examples, and upgrade checks. No server source fork or copied repository. |
-| `push-proxy/` | Records upstream artifact pins, non-secret configuration, and compatibility checks. Push remains separate from Kirei. |
-| `mobile/` | Owns reproducible builds from pinned Apache 2.0 upstream source, necessary patches, notices, and signing/distribution references. |
+| `integration-backend/` | Owns Ruby source, Gemfile/lockfile, Ruby pin, migrations, tests, Dockerfile, and process entry points. Web/worker/listener share this codebase. |
+| `agent-runtime/` | Owns Dockerfile, entrypoint, exact tool manifest, Node pin, provisioning, and executable Runtime smoke checks. Herdr remains upstream. |
+| `chat-backend/` | Records the official unmodified Team Edition release/digest, configuration examples, and upgrade checks. No server source fork or copied repository. |
+| `push-service/` | Records upstream artifact pins, non-secret configuration, and compatibility checks. Push remains separate from Kirei. |
+| `mobile-apps/` | Owns reproducible builds from pinned Apache 2.0 upstream source, necessary patches, notices, and signing/distribution references. |
 | `docs/` | Owns shared service contracts and sanitized evidence. Preserve the existing spec, Phase 1 document, and Superpowers paths. |
 | `scripts/` | Owns commands that run and exit: local database setup, acceptance orchestration, and infrastructure handoff helpers. |
 | `tests/` | Owns automated integration tests across deployables; component unit/adapter tests stay inside their folders. |
@@ -44,14 +45,14 @@ Mattermost and push proxy consume upstream artifacts; their workstreams configur
 Do not create separate Master, Worker bot, scheduler, push gateway, or chat application codebases.
 Kirei's worker process and the Herdr Runtime are distinct responsibilities.
 
-Keep application commands inside their folders, such as `kirei/bin/worker` and `runtime/bin/runtime-smoke`.
+Keep application commands inside their folders, such as `integration-backend/bin/worker` and `agent-runtime/bin/runtime-smoke`.
 Put repository-wide checks in `scripts/`, such as `scripts/acceptance`.
 Each build owns its lockfiles and Docker ignore rules; no root workspace package manager is required.
 Document the Docker build context explicitly, including Kirei callback/MCP clients included in Runtime without duplicate source ownership.
 
 Fetch pinned mobile source during its reproducible build, and keep our patches and build configuration here.
 Do not vendor complete third-party repositories merely to fill the layout.
-iOS and Android share `mobile/`; separate internal platform folders only when their build files require them.
+iOS and Android share `mobile-apps/`; separate internal platform folders only when their build files require them.
 Signing, Apple/Google enrollment, APNs/FCM credentials, distribution, and updates need operator ownership and future human setup.
 
 ## Infrastructure and Phase Boundaries
@@ -70,25 +71,25 @@ Calls/rtcd and the Agents plugin remain excluded. LiteLLM/MCP remains after Phas
 
 ## Mapping from the Merged Plan
 
-These are planned paths, so this change moves no application files.
+The generated scaffold follows this layout. Use these targets for remaining planned files.
 The Phase 0 plan uses these mappings for implementation.
 
 | Previous planned path | Target path |
 | --- | --- |
-| Root Kirei `app.rb`, `config.ru`, `app/`, `db/`, `lib/`, `sorbet/`, `spec/`, `Rakefile`, `.irbrc` | Same names under `kirei/` |
-| `Gemfile`, `Gemfile.lock`, `.ruby-version`, Kirei test setup | `kirei/` |
-| `config/deployment.example.yml` and other Kirei configuration | `kirei/config/` |
-| `config/runtime-tools.lock.yml` | `runtime/tools.lock.yml` |
-| `.nvmrc` | `runtime/.nvmrc`; mobile owns its independently pinned build toolchain |
-| `docker/app.Dockerfile` | `kirei/Dockerfile` |
-| `docker/runtime.Dockerfile`, `config/runtime-entrypoint.sh` | `runtime/Dockerfile`, `runtime/entrypoint.sh` |
-| `bin/{web,worker,chat-listener,digitaltwin,mcp}` | `kirei/bin/`; Runtime packages the needed clients from this source |
-| `bin/runtime-smoke`, `bin/acceptance` | `runtime/bin/runtime-smoke`, `scripts/acceptance` |
-| `apps/mobile/` | `mobile/` |
-| Cross-service `spec/integration/` acceptance and image checks | `tests/`; Kirei-only integration tests stay in `kirei/spec/integration/` |
+| Root Kirei `app.rb`, `config.ru`, `app/`, `db/`, `lib/`, `sorbet/`, `spec/`, `Rakefile`, `.irbrc` | Same names under `integration-backend/` |
+| `Gemfile`, `Gemfile.lock`, `.ruby-version`, Kirei test setup | `integration-backend/` |
+| `config/deployment.example.yml` and other Kirei configuration | `integration-backend/config/` |
+| `config/runtime-tools.lock.yml` | `agent-runtime/tools.lock.yml` |
+| `.nvmrc` | `agent-runtime/.nvmrc`; mobile owns its independently pinned build toolchain |
+| `docker/app.Dockerfile` | `integration-backend/Dockerfile` |
+| `docker/runtime.Dockerfile`, `config/runtime-entrypoint.sh` | `agent-runtime/Dockerfile`, `agent-runtime/entrypoint.sh` |
+| `bin/{web,worker,chat-listener,digitaltwin,mcp}` | `integration-backend/bin/`; Runtime packages the needed clients from this source |
+| `bin/runtime-smoke`, `bin/acceptance` | `agent-runtime/bin/runtime-smoke`, `scripts/acceptance` |
+| `apps/mobile/` | `mobile-apps/` |
+| Cross-service `spec/integration/` acceptance and image checks | `tests/`; Kirei-only integration tests stay in `integration-backend/spec/integration/` |
 | `docs/`, root Compose/environment/repository metadata | Unchanged |
 
-Run host-side Ruby commands from `kirei/`; run `docker compose` from the repository root.
+Run host-side Ruby commands from `integration-backend/`; run `docker compose` from the repository root.
 Container paths are image contracts, independent of these source paths.
 Runtime workspace roots remain `/workspace/repos` and `/workspace/worktrees/<workflow-uuid>`.
 
@@ -107,10 +108,10 @@ Folders reduce conflicts; they do not remove shared contracts or prerequisite wo
 
 | Workstream | Scope and dependencies |
 | --- | --- |
-| Kirei | Tasks 4–5 routing/enrollment, then Tasks 7–10 gates, reviews, Master, and delivery. Runtime/session contracts and Task 3 state must precede their consumers. |
-| Runtime | Task 6 image, tools, persistence, and provisioning after Task 1 validation. Coordinate Kirei's Herdr adapter, sessions migration, and packaged clients with the Kirei owner. |
-| Mattermost + push proxy | Configure pinned upstream services, verify authenticated threads/reconnect and push compatibility, and document upgrades/restore. One session can own both small configuration folders. |
-| Mobile | Build pipeline, patches, chat/deep links, and push checks against the agreed server/push versions. Device, signing, and distribution checks need operator setup. |
+| Integration backend (Kirei) | Tasks 4–5 routing/enrollment, then Tasks 7–10 gates, reviews, Master, and delivery. Runtime/session contracts and Task 3 state must precede their consumers. |
+| Agent runtime (Herdr) | Task 6 image, tools, persistence, and provisioning after Task 1 validation. Coordinate Kirei's Herdr adapter, sessions migration, and packaged clients with the Kirei owner. |
+| Chat backend + push service | Configure pinned upstream services, verify authenticated threads/reconnect and push compatibility, and document upgrades/restore. One session can own both small configuration folders. |
+| Mobile apps | Build pipeline, patches, chat/deep links, and push checks against the agreed server/push versions. Device, signing, and distribution checks need operator setup. |
 | Integration | Own root Compose/environment glue, cross-service startup, smoke checks, production handoff, and acceptance evidence. Merge compatible changes in dependency order. |
 
 Do not split Kirei web, worker, listener, and Master into separate deployable sessions.
@@ -130,5 +131,5 @@ Then verify Compose configuration, image startup/health, private worker socket a
 Final acceptance includes concurrent threads, review exclusion, restart recovery, mobile push/deep links, and the existing acceptance matrix.
 Record simulated, live, and operator-dependent evidence separately; missing credentials or device checks remain open.
 
-The main objection to immediate parallel builds is interface drift, especially Runtime callbacks and mobile/server/push compatibility.
+The main objection to immediate parallel builds is interface drift, especially Runtime callbacks and mobile, server, and push compatibility.
 The short foundation and one integration owner address that risk without adding a framework or deeper directory hierarchy.
