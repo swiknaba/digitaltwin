@@ -4,6 +4,11 @@ Repository-level tests across deployables, owned by the integration test worker 
 Component unit, adapter, and database tests stay in their component folders.
 Shared service fixtures and acceptance checks belong here when they exercise multiple deployables.
 
+## Why This Exists
+
+Component tests cannot establish that independently built services work together.
+This folder verifies shared contracts and recovery without giving one component ownership of another component's source.
+
 ## API and Configuration Contract
 
 Run tests from the repository root against local Compose with disposable data and simulated providers by default.

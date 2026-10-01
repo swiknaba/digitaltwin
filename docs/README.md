@@ -2,6 +2,11 @@
 
 Accepted specifications, implementation plans, service interfaces, operations contracts, and acceptance evidence.
 
+## Why This Exists
+
+The shared specification and interface decisions must survive individual implementation sessions.
+These documents give component owners and reviewers one versioned source for scope, dependencies, and evidence gaps.
+
 ## API and Configuration Contract
 
 The [Phase 0 specification](agent-fleet-architecture-and-review.md) defines behavior.

@@ -55,6 +55,14 @@ class RootContractTest(unittest.TestCase):
         self.assertIn("this command starts nothing", output.getvalue())
         self.assertIn("real CLI", output.getvalue())
 
+    def test_stack_check_rejects_implicit_project(self):
+        with self.assertRaisesRegex(RuntimeError, "explicit valid --project"):
+            acceptance.stack(SimpleNamespace(project=None))
+
+    def test_stack_check_requires_reviewed_runtime_name(self):
+        with self.assertRaisesRegex(RuntimeError, "reviewed --runtime-service"):
+            acceptance.stack(SimpleNamespace(project="test-stack", runtime_service=None))
+
 
 if __name__ == "__main__":
     unittest.main()

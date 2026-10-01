@@ -83,3 +83,10 @@
 - Add native Mattermost local-mode health and plugin/marketplace controls; retain the explicit upstream plugin archive audit/removal gap.
 - Add disposable dependency acceptance and root configuration tests; record received socket/callback/push contracts and a real roundtrip procedure without provider credentials.
 - Verify five root agreement tests, Compose configuration, own-database connections, denied cross-database connections, and Mattermost native health/ping/version. Remove disposable resources; retain live authenticated chat/provider/MCP gates.
+
+## 2026-10-01 — Combined-stack check preparation
+
+- Add concise reasons for root glue, shared docs, scripts, and tests; leave component-owned files untouched.
+- Confirm callback generation environment, private base URL, CLI arguments, and HTTP acceptance from the backend owner's standalone client.
+- Prepare read-only combined-stack backend health/socket/status checks with an explicit project and Runtime service. No actual combined-stack or provider pass is claimed before reviewed component integration.
+- Verify seven root contract/safety checks, Compose configuration, Python syntax, and whitespace. Publication requires the renewed direct approval; no unreviewed component merge occurs here.

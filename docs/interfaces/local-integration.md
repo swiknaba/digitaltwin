@@ -3,6 +3,11 @@
 The integrator owns root Compose, environment, scripts, and shared contracts.
 Component owners own image builds, startup commands, lockfiles, and component tests.
 
+## Why This Exists
+
+Component images meet at shared ports, volumes, identities, and credentials.
+This agreement prevents independent workers from selecting incompatible values and separates local health from live workflow evidence.
+
 ## Backend Agreement
 
 `compose.backend.yml` prepares the backend owner's proposed contract:
@@ -48,7 +53,9 @@ Keep bot credentials outside Runtime. Publish no Runtime SSH port, Docker socket
   It requires Ruby >=3.1, without Bundler or database access.
 - `POST /internal/callbacks/say` accepts JSON `generation`, `key`, and `text`.
   The client reads a bearer token from `DIGITALTWIN_SESSION_TOKEN_FILE` and uses `DIGITALTWIN_CALLBACK_URL`.
-  The backend derives destination and role; generation environment naming still needs the backend's exact handoff.
+  `DIGITALTWIN_SESSION_GENERATION` supplies the integer generation; `DIGITALTWIN_CALLBACK_URL` is a private base URL, without a path.
+  The backend derives destination and role. The client accepts only `say --text TEXT --key KEY` and expects HTTP `202`.
+  Retry uncertain results with the same key; never print response bodies, headers, or credential values.
   Artifact callbacks and MCP remain disabled pending their live gates.
 - Push listens privately on `8066` with command `-config /mattermost-push-proxy/config/mattermost-push-proxy.json`.
   `GET /version` proves process health only. Mattermost's configured base `http://push-proxy:8066` appends `/api/v1/send_push`.
@@ -84,3 +91,13 @@ Dependency ping alone proves neither authenticated chat nor the early slice.
 
 Four-CLI start/prompt/state/stop, Writer settled state, and selected Master MCP remain separate Task 1 gates.
 Tasks 6–10 retain those gates. Signed-device push, restore, and production deployment retain their operator prerequisites.
+
+## Combined Local Check Preparation
+
+After component review, the integrator merges prerequisite contracts and wires the actual Runtime image/startup.
+Start a reviewed disposable stack under an explicit project name. Do not merge or build unreviewed component code for this check.
+Run `scripts/acceptance stack --project <project> --runtime-service <service>` with repeated `--compose-file <file>` arguments for the complete stack.
+The command observes existing containers only. It verifies backend health, the shared socket's UID/mode in both consumers, and JSON Herdr status.
+It creates no accounts, sessions, or credentials and changes no container lifecycle.
+This prepared command has not run against a combined stack; component merges and actual Runtime wiring remain prerequisites.
+It always reports authenticated chat/provider/roundtrip as untested. The final independent integration worker owns broader acceptance after component integration.

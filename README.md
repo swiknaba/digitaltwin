@@ -2,6 +2,11 @@
 
 A self-hosted remote AI team that can interview its owner, build code and research artifacts, keep durable knowledge, and collaborate with another independently operated team.
 
+## Why This Exists
+
+One repository versions the components and their shared integration agreement together.
+Root files wire local development; each component folder owns its implementation and build inputs.
+
 ## Docs
 
 - [Repository layout and parallel build](docs/repository-layout-and-parallel-build.md)
