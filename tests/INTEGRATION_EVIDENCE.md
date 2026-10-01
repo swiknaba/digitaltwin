@@ -2,12 +2,37 @@
 
 No publication, production access, provider login, paid call, chat account creation, signing, or mobile-device test occurred.
 
+## Current result: 20 checks pass
+
+```sh
+DIGITALTWIN_RUN_COMPOSE_TESTS=1 \
+  DIGITALTWIN_REVIEWED_BACKEND_REVISION=b45cf0aa827dd19c81e9791c7b5e82ef8d0e36d0 \
+  python3 -m unittest discover -s tests -v
+```
+
+Exit 0: six actual combined integration tests and 14 root configuration tests pass, in 42.585 seconds.
+The actual Rake migration entry point completes all six migrations from a fresh database without fixture preloading.
+Default startup excludes the credential-gated listener and push profiles; worker dispatch remains closed.
+
+Real container checks pass: own/cross-database roles, health/JSON, 30 concurrent Falcon requests with distinct request IDs,
+bounded malformed/oversized JSON rejection, non-root UIDs, private mounts/capabilities, shared mode0600 socket,
+Herdr0.9.3/protocol22, packaged callback SHA256, no chat plugin content, web/Runtime/worker restart,
+five-connection pool exhaustion and recovery with a two-second timeout, and pending-migration startup rejection.
+Synthetic fixture checks pass: durable job replay/content guards, expired leases/stale tokens/uncertain effects,
+closed worker dispatch after restart, two callback threads without crossing, replay deduplication,
+changed-body rejection and stale generation rejection through the actual packaged Runtime callback client.
+No authenticated Mattermost post or provider session is exercised by these fixtures.
+
+Project cleanup succeeds; label-based checks find no remaining project containers, volumes or networks.
+Own unique image tags are removed. Temporary callback marker file is removed and synthetic sessions invalidated.
+Machine-readable sanitized evidence and exact tested image IDs: `evidence/local-compose.json`.
+
 ## Tested source
 
-- Reviewed component main: `0c79c77719713ca38417d5ea6da63ca6bc0fa401`.
-- Exact reviewed backend: `53c69b7d537b906a06303461c658f62b990f23d9` (verified ancestor).
+- Reviewed component main including migration correction: `cc053ce173e49d23a813119ab2d8a91907f606a3`.
+- Exact reviewed backend correction: `b45cf0aa827dd19c81e9791c7b5e82ef8d0e36d0` (verified ancestor).
 - Frozen root candidate: `aee60f8f677681c3b6cfee9d6958ce86f4e05296`.
-- Isolated test merge before diagnostic commit: `edf6c2ed8d1f94ce3534f8803aaeaa33bd9fc607`.
+- Exact passing test source: `2405f04c5f2eb5783f2d3f685444fd3c3236b21a`.
 - Worktree: `/tmp/digitaltwin-integration-test`; branch: `test/integration`.
 
 ## Passed preparation and independent checks
@@ -20,7 +45,9 @@ No publication, production access, provider login, paid call, chat account creat
 - Combined callback image, backend image and derived chat image build successfully with unique local tags.
   Callback staging/checksum enforcement was retained, not bypassed.
 
-## Confirmed combined first-boot failure
+## Historical combined first-boot failure — corrected by reviewed PR13
+
+This failed against original reviewed backend `53c69b7`/main `0c79c777`, before the correction above.
 
 ```sh
 DIGITALTWIN_RUN_COMPOSE_TESTS=1 \
@@ -41,7 +68,8 @@ column :artifacts, :jsonb, null: false, default: Sequel.pg_jsonb({})
 The real Rake entry point opens a migration connection without loading the JSON extension needed by migration004.
 Component setup that first opens the application connection loads that extension and does not reproduce the clean subprocess path.
 The independent test preserves the migration gate; no fixture, Compose override or startup shim bypasses the failure.
-Backend owner must fix and review the real entry point before combined execution can pass.
+Backend owner corrected the real entry point in reviewed commit `b45cf0a`, merged as `cc053ce`.
+The independent rerun above confirms the correction without a Compose or fixture workaround.
 
 Each attempted run used a fresh unique project/random loopback ports and public DB samples only.
 Class cleanup removed its containers, named volumes, networks and unique image tags.
@@ -51,7 +79,7 @@ No other worker resources were removed. No session fixture/token file was create
 ## Evidence boundaries
 
 Dependency health and offline Runtime health are live local checks, not authenticated chat/provider compatibility.
-The prepared job/callback fixtures remain unexecuted on the combined stack at this checkpoint.
+Job/callback fixtures now pass on the combined stack and remain explicitly synthetic evidence.
 Whole-project Sorbet remains failing as disclosed by the backend handoff; root integration does not clear it.
 Authenticated chat/bot permissions/reconnect, four CLI handshakes, Writer settled state, selected Master MCP,
 signed mobile push/deep links, encrypted restore, image publication and production remain open.
