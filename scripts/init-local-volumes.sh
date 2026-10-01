@@ -13,8 +13,10 @@ if [ ! -f /volumes/chat-config/config.json ]; then
   cp /seed/phase0.json /volumes/chat-config/config.json
 fi
 chown 2000:2000 /volumes/chat-config/config.json
-for path in runtime-home runtime-workspace herdr-socket; do
-  test -d "/volumes/$path"
-  chown 10001:10001 "/volumes/$path"
-done
-chmod 700 /volumes/herdr-socket
+if [ "${INIT_RUNTIME_VOLUMES:-false}" = true ]; then
+  for path in runtime-home runtime-workspace herdr-socket; do
+    test -d "/volumes/$path"
+    chown 10001:10001 "/volumes/$path"
+  done
+  chmod 700 /volumes/herdr-socket
+fi

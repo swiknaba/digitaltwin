@@ -26,8 +26,9 @@ No web server implementation is selected by this root overlay.
 Mattermost uses native `/mattermost/bin/mmctl system status --local` health with local mode enabled.
 The selected distroless image requires no shell or curl for this check.
 Root configuration disables plugins, uploads, both marketplaces, and automatic prepackaged plugins.
-The official image still contains prepackaged plugin archives. Their removal/audit belongs to the chat owner's derived-artifact handoff.
-Do not claim commercial components are absent from the current upstream image.
+The official upstream image contains prepackaged plugin archives; the reviewed chat-derived artifact removes all plugin bytes from final layers.
+Root now builds that artifact by default and seeds writable UID2000 config storage.
+The core binaries and 103 notices retain upstream hashes; full transitive-license permissibility remains open.
 
 Validate with `scripts/acceptance config`.
 After the backend handoff, build with `docker compose --env-file .env.example -f compose.yml -f compose.backend.yml build`.
@@ -104,7 +105,7 @@ It always reports authenticated chat/provider/roundtrip as untested. The final i
 
 ### Prepared Combined Compose
 
-`compose.integration.yml` follows the inspected component PR handoffs, without merging their code:
+`compose.integration.yml` follows the inspected component PR handoffs; only review-cleared components are merged:
 
 - Build the chat owner's minimal derived artifact; retain UID2000, native health, config/data/log volumes, and independent database ownership.
 - A network-free one-shot initializer seeds partial chat config into writable storage and assigns named-volume ownership.
@@ -120,5 +121,6 @@ It always reports authenticated chat/provider/roundtrip as untested. The final i
 After review and prerequisite merges, prepare the callback context and run Compose with `compose.yml`,
 `compose.backend.yml`, and `compose.integration.yml`, in that order, using a fresh disposable project.
 The integrator will make this reviewed wiring the default before the promised main-branch boot handoff.
-Current configuration checks do not establish that build contexts, callback artifact, first boot, or callbacks work together.
+The reviewed chat build and disposable PostgreSQL/chat default passed root checks after its merge.
+Runtime/backend build contexts, callback artifact packaging, combined first boot, and live callbacks remain unverified here.
 Never reuse old plugin volumes. Retain approved production/credential setup as separate steps.

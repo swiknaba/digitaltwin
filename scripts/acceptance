@@ -40,7 +40,7 @@ def config():
                       "application_build_or_boot": False, "live_roundtrip": False}))
 
 
-def dependencies():
+def dependencies(derived_chat=False):
     project = "digitaltwin-check-" + uuid.uuid4().hex[:12]
     with tempfile.TemporaryDirectory(prefix="digitaltwin-check-") as temporary:
         override = Path(temporary) / "compose.check.yml"
@@ -49,12 +49,15 @@ def dependencies():
     ports: !override
       - "127.0.0.1::8065"
 ''')
-        args = COMPOSE + ["-p", project, "-f", str(ROOT / "compose.yml"), "-f", str(override)]
+        args = COMPOSE + ["-p", project, "-f", str(ROOT / "compose.yml")]
+        if derived_chat:
+            args += ["-f", str(ROOT / "compose.backend.yml"), "-f", str(ROOT / "compose.integration.yml")]
+        args += ["-f", str(override)]
         cleanup_needed = False
         try:
             run(args + ["config", "--quiet"])
             cleanup_needed = True
-            run(args + ["up", "-d", "--wait", "--wait-timeout", "180"], timeout=240)
+            run(args + ["up", "-d", "--no-build", "--wait", "--wait-timeout", "180", "postgres", "mattermost"], timeout=240)
             # Passwords below are the checked-in disposable samples, not operator credentials.
             for user, password, database in [
                 ("kirei", "local-only-kirei", "digitaltwin_development"),
@@ -88,6 +91,8 @@ def dependencies():
                         raise RuntimeError("Mattermost ping did not become healthy")
                     time.sleep(2)
             evidence = {"check": "disposable-dependencies", "passed": True,
+                        "chat_packaging": "derived",
+                        "combined_volume_preparation": derived_chat,
                         "own_database_connections": 2, "cross_database_denials": 2,
                         "mattermost_ping": "OK", "mattermost_version": "11.11.1",
                         "authenticated_chat": False, "live_provider": False,
@@ -157,10 +162,13 @@ def main():
     parser.add_argument("--project", help="explicit existing project for read-only stack checks")
     parser.add_argument("--runtime-service", help="reviewed Runtime Compose service name")
     parser.add_argument("--compose-file", action="append", help="reviewed Compose files, in merge order")
+    parser.add_argument("--derived-chat", action="store_true", help="dependency mode: use previously built reviewed chat overlay")
     options = parser.parse_args()
     try:
         if options.mode == "stack":
             stack(options)
+        elif options.mode == "dependencies":
+            dependencies(options.derived_chat)
         else:
             {"config": config, "dependencies": dependencies, "operator": operator}[options.mode]()
     except (RuntimeError, ValueError, subprocess.TimeoutExpired, OSError) as error:

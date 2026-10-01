@@ -26,6 +26,8 @@ It ignores ambient Compose overrides and database passwords. It never reads the 
 
 Exit `0` means the selected check passed; exit `1` means failure. CLI misuse exits `2`.
 Dependency mode starts Docker containers and may download the pinned images. Docker must already be available.
+Build the reviewed derived chat image with `docker compose --env-file .env.example build mattermost` before dependency mode.
+`dependencies --derived-chat` also exercises prepared Runtime volume ownership through the combined overlay without starting Runtime/backend.
 Cleanup failure reports the generated project name for manual removal. No service logs or resolved secret configuration enter evidence.
 All executable check modes explicitly report `live_roundtrip: false`.
 Production infrastructure provisioning remains separately authorized work in the infrastructure repository or hosting platform.
@@ -35,8 +37,9 @@ The integration owner owns this folder. Component workers propose shared script 
 `prepare-callback-context` requires the reviewed/merged backend `bin/digitaltwin` with the Runtime-agreed SHA256.
 It copies that single file into ignored `.local/kirei-clients/` for Runtime's `with-callback` named build context.
 It refuses changed artifacts or extra context files. It creates no credentials or provider state; exit `1` indicates failure.
-`init-local-volumes.sh` is the combined overlay's one-shot root initializer inside pinned BusyBox with no network.
+`init-local-volumes.sh` is the one-shot root initializer inside pinned BusyBox with no network.
 It seeds chat config if absent and changes only mounted named-volume ownership; it does not rotate existing database roles or credentials.
+The combined overlay opts into Runtime volume initialization; the default initializes chat storage only.
 
 `init-postgres.sh` runs inside PostgreSQL on first volume initialization.
 It consumes local application passwords from environment and creates separate Kirei/Mattermost roles and databases.

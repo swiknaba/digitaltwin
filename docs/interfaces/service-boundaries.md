@@ -33,6 +33,7 @@ Uncertain external results remain blocked for reconciliation unless retry idempo
 | Mobile | Pinned source and reproducible iOS/Android builds with retained notices | Source revision/toolchains, app IDs, signing/distribution references and push compatibility |
 
 Root local `compose.yml` and `.env.example` now configure PostgreSQL/Mattermost dependencies only.
+Chat uses the review-cleared minimal derived artifact and writable seeded config; plugins/email/push remain disabled.
 The opt-in `compose.backend.yml` prepares the backend startup proposal; actual image/startup validation remains required.
 See [local integration](local-integration.md) for remaining wiring contracts and the early real roundtrip procedure.
 See [foundation validation](foundation-validation.md) for artifact identities and the distinction between preparation and live gates.

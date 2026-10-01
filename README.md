@@ -18,7 +18,7 @@ Root files wire local development; each component folder owns its implementation
 
 The Digitaltwin runtime image uses [Wagglebot](https://github.com/swiknaba/wagglebot) for agent instructions, skills, MCP settings, and project memory.
 
-The plan uses the official, unmodified [Mattermost Team Edition](https://github.com/mattermost/mattermost) server with external Kirei Master/Worker bots. Native channels and threads replace the planned Campfire fork. Worker replies retain Kirei's durable outbox and session-bound routing.
+The plan uses the official compiled [Mattermost Team Edition](https://github.com/mattermost/mattermost) core with external Kirei Master/Worker bots. Minimal derived packaging removes excluded plugin archives while preserving the core and notices. Native channels and threads replace the planned Campfire fork. Worker replies retain Kirei's durable outbox and session-bound routing.
 
 We maintain our own Apache 2.0 mobile builds and host the existing Mattermost push proxy with APNs/FCM. Application IDs, signing, distribution, and updates require future human setup and maintenance. Phase 1 independently integrates self-hosted LiveKit for group calls and AI voice. [LiteLLM/MCP](https://github.com/swiknaba/digitaltwin/issues/4) remains a direction after Phase 2, outside the chat layer.
 
@@ -31,7 +31,7 @@ This repository provides application images and local development Compose. The i
 Component contracts live in [integration-backend/](integration-backend/README.md), [agent-runtime/](agent-runtime/README.md), [chat-backend/](chat-backend/README.md), [push-service/](push-service/README.md), and [mobile-apps/](mobile-apps/README.md).
 Repository automation belongs in [scripts/](scripts/README.md); cross-service automated integration tests belong in [tests/](tests/README.md).
 
-The scaffold includes generated Kirei files, verified upstream artifact identities, and local PostgreSQL/Mattermost dependency Compose.
+The scaffold includes generated Kirei files, verified upstream artifact identities, and local PostgreSQL/derived-Mattermost Compose.
 See the [foundation validation checkpoint](docs/interfaces/foundation-validation.md) for exact versions, checks, worker briefs, and remaining gates.
 Application process startup and live integration are not yet verified.
 Task 1's live compatibility slice remains a prerequisite for dependent implementation.
@@ -39,5 +39,8 @@ Task 1's live compatibility slice remains a prerequisite for dependent implement
 Validate local dependency configuration with `docker compose --env-file .env.example config --quiet`.
 Run `scripts/acceptance config` for both dependency and prepared backend Compose contracts.
 Run `scripts/acceptance dependencies` for disposable live dependency checks using public samples.
+Build the reviewed local chat first with `docker compose --env-file .env.example build mattermost`.
 Copy `.env.example` to ignored `.env` before local startup. Docker must be running.
+Run `docker compose up --build -d --wait` for the currently reviewed PostgreSQL/chat default.
+Backend and Runtime remain opt-in pending component review and verified combined first boot.
 The database initialization script runs only on a new local PostgreSQL volume; changing `.env` does not rotate existing roles.

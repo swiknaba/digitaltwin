@@ -96,3 +96,9 @@
 - Inspect fetched component PR handoffs without merging them; prepare local combined Compose for minimal derived chat, hash-checked single-source Runtime callback packaging, private socket/home/workspace volumes, and optional credential-disabled push.
 - Add network-free one-shot volume/config setup and callback context staging; leave component directories untouched and the existing dependency default intact pending review clearance.
 - Validate combined configuration and root contract tests. Actual image builds, fresh combined boot, authentication/provider roundtrip, and main-default handoff remain unclaimed until reviewed component integration.
+
+## 2026-10-01 — Reviewed chat root default
+
+- Integrate only the explicitly review-cleared chat merge locally; build its minimal derived artifact through root Compose and make it the PostgreSQL/chat default.
+- Seed writable UID2000 chat configuration in a network-free one-shot initializer. Keep Runtime volume setup opt-in and push/email disabled.
+- Verify root Compose contracts and disposable derived-chat dependency startup/database isolation; retain all authenticated chat/provider and combined-stack gates. Publication remains blocked; no alternate route is used.

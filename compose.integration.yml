@@ -2,33 +2,12 @@
 # review and are merged. Root compose.yml remains dependency-only until then.
 services:
   local-volume-init:
-    image: busybox:1.37.0-musl@sha256:dc88b80842580654294472735332ec7c7789a4010ec9a68b69f9b88c19abede6
-    platform: linux/amd64
-    user: "0:0"
-    command: [/bin/sh, /scripts/init-local-volumes.sh]
-    restart: "no"
-    network_mode: none
+    environment:
+      INIT_RUNTIME_VOLUMES: "true"
     volumes:
-      - ./scripts/init-local-volumes.sh:/scripts/init-local-volumes.sh:ro
-      - ./chat-backend/config/phase0.json:/seed/phase0.json:ro
-      - mattermost-config:/volumes/chat-config
-      - mattermost-data:/volumes/chat-data
-      - mattermost-logs:/volumes/chat-logs
       - runtime-home:/volumes/runtime-home
       - runtime-workspace:/volumes/runtime-workspace
       - herdr-socket:/volumes/herdr-socket
-
-  mattermost:
-    image: digitaltwin-chat-backend:local
-    build:
-      context: ./chat-backend
-    user: "2000:2000"
-    depends_on:
-      local-volume-init:
-        condition: service_completed_successfully
-    environment:
-      MM_EMAILSETTINGS_SENDPUSHNOTIFICATIONS: "false"
-      MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS: "false"
 
   agent-runtime:
     image: digitaltwin-agent-runtime:local
