@@ -478,6 +478,11 @@ The worker asks an authorized human in Campfire how to continue.
 
 `@agent` routes messages from any room to one logical Master controller.
 The controller receives the source room context with each request.
+The Master has shared conversational context and operational access across its fleet.
+Room boundaries do not partition its context.
+Kirei still verifies each request's sender and source context.
+Independent fleets retain separate Master sessions, credentials, runtime, and private control data.
+Their collaboration remains limited to shared Campfire messages and Git artifacts.
 
 The controller is not bound to one repository.
 It does not use the project specification and plan gates.

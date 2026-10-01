@@ -32,6 +32,7 @@ The following values and limits come from the spec; all tasks must comply with t
 - All human room members are trusted collaborators with full capabilities, including approvals and destructive-operation confirmations. Configured local/peer bots cannot act as humans.
 - Master: configurable `RoleConfig(cli, provider, model, family)` through Herdr and a local MCP bridge; Gemini CLI is the default. No direct provider API call or login through Campfire.
 - Master chat handles operational conversation, status, coordination, and targeted emergency changes. It has no coding review/approval cycle; ordinary coding uses Writer/Reviewer workflows.
+- Master context and operational access are shared across its fleet's rooms. Independent fleets retain separate Master sessions and private runtime/control data.
 - Memory only manually through `@agent`/base instructions; no cron, no required maintenance after each session.
 - GitHub remains the selected Git host. Headscale/Tailscale remain the selected private access base.
 - One shared Runtime trust domain; do not claim process or project isolation against malicious agents.
@@ -331,12 +332,14 @@ Emergency operations use available typed tools. Keep existing destructive/irreve
 
 - [ ] Write `selected_master_config_reaches_sessions_start`: assert controller role, `workflow_id: nil`, `repo: nil`, and unchanged CLI/provider/model/family. Assert another Task 1-validated CLI/provider reaches the same interface unchanged.
 - [ ] Write `room_context_survives_tool_call`, `restart_creates_fresh_session_with_same_config`, `secret_values_never_returned`. Assert restart uses the same config in neutral Runtime home, reconstructs PostgreSQL status, and preserves sender/context checks.
+- [ ] Add `rooms_share_master_context` and `peer_private_context_unavailable`. Preserve source/sender checks while allowing fleet-wide context and operations.
 - [ ] Add `bot_cannot_confirm`, `confirmation_replay_rejected`, `changed_parameters_require_confirmation`, `unconfigured_deployment_tool_rejected`.
 - [ ] Test `master_status_needs_no_workflow` and `master_emergency_operation_needs_no_coding_cycle`. Ordinary coding still requires approved workflow revisions.
 - [ ] Run `bundle exec rspec spec/domains/controller_spec.rb`; expect missing Master/MCP server.
 - [ ] Implement the stdio MCP bridge against the same application services, with no raw shell or credential-read tools.
 - [ ] Route MCP `send_prompt` through the same review lock and queue as chat. Test that a Master request cannot bypass Writer exclusion.
-- [ ] Serialize requests to one logical Master session; pass verified context through a request-bound capability, not freely chosen model parameters.
+- [ ] Serialize requests to one logical Master session with shared fleet context and access. Pass verified source context through a request-bound capability.
+- [ ] Keep independent fleets' Master sessions and private control/runtime data separate. Peer collaboration uses only shared Campfire and Git interfaces.
 - [ ] Require a second human confirmation before destructive/irreversible operations. The confirmation window is ten minutes; audit includes the parameter hash, never secret values.
 - [ ] Accept confirmation from any verified human room member. Add `collaborator_can_confirm`; do not introduce an owner-only ID or human allowlist.
 - [ ] Check the selected Master CLI's real MCP round trip from Task 1. After restart, PostgreSQL/tool status is authoritative, not the old conversation.
