@@ -1,0 +1,38 @@
+{
+  "checked_on": "2026-10-01",
+  "kind": "source inspection, not authenticated runtime/device compatibility",
+  "mobile_revision": "c2fe3beda22befd2178dce431793c09111ed903e",
+  "server_ref": "v11.11.1",
+  "push_ref": "v6.6.0",
+  "push_revision": "20f2a046fef76a7ab1c121cd01bc2b06206979be",
+  "inspected": [
+    {
+      "url": "https://github.com/mattermost/mattermost/blob/v11.11.1/server/channels/api4/user.go",
+      "sha256": "c3f78da7a256fbeb0e498650dfa09004d879a0266e3b9b4b527f75263d7c36d1"
+    },
+    {
+      "url": "https://github.com/mattermost/mattermost/blob/v11.11.1/server/channels/api4/post.go",
+      "sha256": "4d37ce3adef711b71768527372d63c3d533e0d36b010a6ccec1da69f0c229ed1"
+    },
+    {
+      "url": "https://github.com/mattermost/mattermost/blob/v11.11.1/server/public/model/push_notification.go",
+      "sha256": "797ff3e676f8bb666a0111e2fadc1d204ae22d35a8daeea8a0222035accc0e17"
+    },
+    {
+      "url": "https://github.com/mattermost/mattermost-push-proxy/blob/20f2a046fef76a7ab1c121cd01bc2b06206979be/server/server.go",
+      "sha256": "a46024e1d72ff17a2a1007a98731e1d1fe9e044be44d61e8396b6ff210f915f7"
+    },
+    {
+      "url": "https://github.com/mattermost/mattermost-push-proxy/blob/20f2a046fef76a7ab1c121cd01bc2b06206979be/server/apple_notification_server.go",
+      "sha256": "511587bbe0d1c55a153a0692c2c1ad83a8cd07994f9467780f72bec96a8d6de7"
+    },
+    {
+      "url": "https://github.com/mattermost/mattermost-push-proxy/blob/20f2a046fef76a7ab1c121cd01bc2b06206979be/server/android_notification_server.go",
+      "sha256": "ff199b5f6285f41ca99e0eb0cbdcd513a1eae8cf005e3b0d6b8ffa3294092648"
+    },
+    {
+      "url": "https://github.com/mattermost/mattermost-push-proxy/blob/20f2a046fef76a7ab1c121cd01bc2b06206979be/config/mattermost-push-proxy.sample.json",
+      "sha256": "cc7ec74b73b463abacfa3581e6ac5a553063e765e267d8b60d8ab83e186211ca"
+    }
+  ]
+}

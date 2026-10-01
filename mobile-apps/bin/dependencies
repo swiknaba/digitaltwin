@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+component=$(cd "$(dirname "$0")/.." && pwd)
+platform=${1:?Usage: dependencies js|android|ios}
+case "$platform" in js|android|ios) ;; *) exit 2 ;; esac
+if [[ -f "$component/upstream/.digitaltwin/prepared.json" ]]; then
+    "$component/bin/mobile" verify-prepared
+else
+    "$component/bin/mobile" verify
+fi
+"$component/bin/mobile" doctor "$platform"
+source_dir="$component/upstream"
+cd "$source_dir"
+# Must prepare our app configuration first. Run the source verification before prepare.
+if [[ "$platform" != js && ! -f .digitaltwin/prepared.json ]]; then
+    echo "Run mobile prepare first." >&2
+    exit 1
+fi
+export INTUNE_ENABLED=false SENTRY_ENABLED=false SENTRY_DISABLE_AUTO_UPLOAD=true
+export npm_config_cache="$component/.cache/npm"
+# Follow the pinned upstream public CI path, never private Intune or Fastlane lanes.
+npm ci --ignore-scripts --no-audit --no-fund
+"$component/bin/exclude-build-tools" "$source_dir"
+./node_modules/.bin/patch-package
+cp node_modules/@mattermost/compass-icons/font/compass-icons.ttf assets/fonts/
+cp node_modules/@mattermost/compass-icons/font/compass-icons.ttf android/app/src/main/assets/fonts/
+node scripts/generate-assets.js
+node scripts/generate-compass-glyph-map.mjs
+if [[ "$platform" == ios ]]; then
+    export BUNDLE_GEMFILE="$source_dir/Gemfile" BUNDLE_PATH="$component/.cache/bundle" BUNDLE_FROZEN=true
+    bundle _2.5.11_ install
+    cd ios
+    RCT_NEW_ARCH_ENABLED=1 bundle _2.5.11_ exec pod install --deployment
+elif [[ "$platform" == android ]]; then
+    ./node_modules/.bin/jetify
+fi
