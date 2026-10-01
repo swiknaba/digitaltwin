@@ -3,6 +3,7 @@ import concurrent.futures
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import time
@@ -12,7 +13,7 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
-ENV = {k: v for k, v in os.environ.items() if not k.startswith("COMPOSE_") and k not in
+ENV = {k: v for k, v in os.environ.items() if not k.startswith(("COMPOSE_", "DOCKER_")) and k not in
        {"POSTGRES_PASSWORD", "KIREI_DB_PASSWORD", "MATTERMOST_DB_PASSWORD", "BACKEND_PORT"}}
 CALLBACK_SHA = "cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054"
 
@@ -35,11 +36,14 @@ class DisposableComposeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         revision = os.environ.get("DIGITALTWIN_REVIEWED_BACKEND_REVISION")
-        if not revision:
+        if not revision or not re.fullmatch(r"[0-9a-f]{40}", revision):
             raise RuntimeError("exact reviewed merged backend revision required")
         cls.command(["git", "merge-base", "--is-ancestor", revision, "HEAD"])
         if not (ROOT / "integration-backend/Dockerfile").is_file():
             raise RuntimeError("reviewed backend must be integrated first")
+        context = json.loads(cls.command(["docker", "context", "inspect"]).stdout)
+        if len(context) != 1 or not context[0]["Endpoints"]["docker"]["Host"].startswith("unix://"):
+            raise RuntimeError("suite requires a local Unix Docker endpoint; remote infrastructure is excluded")
         cls.project = "digitaltwin-integration-" + uuid.uuid4().hex[:12]
         cls.temporary = tempfile.TemporaryDirectory(prefix=cls.project)
         cls.addClassCleanup(cls.temporary.cleanup)
@@ -77,7 +81,8 @@ class DisposableComposeTest(unittest.TestCase):
         cls.evidence = {"revision": cls.command(["git", "rev-parse", "HEAD"]).stdout.strip(),
                         "reviewed_backend_revision": revision, "live_local_containers": True,
                         "synthetic_callbacks": True, "authenticated_chat": False,
-                        "provider_cli": False, "master_mcp": False, "phase0_acceptance": False}
+                        "provider_cli": False, "master_mcp": False, "phase0_acceptance": False,
+                        "image_ids": {}}
 
     @classmethod
     def cleanup(cls):
@@ -86,6 +91,12 @@ class DisposableComposeTest(unittest.TestCase):
         cls.command(["docker", "image", "rm", *[f"{cls.project}-{s}:check" for s in ["chat", "backend", "runtime"]]], check=False)
         if result.returncode:
             raise RuntimeError(f"cleanup failed for own project {cls.project}")
+        label = "label=com.docker.compose.project=" + cls.project
+        for args in [["docker", "ps", "-aq", "--filter", label],
+                     ["docker", "volume", "ls", "-q", "--filter", label],
+                     ["docker", "network", "ls", "-q", "--filter", label]]:
+            if cls.command(args).stdout.strip():
+                raise RuntimeError(f"own project resources remain: {cls.project}")
         if hasattr(cls, "evidence"):
             cls.evidence["own_resources_removed"] = True
             print(json.dumps(cls.evidence, sort_keys=True))
@@ -99,6 +110,9 @@ class DisposableComposeTest(unittest.TestCase):
             return response.status, json.load(response), response.headers
 
     def test_01_health_migrations_database_ownership(self):
+        running = self.compose(["ps", "--services", "--status", "running"]).stdout.splitlines()
+        self.assertNotIn("backend-chat-listener", running)
+        self.assertNotIn("push-proxy", running)
         for path in ["/livez", "/readyz"]:
             self.assertEqual(self.get("backend-web", path)[0], 200)
         _, body, headers = self.get("mattermost", "/api/v4/system/ping")
@@ -119,11 +133,15 @@ class DisposableComposeTest(unittest.TestCase):
         socket = "s=File.stat('/run/herdr/herdr.sock'); abort unless Process.uid==10001 && s.socket? && s.uid==10001 && (s.mode & 0777)==0600"
         for service in ["agent-runtime", "backend-worker"]:
             self.compose(["exec", "-T", service, "ruby", "-e", socket])
+        status = json.loads(self.compose(["exec", "-T", "agent-runtime", "herdr", "status", "--json"]).stdout)["server"]
+        self.assertEqual((status["running"], status["compatible"], status["version"], status["protocol"]),
+                         (True, True, "0.9.3", 22))
         self.compose(["exec", "-T", "agent-runtime", "ruby", "-rdigest", "-e",
                       f"abort unless Digest::SHA256.file('/usr/local/bin/digitaltwin').hexdigest=='{CALLBACK_SHA}'"])
         for service in ["agent-runtime", "backend-web", "backend-worker", "mattermost"]:
             container = self.compose(["ps", "-q", service]).stdout.strip()
             inspect = json.loads(self.command(["docker", "inspect", container]).stdout)[0]
+            self.evidence["image_ids"][service] = inspect["Image"]
             self.assertFalse(inspect["HostConfig"]["Privileged"])
             self.assertNotIn("0", inspect["Config"]["User"].split(":"))
             for mount in inspect["Mounts"]:
@@ -190,6 +208,9 @@ class DisposableComposeTest(unittest.TestCase):
                 changed = callback.copy()
                 changed[changed.index("fixture question")] = "changed fixture"
                 self.assertNotEqual(self.compose(changed, check=False).returncode, 0)
+                stale = callback.copy()
+                stale[stale.index("DIGITALTWIN_SESSION_GENERATION=1")] = "DIGITALTWIN_SESSION_GENERATION=2"
+                self.assertNotEqual(self.compose(stale, check=False).returncode, 0)
             self.ruby("db=Kirei::App.raw_db_connection; rows=db[:outbox].where(Sequel.like(:response_key,'callback:integration:%')).all; abort unless rows.size==2 && rows.map{|r| [r[:channel_id],r[:thread_id],r[:bot],r[:role]]}.sort==[['fixture-channel','fixture-root-1','worker','writer'],['fixture-channel','fixture-root-2','worker','writer']]")
         finally:
             self.compose(["exec", "-T", "agent-runtime", "ruby", "-e", f"File.unlink('{token_file}') if File.exist?('{token_file}')"])
@@ -197,6 +218,7 @@ class DisposableComposeTest(unittest.TestCase):
         self.evidence["synthetic_packaged_callback_two_threads_replay_changed_body"] = True
 
     def test_06_pending_migrations_fail_closed_and_pool_bounds(self):
+        self.ruby((ROOT / "tests/fixtures/pool_bounds.rb").read_text())
         self.ruby("db=Kirei::App.raw_db_connection; abort unless db.pool.max_size==5 && db.opts[:pool_timeout].to_f==2; db[:schema_info].update(version:5)")
         try:
             startup = self.compose(["run", "--rm", "--no-deps", "-e", "BOOT_CHECK_ONLY=1", "backend-web", "bin/web"], check=False)
