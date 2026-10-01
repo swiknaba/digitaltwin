@@ -1,0 +1,6 @@
+#!/usr/bin/env ruby
+# Static shared-contract check; whole-project RBI generation is still open.
+require "bundler/setup"
+spec = Gem::Specification.find_by_name("sorbet-static")
+exec(File.join(spec.full_gem_path, "libexec/sorbet"), "--no-config",
+     "app/domains/workflows/entities.rb", "app/domains/mattermost/verified_delivery.rb")
