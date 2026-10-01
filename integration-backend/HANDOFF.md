@@ -1,6 +1,7 @@
 # Backend worker handoff — 2026-10-01
 
-Baseline: `7889c1a64856d75267ae6030db1743517b6a1342`; branch `build/integration-backend`.
+Initial component baseline: `7889c1a64856d75267ae6030db1743517b6a1342`; merged branch `build/integration-backend`.
+Clean-migration correction baseline: `0c79c77719713ca38417d5ea6da63ca6bc0fa401`; branch `fix/backend-clean-migration`.
 Only `integration-backend/` changed. No shared checkout switching, root edits, production access, provider login, or paid calls.
 
 ## Delivered and checked
@@ -18,7 +19,7 @@ Only `integration-backend/` changed. No shared checkout switching, root edits, p
 - Pure diversity, exact revision approval, and settled-state policy; live workflow/session dispatch remains closed.
 
 `bin/check` passed on Ruby 4.0.7 `x86_64-linux-musl` under Docker Desktop AMD64 emulation:
-62 component examples, 4 separate real-PostgreSQL migration-helper examples, 57 files through Layout/Lint/Security, and strict shared-entity static typing.
+62 component examples, 4 separate real-PostgreSQL migration-helper examples, 1 real application clean-migration subprocess example, 58 files through Layout/Lint/Security, and strict shared-entity static typing.
 PostgreSQL: pinned `18.6-alpine`, unique disposable network/database/container; no other worker containers touched.
 The actual ARM64 non-root web and worker roles started and passed their own health commands.
 The actual Falcon network test also ran inside the AMD64 component suite.
@@ -31,6 +32,12 @@ History recovery quarantines permanently rejected items (including local bot pos
 The pinned positive-since SQL caps unordered results at 1000: a response at that cap fails closed before processing or checkpoint advancement, with an operator recovery error. A 1010-post synthetic backlog returning the upstream 1000-post cap is covered; no complete large-backlog recovery is claimed.
 Checkpoints use accepted history-snapshot revisions, never later per-post REST refetch revisions. A concurrent edit/refetch and missed intervening post/reconnect regression passes.
 These are offline transport regressions on real PostgreSQL, not authenticated reconnect evidence. Frozen callback bytes are unchanged.
+
+## Clean migration correction
+
+Independent combined boot found that the actual rake migration connection bypassed the app pool's PostgreSQL JSON extension setup. Migration 004 therefore failed on `Sequel.pg_jsonb` from a fresh database, despite passing the preloaded component harness. Both migrate and rollback connections now explicitly load `pg_json` and `pg_array` before applying migration files.
+A standalone regression uses no app/spec-helper preload and spawns the real `bundle exec rake` commands against an empty disposable PostgreSQL database: migrate zero to six, repeated migrate, rollback six to zero, and migrate zero to six again.
+Fresh Linux AMD64 image `digitaltwin-backend-clean-fix:20261001` (local only) ran its real `bundle exec rake db:migrate` from an empty database through version six; its web and worker roles then passed their actual health commands as UID/GID10001. Full component checks passed again. No Compose shim or frozen callback modification was used.
 
 ## Typing evidence
 

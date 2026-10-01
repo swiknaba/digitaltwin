@@ -64,6 +64,9 @@ namespace :db do
       db_name = "digitaltwin_#{env}"
       reset_memoized_class_level_instance_vars(Digitaltwin)
       db = Sequel.connect(Digitaltwin.default_db_url)
+      # Rake connections bypass the application pool initializer. Load JSON
+      # constructors and PostgreSQL conversion support before migration code.
+      db.extension(:pg_json, :pg_array)
       current_version = Sequel::IntegerMigrator.run(db, File.join(Digitaltwin.root, "db/migrate"))
       puts "Migrated #{db_name} to version #{current_version}!"
     end
@@ -89,6 +92,9 @@ namespace :db do
       db_name = "digitaltwin_#{env}"
       reset_memoized_class_level_instance_vars(Digitaltwin)
       db = Sequel.connect(Digitaltwin.default_db_url)
+      # Rake connections bypass the application pool initializer. Load JSON
+      # constructors and PostgreSQL conversion support before migration code.
+      db.extension(:pg_json, :pg_array)
 
       current_version = integer_migration_version(db)
 
