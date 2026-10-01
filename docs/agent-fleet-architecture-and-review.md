@@ -196,6 +196,32 @@ Herdr aliases are runtime identifiers, not durable workflow identifiers.
 After a restart, the worker reconciles those mappings with Herdr and Git state.
 It treats Herdr's `unknown` state as uncertain, not as completion.
 
+### Worker execution tools
+
+Install the tool baseline in the Herdr Runtime image used by both Writer and Reviewer.
+Installing tools only in Kirei, the host, or the operator's workstation does not satisfy this requirement.
+Both roles receive the same executable PATH and tool versions through their actual CLI shell execution environment.
+Reuse existing Ruby, Node/npm, Git, OpenSSH, and Wagglebot provisioning; do not create another agent setup layer.
+
+The baseline provides Bash, GNU coreutils/findutils/grep/sed/diffutils/patch/tar, portable awk, ripgrep, fd, and jq.
+It also provides Git, curl, CA certificates, file, gzip, zip/unzip, and Python 3.
+Use Python's standard library for short temporary scripts, including JSON, CSV, pathlib, regular expressions, hashing, and subprocesses.
+Project-specific compilers, database clients, browsers, linters, and third-party Python dependencies remain explicit project requirements.
+Do not install them globally as an incidental agent action.
+
+Image builds install distribution packages and record resolved versions against the pinned base image.
+Verify GNU commands on PATH where required; Alpine's BusyBox implementations do not imply GNU options or behavior.
+Keep `/bin/sh` portable and use Bash explicitly for Bash scripts.
+The implementation plan specifies package names, command variants, and functional smoke checks.
+Offline checks run as the Runtime user with each role's shell configuration.
+The existing operator checklist verifies actual Writer and Reviewer CLI tool execution with their configured provider sessions.
+
+Temporary scripts use a unique directory from `mktemp -d` or Python `tempfile` in the Runtime's writable temporary storage.
+Clean up that directory on completion or failure; never remove another session's temporary files.
+Keep disposable files outside the tracked worktree and disable Python bytecode creation for temporary analysis.
+Reviewer analysis must preserve the reviewed worktree; only its designated review Markdown may change.
+Temporary files are not recovery state. Preserve durable results through the existing workflow artifacts and callbacks.
+
 ## 7. Supported agents
 
 Phase 0 installs and pins these agent CLIs:

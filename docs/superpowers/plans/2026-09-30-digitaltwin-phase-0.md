@@ -269,7 +269,7 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 
 ## Task 6: Non-root Runtime, Herdr, and Wagglebot
 
-**Files:** Create `db/migrate/003_sessions.rb`, `docker/runtime.Dockerfile`, `config/runtime-entrypoint.sh`, `app/domains/runtime/{herdr_client,sessions,reconcile}.rb`, `spec/{domains/runtime_spec.rb,integration/runtime_spec.rb}`.
+**Files:** Create `db/migrate/003_sessions.rb`, `docker/runtime.Dockerfile`, `config/runtime-entrypoint.sh`, `app/domains/runtime/{herdr_client,sessions,reconcile}.rb`, `bin/runtime-smoke`, `spec/{domains/runtime_spec.rb,integration/runtime_spec.rb}`.
 
 **Interfaces:** `Sessions.start(workflow_id: String?, generation:, role:, config: RoleConfig, repo: String?) -> SessionRef`; `send_prompt(session:, text:, dispatch_key:)`; `state(session:) -> idle|done|working|unknown|missing`; `stop(session:)`. Writer/reviewer require non-null workflow ID and repo; controller requires both null and starts in the neutral Runtime home.
 
@@ -286,10 +286,85 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 - [ ] Run `bundle exec rspec spec/domains/runtime_spec.rb`; expect missing session interface.
 - [ ] Implement adapters only against the Task 1 contract. Persist Role→Pane/Alias, session generation, and separate credential areas in the shared Runtime home.
 - [ ] Select the Runtime image base after testing pinned Herdr and all CLIs on Alpine. Record the dependency or runtime failure that requires Ubuntu, if any.
+- [ ] Install the worker tool baseline below in the Runtime image. Check Writer and Reviewer shell environments, not only Kirei or entrypoint PATH.
 - [ ] Build the image with pinned tools, OpenSSH, and Wagglebot. Match `.ruby-version` and `.nvmrc` to image versions. Setup: `connect <company-git-url>`, `update --wagglebot`, per repo `init` and `update`.
 - [ ] Provide upgrades only through an explicit operator command. Document interactive provider login; test persistence after container restart.
-- [ ] Check `docker compose build runtime` and `docker compose run --rm runtime bin/runtime-smoke`; this new command checks versions/UID and Herdr CLI start. Authenticated provider checks remain separate operator checks.
+- [ ] Check `docker compose build runtime` and `docker compose run --rm runtime bin/runtime-smoke`; this planned executable checks versions/UID, Herdr CLI start, and the functional tool cases below. Authenticated provider checks remain separate operator checks.
 - [ ] After review, commit: `feat: add persistent Herdr runtime and provisioning`.
+
+### Runtime Base and Lean Tool Baseline
+
+The host remains Ubuntu 24.04; this choice concerns only the worker container.
+Keep Task 6's conditional Alpine preference until pinned Herdr and all four CLIs pass startup and shell execution checks.
+Do not infer container contents from an Ubuntu host or a full desktop installation.
+
+| Candidate | Relevant tradeoff |
+| --- | --- |
+| Alpine | Small base, musl, BusyBox defaults. Install GNU tools explicitly; verify native CLI and project dependencies on musl. |
+| Debian slim / Ubuntu minimal | glibc and familiar GNU packages reduce compatibility work for glibc-only tools. Install missing tools explicitly; omit recommended packages. |
+| Omarchy | Arch/Hyprland desktop distribution with graphical applications. It provides no necessary benefit for this headless Runtime. |
+
+Recommend testing Alpine first under the existing policy. If compatibility fails, compare Debian slim with Ubuntu minimal using the same smoke cases.
+Record measured image size and the concrete dependency failure before selecting a fallback.
+Using Debian instead of the existing Ubuntu fallback requires an explicit base-choice decision; this tool change does not make that decision.
+For Alpine Claude Code, validate `libgcc`, `libstdc++`, and system ripgrep with `USE_BUILTIN_RIPGREP=0` against the pinned release.
+
+Required command groups and Alpine package names:
+
+| Tools | Package/source | Purpose |
+| --- | --- | --- |
+| `sh`, portable `awk`, `ps`, `kill`, `gzip` | Alpine base/BusyBox; verify installed applets | Small shell pipelines, process inspection, compression |
+| `bash` | `bash` | Harness shell commands and scripts that require Bash |
+| `cat`, `head`, `tail`, `wc`, `sort`, `uniq`, `cut`, `tr`, `cp`, `mv`, `rm`, `mkdir`, `mktemp`, `realpath`, `stat`, `sha256sum`, `timeout` | `coreutils` | Predictable GNU file, text, checksum, and bounded-command operations |
+| `find`, `xargs`; `grep`; `sed`; `diff`, `cmp`; `patch` | `findutils`, `grep`, `sed`, `diffutils`, `patch` | Null-delimited file handling, text edits, and patch inspection |
+| `rg`, `fd` | `ripgrep`, `fd` in community | Fast content and filename search |
+| `jq`, `python3` | `jq`, `python3` | JSON queries and standard-library temporary scripts |
+| `git`, `ssh` | Existing Git/OpenSSH provisioning | Worktrees, revisions, and existing Git transport |
+| `curl`, trusted HTTPS | `curl`, `ca-certificates` | HTTP diagnostics and downloads |
+| `file`; GNU `tar`; `zip`, `unzip` | `file`, `tar`, `zip`, `unzip` | File identification and common archive inspection/creation |
+
+Alpine build additions: `bash coreutils findutils grep sed diffutils patch ripgrep fd jq python3 curl ca-certificates file tar zip unzip`.
+Use `apk add --no-cache` with exact package versions recorded for the selected stable release and architecture.
+Enable main/community from the same release; do not mix edge packages into the pinned stable image.
+Already planned Git, OpenSSH, Ruby, Node/npm, Herdr, CLI, and Wagglebot packages remain in their existing provisioning steps.
+Audit base-provided applets rather than assuming every image includes them; do not add duplicate download/search tools without a need.
+
+Debian/Ubuntu use the same named packages except `fd-find` provides `fdfind`.
+If that fallback is selected, expose `fd` with one image-build symlink and verify both names.
+Use `apt-get install --no-install-recommends`; verify base-provided `awk`, gzip, and GNU utilities before omitting package additions.
+Pin and record the selected release's package versions; clean package lists after the build.
+
+Keep build toolchains, database clients, browser automation, `xz`, and third-party Python modules project-specific.
+Add dependencies through reviewed image/project manifests; use a disposable project virtual environment when Python packages are required.
+Do not run hidden global pip/npm installs during ordinary agent work.
+The Python baseline requires neither pip nor a new harness, review service, or evaluation stack.
+
+Extend the existing planned `bin/runtime-smoke` with these functional fixtures and failure assertions:
+
+- [ ] Check the non-root user and Writer/Reviewer PATH; run offline commands using each role's shell configuration.
+- [ ] Verify actual Writer/Reviewer CLI shell execution in the existing live operator checklist; offline shell checks alone do not prove integration.
+- [ ] Verify GNU command implementations and versions. Test Bash pipelines and portable `sh`/`awk` separately.
+- [ ] Search fixtures with `rg`, `fd`, and `grep`; include spaces, hidden files, and explicit ignore-policy choices.
+- [ ] Round-trip filenames through `find -print0` and `xargs -0`. Check `sed` replacement and `sort`/`uniq` output.
+- [ ] Check GNU `stat`, `realpath`, `sha256sum`, and a bounded `timeout` command against fixture expectations.
+- [ ] Create a local Git repository and worktree, inspect a diff, and apply a patch only inside disposable fixtures.
+- [ ] Parse and assert JSON with `jq`; run Python standard-library JSON/CSV/path/hash/subprocess operations.
+- [ ] Serve a local fixture with Python, fetch it using `curl --fail`, and check failure for an error response.
+- [ ] Verify the CA bundle exists and curl supports HTTPS. Keep external TLS checks in the explicit network-enabled integration suite.
+- [ ] Inspect `file` output and round-trip tar/gzip and zip archives; compare extracted fixture contents.
+- [ ] Use unique temporary directories and cleanup traps/finally blocks; verify cleanup after both success and failure.
+- [ ] Set `PYTHONDONTWRITEBYTECODE=1` for temporary analysis. Check scratch operations leave the reviewed worktree unchanged.
+- [ ] Retain Herdr startup checks; run credential-dependent live provider checks only through the existing operator checklist.
+
+Package evidence checked on 2026-10-01: [Alpine package index](https://pkgs.alpinelinux.org/packages?branch=v3.23&arch=x86_64),
+[Alpine ripgrep](https://pkgs.alpinelinux.org/package/v3.23/community/x86_64/ripgrep),
+[Alpine fd](https://pkgs.alpinelinux.org/package/v3.23/community/x86_64/fd),
+[Debian fd-find command naming](https://packages.debian.org/trixie/fd-find),
+[Ubuntu fd-find](https://packages.ubuntu.com/noble/fd-find),
+[Debian slim image scope](https://hub.docker.com/_/debian),
+[Claude Code musl requirements](https://code.claude.com/docs/en/setup#alpine-linux-and-musl-based-distributions), and
+[Omarchy's desktop scope](https://github.com/omacom/omarchy/blob/master/manual/01-welcome-to-omarchy.md).
+These sources validate names and compatibility considerations; Task 1 still selects exact versions.
 
 ## Task 7: Deterministic Workflows and Approvals
 

@@ -30,3 +30,10 @@
 - Preserve human thread starts and the authorized Writer/Reviewer review/recovery lifecycle without repeated spawn approvals. Document Kirei bootstrap and the shared Runtime/raw-terminal limits.
 - Add a planned versioned peer-handoff contract and tests for authenticated context, replay, recipients, artifact bindings, rejected bot starts, and rejected autonomous chains; no automatic limits replace human approval.
 - Reconciled all 16 new review threads and the interview decisions across specification, plan, README, and Phase 1. Checked diff whitespace, Markdown links/fences/tables, 13 tasks, and all 32 acceptance criteria. No system implementation or runtime test claims.
+
+## 2026-10-01 — Worker Linux tool baseline
+
+- Require the lean shell/search/text/file/Git/HTTP/JSON/archive/Python standard-library baseline in the actual Herdr Runtime used by Writer and Reviewer.
+- Extend planned Runtime provisioning and executable smoke checks with distro package names, GNU/BusyBox and fd/fdfind distinctions, disposable-script cleanup, and live harness execution checks. Reuse existing Wagglebot/CLI setup.
+- Preserve conditional Alpine selection and the Ubuntu host. Compare glibc container fallbacks; Omarchy is a desktop distribution rather than a headless Runtime base. No provisioned runtime or host-package changes are claimed.
+- Checked official package/CLI/distro documentation, final diff whitespace, Markdown structure/local links, task count, and unchanged acceptance matrix.
