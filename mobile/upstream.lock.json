@@ -1,0 +1,7 @@
+{
+  "tag": "release-2.44",
+  "commit": "c2fe3beda22befd2178dce431793c09111ed903e",
+  "source": "https://github.com/mattermost/mattermost-mobile",
+  "verification": "GitHub release and source ref resolved; build and compatibility pending",
+  "checked_on": "2026-10-01"
+}

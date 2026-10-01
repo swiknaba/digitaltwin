@@ -1,0 +1,18 @@
+schema_version: 1
+checked_on: "2026-10-01"
+validation: host_schema_only
+herdr:
+  version: "0.9.3"
+  source: https://github.com/herdrdev/herdr/releases/tag/v0.9.3
+  schema_file: contracts/herdr-v0.9.3.schema.json
+  schema_sha256: 9e2af207e9aa8183d4aeca5fde9cc48e7909bb40cdbd7cf21608a6d3ea78075b
+  schema_version: 1
+  protocol: 22
+  linux_amd64:
+    url: https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64
+    sha256: 18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7
+  macos_arm64:
+    url: https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-macos-aarch64
+    sha256: 5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157
+# Runtime owner fills exact base/CLI/Wagglebot/Node pins after verification.
+# This is not yet a complete, buildable Runtime dependency manifest.
