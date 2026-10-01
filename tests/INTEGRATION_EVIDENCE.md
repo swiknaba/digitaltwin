@@ -2,7 +2,35 @@
 
 No publication, production access, provider login, paid call, chat account creation, signing, or mobile-device test occurred.
 
-## Current result: 20 checks pass
+## Default entry point verified: frozen head ae71773
+
+Exact tested head: `ae71773036126133b75359fe2673ca0bbb1fbf32`.
+Independent diff review found no additional material issue in the promotion.
+The former overlays now contain only `services: {}`; default `compose.yml` owns the complete core graph.
+
+The same opt-in unittest command below passed **21 tests** (six integration plus 15 configuration checks), exit 0,
+in 42.953 seconds, against this exact head. Fresh migrations, boot, restarts, fixture callbacks/jobs and pool checks passed.
+Sanitized result and exact image IDs: `evidence/default-compose.json`.
+
+The unmodified default entry point was separately executed twice:
+
+```sh
+COMPOSE_PROJECT_NAME=digitaltwin-dev-check-553be8905907 BACKEND_PORT=0 scripts/dev --wait-timeout 180
+```
+
+Each invocation used that same disposable project, with no Compose override or entrypoint shim.
+Default chat loopback port8065 was verified unused before startup; backend used a random Docker port.
+First run started from absent `.env` in this isolated worktree and copied public samples with mode0600.
+A preservation comment was appended to `.env`; its SHA256 stayed identical after the second run.
+A synthetic marker row in PostgreSQL and marker files in Runtime `/home/runtime` and `/workspace` survived rerun.
+Exactly PostgreSQL/chat/web/worker/Runtime were running and healthy; listener and push stayed excluded.
+The test-created `.env` and only this project's containers/volumes/network were removed afterward.
+Normal local image caches were retained. No other worker resources were removed.
+Sanitized entrypoint result: `evidence/dev-entrypoint.json`.
+
+This proves the plain default core and safe quickstart rerun locally; authenticated/provider/device gates below remain open.
+
+## Prior combined-overlay result: 20 checks pass
 
 ```sh
 DIGITALTWIN_RUN_COMPOSE_TESTS=1 \

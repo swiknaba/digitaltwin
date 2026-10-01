@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "revision": "ae71773036126133b75359fe2673ca0bbb1fbf32",
+  "command": "scripts/dev --wait-timeout 180",
+  "project": "digitaltwin-dev-check-553be8905907",
+  "backend_port_setting": "0",
+  "compose_overrides_or_entrypoint_shims": false,
+  "default_entrypoint_runs": 2,
+  "new_env_mode": "0600",
+  "existing_env_preserved": true,
+  "database_data_preserved": true,
+  "runtime_home_workspace_preserved": true,
+  "healthy_core_services": 5,
+  "own_resources_removed": true,
+  "test_created_env_removed": true,
+  "authenticated_chat": false,
+  "provider_cli": false,
+  "phase0_acceptance": false,
+  "published": false
+}
