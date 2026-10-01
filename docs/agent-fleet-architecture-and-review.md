@@ -229,15 +229,21 @@ It updates Wagglebot only after an explicit operator command.
 One Campfire room represents one repository.
 The room name uses the `owner/repository` GitHub slug.
 
-One project room has one linear workflow at a time.
-The system does not expose task identifiers in normal chat.
+One Campfire thread represents one project workflow.
+The workflow identity binds the verified room ID and the verified thread ID.
 
-Different project rooms can run workflows at the same time.
+One project room can have multiple active workflows in separate threads.
+The system does not expose internal workflow identifiers in normal chat.
+
+Different threads and project rooms can run workflows at the same time.
 The application does not impose a fleet-wide concurrency limit.
 The operator manages server capacity and future autoscaling.
 
-The system stores the verified Campfire room ID and repository identity in PostgreSQL.
+The system stores the verified Campfire room ID, repository identity, and thread-to-workflow mapping in PostgreSQL.
 This mapping survives a later room rename.
+
+Task 1 must verify that the selected Campfire release supplies a server-authenticated thread ID or root-post ID.
+The router must not derive a thread identity from message text or model output.
 
 ## 11. Campfire bot identities
 
@@ -288,17 +294,26 @@ The operator can use a personal account or a bot account.
 
 ## 13. Starting and routing project work
 
-`@worker start` starts a fresh writer and reviewer workflow.
-The command creates fresh underlying agent sessions.
+`@worker start` in a thread root post starts a fresh writer and reviewer workflow for that thread.
+The command creates fresh underlying agent sessions and binds them to the verified thread identity.
 
-If an earlier session actively works, the bot asks for confirmation before replacement.
-Otherwise, the system stops or archives the old session and starts the new workflow.
+The system rejects a second start in an active thread.
+The owner must use a new thread for a new workflow.
 
-Later `@worker` messages route to the active phase.
+Later human messages in an activated thread route to that workflow's active phase without another mention.
 The active phase determines whether the writer or reviewer receives the message.
 
-The project chat can remain inactive without an explicit finish command.
-The system does not infer a new workflow from an idle-room message.
+Messages outside an activated thread require an explicit `@worker start` in a new thread root post.
+The system does not infer a workflow from an idle thread or an unactivated room message.
+
+The owner explicitly closes a delivered workflow with `@worker finish` in its thread.
+The command stops its Herdr sessions, records the outcome, and archives the session metadata.
+It does not close a workflow from elapsed time, room silence, or an idle Herdr state.
+
+`@worker cancel` explicitly terminates an incomplete workflow.
+`@worker pause` and `@worker resume` remain thread-scoped and do not bypass workflow gates.
+`unknown` and `missing` Herdr states block `finish` until reconciliation.
+Cancellation records the requested stop and reconciles the final runtime state before archival.
 
 ## 14. Required project workflow
 
@@ -354,8 +369,8 @@ Any artifact change invalidates its earlier approval.
 The human approval gate accepts only a commit with an approving reviewer verdict.
 
 The contextual approval command is `@worker approve`.
-The command is unambiguous because one room has one active workflow.
-Review findings and change requests use normal Campfire messages.
+The command is unambiguous because the verified thread identifies one workflow.
+Review findings and change requests use normal messages in that workflow thread.
 The system does not define a separate rejection command.
 
 The control plane records transitions and rejects invalid transitions.
@@ -428,7 +443,7 @@ Its operations include:
 - Create or enroll a project.
 - Start a project workflow.
 - Send a prompt to an active phase.
-- Pause, resume, or cancel a workflow.
+- Pause, resume, finish, or cancel a workflow.
 - Perform authorized Git and GitHub actions.
 - Invoke deployment operations that the operator explicitly supplies as tools.
 - Delete resources.
@@ -625,12 +640,9 @@ The following earlier ideas no longer apply:
 - Run Herdr directly on the host.
 - Use a dedicated host user as the main agent isolation boundary.
 - Permit small work without a specification and plan.
-- Run multiple identified tasks inside one project room.
-- Route replies through task identifiers.
 - Run a periodic memory master.
 - Limit application concurrency as a Phase 0 control-plane feature.
 - Give a controller direct access to another deployment.
 - Test collaboration with two complete server stacks.
 - Use separate Campfire accounts for writer and reviewer.
-- Require a worker finish command.
 - Automate pull request merge or post-merge synchronization.

@@ -8,9 +8,9 @@
 
 **Tech Stack:** Ruby, Kirei, Sorbet, Rack/Puma, Sequel, PostgreSQL, Docker Compose, Herdr, Wagglebot, Codex CLI, Claude Code, OpenCode, Gemini CLI.
 
-**Spec:** [`../../agent-fleet-architecture-and-review.md`](../../agent-fleet-architecture-and-review.md), Commit `612905969f97abcc9f0cc03156bdb4318b030cb6` vom 2026-09-30, Status `Draft for owner review`.
+**Spec:** [`../../agent-fleet-architecture-and-review.md`](../../agent-fleet-architecture-and-review.md), Arbeitsbaumrevision vom 2026-10-01, Commit ausstehend, Status `Draft for owner review`.
 
-**Spec SHA-256:** `6c5fbda76e1fddceb4fb7d24cc683e19cd1854f79d9c8b928f342524ae14435e`.
+**Spec SHA-256:** `1f8d3c609cc9d35c721195fa81fba9ea0adecf006725807f1c6067e17ab717f8`.
 
 **Planstatus:** Reviewbarer Entwurf, kein Implementierungsauftrag. Der Plan wurde zunächst auf `main` erstellt. Der Owner hat anschließend Branch, Commit, Push und Draft-PR für diese Planungsänderungen ausdrücklich beauftragt. Implementation und Deployment bleiben außerhalb des Auftrags. Vor Umsetzung benötigen Spec und Plan die Freigabe ihrer exakten Commits; Draftstatus ist keine Freigabe.
 
@@ -22,7 +22,7 @@ Die folgenden Werte und Grenzen stammen aus der Spec; alle Tasks müssen sie ein
 - Zwei Anwendungsimages: Kirei und Runtime. Produktion wählt OCI-Digests; Repository liefert nur Entwicklungs-/Integrations-Compose.
 - Exakte Werkzeug- und Paketversionen in Manifesten; Wagglebot: `Node.js 22.20 or later, npm, and Git`.
 - Runtime: `No Docker socket`, `No privileged mode`, `No host root mount`, Non-root, erforderliche Volumes und Netzwerke.
-- Default-Workspace: `/workspace/repos`; Slug `owner/repository`; ein linearer Workflow pro Room.
+- Default-Workspace: `/workspace/repos`; Slug `owner/repository`; ein Workflow pro verifiziertem Campfire-Thread. Mehrere Threads eines Rooms können gleichzeitig arbeiten.
 - Bots: `@agent` und `@worker`, konfigurierbar. Writer und Reviewer teilen die Worker-Botidentität.
 - Writer/Reviewer benötigen unterschiedliche zugrunde liegende Provider **und** Basismodellfamilien; Default Codex/Claude Code.
 - Jeder Projektworkflow benötigt Spec, Plan, Reviews und menschliche Freigaben der exakten Revisionen.
@@ -102,14 +102,14 @@ Gemeinsame Typen in `app/domains/workflows/entities.rb`:
 - `ArtifactRef(kind: spec|plan|implementation|review, commit: String, path: String, blob: String)`.
 - `SessionRef(workflow_id: String, generation: Integer, role: writer|reviewer|controller, pane_id: String, alias: String)`.
 - `Outcome(status: accepted|blocked|rejected|confirmation_required, reason: String, links: Array[String])`.
-- Workflowzustände: `spec_writing → spec_review → spec_human_approval → plan_writing → plan_review → plan_human_approval → implementation → implementation_review → pr_ready → done`; zusätzlich `blocked`, `paused`, `cancelled` mit gespeichertem vorherigem Zustand.
-- `done` bedeutet verifizierte Lieferung einer offenen PR/Recherche, keinen Merge. Revisionen und Genehmigungen bleiben im Audit nachvollziehbar.
+- Workflowzustände: `spec_writing → spec_review → spec_human_approval → plan_writing → plan_review → plan_human_approval → implementation → implementation_review → pr_ready → done → closed`; zusätzlich `blocked`, `paused`, `cancelled` mit gespeichertem vorherigem Zustand.
+- `done` bedeutet verifizierte Lieferung einer offenen PR/Recherche, keinen Merge. `closed` folgt nur auf das explizite thread-spezifische `@worker finish` und archiviert die Herdr-Sessionmetadaten. Revisionen und Genehmigungen bleiben im Audit nachvollziehbar.
 
 ## Task 1: Interfacevalidierung und Versionsmanifest
 
 **Files:** Create `config/runtime-tools.lock.yml`, `docs/interfaces/{herdr,campfire,cli-startup}.md`, `spec/contracts/{herdr,campfire}_spec.rb`, `spec/fixtures/contracts/`.
 
-**Interfaces:** Produces dokumentierte, releasegebundene Herdr-Operationen für Start, Prompt, Status, Stop/Archive sowie Campfire-Authentisierung, Mitgliedschaft, Webhook-ID und Post-ID.
+**Interfaces:** Produces dokumentierte, releasegebundene Herdr-Operationen für Start, Prompt, Status, Stop/Archive sowie Campfire-Authentisierung, Mitgliedschaft, Webhook-ID, Post-ID und Thread- oder Root-Post-ID.
 
 - [ ] Prüfe die ausgewählten Releases anhand offizieller Dokumentation und installierter Artefakte. Trage exakte Versionen, Herkunft und Digests/Checksums ein.
 - [ ] Schreibe Contracttests `starts_four_clis`, `writer_settles_after_ready`, `unknown_is_not_idle`, `gemini_calls_local_mcp`, `campfire_verifies_delivery_and_sender`.
@@ -117,7 +117,7 @@ Gemeinsame Typen in `app/domains/workflows/entities.rb`:
 - [ ] Prüfe Gemini-MCP-Roundtrip mit `list_projects` und Source-Room-Kontext. Prüfe Rehydration in einer frischen Gemini-Session.
 - [ ] Speichere bereinigte Request-/Response-Fixtures und reproduzierbare Befehle. Erwarte pro CLI Start-, Prompt-, Status- und Stopnachweis.
 - [ ] Führe nach Task 2 `bundle exec rspec spec/contracts` aus; erwarte PASS gegen die validierten Fixtures. Task 1 liefert vorher protokollierte Livechecks.
-- [ ] Blockiere Tasks 6–10, falls API, Idle-Handschlag, Webhookauthentisierung oder Gemini-MCP fehlen. Dokumentiere eine konkrete Alternative zur Freigabe statt Socketmethoden zu erfinden.
+- [ ] Blockiere Tasks 6–10, falls API, Idle-Handschlag, Webhookauthentisierung, verifizierte Threadidentität oder Gemini-MCP fehlen. Dokumentiere eine konkrete Alternative zur Freigabe statt Socketmethoden zu erfinden.
 - [ ] Nach Review committen: `docs: validate pinned runtime and chat contracts`.
 
 ## Task 2: Kirei-Grundlage und lokale Images
@@ -150,12 +150,12 @@ Gemeinsame Typen in `app/domains/workflows/entities.rb`:
 
 **Files:** Create `app/domains/campfire/{controller,client,router,actor_resolver}.rb`, `spec/domains/campfire_spec.rb`.
 
-**Interfaces:** `Router.ingest(delivery: VerifiedDelivery) -> Outcome`; `ActorResolver.resolve(room_id:, user_id:) -> Actor`; Clientmethoden richten sich exakt nach Task 1.
+**Interfaces:** `Router.ingest(delivery: VerifiedDelivery) -> Outcome`; `ActorResolver.resolve(room_id:, user_id:) -> Actor`; `VerifiedDelivery` enthält die verifizierte Room-, Post- und Thread- oder Root-Post-Identität. Clientmethoden richten sich exakt nach Task 1.
 
 - [ ] Schreibe Tests für ungültige Webhooks, eigene Bots, Peer-Bots, Room-Mitgliedschaft, Replay und Mehrfachzustellung.
-- [ ] Prüfe `agent_any_room_preserves_source` und `worker_no_active_workflow_does_not_start`; normale Nachrichten zeigen keine internen Task-IDs.
+- [ ] Prüfe `agent_any_room_preserves_source`, `worker_unactivated_thread_does_not_start`, `worker_thread_routes_without_repeat_mention` und `worker_thread_cannot_route_to_another_workflow`; normale Nachrichten zeigen keine internen Workflow-IDs.
 - [ ] Führe `bundle exec rspec spec/domains/campfire_spec.rb` aus; erwarte fehlenden Router.
-- [ ] Implementiere `@agent` zum Master und `@worker start`/`approve`/gewöhnliche Nachricht zur aktiven Projektphase. Speichere Inbox vor Dispatch.
+- [ ] Implementiere `@agent` zum Master und thread-spezifisches `@worker start`/`approve`/`finish`/`cancel`/gewöhnliche Nachricht zur aktiven Projektphase. Aktiviere nur die Thread-Wurzel mit `@worker start`; route spätere menschliche Threadnachrichten ohne Wiederholungsmention. Speichere Inbox vor Dispatch.
 - [ ] Prüfe, dass Sender-/Botklassifikation aus Campfire kommt; gefälschte JSON-/Modellfelder können keine menschliche Autorität verleihen.
 - [ ] Nach Review committen: `feat: route authenticated Campfire mentions`.
 
@@ -192,14 +192,14 @@ Gemeinsame Typen in `app/domains/workflows/entities.rb`:
 
 **Files:** Create `app/domains/workflows/{entities,machine,approvals,start}.rb`, `spec/domains/workflows_spec.rb`, `AGENTS.md`.
 
-**Interfaces:** `Workflows.start(actor:, project_id:, writer: RoleConfig, reviewer: RoleConfig, confirmation_id: String?) -> Outcome`; `transition(workflow_id:, event:, expected_version:)`; `Approvals.approve(actor:, workflow_id:, kind:, target_commit:) -> Outcome`.
+**Interfaces:** `Workflows.start(actor:, project_id:, thread_id:, writer: RoleConfig, reviewer: RoleConfig, confirmation_id: String?) -> Outcome`; `finish(actor:, workflow_id:, expected_version:)`; `transition(workflow_id:, event:, expected_version:)`; `Approvals.approve(actor:, workflow_id:, kind:, target_commit:) -> Outcome`.
 
 - [ ] Schreibe tabellengesteuerte Tests aller erlaubten/verbotenen Zustandsübergänge, Spec-/Planfreigaben und Reviewer-Voraussetzung.
-- [ ] Ergänze `same_family_across_cli_rejected`, `same_provider_rejected`, `bot_approval_rejected`, `artifact_change_invalidates`, `concurrent_approval_advances_once`.
+- [ ] Ergänze `same_family_across_cli_rejected`, `same_provider_rejected`, `bot_approval_rejected`, `artifact_change_invalidates`, `concurrent_approval_advances_once`, `finish_only_delivered`, `unknown_blocks_finish` und `cancel_reconciles_before_archive`.
 - [ ] Führe `bundle exec rspec spec/domains/workflows_spec.rb` aus; erwarte fehlende Zustandsmaschine.
 - [ ] Implementiere Zustandsänderungen mit Workflowlock/Version und Audit. Kontextuelles approve bindet beim Eingang die präsentierte Revision, nicht später einen bewegten HEAD.
-- [ ] Ein start erzeugt frische Writer-/Reviewersessions auf einem Branch. Aktive Vorgängersession verlangt Bestätigung; idle Vorgänger wird gestoppt/archiviert.
-- [ ] Halte pause/resume/cancel orthogonal zu Freigaben. Resume darf keine Gates überspringen; Idlechat beendet oder startet nichts automatisch.
+- [ ] Ein thread-spezifischer start erzeugt frische Writer-/Reviewersessions auf einem Branch. Ein zweiter Start im aktiven Thread wird abgewiesen; ein anderer Thread kann einen unabhängigen Workflow erzeugen.
+- [ ] Halte pause/resume/cancel/finish orthogonal zu Freigaben. `finish` schließt nur einen gelieferten Workflow nach explizitem Befehl und stoppt/archiviert seine Sessions. Resume darf keine Gates überspringen; Idlechat beendet oder startet nichts automatisch.
 - [ ] Verankere verpflichtende Spec-/Planregeln im AGENTS.md; technische Enforcement bleibt in Kirei.
 - [ ] Nach Review committen: `feat: enforce revision-bound workflow gates`.
 
@@ -223,7 +223,7 @@ Gemeinsame Typen in `app/domains/workflows/entities.rb`:
 
 **Files:** Create `app/domains/controller/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/controller_spec.rb`.
 
-**Interfaces:** MCP-Tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials`. Alle erhalten einen serverseitigen Actor-/Room-Kontext.
+**Interfaces:** MCP-Tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `finish_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials`. Alle erhalten einen serverseitigen Actor-/Room-/Thread-Kontext.
 
 - [ ] Schreibe `master_uses_gemini_cli`, `room_context_survives_tool_call`, `restart_creates_fresh_session`, `secret_values_never_returned`.
 - [ ] Ergänze `bot_cannot_confirm`, `confirmation_replay_rejected`, `changed_parameters_require_confirmation`, `unconfigured_deployment_tool_rejected`.
@@ -261,7 +261,7 @@ Gemeinsame Typen in `app/domains/workflows/entities.rb`:
 - [ ] Führe `bundle exec rspec spec/integration/recovery_spec.rb` aus; erwarte fehlende Reconciliation.
 - [ ] Implementiere Startreconciliation von DB, Git und Herdr; erzeuge frischen Master. Rekonstruiere Arbeit aus committed Artefakten und vorhandenem ignored Superpowers-Ledger.
 - [ ] Kennzeichne Status ab 60 Sekunden ohne verifizierte Runtimeabfrage als stale. Surface blockierte Jobs und Phasen über deduplizierte Outbox.
-- [ ] Prüfe Containerrestart mit benannten Volumes; zwei Räume arbeiten gleichzeitig, ein Raum bleibt linear.
+- [ ] Prüfe Containerrestart mit benannten Volumes; zwei Threads eines Rooms und zwei unabhängige Räume arbeiten gleichzeitig. Beende nur einen gelieferten Thread mit explizitem `finish` und prüfe, dass seine Herdr-Sessions archiviert werden.
 - [ ] Nach Review committen: `feat: reconcile runtime state after interruption`.
 
 ## Task 12: Portable Betriebsverträge und Infrastruktur-Handoff
