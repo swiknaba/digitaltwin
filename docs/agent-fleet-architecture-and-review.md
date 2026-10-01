@@ -232,6 +232,15 @@ It rejects a writer and reviewer pair that does not meet the diversity rule.
 The owner can override both configurations for each workflow.
 This supports changes based on cost, available usage, or task fit.
 
+A worker session means the LLM conversation and its context, not the runtime container, process, or Herdr pane alone.
+Reuse a healthy conversation only for the same workflow topic, role, and agent configuration.
+Writer and reviewer retain separate conversations.
+Unrelated work and every new workflow start with fresh conversations, even in the same repository.
+When a conversation cannot be reused reliably, create a fresh session from that workflow's saved state and committed artifacts.
+Restore its specification, plan, reviews, phase, revisions, and approvals; do not import another task's conversation.
+The Master deliberately shares fleet context under §17; independent fleets never share private session context.
+Conversation separation does not create a security boundary within the shared runtime.
+
 The writer and reviewer are workflow phases behind one project bot identity.
 They are not separate Campfire accounts.
 
@@ -299,6 +308,13 @@ Kirei derives the room, thread, active role, and bot identity from the verified 
 Agents cannot choose another workflow destination through callback parameters.
 Record the source session/generation and deduplicate callback retries before posting.
 An uncertain Campfire post remains subject to reconciliation.
+
+Detailed progress, interview questions, reviews, and work results stay in the project workflow thread.
+Important summaries and blockers also appear in the configured Master chat under the Agent bot identity.
+These include approval requests, blocked workflows, and PR-ready or delivered results.
+Each summary identifies the project and phase and links to its source thread and relevant artifacts.
+Kirei uses the durable outbox to deduplicate summaries by workflow event and destination.
+It does not mirror the complete project message stream into Master chat.
 
 Each worker response identifies the active role.
 For example, a response can label itself as writer or reviewer.

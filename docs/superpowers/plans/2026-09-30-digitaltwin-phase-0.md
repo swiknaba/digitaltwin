@@ -25,7 +25,9 @@ The following values and limits come from the spec; all tasks must comply with t
 - Each workflow uses a separate Git worktree under `/workspace/worktrees/<workflow-uuid>`. Its Writer and Reviewer share that worktree and branch.
 - Bots: `@agent` and `@worker`, configurable. Writer and Reviewer share the Worker bot identity.
 - Kirei posts Worker questions/progress through its durable outbox. Session-bound callbacks preserve verified thread routing and visible role identity.
+- Detailed updates stay in project threads. Important summaries/blockers also reach the configured Master chat with source/workflow links; do not mirror full streams.
 - Writer/Reviewer require different underlying providers **and** base model families; default Codex/Claude Code.
+- A worker session is an LLM conversation/context. Reuse only within the same workflow topic, role, and configuration; unrelated work starts fresh.
 - Every project workflow requires a spec, plan, reviews, and human approvals of the exact revisions.
 - Three unsuccessful review rounds per gate block; Reviewer changes only the shared review Markdown file.
 - One workflow branch, one final PR; no automatic merge and no automatic post-merge synchronization.
@@ -91,7 +93,7 @@ Shared types in `app/domains/workflows/entities.rb`:
 - `Actor(user_id: String, room_id: String, member: Boolean, bot: Boolean)`; from verified Campfire context, never set freely by the model.
 - `RoleConfig(cli: String, provider: String, model: String, family: String)`; the Writer/Reviewer pair checks both differences.
 - `ArtifactRef(kind: spec|plan|implementation|review, commit: String, path: String?)`; `path` is required for specification, plan, and review Markdown. Implementation uses `path: nil` with an exact target commit and frozen merge-base.
-- `SessionRef(workflow_id: String?, generation: Integer, role: writer|reviewer|controller, pane_id: String, alias: String)`; writer/reviewer require a workflow ID, while controller has none.
+- `SessionRef(workflow_id: String?, generation: Integer, role: writer|reviewer|controller, pane_id: String, alias: String)`; writer/reviewer require a workflow ID, while controller has none. Pane/alias identify Runtime execution; they do not prove LLM conversation identity or safe reuse.
 - `Outcome(status: accepted|blocked|rejected|confirmation_required, reason: String, links: Array[String])`.
 - Workflow states: `spec_writing → spec_review → spec_human_approval → plan_writing → plan_review → plan_human_approval → implementation → implementation_review → pr_ready → done → closed`; additionally `blocked`, `paused`, `cancelled` with the previous state stored.
 - `done` means verified delivery of an open PR/research result, not a merge. `closed` follows only explicit thread-specific `@worker finish` and archives Herdr session metadata. Revisions and approvals remain traceable in the audit.
@@ -234,6 +236,7 @@ Workflow notices require a verified thread; Master replies may use source-room c
 
 - [ ] Write tests for invalid webhooks, own bots, peer bots, room membership, replay, and duplicate delivery.
 - [ ] Write `worker_question_reaches_bound_thread`, `worker_role_visible`, `callback_retry_posts_once`, `callback_changed_body_rejected`, and `cross_workflow_destination_rejected`.
+- [ ] Keep detailed Worker updates in their bound thread. Master summaries use the configured verified destination and Agent bot identity.
 - [ ] Validate session credential/generation and active role before enqueueing Worker output. Keep Campfire credentials in Kirei, outside model output and Runtime callbacks.
 - [ ] Reuse Task 8's callback authentication mechanism when integrated. Its credentials prevent accidental mix-ups within the shared Runtime, not malicious isolation.
 - [ ] Check `agent_any_room_preserves_source`, `worker_unactivated_thread_does_not_start`, `worker_thread_routes_without_repeat_mention`, and `worker_thread_cannot_route_to_another_workflow`; ordinary messages expose no internal workflow IDs.
@@ -272,6 +275,8 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 - [ ] Write runtime checks: UID ≠ 0, all four CLIs exist, no forbidden mounts/capabilities, socket only on the shared worker volume.
 - [ ] Write `unknown_never_completes`, `old_generation_cannot_receive_prompt`, `restart_reconciles_panes` using Task 1 fixtures.
 - [ ] Test `Sessions.start` rejects missing workflow ID or repo for writer/reviewer and rejects either value for controller. Check controller working directory is the neutral Runtime home.
+- [ ] Verify each CLI's conversation identity and resume behavior against Task 1. Reuse requires matching workflow topic, role/configuration, and current generation.
+- [ ] Test `same_workflow_role_reuses_healthy_context`, `unrelated_topic_starts_fresh_context`, `writer_reviewer_contexts_separate`, and `new_workflow_never_reuses_old_context`.
 - [ ] Pass the verified workflow worktree as `repo` for Writer/Reviewer. Persist it across session generations and revalidate it after restart.
 - [ ] Install the `digitaltwin say` client with artifact-ready callbacks. Test a Writer question, human reply, and follow-up without direct Campfire credentials.
 - [ ] Persist clone and worktree roots on the same workspace volume. Verify Git common-directory paths remain valid after container restart.
@@ -352,6 +357,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 - [ ] Require a second human confirmation before destructive/irreversible operations. The confirmation window is ten minutes; audit includes the parameter hash, never secret values.
 - [ ] Accept confirmation from any verified human room member. Add `collaborator_can_confirm`; do not introduce an owner-only ID or human allowlist.
 - [ ] Check the selected Master CLI's real MCP round trip from Task 1. After restart, PostgreSQL/tool status is authoritative, not the old conversation.
+- [ ] Configure and verify the Master chat destination. Summaries link to source project threads and artifacts without exposing internal workflow IDs.
 - [ ] After review, commit: `feat: add authorized master operations`.
 
 ## Task 10: Verified Delivery, Research, Memory, and Peer Handoffs
@@ -382,7 +388,13 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 - [ ] Implement startup reconciliation from DB, Git, and Herdr; create a fresh Master. Reconstruct work from committed artifacts and reviews.
 - [ ] Restore paused dispatch suppression after restart. Reconcile the current step and preserve its result without starting the next step.
 - [ ] Test recovery with the ignored Superpowers ledger absent. When any project role needs a fresh session, restore phase, approved revisions, and review context.
+- [ ] Reuse a verified healthy conversation after a wait only for the same workflow topic and role/configuration. Otherwise create a fresh conversation.
+- [ ] Recover only that workflow's durable state, branch artifacts, and review history. Preserve approvals, blockers, review counts, and generation checks.
+- [ ] Test `fresh_recovery_loads_only_task_context` and `fresh_session_does_not_reset_gate_state`. Do not claim conversation separation isolates malicious agents.
 - [ ] Mark status stale after 60 seconds without a verified Runtime check. Surface blocked jobs and phases through a deduplicated outbox.
+- [ ] Post approval-needed, blocked, and PR-ready/delivered summaries to Master chat as well as required project-thread notices.
+- [ ] Deduplicate by verified workflow event and destination. Include project/phase and source/artifact links; keep ordinary progress only in project threads.
+- [ ] Test `important_event_reaches_master_and_project`, `summary_retry_not_duplicated`, `summary_contains_source_links`, and `ordinary_progress_not_mirrored`.
 - [ ] Check container restart with named volumes; two threads in one room and two independent rooms work at the same time. Finish only one delivered thread with explicit `finish` and check that its Herdr sessions are archived.
 - [ ] After review, commit: `feat: reconcile runtime state after interruption`.
 

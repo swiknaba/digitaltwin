@@ -21,3 +21,5 @@
 - Defined thread-scoped pause as suppressing new dispatch while preserving current-step completion and callbacks; resume revalidates phase, revision, Runtime, and existing gates.
 - Confirmed shared Master conversational context and operational access across fleet rooms, with separate Master sessions and private control/runtime data for independent fleets.
 - Made Master-created workflow threads an optional Phase 0 convenience with verified/idempotent association; retained existing-thread starts and added a Phase 1 deferral path.
+- Kept detailed updates in project threads and routed important summaries/blockers to configured Master chat with source links and event/destination deduplication.
+- Defined worker sessions as LLM conversations, restricted reuse to the same workflow topic/role/configuration, and scoped fresh recovery to task state while retaining shared Master fleet context.
