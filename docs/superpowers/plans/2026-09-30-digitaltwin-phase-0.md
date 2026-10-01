@@ -35,6 +35,7 @@ The following values and limits come from the spec; all tasks must comply with t
 - Master: configurable `RoleConfig(cli, provider, model, family)` through Herdr and a local MCP bridge; Gemini CLI is the default. No direct provider API call or login through Campfire.
 - Master chat handles operational conversation, status, coordination, and targeted emergency changes. It has no coding review/approval cycle; ordinary coding uses Writer/Reviewer workflows.
 - Master context and operational access are shared across its fleet's rooms. Independent fleets retain separate Master sessions and private runtime/control data.
+- Only Master initiates separately managed agent sessions. Workers/peers request human approval for another session; no autonomous peer chains. Harness-native subagents are allowed where supported.
 - Master-created workflow threads are optional in Phase 0. Keep existing-thread starts available; defer complex creation integration to Phase 1.
 - Memory only manually through `@agent`/base instructions; no cron, no required maintenance after each session.
 - GitHub remains the selected Git host. Headscale/Tailscale remain the selected private access base.
@@ -274,6 +275,8 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 
 - [ ] Write runtime checks: UID ≠ 0, all four CLIs exist, no forbidden mounts/capabilities, socket only on the shared worker volume.
 - [ ] Write `unknown_never_completes`, `old_generation_cannot_receive_prompt`, `restart_reconciles_panes` using Task 1 fixtures.
+- [ ] Guard session creation through Master-authorized dispatch. Kirei bootstraps/restores the configured Master; authorized workflow role/recovery dispatches cannot create unrelated work. Workers and peer bots cannot invoke independent starts.
+- [ ] Test `worker_cannot_start_independent_session`, `peer_start_requires_human_then_master`, `authorized_review_recovery_keeps_workflow_scope`, and `harness_subagent_is_not_fleet_session`.
 - [ ] Test `Sessions.start` rejects missing workflow ID or repo for writer/reviewer and rejects either value for controller. Check controller working directory is the neutral Runtime home.
 - [ ] Verify each CLI's conversation identity and resume behavior against Task 1. Reuse requires matching workflow topic, role/configuration, and current generation.
 - [ ] Test `same_workflow_role_reuses_healthy_context`, `unrelated_topic_starts_fresh_context`, `writer_reviewer_contexts_separate`, and `new_workflow_never_reuses_old_context`.
@@ -300,6 +303,7 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 - [ ] Run `bundle exec rspec spec/domains/workflows_spec.rb`; expect missing state machine.
 - [ ] Implement state changes with workflow lock/version and audit. Contextual approval binds the presented revision on receipt, not a later moved HEAD.
 - [ ] Check approval rejects a missing specification/plan path in the reported commit tree, a changed target commit, and a dirty worktree. Do not add file upload or blob storage.
+- [ ] Route verified human `@worker start` through Master-authorized creation without a second approval or separate Master-chat interaction. Bot starts are rejected; the authorized workflow includes its gated Writer/Reviewer lifecycle.
 - [ ] A thread-specific start creates fresh Writer/Reviewer sessions on one branch in its workflow worktree. Another thread uses its own worktree.
 - [ ] Reserve the active thread transactionally before creating sessions. Reject duplicate starts; uncertain creation remains reserved until reconciled.
 - [ ] Keep pause/resume/cancel/finish orthogonal to approvals. `finish` closes only a delivered workflow after an explicit command and stops/archives its sessions. Resume must not skip gates; idle chat does not end or start anything automatically.
@@ -336,6 +340,8 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 
 Master conversation and targeted emergency operations do not enter the project specification, plan, review, or approval cycle.
 Starting or prompting a coding workflow is coordination; the target workflow retains its own gates.
+Master owns creation of separately managed sessions. Workers/peers request human approval and Master executes the authorized creation; they cannot start sessions or peer chains autonomously.
+Harness-native subagents are allowed where supported and stay subordinate to the invoking session.
 Emergency operations use available typed tools. Keep existing destructive/irreversible confirmations; add no emergency-specific approval gate.
 `start_workflow` requires a verified thread in the selected project room.
 If optional creation is enabled, Kirei first creates/reconciles the thread and records its association before calling the same workflow-start service.
@@ -362,12 +368,15 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 
 ## Task 10: Verified Delivery, Research, Memory, and Peer Handoffs
 
-**Files:** Create `app/domains/forge/{delivery,memory}.rb`, `app/domains/campfire/peer_handoff.rb`, `docs/operations/project-runbook.md`, `spec/domains/delivery_spec.rb`.
+**Files:** Create `app/domains/forge/{delivery,memory}.rb`, `app/domains/campfire/peer_handoff.rb`, `docs/interfaces/peer-handoff.md`, `docs/operations/project-runbook.md`, `spec/domains/delivery_spec.rb`.
 
-**Interfaces:** `Delivery.finalize(workflow_id:, commit:, evidence:) -> Outcome`; `Memory.change(actor:, slug:, path:, mode: additive|reorganization) -> Outcome`; `PeerHandoff.receive(actor:, recipient:, slug:, revision:, action:) -> Outcome`.
+**Interfaces:** `Delivery.finalize(workflow_id:, commit:, evidence:) -> Outcome`; `Memory.change(actor:, slug:, path:, mode: additive|reorganization) -> Outcome`; `PeerHandoff.receive(actor:, version:, request_key:, recipient:, thread_id:, slug:, revision:, action:) -> Outcome`. Sender/source identity comes from verified Campfire context, not untrusted envelope claims.
 
 - [ ] Write `one_branch_one_pr`, `research_requires_sources_and_uncertainty`, `no_automatic_merge_or_pull`, `failed_push_not_delivered`.
 - [ ] Add configurable memory slug, additive default-branch change, and reorganization only by branch/PR; a workflow may finish without memory needs.
+- [ ] Document the initial versioned peer envelope: protocol version, stable request key, recipient, source message identity, requested action, existing workflow thread, repository slug, and branch/commit/PR reference. Verify sender, membership, target, and artifact with the receiving fleet's own credentials.
+- [ ] Test unsupported versions, wrong recipients, duplicate requests, unverified revisions, bot `@worker start`, autonomous onward chains, and requests requiring human approval followed by Master creation.
+- [ ] Permit handoffs only to existing workflows; never treat a peer message as human authorization. Do not add automatic hop/rate limits as an approval substitute.
 - [ ] Check peer with its own Git identity: verified remote/revision, no access to private paths/API, and no self-bot loop.
 - [ ] Run `bundle exec rspec spec/domains/delivery_spec.rb`; expect missing delivery logic.
 - [ ] Implement the final PR only after implementation review. Deliver commit, check evidence, blockers, and links; an open PR counts as a delivery result.

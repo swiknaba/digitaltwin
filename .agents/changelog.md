@@ -23,3 +23,10 @@
 - Made Master-created workflow threads an optional Phase 0 convenience with verified/idempotent association; retained existing-thread starts and added a Phase 1 deferral path.
 - Kept detailed updates in project threads and routed important summaries/blockers to configured Master chat with source links and event/destination deduplication.
 - Defined worker sessions as LLM conversations, restricted reuse to the same workflow topic/role/configuration, and scoped fresh recovery to task state while retaining shared Master fleet context.
+
+## 2026-10-01 — Final peer session policy from review interview
+
+- Master alone initiates separately managed fleet sessions. Worker/peer requests need human approval and Master creation; harness-native subordinate agents remain allowed where supported.
+- Preserve human thread starts and the authorized Writer/Reviewer review/recovery lifecycle without repeated spawn approvals. Document Kirei bootstrap and the shared Runtime/raw-terminal limits.
+- Add a planned versioned peer-handoff contract and tests for authenticated context, replay, recipients, artifact bindings, rejected bot starts, and rejected autonomous chains; no automatic limits replace human approval.
+- Reconciled all 16 new review threads and the interview decisions across specification, plan, README, and Phase 1. Checked diff whitespace, Markdown links/fences/tables, 13 tasks, and all 32 acceptance criteria. No system implementation or runtime test claims.

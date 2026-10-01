@@ -213,7 +213,8 @@ The operator signs in to each provider through an interactive terminal session.
 The runtime persists the resulting login state.
 Campfire does not implement a provider authentication flow.
 
-Gemini CLI can start and monitor sessions through Herdr after integration validation.
+Gemini CLI can run and monitor its assigned session through Herdr after integration validation.
+When configured as Master, it can request other sessions through the authorized creation path in §17.
 Herdr does not guarantee native Gemini session restore.
 The workflow restores context from committed artifacts when it starts a fresh Gemini session.
 
@@ -352,7 +353,8 @@ The operator can use a personal account or a bot account.
 ## 13. Starting and routing project work
 
 `@worker start` in a thread root post starts a fresh writer and reviewer workflow for that thread.
-The command creates fresh underlying agent sessions and binds them to the verified thread identity.
+The verified human command routes through Master to create fresh underlying agent sessions and bind them to the verified thread identity.
+This is the human authorization for the requested workflow; no second start approval or separate Master-chat interaction is required.
 
 The system rejects a second start in an active thread.
 The owner must use a new thread for a new workflow.
@@ -519,6 +521,18 @@ The controller does not call provider model APIs directly.
 The operator may select another supported CLI after its Herdr and MCP contracts pass validation.
 Its session has no project workflow or repository binding and starts in the neutral Runtime home.
 
+Only Master can initiate separately managed agent sessions in the fleet.
+Workers and peer agents cannot autonomously create another session or start a peer chain.
+They may ask a human for approval; Master creates the authorized session after that approval.
+Harness-native subordinate agents remain allowed when the selected harness supports them.
+Those subordinate agents belong to the invoking session and do not become independently managed fleet sessions.
+
+Kirei bootstraps/restores the configured Master and executes its authorized workflow role lifecycle.
+Starting a human-requested workflow authorizes its Writer/Reviewer roles and their gated review/recovery dispatches.
+Those dispatches do not require repeated human spawn approvals and cannot expand into unrelated workflows.
+Session creation authority is enforced at Kirei interfaces and in agent instructions.
+It does not create an isolation boundary within the shared Runtime or restrict the human's raw terminal access.
+
 The controller uses typed Digitaltwin operations through a local MCP bridge.
 The bridge uses the same Kirei application codebase.
 The bridge exposes a small set of tools to the configured CLI and calls Kirei application operations.
@@ -546,7 +560,9 @@ The controller reconstructs current state from PostgreSQL and typed operations.
 ## 18. Human and peer authorization
 
 Any room member can create ordinary work and send project instructions.
-Peer agents can send instructions through explicit Campfire mentions.
+Peer agents can send instructions to existing workflows through explicit Campfire mentions.
+A bot cannot run `@worker start` to create a workflow or independently managed session.
+A request for new work requires human approval and creation through Master under §17.
 
 Campfire owns user administration, room access, and room membership.
 An authorized human is a room member whose Campfire user ID is not a configured bot identity.
@@ -568,12 +584,20 @@ Each deployment keeps its own bot accounts, credentials, runtime, and control st
 Agents coordinate through explicit mentions in the shared room.
 They exchange durable artifacts through branches, commits, and pull requests.
 
-An agent handoff identifies these items:
+The implementation documents a versioned handoff contract in `docs/interfaces/peer-handoff.md`.
+Its initial envelope identifies these items:
 
-- The intended bot recipient.
-- The requested action.
+- The protocol version and stable request key.
+- The intended bot recipient and source message identity.
+- The requested action and verified existing workflow thread.
 - The repository slug.
 - The relevant branch, commit, or pull request.
+
+The receiving deployment derives sender identity and room/thread membership from authenticated Campfire events.
+It rejects unsupported versions, wrong recipients, replayed requests, and unverified target/artifact bindings.
+A handoff cannot authorize a new session or an automatic onward peer chain.
+An agent needing another session asks a human, then Master handles authorized creation.
+Do not substitute automatic hop or rate limits for this approval rule.
 
 The receiving deployment verifies the repository and revision with its own credentials.
 The receiving deployment never receives private filesystem or Herdr access.
