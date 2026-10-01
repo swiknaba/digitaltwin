@@ -1,0 +1,2 @@
+# Preserve upstream NOTICE byte-for-byte, including original trailing spaces.
+licenses/upstream-NOTICE.txt whitespace=-blank-at-eol

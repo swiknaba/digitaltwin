@@ -1,0 +1,32 @@
+{
+  "ListenAddress": ":8066",
+  "ThrottlePerSec": 300,
+  "ThrottleMemoryStoreSize": 50000,
+  "ThrottleVaryByHeader": "",
+  "EnableMetrics": false,
+  "SendTimeoutSec": 30,
+  "RetryTimeoutSec": 8,
+  "ApplePushSettings": [
+    {
+      "Type": "apple_rn",
+      "ApplePushUseDevelopment": false,
+      "ApplePushCertPrivate": "",
+      "ApplePushCertPassword": "",
+      "ApplePushTopic": "org.example.digitaltwin",
+      "AppleAuthKeyFile": "/run/secrets/apns-auth-key.p8",
+      "AppleAuthKeyID": "OPERATOR_KEY_ID",
+      "AppleTeamID": "OPERATOR_TEAM_ID"
+    }
+  ],
+  "AndroidPushSettings": [
+    {
+      "Type": "android_rn",
+      "ServiceFileLocation": "/run/secrets/fcm-service-account.json"
+    }
+  ],
+  "EnableConsoleLog": true,
+  "EnableFileLog": false,
+  "LogFileLocation": "",
+  "LogFormat": "json",
+  "LogLevel": "info"
+}

@@ -4,6 +4,8 @@
   "index_digest": "sha256:be5dd6735cc78e95db16576fb6003908f3f7da4ad56b09dd7ac5520cf443c161",
   "linux_amd64_digest": "sha256:eb47e608ad965306ab4052bfeacff74d4148099eb83831c84685bd8b30897ccd",
   "source": "https://github.com/mattermost/mattermost-push-proxy/releases/tag/v6.6.0",
-  "verification": "registry manifest resolved; startup, compatibility, and artifact audit pending",
-  "checked_on": "2026-10-01"
+  "verification": "pinned image startup, process health, version/source hash and exact license/notice checks verified; provider and signed device delivery unverified",
+  "checked_on": "2026-10-01",
+  "source_commit": "20f2a046fef76a7ab1c121cd01bc2b06206979be",
+  "source_tag_object": "1a3b58c47b9956f08af4651b3dbbfe81fefbd245"
 }
