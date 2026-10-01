@@ -14,4 +14,4 @@ PASS: search/ignore/spaces, GNU text/files, Git/worktree/patch, JSON/CSV/hash, H
 PASS: offline versions, Linux schema, role shells, tools, live Herdr server
 OPEN: authenticated four-CLI prompt/state/idle, selected Master MCP, callback delivery, Tailnet SSH
 PASS: UID, capabilities, volumes, no public ports
-PASS: real socket from second container and persistent home/workspace/Git worktree after restart
+PASS: real socket from second container and persistent home/workspace/Herdr metadata/Git worktree after restart

@@ -29,8 +29,8 @@ agent-runtime/bin/test-image digitaltwin-runtime-worker:20261001
 ports, UID/GID 10001, dropped capabilities and `no-new-privileges`. It runs real
 installed version/schema checks, both login-shell configurations, functional tool
 fixtures, a second-container socket check, and home/workspace restart checks. It
-removes only its own containers and volumes. This is a component test, not Phase 0
-acceptance or a production deployment.
+removes only its own containers and volumes. Recorded checks ran in Linux AMD64 containers under emulation on macOS ARM64.
+This is a component test, not Phase 0 acceptance or a production deployment.
 
 `bin/cli-startup-probe.py` runs **only in a disposable empty Runtime home**, with a
 running Herdr server and no provider credentials. It creates/closes test workspaces

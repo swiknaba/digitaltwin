@@ -15,6 +15,9 @@ Fixed actual login-shell PATH reset and non-root OpenCode cache ownership. The
 upstream Wagglebot npm workspace dependency defect is documented; its original
 published bundle is extracted unchanged with separately locked `skills`.
 
+Environment: Docker Desktop 29.8.0 on macOS ARM64, Linux AMD64 containers under
+emulation. Native AMD64 production startup remains operator evidence.
+
 Checks run:
 
 - Docker build for offline and named-context `with-callback` targets.
@@ -30,7 +33,7 @@ Checks run:
 - Shell syntax and `git diff --check` passed.
 
 Local callback image ID:
-`sha256:b111e6bf94da9becec8e71fbded33f44d72da796bbe27700f5368730f1d2657c`.
+`sha256:f0f9250c8aec6c2dcdc6a0b011241441f27d75a3ef06bd95fdf1859ad813749a`.
 It was built locally, not published as an OCI release digest. Image is about
 2.16 GB uncompressed; native CLI packages account for most of its size.
 

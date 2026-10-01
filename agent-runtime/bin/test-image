@@ -20,8 +20,10 @@ docker run --rm --platform linux/amd64 --user 10001:10001 --volumes-from "$name"
 docker exec "$name" sh -c 'test "$(awk "/CapEff/ {print \$2}" /proc/1/status)" = 0000000000000000; test ! -e /var/run/docker.sock; printf preserved > /workspace/restart-fixture; printf preserved > "$HOME/restart-fixture"'
 docker inspect "$name" | python3 -c 'import json,sys; c=json.load(sys.stdin)[0]; assert c["Config"]["User"]=="10001:10001"; assert not c["HostConfig"]["Privileged"]; assert not c["HostConfig"]["PortBindings"]; assert all(m["Type"]=="volume" for m in c["Mounts"]); print("PASS: UID, capabilities, volumes, no public ports")'
 docker exec "$name" bash -lc 'git init -q /workspace/repos/fixture; git -C /workspace/repos/fixture config user.name "Runtime fixture"; git -C /workspace/repos/fixture config user.email fixture@example.invalid; printf fixture > /workspace/repos/fixture/file; git -C /workspace/repos/fixture add file; git -C /workspace/repos/fixture commit -qm fixture; git -C /workspace/repos/fixture worktree add -qb fixture /workspace/worktrees/fixture'
+docker exec "$name" herdr workspace create --label restart-fixture --cwd /workspace/worktrees/fixture >/dev/null
 docker restart "$name" >/dev/null
 ready
 docker exec "$name" sh -c 'test "$(cat /workspace/restart-fixture)" = preserved; test "$(cat "$HOME/restart-fixture")" = preserved; test -f "$HOME/.codex/hooks.json"; test -f "$HOME/.claude/settings.json"'
+docker exec "$name" herdr api snapshot | jq -e 'any(.result.snapshot.workspaces[]; .label == "restart-fixture")' >/dev/null
 docker exec "$name" bash -lc 'test "$(git -C /workspace/repos/fixture rev-parse HEAD)" = "$(git -C /workspace/worktrees/fixture rev-parse HEAD)"; test -d "$(git -C /workspace/worktrees/fixture rev-parse --path-format=absolute --git-common-dir)"; test -z "$(git -C /workspace/worktrees/fixture status --porcelain)"'
-printf 'PASS: real socket from second container and persistent home/workspace/Git worktree after restart\n'
+printf 'PASS: real socket from second container and persistent home/workspace/Herdr metadata/Git worktree after restart\n'
