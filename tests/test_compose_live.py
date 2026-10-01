@@ -85,17 +85,22 @@ class DisposableComposeTest(unittest.TestCase):
                 detail = detail.replace(marker, "<sample-redacted>")
             detail = re.sub(r"(postgres(?:ql)?://)[^@\s]+@", r"\1<redacted>@", detail)
             raise RuntimeError(str(error) + "\nDisposable migration/startup diagnostic:\n" + detail[:5000]) from None
+        cls.refresh_addresses()
+        cls.evidence = {"revision": cls.command(["git", "rev-parse", "HEAD"]).stdout.strip(),
+                        "reviewed_backend_revision": revision, "live_local_containers": True,
+                        "synthetic_callbacks": True, "authenticated_chat": False,
+                        "provider_cli": False, "master_mcp": False, "phase0_acceptance": False,
+                        "image_ids": {}}
+
+    @classmethod
+    def refresh_addresses(cls):
+        # Docker can allocate a new random host port when restarting a container.
         cls.addresses = {}
         for service, port in [("backend-web", "3000"), ("mattermost", "8065")]:
             address = cls.compose(["port", service, port]).stdout.strip()
             if not address.startswith("127.0.0.1:") or "\n" in address:
                 raise RuntimeError("expected one disposable loopback port")
             cls.addresses[service] = "http://" + address
-        cls.evidence = {"revision": cls.command(["git", "rev-parse", "HEAD"]).stdout.strip(),
-                        "reviewed_backend_revision": revision, "live_local_containers": True,
-                        "synthetic_callbacks": True, "authenticated_chat": False,
-                        "provider_cli": False, "master_mcp": False, "phase0_acceptance": False,
-                        "image_ids": {}}
 
     @classmethod
     def cleanup(cls):
@@ -196,6 +201,8 @@ class DisposableComposeTest(unittest.TestCase):
         self.ruby(fixture)
         self.compose(["restart", "backend-web", "agent-runtime"])
         self.compose(["up", "-d", "--no-build", "--wait", "--wait-timeout", "120", "backend-web", "agent-runtime", "backend-worker"], timeout=180)
+        self.refresh_addresses()
+        self.assertEqual(self.get("backend-web", "/readyz")[0], 200)
         deadline = time.monotonic() + 20
         while True:
             checked = self.ruby("db=Kirei::App.raw_db_connection; abort unless db[:jobs][dispatch_key:'integration:blocked'][:status]=='blocked' && db[:jobs][dispatch_key:'integration:uncertain'][:status]=='uncertain'", check=False)
