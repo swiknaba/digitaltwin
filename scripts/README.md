@@ -11,3 +11,7 @@ Future `scripts/acceptance local` runs local simulated flows; `operator` prepare
 Production infrastructure provisioning remains separately authorized work in the infrastructure repository or hosting platform.
 
 The integration owner owns this folder. Component workers propose shared script changes through that owner.
+
+`init-postgres.sh` runs inside PostgreSQL on first volume initialization.
+It consumes local application passwords from environment and creates separate Kirei/Mattermost roles and databases.
+It has passed shell syntax checks; database execution and denied cross-database connections remain integration checks.

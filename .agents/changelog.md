@@ -54,3 +54,12 @@
 - Map planned root Kirei/mobile/Docker paths to component folders without moving application source; align the Phase 0 plan's path and command conventions.
 - Record official upstream contract references and open Task 1 evidence. No verified pins, CLI/MCP handshake, chat-to-Herdr slice, signed mobile delivery, application boot, or deployment is claimed.
 - Reserve root Compose/environment glue for the Kirei foundation/integration owner after startup contracts and artifact pins are verified.
+
+## 2026-10-01 — Verified foundation artifacts and local dependency scaffold
+
+- Publish draft scaffold PR #5 with the original signed commit preserved through GitHub API after direct Git DNS failed.
+- Verify Kirei 0.10.0 gem checksum and generate its real CLI scaffold; preserve required Ruby 4.0.7 while recording local generation under 4.0.5.
+- Verify Herdr 0.9.3 macOS checksum/version and capture its exact protocol/schema; record Linux provenance without claiming Linux/provider behavior.
+- Resolve official Team Edition 11.11.1, push proxy 6.6.0, PostgreSQL 18.6 Alpine, Ruby 4.0.7 Alpine, and mobile release-2.44 identities.
+- Add digest-pinned local PostgreSQL/Mattermost Compose, separate-role initializer, safe environment examples, and detailed worker/check handoffs.
+- Check Compose configuration, initializer/generated-source syntax, manifest records, schema checksum, and document consistency. Docker daemon is stopped; no applications or provider sessions started.

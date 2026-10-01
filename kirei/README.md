@@ -20,7 +20,9 @@ Shared entities and migrations remain in Kirei, not a second contract service.
 
 ## Worker Scope
 
-Bootstrap with the validated Kirei CLI in an empty staging directory, then copy into this folder.
+The Kirei 0.10.0 CLI generated the scaffold now in this folder from an empty staging directory.
+Finish the dependency lock, Linux platforms, startup entry points, and tests under the required Ruby 4.0.7.
+See `bootstrap.lock.json` and the [foundation checkpoint](../docs/interfaces/foundation-validation.md).
 Implement Tasks 2–5 before dependent workflow/review/Master/delivery work in Tasks 7–11.
 The integrator reviews Compose/root/shared-contract changes. Runtime owns image provisioning, not this application's sessions migration or adapter.
 Keep component tests in `spec/`; cross-deployable acceptance belongs in root `tests/`.

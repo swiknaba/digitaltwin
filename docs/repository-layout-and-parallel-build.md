@@ -6,7 +6,8 @@ This scaffold refines the merged Phase 0 plan and prepares component implementat
 
 ## Target Layout
 
-The component folders contain contract READMEs. Application builds and live validation remain pending.
+The component folders contain contract READMEs and verified artifact records.
+Kirei includes its generated scaffold; root Compose configures local upstream dependencies. Application builds and live validation remain pending.
 
 ```text
 digitaltwin/

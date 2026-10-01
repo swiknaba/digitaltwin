@@ -1,0 +1,16 @@
+{
+  "framework": {
+    "gem": "kirei",
+    "version": "0.10.0",
+    "sha256": "eefd91f145d49e0a77b5d12ab0ca482c439dfc23fd5a15957cdba1a3f6c93321",
+    "source_commit": "ee52ad0860e355dfbf300dca6fc4bb261a6b3e65",
+    "source": "https://rubygems.org/gems/kirei/versions/0.10.0"
+  },
+  "ruby": {
+    "version": "4.0.7",
+    "image": "ruby:4.0.7-alpine",
+    "index_digest": "sha256:1ca7cb33e970630d571e0da6140e0bc925faec8f1f8f51f9f2cdf5e5f5eed7c9"
+  },
+  "verification": "framework gem checksum matched and CLI generator ran using local Ruby 4.0.5; Ruby 4.0.7 image manifest resolved; Linux build/boot and full Gemfile.lock pending",
+  "checked_on": "2026-10-01"
+}

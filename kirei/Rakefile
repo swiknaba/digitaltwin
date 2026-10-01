@@ -1,0 +1,11 @@
+# typed: false
+# frozen_string_literal: true
+
+require "rake"
+require_relative "app"
+
+kirei_gem_path = Gem::Specification.find_by_name("kirei").gem_dir
+Dir.glob("#{kirei_gem_path}/lib/tasks/**/*.rake").each { import(_1) }
+
+Dir.glob("lib/tasks/**/*.rake").each { import(_1) }
+

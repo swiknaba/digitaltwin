@@ -32,7 +32,9 @@ Uncertain external results remain blocked for reconciliation unless retry idempo
 | Push proxy | Existing upstream artifact; private server connectivity; operator credentials | Release/digest, configuration/payload schema, port, health behavior and secret references |
 | Mobile | Pinned source and reproducible iOS/Android builds with retained notices | Source revision/toolchains, app IDs, signing/distribution references and push compatibility |
 
-The integrator adds root local `compose.yml` and `.env.example` after these startup details are verified.
+Root local `compose.yml` and `.env.example` now configure PostgreSQL/Mattermost dependencies only.
+The integrator adds application services after their startup details are verified.
+See [foundation validation](foundation-validation.md) for artifact identities and the distinction between preparation and live gates.
 Do not use floating image tags or dummy applications to make scaffold startup appear successful.
 Production orchestration, networking, TLS, Headscale/Tailscale, encrypted S3 backups, and live deployments remain infrastructure responsibilities.
 
@@ -49,11 +51,11 @@ Official documentation inspected on 2026-10-01 provides starting references, not
 
 | Evidence | Scaffold status | Owner and next action |
 | --- | --- | --- |
-| Exact Kirei/Herdr/CLI/server/proxy/PostgreSQL/mobile pins and artifact/license audit | Open; no dependency or artifact pins selected | Component owners record verified releases, digests/checksums, licenses/notices |
-| Installed Herdr schema and four real CLI start/prompt/state/stop handshakes | Open; Herdr is absent from this environment | Runtime owner validates a disposable container and captures sanitized fixtures |
+| Exact Kirei/Herdr/CLI/server/proxy/PostgreSQL/mobile pins and artifact/license audit | Partial; verified upstream identities recorded in the foundation checkpoint; remaining tools and complete artifact audit open | Component owners record verified releases, digests/checksums, licenses/notices |
+| Installed Herdr schema and four real CLI start/prompt/state/stop handshakes | Partial; checksum-verified macOS Herdr schema captured; Linux/four-CLI checks open | Runtime owner validates a disposable container and captures sanitized fixtures |
 | Writer settled handshake; unknown cannot mean idle | Open; docs alone cannot prove CLI state semantics | Runtime/Kirei owners validate before sessions/reviews |
 | Selected Master CLI real MCP round trip with verified channel context | Open; no live provider session started | Kirei/Runtime owners validate with operator-provided test credentials |
-| Authenticated ordinary thread replies, bot identities, membership and REST recovery | Open; no Team Edition instance started | Mattermost/Kirei owners validate selected artifact locally |
+| Authenticated ordinary thread replies, bot identities, membership and REST recovery | Open; selected Team Edition manifest inspected, no instance started | Mattermost/Kirei owners validate selected artifact locally |
 | Disposable mention → queued dispatch → one Herdr CLI → source-thread reply | Open; no running applications or provider test credentials | Integrator proves slice before Tasks 3–5 production workflow work |
 | Own signed mobile foreground/background push and thread deep links | Open; enrollment/signing/push credentials/device setup remain human tasks | Mobile/push owners separate offline checks from operator evidence |
 

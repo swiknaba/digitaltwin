@@ -1,0 +1,4 @@
+source "https://rubygems.org"
+
+ruby file: ".ruby-version"
+gem "kirei", "0.10.0"

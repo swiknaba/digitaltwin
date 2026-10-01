@@ -25,6 +25,11 @@ This repository provides application images and local development Compose. The i
 Component contracts live in [kirei/](kirei/README.md), [runtime/](runtime/README.md), [mattermost/](mattermost/README.md), [push-proxy/](push-proxy/README.md), and [mobile/](mobile/README.md).
 Repository automation belongs in [scripts/](scripts/README.md); cross-service automated integration tests belong in [tests/](tests/README.md).
 
-This scaffold contains no running applications or verified image pins yet.
-The Kirei foundation/integration owner adds root `compose.yml` and `.env.example` after validating upstream versions and startup contracts.
+The scaffold includes generated Kirei files, verified upstream artifact identities, and local PostgreSQL/Mattermost dependency Compose.
+See the [foundation validation checkpoint](docs/interfaces/foundation-validation.md) for exact versions, checks, worker briefs, and remaining gates.
+Application process startup and live integration are not yet verified.
 Task 1's live compatibility slice remains a prerequisite for dependent implementation.
+
+Validate local dependency configuration with `docker compose --env-file .env.example config --quiet`.
+Copy `.env.example` to ignored `.env` before local startup. Docker must be running.
+The database initialization script runs only on a new local PostgreSQL volume; changing `.env` does not rotate existing roles.

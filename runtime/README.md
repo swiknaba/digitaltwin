@@ -14,7 +14,8 @@ Herdr and agent CLIs remain upstream dependencies.
 - Provide private Tailnet terminal access; expose no public Runtime SSH port.
 
 [Herdr's official socket documentation](https://herdr.dev/docs/socket-api/) provides `herdr api schema --json` from the installed binary.
-Capture that schema at the selected exact release before implementing adapters.
+The checksum-verified macOS 0.9.3 binary exported the schema now in `contracts/herdr-v0.9.3.schema.json`.
+`tools.lock.yml` records provenance; Linux runtime and real CLI behavior still need validation.
 Documented methods and effective states are candidates for validation, not proof that four CLIs settle reliably in our container.
 See [shared boundaries](../docs/interfaces/service-boundaries.md) for callback, startup, socket, and validation ownership.
 
