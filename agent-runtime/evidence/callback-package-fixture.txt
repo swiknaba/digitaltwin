@@ -1,0 +1,9 @@
+installed codex integration hook to /home/runtime/.codex/herdr-agent-state.sh
+ensured codex hooks at /home/runtime/.codex/hooks.json
+ensured codex config at /home/runtime/.codex/config.toml
+installed claude integration hook to /home/runtime/.claude/hooks/herdr-agent-state.sh
+ensured claude settings at /home/runtime/.claude/settings.json
+installed opencode integration plugin to /home/runtime/.config/opencode/plugins/herdr-agent-state.js
+installed opencode tui integration plugin to /home/runtime/.config/opencode/herdr-tui-session.js
+ensured opencode tui plugin config at /home/runtime/.config/opencode/tui.jsonc
+PASS: backend-owned packaged client, exact callback fields/path/header, accepted/rejected responses, no retry or credential/body output; HTTP fixture only

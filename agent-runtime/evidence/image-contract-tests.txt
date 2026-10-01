@@ -1,0 +1,18 @@
+PASS: deliberately failed first assertion exits nonzero in both shells
+codex-cli 0.160.0
+2.1.287 (Claude Code)
+1.18.34
+0.62.0
+0.3.0
+stat (GNU coreutils) 9.8
+find (GNU findutils) 4.10.0
+grep (GNU grep) 3.12
+sed (GNU sed) 4.9
+diff (GNU diffutils) 3.12
+GNU patch 2.8
+tar (GNU tar) 1.35
+PASS: search/ignore/spaces, GNU text/files, Git/worktree/patch, JSON/CSV/hash, HTTP errors, archives, cleanup
+PASS: offline versions, Linux schema, role shells, tools, live Herdr server
+OPEN: authenticated four-CLI prompt/state/idle, selected Master MCP, callback delivery, Tailnet SSH
+PASS: UID, capabilities, volumes, no public ports
+PASS: real socket from second container and persistent home/workspace/Herdr metadata/Git worktree after restart

@@ -1,8 +1,9 @@
 schema_version: 1
 checked_on: "2026-10-01"
-validation: host_schema_only
+validation: linux_image_offline_passed_live_provider_gates_open
 herdr:
   version: "0.9.3"
+  source_revision: 7b116c05bfda646af39d2524c54e70c751f57ee8
   source: https://github.com/herdrdev/herdr/releases/tag/v0.9.3
   schema_file: contracts/herdr-v0.9.3.schema.json
   schema_sha256: 9e2af207e9aa8183d4aeca5fde9cc48e7909bb40cdbd7cf21608a6d3ea78075b
@@ -14,5 +15,46 @@ herdr:
   macos_arm64:
     url: https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-macos-aarch64
     sha256: 5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157
-# Runtime owner fills exact base/CLI/Wagglebot/Node pins after verification.
-# This is not yet a complete, buildable Runtime dependency manifest.
+base:
+  image: node:22.23.2-alpine3.23
+  index_digest: sha256:72c5815a06aed9a2273aea5628d74d348af57843a7b547af2fe53dd3e4b95261
+  architecture: linux/amd64
+node: "22.23.2"
+npm: "10.9.8"
+ruby:
+  version: "3.4.9"
+  purpose: standalone_backend_callback_client_requires_at_least_3_1
+  note: Kirei_application_Ruby_4_0_7_is_owned_by_backend_image
+packages:
+  distro_lock: apk-packages.lock
+  npm_lock: package-lock.json
+  codex: "0.160.0"
+  claude_code: "2.1.287"
+  opencode: "1.18.34"
+  gemini_cli: "0.62.0"
+  skills: "1.5.23"
+wagglebot:
+  version: "0.3.0"
+  source_revision: d11c200202121563e34b92e28be92de1ed497ce0
+  url: https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.0.tgz
+  sha256: b9adcf0d854b6a7ed338463329e5ec0062adb79c3cbb9189fdf14fffb4b51974
+  install: unmodified_published_bundle_with_locked_skills_dependency
+  upstream_defect: npm_manifest_workspace_dependencies_cannot_be_installed
+runtime:
+  uid: 10001
+  gid: 10001
+  home: /home/runtime
+  workspace: /workspace
+  socket: /run/herdr/herdr.sock
+  socket_mode: "0600"
+  command: herdr server
+  health: /opt/runtime/bin/runtime-health
+  callback_target: with-callback
+  callback_context: kirei-clients
+callback_client:
+  owner: integration-backend
+  source: integration-backend/bin/digitaltwin
+  artifact_sha256: a062e47b3e196256e0ee5a75f63084645835072ac9bf6a9c0d73d41be0dcf7d1
+  source_revision: pending_backend_commit_at_artifact_handoff
+  packaged_path: /usr/local/bin/digitaltwin
+  test_kind: disposable_HTTP_fixture_not_live_backend_delivery
