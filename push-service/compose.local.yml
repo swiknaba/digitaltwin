@@ -1,0 +1,24 @@
+# Component-only disposable check. Integrator owns root Compose.
+services:
+  push-proxy:
+    image: mattermost/mattermost-push-proxy@sha256:eb47e608ad965306ab4052bfeacff74d4148099eb83831c84685bd8b30897ccd
+    platform: linux/amd64
+    command: ["-config", "/mattermost-push-proxy/config/mattermost-push-proxy.json"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ./config/local.json:/mattermost-push-proxy/config/mattermost-push-proxy.json:ro
+    networks: [offline]
+    healthcheck:
+      test: ["CMD-SHELL", "printf 'GET /version HTTP/1.0\\r\\n\\r\\n' | nc -w 2 127.0.0.1 8066 | grep -q '\"version\":\"6.6.0\"'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+networks:
+  offline:
+    internal: true
