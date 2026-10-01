@@ -9,3 +9,13 @@ A browser/app call using WebRTC could avoid a telephone number but requires a vo
 ### Phase 1 acceptance test
 
 From an authorized phone, ask “What's blocked, and what changed since yesterday?” The controller gives a concise spoken answer with project and task names, distinguishes stale data, supports a follow-up question and interruption, and sends the referenced task links to `#master` after the call. A user-requested outbound call provides the same behavior. A caller who fails authentication receives no project details.
+
+### Deferred Controller Convenience: Workflow Thread Creation
+
+Master-created Campfire workflow threads are optional in Phase 0. Include them there only if verified, idempotent creation is straightforward.
+If integration is complex, retain starts in existing verified threads and carry creation into this roadmap.
+
+The later implementation must return a server-verified root identity and validate the selected project room.
+Kirei records the room/thread association before starting the requested coding workflow through the existing service.
+Retries must reconcile uncertain results without creating duplicate threads or workflows. Coding gates remain unchanged.
+This convenience does not block Phase 0 acceptance or become a prerequisite for voice conversation.

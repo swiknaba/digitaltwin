@@ -344,8 +344,14 @@ The owner must use a new thread for a new workflow.
 Later human messages in an activated thread route to that workflow's active phase without another mention.
 The active phase determines whether the writer or reviewer receives the message.
 
-Messages outside an activated thread require an explicit `@worker start` in a new thread root post.
+Ordinary Worker messages outside an activated thread require an explicit `@worker start` in a new thread root post.
 The system does not infer a workflow from an idle thread or an unactivated room message.
+Master start requests can use an existing verified thread in the selected project room.
+Master-created threads are an optional Phase 0 convenience when the fork supports straightforward, verified, idempotent creation.
+Kirei must verify and record the returned project-room/thread association before starting the requested workflow.
+An uncertain creation result requires reconciliation before another creation or workflow start.
+If this integration is complex, keep the existing-thread path and defer creation to the [Phase 1 roadmap](phase-1-voice-controller.md).
+Omitting this convenience does not block Phase 0 acceptance.
 
 The owner explicitly closes a delivered workflow with `@worker finish` in its thread.
 The command stops its Herdr sessions, records the outcome, and archives the session metadata.

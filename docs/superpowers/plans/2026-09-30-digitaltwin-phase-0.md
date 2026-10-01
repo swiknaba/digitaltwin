@@ -33,6 +33,7 @@ The following values and limits come from the spec; all tasks must comply with t
 - Master: configurable `RoleConfig(cli, provider, model, family)` through Herdr and a local MCP bridge; Gemini CLI is the default. No direct provider API call or login through Campfire.
 - Master chat handles operational conversation, status, coordination, and targeted emergency changes. It has no coding review/approval cycle; ordinary coding uses Writer/Reviewer workflows.
 - Master context and operational access are shared across its fleet's rooms. Independent fleets retain separate Master sessions and private runtime/control data.
+- Master-created workflow threads are optional in Phase 0. Keep existing-thread starts available; defer complex creation integration to Phase 1.
 - Memory only manually through `@agent`/base instructions; no cron, no required maintenance after each session.
 - GitHub remains the selected Git host. Headscale/Tailscale remain the selected private access base.
 - One shared Runtime trust domain; do not claim process or project isolation against malicious agents.
@@ -164,6 +165,8 @@ This evidence defines port work, not a claim that changing the adapter is suffic
 - [ ] Test PostgreSQL schema constraints, concurrent message writes, authentication, membership, attachments, and existing unit/system suites.
 - [ ] Add root/reply relationships with same-room validation and foreign keys. Define migration behavior for existing unthreaded messages.
 - [ ] Extend thread routes, bot posting/history, mobile views, pagination, and Turbo/Action Cable updates. Reject replies targeting another room.
+- [ ] Assess optional Master thread creation. Record whether creation returns a verified root identity and supports retry reconciliation with a stable request key.
+- [ ] If creation needs complex integration, defer it to `docs/phase-1-voice-controller.md`. Existing-thread starts remain the required Phase 0 path.
 - [ ] Add authenticated events for subscribed rooms, including ordinary replies. Kirei routes active threads and ignores unactivated messages.
 - [ ] Define signed event payloads with delivery identity, timestamp, verified sender/role, room, post, and root/thread identity.
 - [ ] Keep webhook authentication secrets separate from bot reply credentials. Test invalid signatures, replay, revoked membership, and forged identities.
@@ -322,19 +325,25 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 
 ## Task 9: Master and Local MCP Bridge
 
-**Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/controller/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/controller_spec.rb`.
+**Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/controller/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/controller_spec.rb`; update `docs/phase-1-voice-controller.md` if thread creation is deferred.
 
 **Interfaces:** Master `RoleConfig(cli: String, provider: String, model: String, family: String)` reaches `Sessions.start(workflow_id: nil, generation:, role: controller, config:, repo: nil)` unchanged. MCP tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `finish_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials` receive server-side Actor/Room/Thread context.
 
 Master conversation and targeted emergency operations do not enter the project specification, plan, review, or approval cycle.
 Starting or prompting a coding workflow is coordination; the target workflow retains its own gates.
 Emergency operations use available typed tools. Keep existing destructive/irreversible confirmations; add no emergency-specific approval gate.
+`start_workflow` requires a verified thread in the selected project room.
+If optional creation is enabled, Kirei first creates/reconciles the thread and records its association before calling the same workflow-start service.
+Keep source actor/context verified; preserve normal coding gates. The Master does not infer a target from unrelated room messages.
 
 - [ ] Write `selected_master_config_reaches_sessions_start`: assert controller role, `workflow_id: nil`, `repo: nil`, and unchanged CLI/provider/model/family. Assert another Task 1-validated CLI/provider reaches the same interface unchanged.
 - [ ] Write `room_context_survives_tool_call`, `restart_creates_fresh_session_with_same_config`, `secret_values_never_returned`. Assert restart uses the same config in neutral Runtime home, reconstructs PostgreSQL status, and preserves sender/context checks.
 - [ ] Add `rooms_share_master_context` and `peer_private_context_unavailable`. Preserve source/sender checks while allowing fleet-wide context and operations.
 - [ ] Add `bot_cannot_confirm`, `confirmation_replay_rejected`, `changed_parameters_require_confirmation`, `unconfigured_deployment_tool_rejected`.
 - [ ] Test `master_status_needs_no_workflow` and `master_emergency_operation_needs_no_coding_cycle`. Ordinary coding still requires approved workflow revisions.
+- [ ] Test `master_starts_in_verified_existing_thread` independently of optional thread creation.
+- [ ] If Task 1 confirms straightforward creation, test verified association, duplicate requests, and uncertain-result reconciliation before enabling it.
+- [ ] Otherwise record deferral and keep existing-thread starts. Do not block Phase 0 acceptance on automatic thread creation.
 - [ ] Run `bundle exec rspec spec/domains/controller_spec.rb`; expect missing Master/MCP server.
 - [ ] Implement the stdio MCP bridge against the same application services, with no raw shell or credential-read tools.
 - [ ] Route MCP `send_prompt` through the same review lock and queue as chat. Test that a Master request cannot bypass Writer exclusion.
