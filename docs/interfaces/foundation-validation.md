@@ -22,23 +22,40 @@ Review complete licenses/notices, bundled plugins, dependencies, and outputs bef
 ## Local Capability and Checks
 
 - Docker Compose `5.5.1` and registry inspection work without a running Docker daemon.
-- `docker info` cannot connect to the local daemon. No containers or provider sessions are running from this task.
+- Docker Desktop started normally for the live follow-up below. No installation or security permission changes were needed.
 - Root Compose currently starts only local PostgreSQL and Mattermost dependencies once Docker is available.
 - `docker compose --env-file .env.example config --quiet` passed without starting containers.
 - `sh -n scripts/init-postgres.sh` and generated Ruby syntax checks passed.
 - The local PostgreSQL initializer creates independent application roles/databases and removes public connection privileges on them.
-  This script has not executed against PostgreSQL; verify both denied cross-database connections before claiming isolation.
+  Its live follow-up verified both own-database connections and both denied cross-database connections.
 - Public sample passwords in `.env.example` are disposable local examples. No production credentials were created or used.
 
 Kirei startup commands, callbacks, listener, worker, Runtime image, and push configuration are component implementation work.
 Compose deliberately has no dummy substitutes for those applications.
+
+### Live Follow-up During Foundation Review
+
+Docker Engine `29.8.0` became available after starting the existing Docker Desktop normally.
+The isolated `digitaltwin-foundation-check` project used approved public sample configuration, disposable volumes, and random loopback ports.
+
+- PostgreSQL `18.6` initialized and became healthy.
+- Kirei and Mattermost roles each connected to their own database.
+- Both cross-database connections failed with `permission denied for database` and missing CONNECT privileges.
+- Mattermost Team Edition `11.11.1` started under AMD64 emulation on the macOS ARM64 host and became healthy.
+- `GET /api/v4/system/ping` returned HTTP 200 with `status: OK` and the expected version header.
+- Four real-PostgreSQL migration-helper regressions passed: integer migrate/status, repeated migrate, rollback through zero, invalid steps, and numbered generation.
+  These focused tests used local Ruby `4.0.5` with a fixture bootstrap; required Ruby `4.0.7` application boot remains open.
+- The migration helper was corrected from the upstream timestamp assumption to the plan's IntegerMigrator/`schema_info.version` convention.
+
+The disposable project and its volumes were removed after checks. Docker remains available for component workers.
+No provider sessions, production access, or paid calls were created. Authenticated Mattermost bot/event behavior was not tested by the health check.
 
 ## Independent Work and Blocking Gates
 
 Build recipes, dependency selection, upstream configuration, artifact audits, offline tests, and mobile CI preparation can proceed now.
 Missing mobile enrollment/signing/device setup does not block server implementation.
 
-The stopped Docker daemon blocks local application image builds, dependency startup, and database-role verification here.
+Docker now supports local image builds and dependency startup. Full Kirei/Runtime builds and authenticated interface checks remain component work.
 The following live evidence still gates dependent implementation under the existing plan:
 
 1. Authenticated Mattermost bot/events, verified sender/thread/membership, and reconnect recovery.

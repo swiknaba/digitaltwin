@@ -64,16 +64,24 @@ namespace :db do
       db_name = "digitaltwin_#{env}"
       reset_memoized_class_level_instance_vars(Digitaltwin)
       db = Sequel.connect(Digitaltwin.default_db_url)
-      Sequel::Migrator.run(db, File.join(Digitaltwin.root, "db/migrate"))
-      current_version = db[:schema_migrations].order(:filename).last[:filename].to_i
+      current_version = Sequel::IntegerMigrator.run(db, File.join(Digitaltwin.root, "db/migrate"))
       puts "Migrated #{db_name} to version #{current_version}!"
     end
 
     Rake::Task["db:annotate"].invoke
   end
 
+  desc "Report the current numbered migration version"
+  task :status do
+    db = Digitaltwin.raw_db_connection
+    puts "Current migration version: #{integer_migration_version(db)}"
+  end
+
   desc "Rollback the last migration"
   task :rollback do
+    steps = Integer(ENV.fetch("STEPS", "1"), 10)
+    raise ArgumentError, "STEPS must be positive" unless steps.positive?
+
     envs = ENV.key?("RACK_ENV") ? [ENV.fetch("RACK_ENV")] : %w[development test]
     Sequel.extension(:migration)
     envs.each do |env|
@@ -82,16 +90,15 @@ namespace :db do
       reset_memoized_class_level_instance_vars(Digitaltwin)
       db = Sequel.connect(Digitaltwin.default_db_url)
 
-      steps = (ENV["STEPS"] || 1).to_i + 1
-      versions = db[:schema_migrations].order(:filename).all
+      current_version = integer_migration_version(db)
 
-      if versions[-steps].nil?
+      if current_version.zero?
         puts "No more migrations to rollback"
       else
-        target_version = versions[-steps][:filename].to_i
+        target_version = [current_version - steps, 0].max
 
-        Sequel::Migrator.run(db, File.join(Digitaltwin.root, "db/migrate"), target: target_version)
-        puts "Rolled back #{db_name} #{steps} steps to version #{target_version}"
+        Sequel::IntegerMigrator.run(db, File.join(Digitaltwin.root, "db/migrate"), target: target_version)
+        puts "Rolled back #{db_name} #{current_version - target_version} steps to version #{target_version}"
       end
     end
   end
@@ -104,17 +111,18 @@ namespace :db do
   desc "Generate a new migration file"
   task :migration, [:name] do |_t, args|
     require "fileutils"
-    require "time"
 
     # Ensure the migrations directory exists
     migrations_dir = File.join(Digitaltwin.root, "db/migrate")
     FileUtils.mkdir_p(migrations_dir)
 
-    # Generate the migration number
-    migration_number = Time.now.utc.strftime("%Y%m%d%H%M%S")
+    # The plan uses contiguous numbered migrations, tracked by schema_info.
+    versions = Dir.children(migrations_dir).filter_map { |name| name[/\A(\d+)_.*\.rb\z/, 1]&.to_i }
+    migration_number = (versions.max.to_i + 1).to_s.rjust(3, "0")
 
     # Sanitize and format the migration name
     formatted_name = args[:name].to_s.gsub(/([a-z])([A-Z])/, '\1_\2').downcase
+    raise ArgumentError, "Migration name must contain only lowercase letters, digits, and underscores" unless formatted_name.match?(/\A[a-z][a-z0-9_]*\z/)
 
     # Combine them to create the filename
     filename = "#{migration_number}_#{formatted_name}.rb"
@@ -197,6 +205,10 @@ namespace :db do
   end
 end
 
+def integer_migration_version(db)
+  db.table_exists?(:schema_info) ? db[:schema_info].get(:version).to_i : 0
+end
+
 def reset_memoized_class_level_instance_vars(app)
   %i[
     @default_db_name
@@ -220,4 +232,3 @@ def format_schema_comments(table_name, schema)
   end
   lines.join("\n") + "\n#"
 end
-

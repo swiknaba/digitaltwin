@@ -26,3 +26,14 @@ See `bootstrap.lock.json` and the [foundation checkpoint](../docs/interfaces/fou
 Implement Tasks 2–5 before dependent workflow/review/Master/delivery work in Tasks 7–11.
 The integrator reviews Compose/root/shared-contract changes. Runtime owns image provisioning, not this application's sessions migration or adapter.
 Keep component tests in `spec/`; cross-deployable acceptance belongs in root `tests/`.
+
+## Numbered Migrations
+
+Use contiguous `001_jobs.rb` through `006_confirmations.rb` and subsequent numbered files.
+Tasks use Sequel's IntegerMigrator and `schema_info.version`; no timestamp migration metadata is required.
+`db:migration[name]` generates the next three-digit prefix; `db:status` reports the current version.
+`db:rollback` defaults to one step. Positive `STEPS` values can roll back several versions, including the last migration to zero.
+
+The focused regression suite is `spec/integration/db_tasks_spec.rb`.
+Set `MIGRATION_TEST_DATABASE_URL` to a disposable database named `digitaltwin_migration_test` and run it through RSpec.
+It exercises the actual Rake helper against PostgreSQL with a fixture bootstrap; it does not claim full application boot.

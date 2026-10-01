@@ -14,4 +14,4 @@ The integration owner owns this folder. Component workers propose shared script 
 
 `init-postgres.sh` runs inside PostgreSQL on first volume initialization.
 It consumes local application passwords from environment and creates separate Kirei/Mattermost roles and databases.
-It has passed shell syntax checks; database execution and denied cross-database connections remain integration checks.
+Live disposable PostgreSQL checks verified initialization, own-database connections, and both denied cross-database connections.

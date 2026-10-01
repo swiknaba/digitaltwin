@@ -63,3 +63,10 @@
 - Resolve official Team Edition 11.11.1, push proxy 6.6.0, PostgreSQL 18.6 Alpine, Ruby 4.0.7 Alpine, and mobile release-2.44 identities.
 - Add digest-pinned local PostgreSQL/Mattermost Compose, separate-role initializer, safe environment examples, and detailed worker/check handoffs.
 - Check Compose configuration, initializer/generated-source syntax, manifest records, schema checksum, and document consistency. Docker daemon is stopped; no applications or provider sessions started.
+
+## 2026-10-01 — Live foundation checks and numbered migration correction
+
+- Start existing Docker Desktop normally and verify disposable PostgreSQL/Mattermost startup, health, database-role connection separation, and Mattermost HTTP ping/version.
+- Correct the generated timestamp-based migration tasks to IntegerMigrator/schema_info, positive rollback counts through version zero, and contiguous numbered generation. Preserve the planned 001–006 naming.
+- Add four focused RSpec regressions against disposable PostgreSQL, covering migrate/status/idempotency, rollback, invalid steps, and generation. Record local Ruby 4.0.5 fixture execution separately from required Ruby 4.0.7 application startup.
+- Remove only the disposable Compose project's resources after checks; leave Docker available. No provider sessions, production credentials/access, or paid calls were created.
