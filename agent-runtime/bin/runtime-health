@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+[ "$(id -u)" = 10001 ]
+[ -S "$HERDR_SOCKET_PATH" ]
+herdr status --json | jq -e '.server.running == true and .server.version == "0.9.3" and .server.protocol == 22 and .server.compatible == true' >/dev/null

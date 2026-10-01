@@ -1,0 +1,12 @@
+{
+  "name": "digitaltwin-agent-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "dependencies": {
+    "@openai/codex": "0.160.0",
+    "@anthropic-ai/claude-code": "2.1.287",
+    "opencode-ai": "1.18.34",
+    "@google/gemini-cli": "0.62.0",
+    "skills": "1.5.23"
+  }
+}

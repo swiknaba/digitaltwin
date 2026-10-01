@@ -1,0 +1,36 @@
+#!/bin/bash
+set -euo pipefail
+[[ $(id -u) == 10001 ]]
+[[ $(node --version) == v22.23.2 ]]
+[[ $(herdr --version) == 'herdr 0.9.3' ]]
+for command in codex claude opencode gemini wagglebot; do
+  timeout 45 "$command" --version
+done
+node -e 'const {createRequire}=require("node:module"); const r=createRequire("/opt/wagglebot/dist/index.js"); if (r("skills/package.json").version !== "1.5.23") process.exit(1)'
+for command in coreutils find grep sed diff patch tar; do
+  if [[ $command == coreutils ]]; then command=stat; fi
+  "$command" --version | sed -n '1p'
+done
+scratch=$(mktemp -d)
+trap 'rm -rf -- "$scratch"' EXIT
+export RUNTIME_SMOKE_DIR="$scratch"
+herdr api schema --json > "$scratch/schema.json"
+python3 - <<'PY'
+import json,os
+from pathlib import Path
+assert json.loads(Path(os.environ['RUNTIME_SMOKE_DIR'],'schema.json').read_text()) == json.loads(Path('/opt/runtime/contracts/herdr-v0.9.3.schema.json').read_text())
+PY
+for role in writer reviewer; do
+  RUNTIME_ROLE="$role" bash -lc 'test "$(command -v rg)" = /usr/bin/rg; test "$(command -v python3)" = /usr/bin/python3; test -x "$(command -v codex)"; test -x "$(command -v claude)"'
+done
+python3 /opt/runtime/bin/tool-smoke.py
+# Herdr lifecycle/socket check is distinct from any provider authentication.
+if [[ ${1:-} == --server ]]; then
+  /opt/runtime/bin/runtime-health
+  [[ $(stat -c %a "$HERDR_SOCKET_PATH") == 600 ]]
+  [[ $(stat -c %u "$HERDR_SOCKET_PATH") == 10001 ]]
+  herdr api snapshot > "$scratch/snapshot.json"
+  jq -e '.result.snapshot.protocol == 22 and .result.snapshot.version == "0.9.3"' "$scratch/snapshot.json" >/dev/null
+fi
+printf 'PASS: offline versions, Linux schema, role shells, tools%s\n' "${1:+, live Herdr server}"
+printf 'OPEN: authenticated four-CLI prompt/state/idle, selected Master MCP, callback delivery, Tailnet SSH\n'
