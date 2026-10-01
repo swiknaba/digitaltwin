@@ -10,6 +10,6 @@ A self-hosted remote AI team that can interview its owner, build code and resear
 
 The Digitaltwin runtime image uses [Wagglebot](https://github.com/swiknaba/wagglebot) for agent instructions, skills, MCP settings, and project memory.
 
-The plan includes a maintained [Campfire Rails fork](https://github.com/basecamp/once-campfire) under `apps/campfire/`. It uses the same PostgreSQL server with a separate database and role. Campfire retains its Redis dependencies pending a separate backend decision.
+The plan includes a maintained [Campfire Rails fork](https://github.com/basecamp/once-campfire) under `apps/campfire/`. It uses the same PostgreSQL server with a separate database and role. A Campfire-associated Redis sidecar supplies jobs, live messaging, caching, and Kredis. Worker replies use Kirei's durable outbox with session-bound thread routing.
 
 This repository provides application images and local development Compose. The infrastructure repository or hosting platform supplies production services and orchestration.

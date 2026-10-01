@@ -114,7 +114,11 @@ Campfire uses the same PostgreSQL server, with a separate database and role.
 Each application owns its migrations and cannot read or modify the other's tables.
 Campfire's port replaces SQLite connection settings, FTS5 search, and database-file backup hooks.
 Validate schema creation, search behavior, concurrent writes, attachments, and restore against PostgreSQL.
-Campfire keeps its upstream Redis/Resque jobs, Action Cable, cache, and Kredis dependencies pending a separate backend decision.
+Campfire keeps its upstream Redis/Resque jobs, Action Cable, cache, and Kredis dependencies.
+A Campfire-associated Redis sidecar container supplies those services over private service connectivity.
+The fork uses the configured Redis service address instead of starting Redis inside the Rails container.
+Infrastructure owns its production lifecycle, health check, persistent data volume, and restart policy.
+Redis restart reconciliation must not mark uncertain jobs or external effects as complete.
 Attachments remain in Campfire's persistent storage volume.
 
 ## 5. Service architecture
@@ -129,12 +133,13 @@ flowchart TD
     end
     Web --> Database
     Campfire --> CampfireDB
-    Campfire --> Redis["Campfire Redis dependencies"]
+    Campfire --> Redis["Campfire Redis sidecar"]
     Worker["Kirei worker service"] --> Database
     Worker --> Runtime["Herdr and agent CLIs"]
     Runtime --> Repositories["Persistent Git workspaces"]
     Runtime --> GitHub["GitHub"]
-    Runtime --> Campfire
+    Runtime --> Web
+    Worker --> Campfire
     Tailnet["Tailscale sidecar"] --> Runtime
     Headscale["Headscale"] --> Tailnet
 ```
@@ -287,8 +292,13 @@ The exact account handles remain configurable for each deployment.
 The default handles are `agent` and `worker` when those names are available.
 An operator selects unique handles when multiple fleets use one Campfire instance.
 
-Both bots have Campfire credentials and post their own messages.
-The system does not require a separate reply relay command.
+Kirei holds the Campfire credentials and posts under the configured Agent or Worker bot identity.
+Writer and Reviewer send interview questions and progress through a session-bound callback to Kirei's durable outbox.
+The callback uses the Runtime's Digitaltwin client and private Kirei endpoint.
+Kirei derives the room, thread, active role, and bot identity from the verified session mapping.
+Agents cannot choose another workflow destination through callback parameters.
+Record the source session/generation and deduplicate callback retries before posting.
+An uncertain Campfire post remains subject to reconciliation.
 
 Each worker response identifies the active role.
 For example, a response can label itself as writer or reviewer.
@@ -607,7 +617,7 @@ It never stores the encryption key in the backup bucket.
 Backups include:
 
 - Both Kirei and Campfire PostgreSQL databases, with their independent roles and migration state.
-- Campfire attachments and application configuration.
+- Campfire attachments, Redis persistent data, and application configuration.
 - Herdr configuration and session metadata.
 - Digitaltwin configuration and audit data.
 - Headscale state.

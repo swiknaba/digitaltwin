@@ -16,3 +16,5 @@
 - Planned a maintained Campfire Rails app with thread UI/API and authenticated events; added PostgreSQL search/schema/backup port and upstream maintenance checks.
 - Defined separate Campfire and Kirei databases/roles on one PostgreSQL server, three application images, and retained Campfire Redis dependencies pending a backend decision.
 - Clarified that Master operational chat and targeted emergency changes have no coding review cycle; ordinary project workflows retain their gates.
+- Recorded the approved Campfire Redis sidecar, private service connectivity, persistence, and restart/restore checks.
+- Routed Worker interview/progress replies through a session-bound Kirei callback and durable outbox while retaining visible bot/role identity.
