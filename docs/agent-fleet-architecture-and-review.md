@@ -1,7 +1,5 @@
 # Phase 0 — Agent fleet specification
 
-Status: Draft for owner review
-
 This document records the accepted Phase 0 decisions from the design interview.
 It also lists the remaining decisions that the implementation plan must resolve.
 [Phase 1 adds a voice interface to the controller](phase-1-voice-controller.md).
@@ -55,6 +53,7 @@ Phase 0 excludes:
 
 The initial operator environment uses Ubuntu 24.04 LTS on AMD64.
 The same application images can run on a compatible hosted container service.
+This host choice does not determine the container base images.
 
 Digitaltwin does not enforce a minimum server size.
 The operator measures resource use and changes hosting capacity when necessary.
@@ -76,6 +75,7 @@ The repository includes a Docker Compose file for local development and integrat
 That file can start the required local dependencies with the application images.
 
 The application repository pins runtime tools and packages to exact versions in checked-in manifests.
+The Kirei application pins Ruby 4.0.7.
 The infrastructure layer selects production application images by OCI digest.
 The operator upgrades those versions through reviewed manifest changes and rebuilt images.
 
@@ -84,12 +84,16 @@ This includes production Compose files, networks, volumes, routing, restart poli
 
 An operator can supply Campfire as an existing hosted service.
 If the operator deploys Campfire, the infrastructure layer uses its official image.
+Prefer an Alpine-compatible Campfire image when the official image supports it.
 
 The application provides portable OCI images and environment configuration.
 The images can run through Docker Compose, AWS ECS, or another compatible platform.
 
 Phase 0 delivers a Kirei application image and an agent runtime image.
 Campfire, PostgreSQL, Headscale, Tailscale networking, and S3 are external integration services.
+Prefer Alpine for the Kirei image when its pinned dependencies pass runtime checks.
+Select the agent runtime base after validating Herdr and all required CLIs.
+Use Ubuntu for an image only when a verified dependency or runtime need requires it.
 
 The Kirei control plane is a modular monolith.
 One application image runs as separate web and worker services.
@@ -98,7 +102,10 @@ An operator-supplied PostgreSQL service stores control state and durable jobs.
 Kirei implements a jobs table and worker loop with short [`FOR UPDATE SKIP LOCKED`](https://www.postgresql.org/docs/current/sql-select.html) claims.
 Workers use bounded retries, idempotency keys, leases, and expired-lease recovery.
 Notifications can wake a worker, but job rows remain the durable source of truth.
-The design does not require a separate queue service for Phase 0.
+The worker dispatches Herdr work, reconciles uncertain effects, and sends outbox messages outside webhook requests.
+It does not wait for an entire interactive agent session before accepting the next job.
+Phase 0 requires neither Sidekiq nor Redis.
+An external effect with an unknown result stays blocked for reconciliation unless its idempotency is proven.
 
 ## 5. Service architecture
 
@@ -367,6 +374,10 @@ An approval records these fields:
 The control plane permits the next gate only when the required approval matches the current artifact commit.
 Any artifact change invalidates its earlier approval.
 The human approval gate accepts only a commit with an approving reviewer verdict.
+Specifications, plans, and reviews are Markdown documents in the workflow Git repository.
+The control plane checks the expected document path in the reported commit tree.
+An implementation review targets the entire reported commit tree.
+It also checks the clean worktree and review diff before accepting the revision.
 
 The contextual approval command is `@worker approve`.
 The command is unambiguous because the verified thread identifies one workflow.
@@ -424,18 +435,21 @@ The worker asks an authorized human in Campfire how to continue.
 
 ## 17. Master controller
 
-`@agent` routes messages from any room to one logical Gemini controller.
+`@agent` routes messages from any room to one logical Master controller.
 The controller receives the source room context with each request.
 
 The controller is not bound to one repository.
 It does not use the project specification and plan gates.
 
-The controller runs Gemini CLI through Herdr.
-It does not call the Gemini model API directly.
+The Master uses `RoleConfig(cli, provider, model, family)`.
+Gemini CLI is the default; the selected CLI runs through Herdr.
+The controller does not call provider model APIs directly.
+The operator may select another supported CLI after its Herdr and MCP contracts pass validation.
+Its session has no project workflow or repository binding and starts in the neutral Runtime home.
 
-The controller uses typed Digitaltwin operations through a [local MCP bridge](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md).
+The controller uses typed Digitaltwin operations through a local MCP bridge.
 The bridge uses the same Kirei application codebase.
-The bridge exposes a small set of tools to Gemini CLI and calls Kirei application operations.
+The bridge exposes a small set of tools to the configured CLI and calls Kirei application operations.
 Kirei validates arguments, sender authority, workflow state, and required confirmations.
 Its operations include:
 
@@ -453,7 +467,7 @@ The controller can perform broad fleet operations.
 It requests a second human confirmation before a destructive or irreversible action.
 It never displays secret values.
 
-After a restart, the system starts a fresh Gemini controller session.
+After a restart, the system starts a fresh session with the same Master configuration.
 The controller reconstructs current state from PostgreSQL and typed operations.
 
 ## 18. Human and peer authorization
@@ -580,6 +594,8 @@ Digitaltwin does not schedule recurring restore tests.
 ## 24. Monitoring and recovery
 
 Each image supplies a health-check contract.
+Kirei reuses its generated `/livez` and `/readyz` routes.
+`/readyz` checks database connectivity; startup validates migrations separately.
 The infrastructure layer defines automatic restart policies and bounded log storage.
 
 The infrastructure layer reports two consecutive backup failures through its Campfire webhook.
@@ -603,7 +619,7 @@ Phase 0 is acceptable when all criteria in this section pass.
 10. The public internet cannot connect directly to the runtime SSH port.
 11. `@agent` messages from any room reach the master controller with source room context.
 12. `@worker start` creates fresh writer and reviewer sessions for the mapped repository.
-13. A second start request requires confirmation when the earlier session actively works.
+13. A second start in an active thread is rejected without creating sessions; a new thread starts fresh sessions.
 14. A room slug maps to the expected repository path under the configured workspace root.
 15. A missing repository offers clone, private creation, and stop choices.
 16. The chat flow and shell command use the same enrollment service.
@@ -617,7 +633,7 @@ Phase 0 is acceptable when all criteria in this section pass.
 24. Three unsuccessful rounds at one gate block the workflow and request human direction.
 25. The final workflow uses one branch and one pull request.
 26. The application does not merge the pull request without a direct conversational instruction.
-27. A master restart creates a fresh Gemini session and restores status from durable state.
+27. A master restart creates a fresh session with the selected configuration and restores status from durable state.
 28. A simulated peer bot completes a handoff through only Campfire and Git.
 29. An encrypted backup restores all included services without restoring excluded CLI credentials.
 30. The owner can complete an agent interview from a mobile Campfire client.
@@ -631,7 +647,7 @@ The implementation plan must include these validation steps:
 
 1. Validate Herdr socket methods and state reporting against the pinned Herdr release.
 2. Validate the writer idle handshake with each supported agent CLI.
-3. Validate Gemini CLI startup and MCP tool calls through Herdr.
+3. Validate startup and MCP tool calls through Herdr for the selected Master CLI.
 
 ## 27. Superseded decisions
 
