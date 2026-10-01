@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Verify pinned official/derived image files; emit hashes, never file bodies."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import tarfile
+import uuid
+
+ROOT = Path(__file__).resolve().parents[1]
+LOCK = json.loads((ROOT / 'artifact.lock.json').read_text())
+OFFICIAL = LOCK['image'] + '@' + LOCK['linux_amd64_digest']
+
+
+def inspect_image(image):
+    config = json.loads(subprocess.check_output(['docker', 'image', 'inspect', image]))[0]
+    name = 'dt-chat-audit-' + uuid.uuid4().hex[:12]
+    subprocess.run(['docker', 'create', '--platform', 'linux/amd64', '--name', name, image], check=True, stdout=subprocess.DEVNULL)
+    hashes, plugins, licenses, uid = {}, [], {}, None
+    try:
+        process = subprocess.Popen(['docker', 'export', name], stdout=subprocess.PIPE)
+        with tarfile.open(fileobj=process.stdout, mode='r|') as archive:
+            for entry in archive:
+                path = entry.name.lstrip('./')
+                if path.startswith(('mattermost/prepackaged_plugins/', 'mattermost/plugins/', 'mattermost/client/plugins/')) and entry.isfile():
+                    plugins.append(path)
+                if ('LICENSE' in path or 'NOTICE' in path) and entry.isfile():
+                    h = hashlib.sha256()
+                    stream = archive.extractfile(entry)
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                        h.update(chunk)
+                    licenses[path] = h.hexdigest()
+                if path in ('mattermost/bin/mattermost', 'mattermost/bin/mmctl', 'mattermost/MIT-COMPILED-LICENSE.md', 'mattermost/NOTICE.txt'):
+                    if path in licenses:
+                        hashes[path] = licenses[path]
+                    else:
+                        h = hashlib.sha256()
+                        stream = archive.extractfile(entry)
+                        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                            h.update(chunk)
+                        hashes[path] = h.hexdigest()
+                if path == 'etc/passwd':
+                    lines = archive.extractfile(entry).read().decode().splitlines()
+                    uid = next(line.split(':')[2:4] for line in lines if line.startswith('mattermost:'))
+        if process.wait() != 0:
+            raise RuntimeError('docker export failed')
+    finally:
+        subprocess.run(['docker', 'rm', '-v', name], check=True, stdout=subprocess.DEVNULL)
+    if len(hashes) != 4:
+        raise RuntimeError('missing compiled binary, mmctl, license or notices')
+    version = subprocess.check_output(['docker', 'run', '--rm', '--platform', 'linux/amd64', '--entrypoint', '/mattermost/bin/mattermost', image, 'version'], text=True)
+    if 'Version: 11.11.1' not in version or LOCK['source_commit'] not in version or 'Build Enterprise Ready: false' not in version:
+        raise RuntimeError('unexpected build identity')
+    if config['Config']['User'] != 'mattermost':
+        raise RuntimeError('expected non-root image user')
+    return {'image_id': config['Id'], 'user': config['Config']['User'], 'uid_gid': uid,
+            'healthcheck': config['Config']['Healthcheck'], 'version': version.strip().splitlines(),
+            'sha256': hashes, 'plugin_files': plugins, 'notice_license_file_count': len(licenses),
+            'notice_inventory_sha256': hashlib.sha256(json.dumps(licenses, sort_keys=True).encode()).hexdigest(),
+            'filesystem_layer_count': len(config['RootFS']['Layers'])}
+
+
+def check_saved_layers(image):
+    config = json.loads(subprocess.check_output(['docker', 'image', 'inspect', image]))[0]
+    layer_ids = {value.split(':', 1)[1] for value in config['RootFS']['Layers']}
+    process = subprocess.Popen(['docker', 'save', image], stdout=subprocess.PIPE)
+    layer_count, file_count, forbidden = 0, 0, []
+    try:
+        with tarfile.open(fileobj=process.stdout, mode='r|') as saved:
+            for entry in saved:
+                if entry.isfile() and (entry.name.endswith('.tar') or entry.name.rsplit('/', 1)[-1] in layer_ids):
+                    layer_count += 1
+                    with tarfile.open(fileobj=saved.extractfile(entry), mode='r|') as layer:
+                        for member in layer:
+                            file_count += 1
+                            path = member.name.lstrip('./')
+                            if path.startswith(('mattermost/prepackaged_plugins/', 'mattermost/plugins/', 'mattermost/client/plugins/')) and member.isfile():
+                                forbidden.append(path)
+        if process.wait() != 0 or forbidden or layer_count != len(layer_ids):
+            raise RuntimeError('saved image contains forbidden plugins or unreadable layers')
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait()
+    return {'layers_scanned': layer_count, 'entries_scanned': file_count, 'plugin_files': forbidden}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--derived-image', required=True)
+    args = parser.parse_args()
+    official = inspect_image(OFFICIAL)
+    derived = inspect_image(args.derived_image)
+    if official['sha256'] != derived['sha256']:
+        raise RuntimeError('core binary or legal notice changed')
+    if derived['plugin_files']:
+        raise RuntimeError('derived filesystem still contains plugins')
+    if official['notice_inventory_sha256'] != derived['notice_inventory_sha256']:
+        raise RuntimeError('legal notice inventory changed')
+    layers = check_saved_layers(args.derived_image)
+    print(json.dumps({'official': official, 'derived': derived, 'saved_layer_audit': layers,
+                      'result': 'core_and_notices_unchanged_all_plugin_files_removed',
+                      'transitive_license_audit': 'open'}, indent=2))
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,24 @@
+{
+  "kind": "live_disposable_unauthenticated",
+  "authenticated_chat": "not_tested",
+  "message_attachment_relationship_restore": "not_tested",
+  "checks": [
+    "native_mmctl_health",
+    "public_ping_version",
+    "protected_rest_401",
+    "all_plugin_settings_disabled",
+    "restart_persistent_volumes",
+    "quiesced_empty_database_config_data_restore_to_fresh_volumes"
+  ],
+  "uid_gid": [
+    2000,
+    2000
+  ],
+  "empty_database_counts": {
+    "users": 0,
+    "posts": 0,
+    "fileinfo": 0
+  },
+  "image_id": "sha256:406afb9b77c8e8f2058e18ffd4a823ad15888ee115b759201cbb2fb366a9b008",
+  "checked_on": "2026-10-01"
+}
