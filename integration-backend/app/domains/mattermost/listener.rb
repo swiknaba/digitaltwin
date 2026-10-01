@@ -62,6 +62,9 @@ module Domains
                 Health.touch("chat-listener")
               end
             end
+          rescue Reconcile::RecoveryRequired => error
+            warn error.message
+            Async::Task.current.sleep(30)
           rescue Client::Error, IOError, Async::TimeoutError, SystemCallError, JSON::ParserError
             warn "Mattermost listener disconnected; reconnecting with durable backfill"
             Async::Task.current.sleep(delay)

@@ -18,18 +18,25 @@ Only `integration-backend/` changed. No shared checkout switching, root edits, p
 - Pure diversity, exact revision approval, and settled-state policy; live workflow/session dispatch remains closed.
 
 `bin/check` passed on Ruby 4.0.7 `x86_64-linux-musl` under Docker Desktop AMD64 emulation:
-58 component examples, 4 separate real-PostgreSQL migration-helper examples, 56 files through Layout/Lint/Security, and strict shared-entity static typing.
+62 component examples, 4 separate real-PostgreSQL migration-helper examples, 57 files through Layout/Lint/Security, and strict shared-entity static typing.
 PostgreSQL: pinned `18.6-alpine`, unique disposable network/database/container; no other worker containers touched.
 The actual ARM64 non-root web and worker roles started and passed their own health commands.
 The actual Falcon network test also ran inside the AMD64 component suite.
 Native `liburing` was added after the first image exposed a missing event-selector library.
 Ruby's upstream IO::Buffer experimental warning remains visible; it does not fail the checks.
 
+## Independent review corrections
+
+History recovery quarantines permanently rejected items (including local bot posts and malformed/forged entries) in an idempotent audit record. Transient fetch failures leave the channel checkpoint unchanged and reprocessing remains inbox/job-idempotent.
+The pinned positive-since SQL caps unordered results at 1000: a response at that cap fails closed before processing or checkpoint advancement, with an operator recovery error. A 1010-post synthetic backlog returning the upstream 1000-post cap is covered; no complete large-backlog recovery is claimed.
+Checkpoints use accepted history-snapshot revisions, never later per-post REST refetch revisions. A concurrent edit/refetch and missed intervening post/reconnect regression passes.
+These are offline transport regressions on real PostgreSQL, not authenticated reconnect evidence. Frozen callback bytes are unchanged.
+
 ## Typing evidence
 
 `bundle exec spoom srb tc` fails; it is not a completion pass.
 With identical current locked dependencies, the exact scaffold source produces 104 errors: 98 dependency-gem RBI errors and 6 framework-source errors.
-This branch produces 150 errors: the same 98 dependency-gem RBI errors and 52 backend-source errors.
+The initial implementation at `81d5d5c` produces 150 errors: the same 98 dependency-gem RBI errors and 52 backend-source errors.
 The 46 additional diagnostics reference unresolved Sequel/Async/Protocol/Kirei constants or inherited framework methods/classes.
 No errors were suppressed or removed from the whole-project configuration.
 `bin/typecheck-contracts` directly checks the strict shared entities and verified-delivery contract and passes.
