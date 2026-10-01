@@ -46,7 +46,7 @@ mobile-apps/bin/check upstream
 (cd mobile-apps/upstream && npm run check)
 ```
 
-`check` runs six wrapper tests when pinned source exists; the preparation test
+`check` runs thirteen component tests when pinned source exists; the preparation test
 skips when it has not been fetched. It clones only this pinned public checkout
 into a disposable directory. `fetch` refuses a dirty or wrong revision checkout;
 it never resets operator work. Prepared checkouts use `verify-prepared`, while
@@ -92,7 +92,8 @@ The exact output filename is determined by the successful native runner.
 No native artifacts were produced on the current host.
 
 After inspecting an artifact, `bin/package-unsigned <artifact>` checks that it
-is unsigned using `apksigner` or `codesign`, and collects it with unmodified
+has no APK signature structures using strict ZIP validation, or is an unsigned
+iOS app according to `codesign`, and collects it with unmodified
 upstream LICENSE/NOTICE, input/patch hashes and an explicit open license/device
 gate into ignored `dist/`. It rejects signing files and symlinks. This collector
 is prepared but unverified with a native artifact. It performs no upload.

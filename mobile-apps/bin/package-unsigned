@@ -7,6 +7,8 @@ import subprocess
 import sys
 import zipfile
 
+from unsigned_apk import assert_unsigned_apk
+
 root = Path(__file__).resolve().parents[1]
 if len(sys.argv) != 2:
     sys.exit('Usage: package-unsigned path/to/unsigned.apk|simulator.app')
@@ -15,11 +17,10 @@ artifact = requested.resolve()
 if requested.is_symlink() or not artifact.is_relative_to(root):
     sys.exit('Artifact must be inside this mobile component, without symlinks.')
 if artifact.suffix == '.apk' and artifact.is_file():
-    result = subprocess.run(['apksigner', 'verify', str(artifact)], capture_output=True)
-    if result.returncode == 0:
-        sys.exit('Signed APK refused by the unsigned packaging path.')
-    if b'DOES NOT VERIFY' not in result.stderr and b'Missing META-INF/MANIFEST.MF' not in result.stderr:
-        sys.exit('APK signature check did not establish unsigned status.')
+    try:
+        assert_unsigned_apk(artifact)
+    except ValueError as error:
+        sys.exit('APK signature absence not established: ' + str(error))
     files = [artifact]
 elif artifact.suffix == '.app' and artifact.is_dir():
     result = subprocess.run(['codesign', '--verify', str(artifact)], capture_output=True)

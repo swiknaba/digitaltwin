@@ -132,7 +132,7 @@ def prepare(source, configuration):
     (source / 'android/app/google-services.json').unlink(missing_ok=True)
     state = source / '.digitaltwin/prepared.json'
     state.parent.mkdir(parents=True, exist_ok=True)
-    changed = run(['git', 'diff', '--name-only'], source, True).splitlines()
+    changed = run(['git', 'diff', '--name-only', 'HEAD'], source, True).splitlines()
     hashes = {name: hashlib.sha256((source / name).read_bytes()).hexdigest()
               for name in changed if (source / name).is_file()}
     hashes['assets/override/config.json'] = hashlib.sha256(asset.read_bytes()).hexdigest()
@@ -143,7 +143,9 @@ def verify_prepared(source):
     state = json.loads((source / '.digitaltwin/prepared.json').read_text())
     if run(['git', 'rev-parse', 'HEAD'], source, True).strip() != state['revision']:
         raise ValueError('prepared source revision changed')
-    changes = set(run(['git', 'diff', '--name-only'], source, True).splitlines())
+    changes = set(run(['git', 'diff', '--name-only', '-z', 'HEAD'], source, True).split('\0'))
+    changes.update(run(['git', 'diff', '--cached', '--name-only', '-z'], source, True).split('\0'))
+    changes.discard('')
     allowed = set(state['patch_sha256']) | {'android/app/google-services.json'}
     if not changes <= allowed:
         raise ValueError('unrecorded source changes')

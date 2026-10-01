@@ -61,3 +61,26 @@ Compose, shared docs and tests remain integrator-owned and unchanged here.
   orchestration sessions; independent integration testing belongs to the parent.
 - Preserve upstream's real unsigned target; no fabricated signing patch or mocked
   native build success. Native source/dependency audits and delivery are open gates.
+
+
+## PR #9 independent review follow-up
+
+Two reviewed validation gaps were corrected in the mobile-only follow-up:
+
+- Prepared-source changes now compare both index and working tree against HEAD,
+  using NUL-delimited names. A regression stages an unrelated source file and
+  checks rejection both before and after removing its working-tree copy. It
+  reproduced acceptance before the fix and passes after the fix.
+- APK packaging no longer treats an apksigner failure as proof that signatures
+  are absent. The validator requires a complete single-disk non-ZIP64 ZIP with
+  consistent local/central records and CRCs, no v1 signature material, and no
+  unaccounted bytes before the central directory. That last requirement rejects
+  both intact and corrupted v2/v3 signing-block structures. Ambiguous structures
+  fail closed rather than being collected as unsigned.
+
+Thirteen component tests pass, including unsigned structural positive fixtures
+and the actual collector archive/notices path, plus v1, v2/v3, corrupted-magic, payload-tamper, malformed and trailing-data negative
+fixtures. These fixtures use no signing keys and do not claim an installable
+native APK. Prepared-source verification, Python compilation, Bash syntax and
+Git whitespace checks pass. Native toolchain/device/output audit gates above
+remain unchanged; neither native build nor real-artifact packaging is verified.

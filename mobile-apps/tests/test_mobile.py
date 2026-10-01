@@ -95,5 +95,24 @@ class MobileTests(unittest.TestCase):
             self.assertFalse(cli.exists())
             self.assertTrue((sdk / 'LICENSE').exists())
 
+
+    @unittest.skipUnless((ROOT / 'upstream/.git').exists(), 'fetch pinned upstream first')
+    def test_prepared_source_rejects_staged_unrecorded_edit(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = pathlib.Path(d) / 'source'
+            subprocess.run(['git', '-c', 'advice.detachedHead=false', 'clone', '--shared', '--quiet', str(ROOT / 'upstream'), str(source)], check=True)
+            self.assertEqual(self.run_tool('prepare', '--source', source, '--config', ROOT / 'config/app.example.json').returncode, 0)
+            changed = source / 'app/constants/about.ts'
+            changed.write_text('unrecorded staged fixture')
+            subprocess.run(['git', '-C', str(source), 'add', 'app/constants/about.ts'], check=True)
+            result = self.run_tool('verify-prepared', '--source', source)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('unrecorded source changes', result.stderr)
+            # A staged addition removed from the working tree must still be rejected.
+            changed.unlink()
+            result = self.run_tool('verify-prepared', '--source', source)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('unrecorded source changes', result.stderr)
+
 if __name__ == '__main__':
     unittest.main()
