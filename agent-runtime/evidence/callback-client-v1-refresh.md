@@ -12,9 +12,11 @@ Previous artifact SHA256:
 The backend owner reports formatting-only changes and froze these bytes.
 No maintained client copy was added to agent-runtime.
 
-Backend source was still uncommitted at verification. Its final source commit is
-pending; the integrator must record that revision before release. The build keeps
-an exact checksum requirement rather than accepting unverified replacement bytes.
+Backend source was still uncommitted during the original fixture verification.
+The frozen file is committed at `81d5d5c714c73890efccff172103f65171ecde20` and remains identical in reviewed backend
+head `53c69b7d537b906a06303461c658f62b990f23d9`, merged via `0c79c77719713ca38417d5ea6da63ca6bc0fa401`.
+The integrator independently verified both committed sources against the frozen SHA256.
+The build retains exact checksum enforcement rather than accepting replacement bytes.
 
 Checks passed against the frozen single-file named build context:
 

@@ -55,6 +55,7 @@ callback_client:
   owner: integration-backend
   source: integration-backend/bin/digitaltwin
   artifact_sha256: cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054
-  source_revision: pending_backend_final_commit_for_frozen_v1_artifact
+  source_revision: 81d5d5c714c73890efccff172103f65171ecde20
+  validated_in_revision: 53c69b7d537b906a06303461c658f62b990f23d9
   packaged_path: /usr/local/bin/digitaltwin
   test_kind: disposable_HTTP_fixture_not_live_backend_delivery

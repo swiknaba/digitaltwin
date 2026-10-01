@@ -124,3 +124,9 @@
 
 - Make the authenticated listener opt-in under `chat-validation`; set its private server URL and explicit validation mode without creating tokens or identities.
 - Keep worker validation disabled by default; document separate operator credential/identity wiring and fail-closed startup. Verify the listener is absent from default service selection and 14 root tests pass.
+
+## 2026-10-01 — Reviewed combined baseline
+
+- Integrate only the approved backend main merge locally; independently verify the frozen callback from its source commit and final reviewed backend head.
+- Finish authorized Runtime callback source-revision metadata without changing historical PR10 evidence or component behavior. Stage only the hash-checked single-file local build context.
+- Verify 14 root tests and all Compose profiles/configurations; freeze the clean combined baseline for independent actual-stack testing. Publication remains blocked and no full acceptance is claimed.
