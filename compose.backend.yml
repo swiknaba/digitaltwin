@@ -38,6 +38,11 @@ services:
   backend-worker:
     <<: *backend
     command: [bin/worker]
+    healthcheck:
+      test: [CMD, bin/health, worker]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     environment:
       <<: *backend-environment
       HERDR_SOCKET_PATH: /run/herdr/herdr.sock
@@ -50,6 +55,11 @@ services:
   backend-chat-listener:
     <<: *backend
     command: [bin/chat-listener]
+    healthcheck:
+      test: [CMD, bin/health, chat-listener]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     depends_on:
       backend-migrate:
         condition: service_completed_successfully

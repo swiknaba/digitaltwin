@@ -114,3 +114,8 @@
 
 - Integrate only the approved main baseline containing mobile and the Runtime callback-pin follow-up. Confirm matching root/Runtime SHA256 enforcement without staging unreviewed backend code.
 - Verify 12 root tests, all Compose profiles/configurations, Python syntax, and whitespace; keep the checkout clean and stable pending the backend's reviewed merge and independent combined testing.
+
+## 2026-10-01 — Role health correction
+
+- Correct the independent integration review finding: worker/listener now override the backend image's web probe with their role-specific `bin/health` command.
+- Add a root regression for both role probes; verify 13 root tests and Compose configuration without merging the pending backend or claiming actual combined startup.

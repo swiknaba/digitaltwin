@@ -38,6 +38,10 @@ class RootContractTest(unittest.TestCase):
         self.assertEqual(worker["volumes"][0]["source"], "herdr-socket")
         self.assertEqual(worker["volumes"][0]["target"], "/run/herdr")
 
+    def test_nonweb_roles_override_image_web_probe(self):
+        for service, role in [("backend-worker", "worker"), ("backend-chat-listener", "chat-listener")]:
+            self.assertEqual(self.services[service]["healthcheck"]["test"], ["CMD", "bin/health", role])
+
     def test_local_exposure_and_independent_databases(self):
         for name in ["backend-web", "mattermost"]:
             self.assertEqual(self.services[name]["ports"][0]["host_ip"], "127.0.0.1")

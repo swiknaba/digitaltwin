@@ -20,7 +20,8 @@ This agreement prevents independent workers from selecting incompatible values a
 - Web readiness probes `/readyz`; component startup must reject pending migrations independently of Compose.
 
 The backend owner must verify these settings, image `net/http` availability, and entrypoint command forwarding.
-Worker/listener process health and restart policies remain open until their failure/recovery contracts are tested.
+Worker/listener override the image's default web health with `bin/health worker` and `bin/health chat-listener`.
+Their actual combined health and restart/failure recovery still need integration testing.
 No web server implementation is selected by this root overlay.
 
 Mattermost uses native `/mattermost/bin/mmctl system status --local` health with local mode enabled.
