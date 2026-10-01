@@ -26,7 +26,11 @@ class DisposableComposeTest(unittest.TestCase):
                                 capture_output=True, timeout=timeout)
         if check and result.returncode:
             # Service logs/config may contain credentials. Keep failure output sanitized.
-            raise RuntimeError(f"local command failed, exit {result.returncode}: {args[0:2]}")
+            diagnostic = result.stderr[-3000:]
+            for marker in ["local-only-postgres", "local-only-kirei", "local-only-mattermost"]:
+                diagnostic = diagnostic.replace(marker, "<sample-redacted>")
+            diagnostic = re.sub(r"(postgres(?:ql)?://)[^@\s]+@", r"\1<redacted>@", diagnostic)
+            raise RuntimeError(f"local command failed, exit {result.returncode}: {args[0:2]}\n{diagnostic}")
         return result
 
     @classmethod
@@ -71,7 +75,16 @@ class DisposableComposeTest(unittest.TestCase):
         cls.command([str(ROOT / "scripts/prepare-callback-context")])
         cls.compose(["config", "--quiet"])
         cls.compose(["build", "mattermost", "backend-web", "agent-runtime"], timeout=1800)
-        cls.compose(["up", "-d", "--no-build", "--pull", "never", "--wait", "--wait-timeout", "240"], timeout=300)
+        try:
+            cls.compose(["up", "-d", "--no-build", "--pull", "never", "--wait", "--wait-timeout", "240"], timeout=300)
+        except RuntimeError as error:
+            # Fresh disposable stack contains only checked-in public DB samples.
+            diagnostic = cls.compose(["logs", "--no-color", "--tail", "150", "backend-migrate"], check=False)
+            detail = diagnostic.stdout + diagnostic.stderr
+            for marker in ["local-only-postgres", "local-only-kirei", "local-only-mattermost"]:
+                detail = detail.replace(marker, "<sample-redacted>")
+            detail = re.sub(r"(postgres(?:ql)?://)[^@\s]+@", r"\1<redacted>@", detail)
+            raise RuntimeError(str(error) + "\nDisposable migration/startup diagnostic:\n" + detail[:5000]) from None
         cls.addresses = {}
         for service, port in [("backend-web", "3000"), ("mattermost", "8065")]:
             address = cls.compose(["port", service, port]).stdout.strip()
