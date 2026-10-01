@@ -102,3 +102,10 @@
 - Integrate only the explicitly review-cleared chat merge locally; build its minimal derived artifact through root Compose and make it the PostgreSQL/chat default.
 - Seed writable UID2000 chat configuration in a network-free one-shot initializer. Keep Runtime volume setup opt-in and push/email disabled.
 - Verify root Compose contracts and disposable derived-chat dependency startup/database isolation; retain all authenticated chat/provider and combined-stack gates. Publication remains blocked; no alternate route is used.
+
+## 2026-10-01 — Reviewed Runtime root check
+
+- Integrate the review-cleared Runtime merge locally; build only its explicit offline target and verify fresh root volume initialization, native Herdr 0.9.3/protocol22 health, and same-UID mode0600 socket access from a second container.
+- Remove all disposable resources; package no callback and start no backend/CLI/provider session. Add a reusable offline Runtime acceptance mode and strict release-bound server-health checks.
+- Independently verify the backend owner's frozen formatted callback hash and update root staging enforcement. Keep callback packaging blocked until the matching reviewed Runtime pin update and backend merge.
+- Verify 12 root tests, all Compose profiles/configurations, Python syntax, and whitespace; retain publication and full roundtrip blockers.

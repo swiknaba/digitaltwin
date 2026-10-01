@@ -124,3 +124,15 @@ The integrator will make this reviewed wiring the default before the promised ma
 The reviewed chat build and disposable PostgreSQL/chat default passed root checks after its merge.
 Runtime/backend build contexts, callback artifact packaging, combined first boot, and live callbacks remain unverified here.
 Never reuse old plugin volumes. Retain approved production/credential setup as separate steps.
+
+### Reviewed Runtime Root Check
+
+The reviewed Runtime merge `11de3807052ff87c977ac4fdf622eb3472b9ae4b` is integrated locally.
+Its explicit offline target built and passed `scripts/acceptance runtime-offline` with the root initializer and named volumes.
+Herdr reported running/compatible version 0.9.3, protocol 22. A second UID10001 container accessed the mode0600 socket.
+All disposable containers/volumes were removed. No backend, callbacks, CLI/provider sessions, or credentials were used.
+
+The backend owner froze the formatted callback file at SHA256 `cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054`.
+Root independently verified that supplied file hash and retained checksum enforcement.
+The reviewed Runtime currently pins the previous artifact; its matching follow-up and the backend's final reviewed commit remain required.
+Do not disable checks or duplicate the client to bypass that packaging gate.

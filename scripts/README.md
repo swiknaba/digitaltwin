@@ -23,6 +23,10 @@ It ignores ambient Compose overrides and database passwords. It never reads the 
 - `stack --project NAME --runtime-service NAME --compose-file FILE ...`: inspect an already started, reviewed combined stack.
   Check backend health, socket UID/mode in both consumers, and JSON Herdr status. Create no accounts or sessions; change no container lifecycle.
   Complete Runtime wiring and component review are prerequisites. This mode is prepared but not yet verified against a combined stack.
+- `runtime-offline`: start only reviewed Runtime and named-volume initialization in a generated disposable project.
+  Verify native Herdr health/version/protocol and UID10001/mode0600 socket access from a second container; remove all project resources.
+  Require `docker build --platform linux/amd64 --target offline -t digitaltwin-root-runtime-offline:check agent-runtime` first.
+  Package no callback artifact, start no CLI/provider sessions, and claim no backend integration.
 
 Exit `0` means the selected check passed; exit `1` means failure. CLI misuse exits `2`.
 Dependency mode starts Docker containers and may download the pinned images. Docker must already be available.

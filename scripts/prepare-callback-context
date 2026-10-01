@@ -8,7 +8,7 @@ import sys
 root = Path(__file__).resolve().parent.parent
 source = root / "integration-backend/bin/digitaltwin"
 target = root / ".local/kirei-clients"
-expected = "a062e47b3e196256e0ee5a75f63084645835072ac9bf6a9c0d73d41be0dcf7d1"
+expected = "cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054"
 try:
     if hashlib.sha256(source.read_bytes()).hexdigest() != expected:
         raise ValueError("Backend client differs from the reviewed Runtime build contract")

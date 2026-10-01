@@ -63,6 +63,12 @@ class RootContractTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "reviewed --runtime-service"):
             acceptance.stack(SimpleNamespace(project="test-stack", runtime_service=None))
 
+    def test_server_status_rejects_incompatible_or_missing_health(self):
+        for status in [{}, {"server": {"running": True, "version": "0.9.3", "protocol": 22, "compatible": False}},
+                       {"server": {"running": True, "version": "0.9.3", "protocol": 23, "compatible": True}}]:
+            with self.subTest(status=status), self.assertRaises(RuntimeError):
+                acceptance.verify_herdr_status(status)
+
 
 class CombinedRootContractTest(unittest.TestCase):
     @classmethod

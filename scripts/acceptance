@@ -122,6 +122,45 @@ Never persist credentials in evidence, Git, or images. Never report fixtures as 
 """)
 
 
+def runtime_offline():
+    project = "digitaltwin-runtime-check-" + uuid.uuid4().hex[:12]
+    with tempfile.TemporaryDirectory(prefix="digitaltwin-runtime-check-") as temporary:
+        override = Path(temporary) / "compose.runtime-check.yml"
+        override.write_text("services:\n  agent-runtime:\n    image: digitaltwin-root-runtime-offline:check\n")
+        args = COMPOSE + ["-p", project]
+        for name in [ROOT / "compose.yml", ROOT / "compose.backend.yml", ROOT / "compose.integration.yml", override]:
+            args += ["-f", str(name)]
+        cleanup_needed = False
+        try:
+            run(args + ["config", "--quiet"])
+            cleanup_needed = True
+            run(args + ["up", "-d", "--no-build", "--pull", "never", "--wait", "--wait-timeout", "90", "agent-runtime"], timeout=120)
+            run(args + ["exec", "-T", "agent-runtime", "ruby", "-e",
+                        "abort('expected explicit offline target') if File.exist?('/usr/local/bin/digitaltwin')"])
+            socket_check = "s=File.stat('/run/herdr/herdr.sock'); abort('socket contract failed') unless Process.uid == 10001 && s.socket? && s.uid == 10001 && (s.mode & 0777) == 0600"
+            run(args + ["exec", "-T", "agent-runtime", "ruby", "-e", socket_check])
+            run(args + ["run", "--rm", "--no-deps", "--entrypoint", "ruby", "agent-runtime", "-e", socket_check])
+            status = json.loads(run(args + ["exec", "-T", "agent-runtime", "herdr", "status", "--json"]).stdout)
+            verify_herdr_status(status)
+        finally:
+            if cleanup_needed:
+                cleanup = run(args + ["down", "--volumes", "--remove-orphans"], check=False)
+                if cleanup.returncode:
+                    raise RuntimeError(f"cleanup failed; remove disposable project {project}")
+    print(json.dumps({"check": "disposable-root-runtime-offline", "passed": True,
+                      "herdr_version": "0.9.3", "herdr_protocol": 22,
+                      "socket_second_container": True, "callbacks_packaged": False,
+                      "backend_runtime_integration": False, "live_provider": False,
+                      "live_roundtrip": False, "disposable_resources_removed": True}))
+
+
+def verify_herdr_status(status):
+    server = status.get("server", {})
+    if not (server.get("running") is True and server.get("compatible") is True
+            and server.get("version") == "0.9.3" and server.get("protocol") == 22):
+        raise RuntimeError("Herdr server status differs from reviewed release contract")
+
+
 def stack(options):
     """Observe an already started, reviewed stack. Never build/start/stop it."""
     if not options.project or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", options.project):
@@ -147,8 +186,8 @@ def stack(options):
     for service in [options.runtime_service, "backend-worker"]:
         run(args + ["exec", "-T", service, "ruby", "-e", socket_check])
     status = run(args + ["exec", "-T", options.runtime_service, "herdr", "status", "--json"])
-    # Valid JSON/exit success alone cannot establish CLI/provider/idle semantics.
-    json.loads(status.stdout)
+    # Release-bound server health cannot establish CLI/provider/idle semantics.
+    verify_herdr_status(json.loads(status.stdout))
     print(json.dumps({"check": "existing-stack-health-and-socket", "passed": True,
                       "backend_health_routes": 2, "socket_consumers_checked": 2,
                       "herdr_status_json": True, "authenticated_chat": False,
@@ -158,7 +197,7 @@ def stack(options):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["config", "dependencies", "operator", "stack"])
+    parser.add_argument("mode", choices=["config", "dependencies", "operator", "stack", "runtime-offline"])
     parser.add_argument("--project", help="explicit existing project for read-only stack checks")
     parser.add_argument("--runtime-service", help="reviewed Runtime Compose service name")
     parser.add_argument("--compose-file", action="append", help="reviewed Compose files, in merge order")
@@ -169,6 +208,8 @@ def main():
             stack(options)
         elif options.mode == "dependencies":
             dependencies(options.derived_chat)
+        elif options.mode == "runtime-offline":
+            runtime_offline()
         else:
             {"config": config, "dependencies": dependencies, "operator": operator}[options.mode]()
     except (RuntimeError, ValueError, subprocess.TimeoutExpired, OSError) as error:
