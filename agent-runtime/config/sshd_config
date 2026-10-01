@@ -1,0 +1,16 @@
+# Operator-supplied host key and authorized_keys; no image-generated identities.
+Port 2222
+ListenAddress 0.0.0.0
+HostKey /run/runtime-ssh/ssh_host_ed25519_key
+PidFile /tmp/runtime-sshd.pid
+AuthorizedKeysFile /home/runtime/.ssh/authorized_keys
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+AllowUsers runtime
+UsePAM no
+StrictModes yes
+AllowTcpForwarding no
+X11Forwarding no
+PermitTunnel no
+Subsystem sftp internal-sftp

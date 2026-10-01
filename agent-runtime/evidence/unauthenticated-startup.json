@@ -1,0 +1,214 @@
+[
+  {
+    "cli": "codex",
+    "startup_exit": 0,
+    "startup": {
+      "id": "cli:agent:start",
+      "result": {
+        "agent": {
+          "agent": "codex",
+          "agent_status": "unknown",
+          "cwd": "/home/runtime",
+          "focused": true,
+          "foreground_cwd": "/home/runtime",
+          "interactive_ready": true,
+          "name": "offline-codex",
+          "pane_id": "w1:p1",
+          "revision": 0,
+          "state_change_seq": 0,
+          "tab_id": "w1:t1",
+          "terminal_id": "term_65cceabe579dc1",
+          "workspace_id": "w1"
+        },
+        "argv": [
+          "codex"
+        ],
+        "type": "agent_started"
+      }
+    },
+    "pane_state": {
+      "id": "cli:pane:get",
+      "result": {
+        "pane": {
+          "agent": "codex",
+          "agent_status": "unknown",
+          "cwd": "/home/runtime",
+          "focused": true,
+          "foreground_cwd": "/home/runtime",
+          "pane_id": "w1:p1",
+          "revision": 0,
+          "scroll": {
+            "max_offset_from_bottom": 0,
+            "offset_from_bottom": 0,
+            "viewport_rows": 40
+          },
+          "tab_id": "w1:t1",
+          "terminal_id": "term_65cceabe579dc1",
+          "workspace_id": "w1"
+        },
+        "type": "pane_info"
+      }
+    },
+    "authentication": "No credentials supplied; no model prompt sent. Welcome/configuration screen is not settled Writer evidence."
+  },
+  {
+    "cli": "claude",
+    "startup_exit": 0,
+    "startup": {
+      "id": "cli:agent:start",
+      "result": {
+        "agent": {
+          "agent": "claude",
+          "agent_status": "idle",
+          "cwd": "/home/runtime",
+          "focused": true,
+          "foreground_cwd": "/home/runtime",
+          "interactive_ready": true,
+          "name": "offline-claude",
+          "pane_id": "w2:p1",
+          "revision": 0,
+          "state_change_seq": 1,
+          "tab_id": "w2:t1",
+          "terminal_id": "term_65cceac38930e2",
+          "workspace_id": "w2"
+        },
+        "argv": [
+          "claude"
+        ],
+        "type": "agent_started"
+      }
+    },
+    "pane_state": {
+      "id": "cli:pane:get",
+      "result": {
+        "pane": {
+          "agent": "claude",
+          "agent_status": "idle",
+          "cwd": "/home/runtime",
+          "focused": true,
+          "foreground_cwd": "/home/runtime",
+          "pane_id": "w2:p1",
+          "revision": 0,
+          "scroll": {
+            "max_offset_from_bottom": 0,
+            "offset_from_bottom": 0,
+            "viewport_rows": 40
+          },
+          "tab_id": "w2:t1",
+          "terminal_id": "term_65cceac38930e2",
+          "workspace_id": "w2"
+        },
+        "type": "pane_info"
+      }
+    },
+    "authentication": "No credentials supplied; no model prompt sent. Welcome/configuration screen is not settled Writer evidence."
+  },
+  {
+    "cli": "opencode",
+    "startup_exit": 0,
+    "startup": {
+      "id": "cli:agent:start",
+      "result": {
+        "agent": {
+          "agent": "opencode",
+          "agent_status": "idle",
+          "cwd": "/home/runtime",
+          "focused": true,
+          "foreground_cwd": "/home/runtime",
+          "interactive_ready": true,
+          "name": "offline-opencode",
+          "pane_id": "w3:p1",
+          "revision": 0,
+          "state_change_seq": 2,
+          "tab_id": "w3:t1",
+          "terminal_id": "term_65cceac8f1c413",
+          "workspace_id": "w3"
+        },
+        "argv": [
+          "opencode"
+        ],
+        "type": "agent_started"
+      }
+    },
+    "pane_state": {
+      "id": "cli:pane:get",
+      "result": {
+        "pane": {
+          "agent": "opencode",
+          "agent_status": "idle",
+          "cwd": "/home/runtime",
+          "focused": true,
+          "foreground_cwd": "/home/runtime",
+          "pane_id": "w3:p1",
+          "revision": 0,
+          "scroll": {
+            "max_offset_from_bottom": 0,
+            "offset_from_bottom": 0,
+            "viewport_rows": 40
+          },
+          "tab_id": "w3:t1",
+          "terminal_id": "term_65cceac8f1c413",
+          "workspace_id": "w3"
+        },
+        "type": "pane_info"
+      }
+    },
+    "authentication": "No credentials supplied; no model prompt sent. Welcome/configuration screen is not settled Writer evidence."
+  },
+  {
+    "cli": "gemini",
+    "startup_exit": 0,
+    "startup": {
+      "id": "cli:agent:start",
+      "result": {
+        "agent": {
+          "agent": "gemini",
+          "agent_status": "idle",
+          "cwd": "/home/runtime",
+          "focused": true,
+          "foreground_cwd": "/home/runtime",
+          "interactive_ready": true,
+          "name": "offline-gemini",
+          "pane_id": "w4:p1",
+          "revision": 1,
+          "state_change_seq": 3,
+          "tab_id": "w4:t1",
+          "terminal_id": "term_65cceaced42cc4",
+          "terminal_title": "\u25c7  Ready (runtime)                                                              ",
+          "terminal_title_stripped": "\u25c7  Ready (runtime)",
+          "workspace_id": "w4"
+        },
+        "argv": [
+          "gemini"
+        ],
+        "type": "agent_started"
+      }
+    },
+    "pane_state": {
+      "id": "cli:pane:get",
+      "result": {
+        "pane": {
+          "agent": "gemini",
+          "agent_status": "idle",
+          "cwd": "/home/runtime",
+          "focused": true,
+          "foreground_cwd": "/home/runtime",
+          "pane_id": "w4:p1",
+          "revision": 1,
+          "scroll": {
+            "max_offset_from_bottom": 0,
+            "offset_from_bottom": 0,
+            "viewport_rows": 40
+          },
+          "tab_id": "w4:t1",
+          "terminal_id": "term_65cceaced42cc4",
+          "terminal_title": "\u25c7  Ready (runtime)                                                              ",
+          "terminal_title_stripped": "\u25c7  Ready (runtime)",
+          "workspace_id": "w4"
+        },
+        "type": "pane_info"
+      }
+    },
+    "authentication": "No credentials supplied; no model prompt sent. Welcome/configuration screen is not settled Writer evidence."
+  }
+]

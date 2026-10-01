@@ -1,0 +1,23 @@
+installed codex integration hook to /home/runtime/.codex/herdr-agent-state.sh
+ensured codex hooks at /home/runtime/.codex/hooks.json
+ensured codex config at /home/runtime/.codex/config.toml
+installed claude integration hook to /home/runtime/.claude/hooks/herdr-agent-state.sh
+ensured claude settings at /home/runtime/.claude/settings.json
+installed opencode integration plugin to /home/runtime/.config/opencode/plugins/herdr-agent-state.js
+installed opencode tui integration plugin to /home/runtime/.config/opencode/herdr-tui-session.js
+ensured opencode tui plugin config at /home/runtime/.config/opencode/tui.jsonc
+codex-cli 0.160.0
+2.1.287 (Claude Code)
+1.18.34
+0.62.0
+0.3.0
+stat (GNU coreutils) 9.8
+find (GNU findutils) 4.10.0
+grep (GNU grep) 3.12
+sed (GNU sed) 4.9
+diff (GNU diffutils) 3.12
+GNU patch 2.8
+tar (GNU tar) 1.35
+PASS: search/ignore/spaces, GNU text/files, Git/worktree/patch, JSON/CSV/hash, HTTP errors, archives, cleanup
+PASS: offline versions, Linux schema, role shells, tools
+OPEN: authenticated four-CLI prompt/state/idle, selected Master MCP, callback delivery, Tailnet SSH
