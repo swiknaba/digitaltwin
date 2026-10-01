@@ -1,0 +1,39 @@
+{
+  "evidence_kind": "official_release_source_inspection_not_live_authenticated_test",
+  "source_commit": "3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9",
+  "files": {
+    "server/channels/api4/post.go": {
+      "url": "https://raw.githubusercontent.com/mattermost/mattermost/3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9/server/channels/api4/post.go",
+      "sha256": "4d37ce3adef711b71768527372d63c3d533e0d36b010a6ccec1da69f0c229ed1"
+    },
+    "server/channels/api4/channel.go": {
+      "url": "https://raw.githubusercontent.com/mattermost/mattermost/3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9/server/channels/api4/channel.go",
+      "sha256": "beb7558e50782d8c8ad79ba9b150e6561eed78ebe6cf7aede63ec13555976022"
+    },
+    "server/channels/api4/user.go": {
+      "url": "https://raw.githubusercontent.com/mattermost/mattermost/3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9/server/channels/api4/user.go",
+      "sha256": "c3f78da7a256fbeb0e498650dfa09004d879a0266e3b9b4b527f75263d7c36d1"
+    },
+    "server/channels/api4/websocket.go": {
+      "url": "https://raw.githubusercontent.com/mattermost/mattermost/3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9/server/channels/api4/websocket.go",
+      "sha256": "4490dbeadfbd75f28fc78d00bc9dac9cefcf6532f605d96dd8399c7487dfc088"
+    },
+    "server/channels/app/post.go": {
+      "url": "https://raw.githubusercontent.com/mattermost/mattermost/3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9/server/channels/app/post.go",
+      "sha256": "077d0fe0afaeaee5cd7cc1b9b0c9e09fdbea8ff8b7ce2c798dcc897bb1847605"
+    },
+    "server/public/model/config.go": {
+      "url": "https://raw.githubusercontent.com/mattermost/mattermost/3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9/server/public/model/config.go",
+      "sha256": "76de9b2a8ae36828781b51233db64b58b199dc4e528e985bf6b3754541c5f7a5"
+    },
+    "server/public/model/websocket_message.go": {
+      "url": "https://raw.githubusercontent.com/mattermost/mattermost/3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9/server/public/model/websocket_message.go",
+      "sha256": "cd47390ddfeb2ef13886900b48afd3f4afc9385fefac883f2c1b592e62a6e4fe"
+    },
+    "server/public/model/user.go": {
+      "url": "https://raw.githubusercontent.com/mattermost/mattermost/3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9/server/public/model/user.go",
+      "sha256": "b84d48682e8eed85a0287436f0e0cfe7fa0e13b610652066dd63342f66115a66"
+    }
+  },
+  "checked_on": "2026-10-01"
+}

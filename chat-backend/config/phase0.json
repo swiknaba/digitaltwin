@@ -1,0 +1,22 @@
+{
+  "ServiceSettings": {
+    "ListenAddress": ":8065",
+    "EnableLocalMode": true,
+    "LocalModeSocketLocation": "/var/tmp/mattermost_local.socket",
+    "EnableBotAccountCreation": false,
+    "EnableUserAccessTokens": false
+  },
+  "SqlSettings": {"DriverName": "postgres"},
+  "FileSettings": {"DriverName": "local", "Directory": "/mattermost/data"},
+  "LogSettings": {"FileLocation": "/mattermost/logs/mattermost.log", "EnableDiagnostics": false, "EnableSentry": false},
+  "PluginSettings": {
+    "Enable": false,
+    "EnableUploads": false,
+    "EnableMarketplace": false,
+    "EnableRemoteMarketplace": false,
+    "AutomaticPrepackagedPlugins": false,
+    "Plugins": {},
+    "PluginStates": {}
+  },
+  "EmailSettings": {"SendEmailNotifications": false, "SendPushNotifications": false}
+}
