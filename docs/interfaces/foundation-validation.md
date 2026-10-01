@@ -7,10 +7,10 @@ Checked on 2026-10-01. This evidence separates artifact inspection from live sta
 | Component | Exact artifact | Evidence and remaining checks |
 | --- | --- | --- |
 | Kirei | Gem `0.10.0`, source commit `ee52ad0860e355dfbf300dca6fc4bb261a6b3e65` | Installed gem checksum matches RubyGems. CLI generated the checked-in scaffold from an empty staging directory. Full dependency lock, Linux build, and application boot remain open. |
-| Ruby | `4.0.7-alpine`, index digest in `kirei/bootstrap.lock.json` | Official release and registry manifest verified. Local installed Ruby `4.0.5` generated the scaffold; it does not validate the required Ruby `4.0.7` runtime. |
-| Herdr | `0.9.3`, protocol `22`, schema version `1` | Official macOS ARM64 binary checksum matched; `--version` and `api schema --json` passed. Exact schema is in `runtime/contracts/`; Linux and four-CLI handshakes remain open. |
-| Mattermost | Team Edition `11.11.1`, index/AMD64 digests in `mattermost/artifact.lock.json` | Registry manifest exposes port `8065`, user `mattermost`, command `/mattermost/bin/mattermost`, and persistent config/data/log paths. Authenticated API/events, restore, and artifact audit remain open. |
-| Push proxy | `6.6.0`, index/AMD64 digests in `push-proxy/artifact.lock.json` | Registry and pinned upstream Dockerfile/config sample verified. Dockerfile exposes `8066`, runs as `nobody`, and uses config/cert volumes. Startup/provider/compatibility checks remain open. |
+| Ruby | `4.0.7-alpine`, index digest in `integration-backend/bootstrap.lock.json` | Official release and registry manifest verified. Local installed Ruby `4.0.5` generated the scaffold; it does not validate the required Ruby `4.0.7` runtime. |
+| Herdr | `0.9.3`, protocol `22`, schema version `1` | Official macOS ARM64 binary checksum matched; `--version` and `api schema --json` passed. Exact schema is in `agent-runtime/contracts/`; Linux and four-CLI handshakes remain open. |
+| Mattermost | Team Edition `11.11.1`, index/AMD64 digests in `chat-backend/artifact.lock.json` | Registry manifest exposes port `8065`, user `mattermost`, command `/mattermost/bin/mattermost`, and persistent config/data/log paths. Authenticated API/events, restore, and artifact audit remain open. |
+| Push proxy | `6.6.0`, index/AMD64 digests in `push-service/artifact.lock.json` | Registry and pinned upstream Dockerfile/config sample verified. Dockerfile exposes `8066`, runs as `nobody`, and uses config/cert volumes. Startup/provider/compatibility checks remain open. |
 | PostgreSQL | `18.6-alpine`, index digest `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | Official registry config identifies version `18.6`, port `5432`, and volume `/var/lib/postgresql`. Initialization and role-isolation checks remain open. |
 | Mobile | `release-2.44`, commit `c2fe3beda22befd2178dce431793c09111ed903e` | Official release/ref resolved. Toolchain pins, builds, patch inventory, and server/push compatibility remain open. |
 
@@ -73,11 +73,11 @@ Start each branch/worktree from the reviewed foundation commit. The root session
 
 | Branch suggestion | Owned files | First deliverable and checks |
 | --- | --- | --- |
-| `build/kirei` | `kirei/`; coordinate shared contract changes through integrator | Finish Ruby 4.0.7 dependency lock/platforms, Puma/startup and component tests. Validate generated health routes and pending-migration startup. Coordinate Task 1 slice before production jobs/routing/enrollment. |
-| `build/runtime` | `runtime/` | Verify Linux Herdr 0.9.3 against captured schema, pin remaining tools/base, build non-root image and tool smoke checks. Prove four-CLI/idle/MCP behavior before dependent session/review work. Kirei owns adapter, sessions schema, and client source. |
-| `build/mattermost` | `mattermost/` | Validate pinned Team Edition 11.11.1 bot permissions, authenticated ordinary thread replies, identity/membership, REST backfill and restore. Deliver sanitized fixtures and artifact/license audit. Propose Compose edits through integrator. |
-| `build/push-proxy` | `push-proxy/` | Validate 6.6.0 config, health, safe secret references and server/mobile compatibility. Prepare offline checks now; APNs/FCM delivery waits for operator setup. |
-| `build/mobile` | `mobile/` | Build reproducibly from the recorded revision, pin toolchains, retain notices, record patches, and run offline checks. Coordinate chat/deep-link/push behavior; signing/device checks remain explicit operator evidence. |
+| `build/integration-backend` | `integration-backend/`; coordinate shared contract changes through integrator | Finish Ruby 4.0.7 dependency lock/platforms, Puma/startup and component tests. Validate generated health routes and pending-migration startup. Coordinate Task 1 slice before production jobs/routing/enrollment. |
+| `build/agent-runtime` | `agent-runtime/` | Verify Linux Herdr 0.9.3 against captured schema, pin remaining tools/base, build non-root image and tool smoke checks. Prove four-CLI/idle/MCP behavior before dependent session/review work. Kirei owns adapter, sessions schema, and client source. |
+| `build/chat-backend` | `chat-backend/` | Validate pinned Team Edition 11.11.1 bot permissions, authenticated ordinary thread replies, identity/membership, REST backfill and restore. Deliver sanitized fixtures and artifact/license audit. Propose Compose edits through integrator. |
+| `build/push-service` | `push-service/` | Validate 6.6.0 config, health, safe secret references and server/mobile compatibility. Prepare offline checks now; APNs/FCM delivery waits for operator setup. |
+| `build/mobile-apps` | `mobile-apps/` | Build reproducibly from the recorded revision, pin toolchains, retain notices, record patches, and run offline checks. Coordinate chat/deep-link/push behavior; signing/device checks remain explicit operator evidence. |
 | `test/integration` | root `tests/` after integration; root glue by integrator agreement | Test startup/readiness, independent DB roles, socket/UID/mount contracts, thread routing, callbacks, duplicate handling, review exclusion and recovery. Map final evidence to the unchanged Phase 0 acceptance matrix. |
 
 The integrator owns root Compose/environment, `scripts/`, shared interfaces, and cross-service fixtures.

@@ -54,9 +54,9 @@ The following values and limits come from the spec; all tasks must comply with t
 
 ## Implementation Decisions and Prerequisites
 
-- Generate Kirei bootstrap files with its CLI in an empty staging directory, then copy them into `kirei/` without replacing the existing docs. Add the Gemfile and test setup separately.
+- Generate Kirei bootstrap files with its CLI in an empty staging directory, then copy them into `integration-backend/` without replacing the existing docs. Add the Gemfile and test setup separately.
 - One Kirei Ruby codebase provides web, worker, event listener, `bin/digitaltwin` callback, and stdio MCP bridge. The Runtime includes its two small clients; mobile build toolchains use their own build runners.
-- Keep Kirei in `kirei/`, Runtime packaging in `runtime/`, and custom mobile build ownership in `mobile/`. Consume upstream server/push artifacts without source forks.
+- Keep Kirei in `integration-backend/`, Runtime packaging in `agent-runtime/`, and custom mobile build ownership in `mobile-apps/`. Consume upstream server/push artifacts without source forks.
 - Use the [repository layout and path map](../../repository-layout-and-parallel-build.md) and [shared validation gates](../../interfaces/service-boundaries.md). Root `tests/` owns cross-deployable automated integration tests.
 - Connect Mattermost and Kirei through authenticated HTTP/events. Do not share application tables or move workflow state into the chat server.
 - PostgreSQL Sequel transactions coordinate gates, session generations, jobs, inbox, and outbox. Network calls run outside short DB locks.
@@ -75,24 +75,24 @@ The following values and limits come from the spec; all tasks must comply with t
 
 All application paths below are **planned as new**, unless marked as existing.
 
-Unless qualified, Ruby source/configuration/test paths and `bundle exec` commands in task descriptions are relative to `kirei/`.
+Unless qualified, Ruby source/configuration/test paths and `bundle exec` commands in task descriptions are relative to `integration-backend/`.
 Run Docker Compose from the repository root. The layout mapping overrides earlier packaging paths in task descriptions.
-Use `runtime/tools.lock.yml`, `runtime/.nvmrc`, `runtime/Dockerfile`, `runtime/entrypoint.sh`, and `runtime/bin/runtime-smoke` for Runtime packaging.
-Use `kirei/Dockerfile`, `mobile/`, and `scripts/acceptance` instead of the earlier Docker/mobile/acceptance paths.
-Cross-deployable acceptance, recovery, and image-contract tests belong in root `tests/`; Kirei-only integration tests stay in `kirei/spec/integration/`.
+Use `agent-runtime/tools.lock.yml`, `agent-runtime/.nvmrc`, `agent-runtime/Dockerfile`, `agent-runtime/entrypoint.sh`, and `agent-runtime/bin/runtime-smoke` for Runtime packaging.
+Use `integration-backend/Dockerfile`, `mobile-apps/`, and `scripts/acceptance` instead of the earlier Docker/mobile/acceptance paths.
+Cross-deployable acceptance, recovery, and image-contract tests belong in root `tests/`; Kirei-only integration tests stay in `integration-backend/spec/integration/`.
 
 | Path | Responsibility |
 | --- | --- |
-| Generated under `kirei/`: `app.rb`, `config.ru`, `lib/tasks/db.rake`, `Rakefile`, `.irbrc`, `config/routes.rb`, `app/controllers/base.rb`, `sorbet/config`, and base directories | Kirei CLI bootstrap, copied from empty staging directory |
-| `kirei/{Gemfile,Gemfile.lock,.ruby-version}`, `runtime/.nvmrc`, component test setup | Reproducible Ruby and Node dependencies; runtime and local pins agree |
-| `runtime/tools.lock.yml`, `kirei/config/deployment.example.yml` | Exact pins, non-secret configuration, bot/model identities |
-| `kirei/db/migrate/001_jobs.rb` through `006_confirmations.rb` | Incremental migrations: jobs/inbox/outbox/audit (3), projects (5), sessions (6), workflows/approvals (7), reviews (8), confirmations (9) |
-| `kirei/app/domains/{jobs,mattermost,projects,workflows,reviews,runtime,forge,controller}/` | Typed entities, services, thin controllers, and adapters per domain |
-| `kirei/bin/{web,worker,chat-listener,digitaltwin,mcp}` | Process entry points and controlled operations |
-| `kirei/Dockerfile`, `runtime/Dockerfile`, component `.dockerignore`, root `compose.yml`/`.env.example` | Kirei/Runtime builds and pinned upstream chat/push services for local integration |
-| `mobile/` | Planned custom Mattermost mobile builds, upstream pin/patch inventory, signing/distribution configuration, tests |
-| `docs/interfaces/{mattermost,mobile-push,licenses}.md` | API/event recovery contract, custom mobile/push maintenance, artifact/dependency licenses and notices |
-| `kirei/spec/{domains,integration,contracts}/`, `kirei/spec/fixtures/`, root `tests/` | Unit, PostgreSQL, adapter, and end-to-end evidence |
+| Generated under `integration-backend/`: `app.rb`, `config.ru`, `lib/tasks/db.rake`, `Rakefile`, `.irbrc`, `config/routes.rb`, `app/controllers/base.rb`, `sorbet/config`, and base directories | Kirei CLI bootstrap, copied from empty staging directory |
+| `integration-backend/{Gemfile,Gemfile.lock,.ruby-version}`, `agent-runtime/.nvmrc`, component test setup | Reproducible Ruby and Node dependencies; runtime and local pins agree |
+| `agent-runtime/tools.lock.yml`, `integration-backend/config/deployment.example.yml` | Exact pins, non-secret configuration, bot/model identities |
+| `integration-backend/db/migrate/001_jobs.rb` through `006_confirmations.rb` | Incremental migrations: jobs/inbox/outbox/audit (3), projects (5), sessions (6), workflows/approvals (7), reviews (8), confirmations (9) |
+| `integration-backend/app/domains/{jobs,mattermost,projects,workflows,reviews,runtime,forge,controller}/` | Typed entities, services, thin controllers, and adapters per domain |
+| `integration-backend/bin/{web,worker,chat-listener,digitaltwin,mcp}` | Process entry points and controlled operations |
+| `integration-backend/Dockerfile`, `agent-runtime/Dockerfile`, component `.dockerignore`, root `compose.yml`/`.env.example` | Kirei/Runtime builds and pinned upstream chat/push services for local integration |
+| `mobile-apps/` | Planned custom Mattermost mobile builds, upstream pin/patch inventory, signing/distribution configuration, tests |
+| `docs/interfaces/{mattermost,mobile-push,licenses}.md` | API/event recovery contract, custom mobile-apps/push maintenance, artifact/dependency licenses and notices |
+| `integration-backend/spec/{domains,integration,contracts}/`, `integration-backend/spec/fixtures/`, root `tests/` | Unit, PostgreSQL, adapter, and end-to-end evidence |
 | `docs/{interfaces,operations,acceptance}/` | Contracts, operations, validation results, infrastructure handoff |
 | `AGENTS.md`, `.agents/changelog.md`, `CHANGELOG.md` | Workflow rules and summaries, not a second task queue |
 | `README.md` (existing) | Development commands and links |
@@ -149,7 +149,7 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 
 ## Task 1: Interface Validation and Version Manifest
 
-**Files:** Create `config/runtime-tools.lock.yml`, `docs/interfaces/{herdr,mattermost,mobile-push,licenses,cli-startup}.md`, `spec/contracts/{herdr,mattermost}_spec.rb`, `spec/fixtures/contracts/`. Plan `apps/mobile/` from a verified upstream mobile revision; do not import or rebuild the server.
+**Files:** Create `agent-runtime/tools.lock.yml`, `docs/interfaces/{herdr,mattermost,mobile-push,licenses,cli-startup}.md`, `spec/contracts/{herdr,mattermost}_spec.rb`, `spec/fixtures/contracts/`. Plan `mobile-apps/` from a verified upstream mobile revision; do not import or rebuild the server.
 
 **Interfaces:** Document release-bound Herdr operations and Mattermost bot REST/WebSocket authentication, post/root/channel/user identity, membership, and history reconciliation.
 
@@ -188,12 +188,12 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 
 ## Task 2: Kirei Foundation and Local Images
 
-**Files:** Generate Kirei bootstrap files from the file map; create `Gemfile`, `Gemfile.lock`, `.ruby-version`, `.nvmrc`, test setup, `docker/app.Dockerfile`, `compose.yml`, `.env.example`, `.gitignore`, `spec/integration/boot_spec.rb`.
+**Files:** Generate Kirei bootstrap files from the file map; create `Gemfile`, `Gemfile.lock`, `.ruby-version`, `.nvmrc`, test setup, `integration-backend/Dockerfile`, `compose.yml`, `.env.example`, `.gitignore`, `spec/integration/boot_spec.rb`.
 
 **Interfaces:** Reuses Kirei's generated `GET /livez` and `GET /readyz`, and produces `bin/web`, `bin/worker`, `bundle exec rake db:migrate`. `/readyz` checks database connectivity; pending migrations block process startup before serving.
 
-- [ ] Create a temporary bootstrap bundle with the Task 1 Kirei pin. From an empty staging directory, run `BUNDLE_GEMFILE=<absolute-bootstrap-Gemfile> bundle exec kirei new "Digitaltwin"`. Copy generated files into `kirei/` while preserving existing docs.
-- [ ] Add the absent Gemfile, lockfile, and test setup. Write `4.0.7` in `kirei/.ruby-version` and the exact Task 1 Node release in `runtime/.nvmrc`; match both pins in manifests/images. [Ruby 4.0.7 release](https://www.ruby-lang.org/en/news/2026/09/15/ruby-4-0-7-released/).
+- [ ] Create a temporary bootstrap bundle with the Task 1 Kirei pin. From an empty staging directory, run `BUNDLE_GEMFILE=<absolute-bootstrap-Gemfile> bundle exec kirei new "Digitaltwin"`. Copy generated files into `integration-backend/` while preserving existing docs.
+- [ ] Add the absent Gemfile, lockfile, and test setup. Write `4.0.7` in `integration-backend/.ruby-version` and the exact Task 1 Node release in `agent-runtime/.nvmrc`; match both pins in manifests/images. [Ruby 4.0.7 release](https://www.ruby-lang.org/en/news/2026/09/15/ruby-4-0-7-released/).
 - [ ] Write `boot_spec`: generated `/livez` returns 200; `/readyz` returns 503 on a Sequel connection error and 200 when `SELECT 1` succeeds. Assert pending migrations make `bin/web` and `bin/worker` exit before serving or dispatching jobs.
 - [ ] Run `bundle exec rspec spec/integration/boot_spec.rb`; expect failure because `bin/web` and `bin/worker` startup integration is missing, not because health routes are missing.
 - [ ] Add `bin/web` and `bin/worker` startup validation. Reject pending migrations before either process serves requests or dispatches jobs.
@@ -267,7 +267,7 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 
 ## Task 6: Non-root Runtime, Herdr, and Wagglebot
 
-**Files:** Create `db/migrate/003_sessions.rb`, `docker/runtime.Dockerfile`, `config/runtime-entrypoint.sh`, `app/domains/runtime/{herdr_client,sessions,reconcile}.rb`, `bin/runtime-smoke`, `spec/{domains/runtime_spec.rb,integration/runtime_spec.rb}`.
+**Files:** Create `db/migrate/003_sessions.rb`, `agent-runtime/Dockerfile`, `agent-runtime/entrypoint.sh`, `app/domains/runtime/{herdr_client,sessions,reconcile}.rb`, `agent-runtime/bin/runtime-smoke`, `spec/{domains/runtime_spec.rb,integration/runtime_spec.rb}`.
 
 **Interfaces:** `Sessions.start(workflow_id: String?, generation:, role:, config: RoleConfig, repo: String?) -> SessionRef`; `send_prompt(session:, text:, dispatch_key:)`; `state(session:) -> idle|done|working|unknown|missing`; `stop(session:)`. Writer/reviewer require non-null workflow ID and repo; controller requires both null and starts in the neutral Runtime home.
 
@@ -285,7 +285,7 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 - [ ] Implement adapters only against the Task 1 contract. Persist Role→Pane/Alias, session generation, and separate credential areas in the shared Runtime home.
 - [ ] Select the Runtime image base after testing pinned Herdr and all CLIs on Alpine. Record the dependency or runtime failure that requires Ubuntu, if any.
 - [ ] Install the worker tool baseline below in the Runtime image. Check Writer and Reviewer shell environments, not only Kirei or entrypoint PATH.
-- [ ] Build the image with pinned tools, OpenSSH, and Wagglebot. Match `kirei/.ruby-version` and `runtime/.nvmrc` to the corresponding image versions. Setup: `connect <company-git-url>`, `update --wagglebot`, per repo `init` and `update`.
+- [ ] Build the image with pinned tools, OpenSSH, and Wagglebot. Match `integration-backend/.ruby-version` and `agent-runtime/.nvmrc` to the corresponding image versions. Setup: `connect <company-git-url>`, `update --wagglebot`, per repo `init` and `update`.
 - [ ] Provide upgrades only through an explicit operator command. Document interactive provider login; test persistence after container restart.
 - [ ] Check `docker compose build runtime` and `docker compose run --rm runtime bin/runtime-smoke`; this planned executable checks versions/UID, Herdr CLI start, and the functional tool cases below. Authenticated provider checks remain separate operator checks.
 - [ ] After review, commit: `feat: add persistent Herdr runtime and provisioning`.
@@ -486,7 +486,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 
 **Interfaces:** Contract documents list ENV, secret file, UID/GID, volumes, ports, healthcheck, and start command per image. Worker/Runtime require the same host/task socket volume.
 
-- [ ] Write `image_contract_spec`: non-root, healthcheck, persistent paths, no Docker/root mounts, no publicly exposed Runtime SSH ports, and version pins matching `kirei/.ruby-version`/`runtime/.nvmrc`. Assert Alpine Kirei or recorded dependency evidence for Ubuntu; assert the Runtime base follows Task 6 validation.
+- [ ] Write `image_contract_spec`: non-root, healthcheck, persistent paths, no Docker/root mounts, no publicly exposed Runtime SSH ports, and version pins matching `integration-backend/.ruby-version`/`agent-runtime/.nvmrc`. Assert Alpine Kirei or recorded dependency evidence for Ubuntu; assert the Runtime base follows Task 6 validation.
 - [ ] Verify the selected official Team Edition/push artifacts and mobile build provenance, licenses, notices, and permitted dependencies.
 - [ ] Run `bundle exec rspec spec/integration/image_contract_spec.rb`; expect missing complete image contracts.
 - [ ] Document one PostgreSQL server with separate Kirei/Mattermost databases, roles, migrations, and secrets. Mattermost is an independently upgraded upstream service.
@@ -505,7 +505,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 
 ## Task 13: End-to-end Acceptance and Release Evidence
 
-**Files:** Create `spec/integration/phase0_spec.rb`, `bin/acceptance`, `docs/acceptance/phase0.md`; Modify `README.md`, `CHANGELOG.md`, `.agents/changelog.md`.
+**Files:** Create `spec/integration/phase0_spec.rb`, `scripts/acceptance`, `docs/acceptance/phase0.md`; Modify `README.md`, `CHANGELOG.md`, `.agents/changelog.md`.
 
 **Interfaces:** `scripts/acceptance local` checks local flows with simulated providers/peer; `scripts/acceptance operator` creates a live checklist to complete manually and starts no deployment.
 

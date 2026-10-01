@@ -1,4 +1,4 @@
-# Kirei
+# Integration Backend
 
 Ruby modular monolith for authenticated chat routing, durable jobs, workflows, reviews, Master operations, and delivery.
 One image runs `bin/web`, `bin/worker`, and `bin/chat-listener` separately.

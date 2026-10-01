@@ -1,4 +1,4 @@
-# Mattermost Push Proxy
+# Push Service
 
 Configuration and release ownership for the existing upstream Mattermost push proxy.
 Own exact artifact pins, safe configuration examples, health/compatibility checks, and recovery guidance here.

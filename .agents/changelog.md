@@ -70,3 +70,9 @@
 - Correct the generated timestamp-based migration tasks to IntegerMigrator/schema_info, positive rollback counts through version zero, and contiguous numbered generation. Preserve the planned 001–006 naming.
 - Add four focused RSpec regressions against disposable PostgreSQL, covering migrate/status/idempotency, rollback, invalid steps, and generation. Record local Ruby 4.0.5 fixture execution separately from required Ruby 4.0.7 application startup.
 - Remove only the disposable Compose project's resources after checks; leave Docker available. No provider sessions, production credentials/access, or paid calls were created.
+
+## 2026-10-01 — Conceptual component folder names
+
+- Rename component folders to integration-backend, agent-runtime, chat-backend, push-service, and mobile-apps so directory ownership does not depend on implementation technology.
+- Update local links, path/branch conventions, mobile ignore rules, component README titles, and future packaging paths; preserve upstream image/API identifiers and source behavior.
+- Validate document links, stale-path references, Compose configuration, Ruby/shell syntax, schema/artifact identity, and the relocated live migration regression suite.

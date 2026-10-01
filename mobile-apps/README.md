@@ -1,4 +1,4 @@
-# Mobile Clients
+# Mobile Apps
 
 Our maintained iOS/Android builds from pinned Apache 2.0 Mattermost mobile source.
 Own build recipes, upstream revision records, patches, notices, component tests, and release/update pipelines here.

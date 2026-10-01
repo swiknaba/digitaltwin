@@ -9,9 +9,9 @@ node_modules/
 .bundle/
 vendor/bundle/
 coverage/
-mobile/upstream/
-mobile/build/
-mobile/dist/
+mobile-apps/upstream/
+mobile-apps/build/
+mobile-apps/dist/
 *.p12
 *.p8
 *.mobileprovision

@@ -1,4 +1,4 @@
-# Mattermost Team Edition
+# Chat Backend
 
 Configuration and release ownership for the official, unmodified Team Edition server artifact.
 Own artifact release/digest records, safe configuration examples, compatibility checks, and upgrade guidance here.
@@ -21,5 +21,5 @@ Production lifecycle, TLS, routing, persistence, and restart policy remain infra
 ## Worker Scope
 
 Own Task 1 chat compatibility/provenance and Task 12 upstream upgrade/restore contracts.
-Coordinate routing fixtures with Kirei and compatibility pins with mobile/push owners.
+Coordinate routing fixtures with Kirei and compatibility pins with mobile-apps and push-service owners.
 Propose root Compose changes through the integrator; no production deployment or account creation.
