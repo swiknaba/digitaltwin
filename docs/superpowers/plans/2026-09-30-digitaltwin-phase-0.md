@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A containerized, self-hosted agent fleet delivers code and research results through Campfire with approval bound to their exact revisions.
+**Goal:** A containerized, self-hosted agent fleet delivers code and research results through Mattermost with approval bound to their exact revisions.
 
-**Architecture:** Kirei forms a modular Ruby monolith with separate web and worker processes. The maintained Campfire Rails fork runs separately. Both use one PostgreSQL server with separate databases and roles. Herdr controls four CLIs in a shared non-root runtime container. Campfire and Git are the only interfaces to independent deployments.
+**Architecture:** Kirei forms a modular Ruby monolith with separate web, worker, and event-listener processes. The official, unmodified Mattermost Team Edition server runs separately; Kirei uses external bots and authenticated APIs. Both use one PostgreSQL server with separate databases and roles. Herdr controls four CLIs in a shared non-root runtime container. Mattermost and Git are the only interfaces to independent deployments.
 
-**Tech Stack:** Ruby, Kirei, Sorbet, Rack/Puma, Sequel, PostgreSQL, Campfire Rails/Active Record, Campfire Redis/Resque, Docker Compose, Herdr, Wagglebot, Codex CLI, Claude Code, OpenCode, Gemini CLI.
+**Tech Stack:** Ruby, Kirei, Sorbet, Rack/Puma, Sequel, PostgreSQL, Mattermost Team Edition, Mattermost push proxy, custom mobile builds, Docker Compose, Herdr, Wagglebot, Codex CLI, Claude Code, OpenCode, Gemini CLI.
 
 **Spec:** [Phase 0 agent fleet specification](../../agent-fleet-architecture-and-review.md).
 
@@ -15,13 +15,14 @@
 The following values and limits come from the spec; all tasks must comply with them.
 
 - Host target: `Ubuntu 24.04 LTS on AMD64`; no required minimum memory or fleet concurrency limit.
-- Prefer Alpine for Kirei. Initially retain the Campfire upstream base image; choose the Runtime base after Herdr/CLI validation.
-- Three application images: Kirei, Runtime, and maintained Campfire. Production selects OCI digests; the repository provides development/integration Compose only.
-- Exact tool/package versions in manifests; Kirei Ruby `4.0.7`; Campfire retains its independent upstream Ruby pin. Wagglebot requires Node.js ≥22.20, npm, and Git.
-- Campfire uses a separate database and role on the same PostgreSQL server. Keep its Rails migrations separate from Kirei's Sequel migrations.
-- Campfire retains Redis/Resque, Action Cable, cache, and Kredis through a Campfire-associated Redis sidecar container.
+- Prefer Alpine for Kirei. Use the official Team Edition artifact; choose the Runtime base after Herdr/CLI validation.
+- Build two application images: Kirei and Runtime. Integrate upstream Team Edition and push-proxy artifacts separately. Production selects OCI digests; the repository provides development/integration Compose only.
+- Exact tool/package versions in manifests; Kirei Ruby `4.0.7`; chat and mobile releases have independent upstream pins. Wagglebot requires Node.js ≥22.20, npm, and Git.
+- Mattermost uses a separate database and role on the same PostgreSQL server. Keep upstream server migrations separate from Kirei's Sequel migrations.
+- Use our own signed mobile builds and the existing self-hosted Mattermost push proxy/APNs/FCM path. No Kirei push service.
+- Exclude commercially licensed components and Calls/rtcd. Phase 1 independently integrates LiveKit; Agents plugin MCP is not a dependency.
 - Runtime: `No Docker socket`, `No privileged mode`, `No host root mount`, non-root, required volumes and networks.
-- Default repository root: `/workspace/repos`; slug `owner/repository`; one workflow per verified Campfire thread. Multiple threads in a room can work at the same time.
+- Default repository root: `/workspace/repos`; slug `owner/repository`; one workflow per verified Mattermost thread. Multiple threads in a channel can work at the same time.
 - Each workflow uses a separate Git worktree under `/workspace/worktrees/<workflow-uuid>`. Its Writer and Reviewer share that worktree and branch.
 - Bots: `@agent` and `@worker`, configurable. Writer and Reviewer share the Worker bot identity.
 - Kirei posts Worker questions/progress through its durable outbox. Session-bound callbacks preserve verified thread routing and visible role identity.
@@ -31,10 +32,10 @@ The following values and limits come from the spec; all tasks must comply with t
 - Every project workflow requires a spec, plan, reviews, and human approvals of the exact revisions.
 - Three unsuccessful review rounds per gate block; Reviewer changes only the shared review Markdown file.
 - One workflow branch, one final PR; no automatic merge and no automatic post-merge synchronization.
-- All human room members are trusted collaborators with full capabilities, including approvals and destructive-operation confirmations. Configured local/peer bots cannot act as humans.
-- Master: configurable `RoleConfig(cli, provider, model, family)` through Herdr and a local MCP bridge; Gemini CLI is the default. No direct provider API call or login through Campfire.
+- All human channel members are trusted collaborators with full capabilities, including approvals and destructive-operation confirmations. Configured local/peer bots cannot act as humans.
+- Master: configurable `RoleConfig(cli, provider, model, family)` through Herdr and a local MCP bridge; Gemini CLI is the default. No direct provider API call or login through Mattermost.
 - Master chat handles operational conversation, status, coordination, and targeted emergency changes. It has no coding review/approval cycle; ordinary coding uses Writer/Reviewer workflows.
-- Master context and operational access are shared across its fleet's rooms. Independent fleets retain separate Master sessions and private runtime/control data.
+- Master context and operational access are shared across its fleet's channels. Independent fleets retain separate Master sessions and private runtime/control data.
 - Only Master initiates separately managed agent sessions. Workers/peers request human approval for another session; no autonomous peer chains. Harness-native subagents are allowed where supported.
 - Master-created workflow threads are optional in Phase 0. Keep existing-thread starts available; defer complex creation integration to Phase 1.
 - Memory only manually through `@agent`/base instructions; no cron, no required maintenance after each session.
@@ -46,7 +47,7 @@ The following values and limits come from the spec; all tasks must comply with t
 ## Review Focus
 
 1. Duplicate or delayed deliveries must not cause a second start, second approval, or second response (Tasks 3, 4, 7).
-2. Room rename, slug traversal, and symlink escape must not reach other workspaces (Task 5).
+2. Channel rename, slug traversal, and symlink escape must not reach other workspaces (Task 5).
 3. Revision changes, concurrent approvals, and bot senders must not reuse stale approval (Tasks 7, 8).
 4. A worker crash between an external effect and DB completion, and Herdr `unknown`, must not pretend that work is complete (Tasks 3, 6, 11).
 5. Dispatch exclusion and Git validation protect the review snapshot. Session credentials prevent accidental callback mix-ups, not deliberate forgery within the shared Runtime (Task 8).
@@ -54,20 +55,20 @@ The following values and limits come from the spec; all tasks must comply with t
 ## Implementation Decisions and Prerequisites
 
 - Generate Kirei bootstrap files with its CLI in an empty staging directory, then copy them into this repository without replacing the existing docs. Add the Gemfile and test setup separately.
-- One Kirei Ruby codebase provides web, worker, `bin/digitaltwin` callback, and stdio MCP bridge. The Runtime includes its two small clients.
-- Keep Kirei paths at repository root and the Campfire fork under `apps/campfire/`. Each application has independent dependencies, tests, migrations, and image builds.
-- Connect Campfire and Kirei through authenticated HTTP/events. Do not share application tables or move workflow state into Rails.
+- One Kirei Ruby codebase provides web, worker, event listener, `bin/digitaltwin` callback, and stdio MCP bridge. The Runtime includes its two small clients; mobile build toolchains use their own build runners.
+- Keep Kirei at repository root and planned custom mobile sources under `apps/mobile/`. Consume the official server artifact without a source fork.
+- Connect Mattermost and Kirei through authenticated HTTP/events. Do not share application tables or move workflow state into the chat server.
 - PostgreSQL Sequel transactions coordinate gates, session generations, jobs, inbox, and outbox. Network calls run outside short DB locks.
 - Reviews reside in `docs/superpowers/reviews/<workflow-uuid>.md`; the UUID stays internal, while ordinary chat messages use project/phase and links.
 - New workflow branches are named `digitaltwin/<workflow-uuid>`.
 - Approval binds the exact reported artifact commit and expected Markdown path in its Git tree. Review commits do not replace the target commit. Every new artifact-ready report requires renewed review/human approval.
 - Messages during review are stored but not sent to the Writer. Immediately acknowledge the queue through the deduplicated outbox. After review, deliver them after revision/phase checks.
 - Pause blocks new step dispatches while the current step finishes. Persist verified completion results; resume revalidates the saved phase, revision, and gates.
-- Destructive or irreversible Master operations use one-time, time-limited confirmations bound to sender, room, action, and parameter hash.
+- Destructive or irreversible Master operations use one-time, time-limited confirmations bound to sender, channel, action, and parameter hash.
 - Job defaults: 30-second lease, heartbeat every 10 seconds, at most five attempts, backoff of 1/5/15/60 seconds. Task 3 checks the effects of slow calls.
 - Stale status after 60 seconds without a successful Herdr check; uncertain states remain explicitly uncertain.
 - External calls without proof of idempotency are not blindly retried after an unknown result. Reconciliation or human decision resolves the state.
-- Select and record Kirei, Herdr, CLI, Campfire, and PostgreSQL versions in Task 1. Do not invent releases or unverified socket methods.
+- Select and record Kirei, Herdr, CLI, Mattermost, and PostgreSQL versions in Task 1. Do not invent releases or unverified socket methods.
 
 ## File Map and Shared Contracts
 
@@ -79,11 +80,11 @@ All application paths below are **planned as new**, unless marked as existing.
 | Added: `Gemfile`, `Gemfile.lock`, `.ruby-version`, `.nvmrc`, test setup | Reproducible Ruby and Node dependencies; runtime and local pins agree |
 | `config/runtime-tools.lock.yml`, `config/deployment.example.yml` | Exact pins, non-secret configuration, bot/model identities |
 | `db/migrate/001_jobs.rb` through `006_confirmations.rb` | Incremental migrations: jobs/inbox/outbox/audit (3), projects (5), sessions (6), workflows/approvals (7), reviews (8), confirmations (9) |
-| `app/domains/{jobs,campfire,projects,workflows,reviews,runtime,forge,controller}/` | Typed entities, services, thin controllers, and adapters per domain |
-| `bin/{web,worker,digitaltwin,mcp}` | Process entry points and controlled operations |
-| `docker/{app,runtime}.Dockerfile`, `apps/campfire/Dockerfile`, `compose.yml`, `.dockerignore`, `.env.example` | Three OCI images and local integration |
-| `apps/campfire/` | Maintained upstream Rails app with independent license, Ruby/dependency pins, PostgreSQL migrations, thread UI/API, event delivery, and tests |
-| `docs/interfaces/campfire-fork.md` | Upstream SHA, patch inventory, database port evidence, and reviewed update procedure |
+| `app/domains/{jobs,mattermost,projects,workflows,reviews,runtime,forge,controller}/` | Typed entities, services, thin controllers, and adapters per domain |
+| `bin/{web,worker,chat-listener,digitaltwin,mcp}` | Process entry points and controlled operations |
+| `docker/{app,runtime}.Dockerfile`, `compose.yml`, `.dockerignore`, `.env.example` | Kirei/Runtime builds and pinned upstream chat/push services for local integration |
+| `apps/mobile/` | Planned custom Mattermost mobile builds, upstream pin/patch inventory, signing/distribution configuration, tests |
+| `docs/interfaces/{mattermost,mobile-push,licenses}.md` | API/event recovery contract, custom mobile/push maintenance, artifact/dependency licenses and notices |
 | `spec/{domains,integration,contracts}/`, `spec/fixtures/` | Unit, PostgreSQL, adapter, and end-to-end evidence |
 | `docs/{interfaces,operations,acceptance}/` | Contracts, operations, validation results, infrastructure handoff |
 | `AGENTS.md`, `.agents/changelog.md`, `CHANGELOG.md` | Workflow rules and summaries, not a second task queue |
@@ -91,7 +92,7 @@ All application paths below are **planned as new**, unless marked as existing.
 
 Shared types in `app/domains/workflows/entities.rb`:
 
-- `Actor(user_id: String, room_id: String, member: Boolean, bot: Boolean)`; from verified Campfire context, never set freely by the model.
+- `Actor(user_id: String, channel_id: String, member: Boolean, bot: Boolean)`; from verified Mattermost context, never set freely by the model.
 - `RoleConfig(cli: String, provider: String, model: String, family: String)`; the Writer/Reviewer pair checks both differences.
 - `ArtifactRef(kind: spec|plan|implementation|review, commit: String, path: String?)`; `path` is required for specification, plan, and review Markdown. Implementation uses `path: nil` with an exact target commit and frozen merge-base.
 - `SessionRef(workflow_id: String?, generation: Integer, role: writer|reviewer|controller, pane_id: String, alias: String)`; writer/reviewer require a workflow ID, while controller has none. Pane/alias identify Runtime execution; they do not prove LLM conversation identity or safe reuse.
@@ -129,66 +130,53 @@ Each task adds its own migration and database constraints before its services us
 
 | Task / migration | Required records and constraints |
 | --- | --- |
-| 3 / `001_jobs.rb` | Jobs: unique dispatch key, lease token, lease expiry, attempts. Inbox: unique delivery ID and unique verified `(room_id, post_id)`. Outbox: unique response key. Audit records verified actor and event identity. |
-| 5 / `002_projects.rb` | Projects: unique verified room ID, repository slug, and verified remote identity. Multiple workflows may reference the same project. |
+| 3 / `001_jobs.rb` | Jobs: unique dispatch key, lease token, lease expiry, attempts. Inbox: unique verified `(channel_id, post_id, event_kind, post_revision)`; persist reconciliation checkpoints and source identity. Outbox: unique response key. Audit records verified actor and event identity. |
+| 5 / `002_projects.rb` | Projects: unique verified channel ID, repository slug, and verified remote identity. Multiple workflows may reference the same project. |
 | 6 / `003_sessions.rb` | Sessions: role, generation, pane, alias, configuration, and workflow identity. Unique `(workflow_id, role, generation)` for project sessions. |
-| 7 / `004_workflows.rb` | Workflows: room/thread/project, branch, worktree path, phase, version, artifact revisions, archive time. Unique `(room_id, thread_id)` while unarchived; unique branch and worktree path. Approvals: unique `(workflow_id, kind, target_commit)`, verified human/message identity, timestamp. Add session-to-workflow foreign keys. |
+| 7 / `004_workflows.rb` | Workflows: channel/thread/project, branch, worktree path, phase, version, artifact revisions, archive time. Unique `(channel_id, thread_id)` while unarchived; unique branch and worktree path. Approvals: unique `(workflow_id, kind, target_commit)`, verified human/message identity, timestamp. Add session-to-workflow foreign keys. |
 | 8 / `005_reviews.rb` | Reviews: unique `(workflow_id, gate, round)`, frozen target/base commits, review commit, verdict, reviewer session/generation, review lock. |
-| 9 / `006_confirmations.rb` | Confirmations: unique one-time token, sender/room/action/parameter hash, expiry, consumed time. Consume atomically when recording authorized dispatch; reconcile uncertain external results. |
+| 9 / `006_confirmations.rb` | Confirmations: unique one-time token, sender/channel/action/parameter hash, expiry, consumed time. Consume atomically when recording authorized dispatch; reconcile uncertain external results. |
 
 Use workflow version checks and transactions with these constraints. Release thread reservations only after session reconciliation and archival.
 These keys prevent duplicate application effects; they do not guarantee exactly-once external calls.
 
 ## Task 1: Interface Validation and Version Manifest
 
-**Files:** Import `apps/campfire/` from a verified upstream commit during implementation. Modify its database/search, message/thread, webhook, UI, build, and test files. Create `config/runtime-tools.lock.yml`, `docs/interfaces/{herdr,campfire,campfire-fork,cli-startup}.md`, `spec/contracts/{herdr,campfire}_spec.rb`, `spec/fixtures/contracts/`.
+**Files:** Create `config/runtime-tools.lock.yml`, `docs/interfaces/{herdr,mattermost,mobile-push,licenses,cli-startup}.md`, `spec/contracts/{herdr,mattermost}_spec.rb`, `spec/fixtures/contracts/`. Plan `apps/mobile/` from a verified upstream mobile revision; do not import or rebuild the server.
 
-**Interfaces:** Produces documented, release-bound Herdr operations for start, prompt, status, stop/archive, and Campfire authentication, membership, webhook ID, post ID, and thread or root post ID.
+**Interfaces:** Document release-bound Herdr operations and Mattermost bot REST/WebSocket authentication, post/root/channel/user identity, membership, and history reconciliation.
 
-### Campfire Fork and PostgreSQL Preparation
+### Team Edition, Mobile Push, and License Validation
 
-Source baseline inspected: [`basecamp/once-campfire@90b3300`](https://github.com/basecamp/once-campfire/tree/90b330024dec3e757c79b6a7e6568f93da8e3148).
-Its [search concern](https://github.com/basecamp/once-campfire/blob/90b330024dec3e757c79b6a7e6568f93da8e3148/app/models/message/searchable.rb) uses SQLite FTS5 `MATCH` and `rowid`.
-Its initial migration creates an FTS5 virtual table; its [backup script](https://github.com/basecamp/once-campfire/blob/90b330024dec3e757c79b6a7e6568f93da8e3148/script/admin/prepare-backup) calls `SQLite3::Backup`.
-This evidence defines port work, not a claim that changing the adapter is sufficient.
-
-- [ ] Verify and pin the imported upstream commit. Preserve MIT notices, separate Ruby/Gemfile pins, and upstream history provenance.
-- [ ] Record the local patch inventory and repeatable upstream update procedure. Review security fixes and rerun fork tests before publication.
-- [ ] Add the PostgreSQL driver and connection configuration for development, test, performance, and production. Remove SQLite-specific timeout/transaction settings.
-- [ ] Make schema creation and migration history PostgreSQL-compatible, including the initial FTS5 migration. Test fresh creation and incremental migration separately.
-- [ ] Replace FTS5/index callbacks with PostgreSQL search. Test stemming, multiple terms, rich-text normalization, updates/deletes, message ordering, and room access filtering.
-- [ ] Keep Active Storage attachment files in their persistent volume. Verify PostgreSQL blob/attachment records and file access after restart and restore.
-- [ ] If existing SQLite data must migrate, plan offline export/import with preserved IDs, reset sequences, counts, foreign keys, and attachment integrity.
-- [ ] Retain a verified source snapshot until import and restore checks pass. Fresh installations require no SQLite database.
-- [ ] Replace or remove `script/admin/prepare-backup` and `hooks/{pre-backup,post-restore}` database-file behavior. Document infrastructure-owned PostgreSQL backup/restore instead.
-- [ ] Update setup, Docker dependencies, CI services, and storage documentation for PostgreSQL. Preserve media-loader protections unrelated to the database adapter.
-- [ ] Retain Redis/Resque, Action Cable, cache, and Kredis behavior. Move Redis hosting to its Campfire sidecar without replacing these backends.
-- [ ] Remove the fork's embedded Redis process from `Procfile`. Configure Resque, Action Cable, caching, and Kredis for the sidecar address.
-- [ ] Validate each Redis client configuration; upstream defaults include localhost. Test sidecar restart without reporting uncertain jobs as completed.
-- [ ] Test PostgreSQL schema constraints, concurrent message writes, authentication, membership, attachments, and existing unit/system suites.
-- [ ] Add root/reply relationships with same-room validation and foreign keys. Define migration behavior for existing unthreaded messages.
-- [ ] Extend thread routes, bot posting/history, mobile views, pagination, and Turbo/Action Cable updates. Reject replies targeting another room.
-- [ ] Assess optional Master thread creation. Record whether creation returns a verified root identity and supports retry reconciliation with a stable request key.
-- [ ] If creation needs complex integration, defer it to `docs/phase-1-voice-controller.md`. Existing-thread starts remain the required Phase 0 path.
-- [ ] Add authenticated events for subscribed rooms, including ordinary replies. Kirei routes active threads and ignores unactivated messages.
-- [ ] Define signed event payloads with delivery identity, timestamp, verified sender/role, room, post, and root/thread identity.
-- [ ] Keep webhook authentication secrets separate from bot reply credentials. Test invalid signatures, replay, revoked membership, and forged identities.
-- [ ] Test simultaneous threads, correct bot reply placement, duplicate delivery, and local-bot suppression. Preserve existing mention and DM behavior.
-- [ ] From `apps/campfire/`, run `bin/ci` with PostgreSQL and Redis. Adapt upstream CI paths; test migrations and image startup.
-- [ ] Commit the reviewed fork baseline and PostgreSQL port separately from thread/event changes during implementation.
+- [ ] Pin the official Team Edition artifact and push proxy by release/digest. Verify the actual artifact's compiled license and notices.
+- [ ] Audit bundled plugins, transitive dependencies, source headers, and build outputs. Exclude commercially licensed components entirely.
+- [ ] Keep the official server unmodified. Any proposed source build requires separate AGPL/commercial dependency review and approval.
+- [ ] Omit Calls/rtcd and the Agents plugin from required services. Never remove license checks or copy paid modules into replacements.
+- [ ] Record a repeatable server/mobile/push security-update procedure, upstream provenance, compatibility matrix, and patch inventory.
+- [ ] Verify bot API permissions and authenticated WebSocket visibility on Team Edition; test ordinary thread replies without repeated mentions.
+- [ ] Validate post `id`, `root_id`, `channel_id`, sender identity, membership, and thread retrieval against REST responses.
+- [ ] Persist durable inbox identities/checkpoints; test REST backfill after disconnect, overlap deduplication, edits/deletions, and revoked membership.
+- [ ] Test two simultaneous threads, correct bot replies, uncertain post reconciliation, and local-bot suppression.
+- [ ] Assess optional Master root-post creation with verified association and stable-request reconciliation. Defer complex integration to Phase 1.
+- [ ] Pin the Apache 2.0 mobile source. Define application IDs, branding, signing, distribution, update pipeline, and license/NOTICE retention.
+- [ ] Use Mattermost's existing push proxy with matching APNs/FCM configuration; do not implement a push gateway inside Kirei.
+- [ ] Document future human Apple/Google enrollment, signing/push credentials, distribution choice, rotation, and recovery; store no secrets in Git.
+- [ ] Validate our iOS/Android builds, foreground/background push, reconnect, thread deep links, and notification payload/privacy settings.
+- [ ] Define a reproducible mobile build/CI pipeline from the pinned upstream source; include iOS and Android build runners.
+- [ ] Separate offline CI checks from device/network/credential-dependent operator checks. Missing evidence remains open.
 
 ### Runtime and Chat Contract Evidence
 
 - [ ] Check selected releases against official documentation and installed artifacts. Record exact versions, origin, and digests/checksums. Select an exact supported Node release ≥22.20.0 for `.nvmrc`.
-- [ ] Write contract tests `starts_four_clis`, `writer_settles_after_ready`, `unknown_is_not_idle`, `selected_master_calls_local_mcp`, `campfire_verifies_delivery_and_sender`.
-- [ ] Verify webhook delivery for ordinary human replies without repeated mentions. Record server-authenticated thread/root identity and bot reply placement.
-- [ ] Prove an early disposable slice: Campfire mention → queued dispatch → one CLI through Herdr → bot reply in the source thread.
+- [ ] Write contract tests `starts_four_clis`, `writer_settles_after_ready`, `unknown_is_not_idle`, `selected_master_calls_local_mcp`, `mattermost_verifies_event_and_sender`.
+- [ ] Verify authenticated event delivery for ordinary human replies without repeated mentions. Record server-authenticated thread/root identity and bot reply placement.
+- [ ] Prove an early disposable slice: Mattermost mention → queued dispatch → one CLI through Herdr → bot reply in the source thread.
 - [ ] Record slice commands and sanitized evidence before Tasks 3–5. Use temporary spike fixtures, not production workflow code or real project changes.
 - [ ] Start all four CLIs with test credentials through Herdr. Record ready→idle/done, crash, timeout, and Gemini-specific screen state, without real project changes.
-- [ ] Check the selected Master CLI's MCP round trip with `list_projects` and source room context. Check a fresh session with the same configuration.
+- [ ] Check the selected Master CLI's MCP round trip with `list_projects` and source channel context. Check a fresh session with the same configuration.
 - [ ] Save sanitized request/response fixtures and reproducible commands. Expect start, prompt, status, and stop evidence for each CLI.
 - [ ] After Task 2, run `bundle exec rspec spec/contracts`; expect PASS against the validated fixtures. Task 1 provides recorded live checks before that.
-- [ ] Block Tasks 6–10 if the API, idle handshake, webhook authentication, verified thread identity, or selected Master CLI's MCP is missing. Document a concrete alternative instead of inventing socket methods.
+- [ ] Block Tasks 6–10 if the API, idle handshake, event authentication, verified thread identity, or selected Master CLI's MCP is missing. Document a concrete alternative instead of inventing socket methods.
 - [ ] After review, commit: `docs: validate pinned runtime and chat contracts`.
 
 ## Task 2: Kirei Foundation and Local Images
@@ -203,17 +191,17 @@ This evidence defines port work, not a claim that changing the adapter is suffic
 - [ ] Run `bundle exec rspec spec/integration/boot_spec.rb`; expect failure because `bin/web` and `bin/worker` startup integration is missing, not because health routes are missing.
 - [ ] Add `bin/web` and `bin/worker` startup validation. Reject pending migrations before either process serves requests or dispatches jobs.
 - [ ] Prefer an Alpine Kirei base image. If the pinned dependencies fail on Alpine, record the evidence before selecting Ubuntu. Pin Bundler and set up Sorbet.
-- [ ] Define Compose services `web`, `worker`, `postgres`, `campfire`, `campfire-redis`, and later `runtime`. Use no real secrets or production routing.
-- [ ] Keep Redis service connectivity private. Give `campfire-redis` a health check and persistent data volume; validate restart recovery.
-- [ ] Provision separate Kirei/Campfire databases and roles locally. Test that each role cannot read or modify the other database.
+- [ ] Define Compose services `web`, `worker`, `chat-listener`, `postgres`, `mattermost`, `push-proxy`, and later `runtime`. Pin upstream chat/push images. Use no real secrets or production routing.
+- [ ] Give chat/push services explicit health/configuration contracts; keep credentials and internal API connectivity private.
+- [ ] Provision separate Kirei/Mattermost databases and roles locally. Test that each role cannot read or modify the other database.
 - [ ] Check generated routes register `Router.add_health_routes!`. Run `docker compose config --quiet`, image builds, the boot test, and `bundle exec spoom srb tc`.
 - [ ] After review, commit: `build: bootstrap Kirei control plane and local compose`.
 
 ## Task 3: Durable Jobs, Inbox, and Outbox
 
-**Files:** Create `db/migrate/001_jobs.rb`, `app/domains/workflows/entities.rb`, `app/domains/jobs/{entities,worker,store}.rb`, `app/domains/campfire/outbox.rb`, `spec/domains/jobs_spec.rb`.
+**Files:** Create `db/migrate/001_jobs.rb`, `app/domains/workflows/entities.rb`, `app/domains/jobs/{entities,worker,store}.rb`, `app/domains/mattermost/outbox.rb`, `spec/domains/jobs_spec.rb`.
 
-**Interfaces:** `Jobs.enqueue(kind: String, payload: Hash, key: String) -> String`; `Jobs.claim(worker_id: String, now: Time) -> Job?`; `complete(id:, lease_token:)`; `retry(id:, lease_token:, error:)`. `Outbox.enqueue(room_id:, thread_id: String?, bot:, role: String?, body:, key:) -> String`. PostgreSQL jobs dispatch Herdr work, reconciliation, and outbox delivery beyond the webhook request; Kirei needs no Sidekiq or Redis.
+**Interfaces:** `Jobs.enqueue(kind: String, payload: Hash, key: String) -> String`; `Jobs.claim(worker_id: String, now: Time) -> Job?`; `complete(id:, lease_token:)`; `retry(id:, lease_token:, error:)`. `Outbox.enqueue(channel_id:, thread_id: String?, bot:, role: String?, body:, key:) -> String`. PostgreSQL jobs dispatch Herdr work, reconciliation, and outbox delivery beyond event ingestion; Kirei needs no Sidekiq or Redis.
 
 - [ ] Write PostgreSQL tests: two workers never claim the same job; a unique key returns one job; an expired lease is retryable; an old lease token cannot complete a job.
 - [ ] Define and type-check all shared workflow contracts before Tasks 4–6 consume them. Add the Task 3 schema constraints above.
@@ -223,41 +211,44 @@ This evidence defines port work, not a claim that changing the adapter is suffic
 - [ ] Check actual PostgreSQL concurrency, retry budget, and dead workers. Treat a crash after an unconfirmed network effect as blocked or uncertain; do not claim exactly-once external delivery.
 - [ ] After review, commit: `feat: add durable leased jobs and delivery outbox`.
 
-## Task 4: Campfire Routing and Verified Senders
+## Task 4: Mattermost Routing and Verified Senders
 
-**Files:** Create `app/domains/campfire/{controller,client,router,actor_resolver,worker_chat}.rb`, `spec/domains/campfire_spec.rb`; extend `bin/digitaltwin` and Task 3 outbox.
+**Files:** Create `app/domains/mattermost/{client,listener,reconcile,router,actor_resolver,worker_chat}.rb`, `spec/domains/mattermost_spec.rb`; create `bin/chat-listener`; extend `bin/digitaltwin` and Task 3 outbox.
 
-**Interfaces:** `Router.ingest(delivery: VerifiedDelivery) -> Outcome`; `ActorResolver.resolve(room_id:, user_id:) -> Actor`; `VerifiedDelivery` contains verified room, post, and thread or root post identity. Client methods follow Task 1 exactly.
+**Interfaces:** `Router.ingest(delivery: VerifiedDelivery) -> Outcome`; `ActorResolver.resolve(channel_id:, user_id:) -> Actor`; `VerifiedDelivery` contains server-verified channel, post, root, sender, event kind, and post revision. Client methods follow Task 1 exactly.
+`thread_id` is the verified root post ID. Event identities support REST backfill; they are not invented webhook delivery IDs.
 
 `WorkerChat.post(session: SessionRef, body: String, key: String) -> Outcome` accepts session-bound questions and progress.
 Runtime command: `digitaltwin say --text <text> --key <stable-message-key>` through the private Kirei endpoint.
-Kirei derives room/thread, active role, and Worker bot identity from its session mapping. Callback parameters cannot supply another destination.
+Kirei derives channel/thread, active role, and Worker bot identity from its session mapping. Callback parameters cannot supply another destination.
 Deduplicate `(session, generation, key)` and reject a reused key with changed body. Audit the mapping and enqueue delivery transactionally.
-Workflow notices require a verified thread; Master replies may use source-room context without a project thread.
+Workflow notices require a verified thread; Master replies may use source-channel context without a project thread.
 
-- [ ] Write tests for invalid webhooks, own bots, peer bots, room membership, replay, and duplicate delivery.
+- [ ] Write tests for invalid events, own bots, peer bots, channel membership, replay, duplicate delivery, disconnect/backfill, and edits/deletions.
 - [ ] Write `worker_question_reaches_bound_thread`, `worker_role_visible`, `callback_retry_posts_once`, `callback_changed_body_rejected`, and `cross_workflow_destination_rejected`.
 - [ ] Keep detailed Worker updates in their bound thread. Master summaries use the configured verified destination and Agent bot identity.
-- [ ] Validate session credential/generation and active role before enqueueing Worker output. Keep Campfire credentials in Kirei, outside model output and Runtime callbacks.
+- [ ] Validate session credential/generation and active role before enqueueing Worker output. Keep Mattermost credentials in Kirei, outside model output and Runtime callbacks.
 - [ ] Reuse Task 8's callback authentication mechanism when integrated. Its credentials prevent accidental mix-ups within the shared Runtime, not malicious isolation.
-- [ ] Check `agent_any_room_preserves_source`, `worker_unactivated_thread_does_not_start`, `worker_thread_routes_without_repeat_mention`, and `worker_thread_cannot_route_to_another_workflow`; ordinary messages expose no internal workflow IDs.
-- [ ] Run `bundle exec rspec spec/domains/campfire_spec.rb`; expect missing router.
+- [ ] Check `agent_any_channel_preserves_source`, `worker_unactivated_thread_does_not_start`, `worker_thread_routes_without_repeat_mention`, and `worker_thread_cannot_route_to_another_workflow`; ordinary messages expose no internal workflow IDs.
+- [ ] Run `bundle exec rspec spec/domains/mattermost_spec.rb`; expect missing router.
 - [ ] Implement `@agent` to Master and thread-specific `@worker start`/`approve`/`pause`/`resume`/`finish`/`cancel`/ordinary message to the active project phase. Activate only the thread root with `@worker start`; route later human thread messages without a repeated mention. Store inbox before dispatch.
 - [ ] Persist messages received while paused. On resume, dispatch them only after phase/revision checks and normal workflow gates.
-- [ ] Check that sender/bot classification comes from Campfire; forged JSON/model fields cannot grant human authority.
-- [ ] Validate the maintained fork's signed events against the Task 1 contract. Reject cross-room root identities before workflow dispatch.
-- [ ] After review, commit: `feat: route authenticated Campfire mentions`.
+- [ ] Resolve server `is_bot` and configured bot identities through Mattermost. Neither unconfigured bots nor forged fields can grant human authority.
+- [ ] Require migrated database state before `bin/chat-listener` ingests events. Keep its connection lifecycle separate from bounded job execution.
+- [ ] Authenticate the WebSocket/REST source against Task 1. Reconcile disconnects with persisted checkpoints; reject cross-channel roots and revoked membership.
+- [ ] After review, commit: `feat: route authenticated Mattermost mentions`.
 
 ## Task 5: Enrollment and Git Workspace
 
 **Files:** Create `db/migrate/002_projects.rb`, `app/domains/projects/{enroll,repository_identity,workspace}.rb`, `app/domains/forge/client.rb`, `spec/domains/projects_spec.rb`, `bin/digitaltwin` enrollment.
 
-**Interfaces:** `Projects.enroll(actor: Actor, room_id: String, slug: String, choice: clone|create_private|stop) -> Outcome`; `Workspace.resolve(slug: String) -> String`; `Forge.clone(slug:, destination:)`, `create_private(slug:)`, `read_revision(repo:, commit:)`.
+**Interfaces:** `Projects.enroll(actor: Actor, channel_id: String, slug: String, choice: clone|create_private|stop) -> Outcome`; `Workspace.resolve(slug: String) -> String`; `Forge.clone(slug:, destination:)`, `create_private(slug:)`, `read_revision(repo:, commit:)`.
 
 `Workspace.resolve` returns the enrolled shared clone. `Workspace.for_workflow(slug:, workflow_id:, branch:) -> String` creates or verifies the workflow worktree.
 Validate UUID, branch ownership, remote identity, and realpath containment under `/workspace/worktrees`. Never switch the shared clone for project work.
 
-- [ ] Write `valid_slug_maps_path`, `rejects_traversal_and_symlink_escape`, `remote_mismatch_blocks`, `rename_keeps_room_mapping`.
+- [ ] Store an explicit `channel_id` to repository slug mapping. Test valid Mattermost channel names without inferring slugs from names/display text.
+- [ ] Write `valid_slug_maps_path`, `rejects_traversal_and_symlink_escape`, `remote_mismatch_blocks`, `rename_keeps_channel_mapping`.
 - [ ] Add `two_threads_same_repo_isolated_worktrees`, `worktree_symlink_escape_rejected`, and `workflow_worktree_restart_verified` with local Git fixtures.
 - [ ] Concurrent worktrees use separate branches. Writer edits in one cannot alter another workflow's HEAD, files, or review snapshot.
 - [ ] For a missing repo, add exactly clone/create-private/stop; create privately only after the selected action, never implicitly.
@@ -265,7 +256,7 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 - [ ] Implement validated `owner/repository` segments, realpath-based containment checks, and remote identity for HTTPS/SSH. Use argv instead of composed shell strings.
 - [ ] Connect chat, MCP, and shell to the same service. Initialize Wagglebot after Task 6 before a project workflow starts.
 - [ ] Check with bare Git fixtures whose HEAD explicitly points to main; tests create no GitHub resources.
-- [ ] After review, commit: `feat: enroll rooms into verified Git workspaces`.
+- [ ] After review, commit: `feat: enroll channels into verified Git workspaces`.
 
 ## Task 6: Non-root Runtime, Herdr, and Wagglebot
 
@@ -281,7 +272,7 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 - [ ] Verify each CLI's conversation identity and resume behavior against Task 1. Reuse requires matching workflow topic, role/configuration, and current generation.
 - [ ] Test `same_workflow_role_reuses_healthy_context`, `unrelated_topic_starts_fresh_context`, `writer_reviewer_contexts_separate`, and `new_workflow_never_reuses_old_context`.
 - [ ] Pass the verified workflow worktree as `repo` for Writer/Reviewer. Persist it across session generations and revalidate it after restart.
-- [ ] Install the `digitaltwin say` client with artifact-ready callbacks. Test a Writer question, human reply, and follow-up without direct Campfire credentials.
+- [ ] Install the `digitaltwin say` client with artifact-ready callbacks. Test a Writer question, human reply, and follow-up without direct Mattermost credentials.
 - [ ] Persist clone and worktree roots on the same workspace volume. Verify Git common-directory paths remain valid after container restart.
 - [ ] Run `bundle exec rspec spec/domains/runtime_spec.rb`; expect missing session interface.
 - [ ] Implement adapters only against the Task 1 contract. Persist Role→Pane/Alias, session generation, and separate credential areas in the shared Runtime home.
@@ -411,20 +402,20 @@ These sources validate names and compatibility considerations; Task 1 still sele
 
 **Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/controller/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/controller_spec.rb`; update `docs/phase-1-voice-controller.md` if thread creation is deferred.
 
-**Interfaces:** Master `RoleConfig(cli: String, provider: String, model: String, family: String)` reaches `Sessions.start(workflow_id: nil, generation:, role: controller, config:, repo: nil)` unchanged. MCP tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `finish_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials` receive server-side Actor/Room/Thread context.
+**Interfaces:** Master `RoleConfig(cli: String, provider: String, model: String, family: String)` reaches `Sessions.start(workflow_id: nil, generation:, role: controller, config:, repo: nil)` unchanged. MCP tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `finish_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials` receive server-side Actor/Channel/Thread context.
 
 Master conversation and targeted emergency operations do not enter the project specification, plan, review, or approval cycle.
 Starting or prompting a coding workflow is coordination; the target workflow retains its own gates.
 Master owns creation of separately managed sessions. Workers/peers request human approval and Master executes the authorized creation; they cannot start sessions or peer chains autonomously.
 Harness-native subagents are allowed where supported and stay subordinate to the invoking session.
 Emergency operations use available typed tools. Keep existing destructive/irreversible confirmations; add no emergency-specific approval gate.
-`start_workflow` requires a verified thread in the selected project room.
+`start_workflow` requires a verified thread in the selected project channel.
 If optional creation is enabled, Kirei first creates/reconciles the thread and records its association before calling the same workflow-start service.
-Keep source actor/context verified; preserve normal coding gates. The Master does not infer a target from unrelated room messages.
+Keep source actor/context verified; preserve normal coding gates. The Master does not infer a target from unrelated channel messages.
 
 - [ ] Write `selected_master_config_reaches_sessions_start`: assert controller role, `workflow_id: nil`, `repo: nil`, and unchanged CLI/provider/model/family. Assert another Task 1-validated CLI/provider reaches the same interface unchanged.
-- [ ] Write `room_context_survives_tool_call`, `restart_creates_fresh_session_with_same_config`, `secret_values_never_returned`. Assert restart uses the same config in neutral Runtime home, reconstructs PostgreSQL status, and preserves sender/context checks.
-- [ ] Add `rooms_share_master_context` and `peer_private_context_unavailable`. Preserve source/sender checks while allowing fleet-wide context and operations.
+- [ ] Write `channel_context_survives_tool_call`, `restart_creates_fresh_session_with_same_config`, `secret_values_never_returned`. Assert restart uses the same config in neutral Runtime home, reconstructs PostgreSQL status, and preserves sender/context checks.
+- [ ] Add `channels_share_master_context` and `peer_private_context_unavailable`. Preserve source/sender checks while allowing fleet-wide context and operations.
 - [ ] Add `bot_cannot_confirm`, `confirmation_replay_rejected`, `changed_parameters_require_confirmation`, `unconfigured_deployment_tool_rejected`.
 - [ ] Test `master_status_needs_no_workflow` and `master_emergency_operation_needs_no_coding_cycle`. Ordinary coding still requires approved workflow revisions.
 - [ ] Test `master_starts_in_verified_existing_thread` independently of optional thread creation.
@@ -434,18 +425,18 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 - [ ] Implement the stdio MCP bridge against the same application services, with no raw shell or credential-read tools.
 - [ ] Route MCP `send_prompt` through the same review lock and queue as chat. Test that a Master request cannot bypass Writer exclusion.
 - [ ] Serialize requests to one logical Master session with shared fleet context and access. Pass verified source context through a request-bound capability.
-- [ ] Keep independent fleets' Master sessions and private control/runtime data separate. Peer collaboration uses only shared Campfire and Git interfaces.
+- [ ] Keep independent fleets' Master sessions and private control/runtime data separate. Peer collaboration uses only shared Mattermost and Git interfaces.
 - [ ] Require a second human confirmation before destructive/irreversible operations. The confirmation window is ten minutes; audit includes the parameter hash, never secret values.
-- [ ] Accept confirmation from any verified human room member. Add `collaborator_can_confirm`; do not introduce an owner-only ID or human allowlist.
+- [ ] Accept confirmation from any verified human channel member. Add `collaborator_can_confirm`; do not introduce an owner-only ID or human allowlist.
 - [ ] Check the selected Master CLI's real MCP round trip from Task 1. After restart, PostgreSQL/tool status is authoritative, not the old conversation.
 - [ ] Configure and verify the Master chat destination. Summaries link to source project threads and artifacts without exposing internal workflow IDs.
 - [ ] After review, commit: `feat: add authorized master operations`.
 
 ## Task 10: Verified Delivery, Research, Memory, and Peer Handoffs
 
-**Files:** Create `app/domains/forge/{delivery,memory}.rb`, `app/domains/campfire/peer_handoff.rb`, `docs/interfaces/peer-handoff.md`, `docs/operations/project-runbook.md`, `spec/domains/delivery_spec.rb`.
+**Files:** Create `app/domains/forge/{delivery,memory}.rb`, `app/domains/mattermost/peer_handoff.rb`, `docs/interfaces/peer-handoff.md`, `docs/operations/project-runbook.md`, `spec/domains/delivery_spec.rb`.
 
-**Interfaces:** `Delivery.finalize(workflow_id:, commit:, evidence:) -> Outcome`; `Memory.change(actor:, slug:, path:, mode: additive|reorganization) -> Outcome`; `PeerHandoff.receive(actor:, version:, request_key:, recipient:, thread_id:, slug:, revision:, action:) -> Outcome`. Sender/source identity comes from verified Campfire context, not untrusted envelope claims.
+**Interfaces:** `Delivery.finalize(workflow_id:, commit:, evidence:) -> Outcome`; `Memory.change(actor:, slug:, path:, mode: additive|reorganization) -> Outcome`; `PeerHandoff.receive(actor:, version:, request_key:, recipient:, thread_id:, slug:, revision:, action:) -> Outcome`. Sender/source identity comes from verified Mattermost context, not untrusted envelope claims.
 
 - [ ] Write `one_branch_one_pr`, `research_requires_sources_and_uncertainty`, `no_automatic_merge_or_pull`, `failed_push_not_delivered`.
 - [ ] Add configurable memory slug, additive default-branch change, and reorganization only by branch/PR; a workflow may finish without memory needs.
@@ -457,7 +448,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 - [ ] Implement the final PR only after implementation review. Deliver commit, check evidence, blockers, and links; an open PR counts as a delivery result.
 - [ ] Document research paths `docs/research/<topic>.md` and sources, access date, and uncertainty; spec/plan gates also apply to research.
 - [ ] Define `CHANGELOG.md` as the human result summary and `.agents/changelog.md` as the agent change log. Neither contains scheduler state.
-- [ ] Check with a simulated Campfire peer and local Git remotes; no second server fleet is required. Real push/PR/memory checks require separate authorization.
+- [ ] Check with a simulated Mattermost peer and local Git remotes; no second server fleet is required. Real push/PR/memory checks require separate authorization.
 - [ ] After review, commit: `feat: deliver reviewed artifacts and scoped peer handoffs`.
 
 ## Task 11: Recovery and Operational Status
@@ -466,7 +457,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 
 **Interfaces:** `Recovery.run(now: Time) -> RecoveryReport`; `Status.snapshot(project_id:, now:) -> StatusSnapshot` with phase, revision, session state, activity, PR, blocker, evidence, and staleness.
 
-- [ ] Write crash matrix: before/after session start, callback, review lock, approval, Git push, and Campfire post. Uncertain external effects block for reconciliation without an unverified retry.
+- [ ] Write crash matrix: before/after session start, callback, review lock, approval, Git push, and Mattermost post. Uncertain external effects block for reconciliation without an unverified retry.
 - [ ] Add missing pane, unknown provider state, old alias, and DB recovery with missing workspace; never mark automatically as done.
 - [ ] Run `bundle exec rspec spec/integration/recovery_spec.rb`; expect missing reconciliation.
 - [ ] Implement startup reconciliation from DB, Git, and Herdr; create a fresh Master. Reconstruct work from committed artifacts and reviews.
@@ -479,7 +470,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 - [ ] Post approval-needed, blocked, and PR-ready/delivered summaries to Master chat as well as required project-thread notices.
 - [ ] Deduplicate by verified workflow event and destination. Include project/phase and source/artifact links; keep ordinary progress only in project threads.
 - [ ] Test `important_event_reaches_master_and_project`, `summary_retry_not_duplicated`, `summary_contains_source_links`, and `ordinary_progress_not_mirrored`.
-- [ ] Check container restart with named volumes; two threads in one room and two independent rooms work at the same time. Finish only one delivered thread with explicit `finish` and check that its Herdr sessions are archived.
+- [ ] Check container restart with named volumes; two threads in one channel and two independent channels work at the same time. Finish only one delivered thread with explicit `finish` and check that its Herdr sessions are archived.
 - [ ] After review, commit: `feat: reconcile runtime state after interruption`.
 
 ## Task 12: Portable Operations Contracts and Infrastructure Handoff
@@ -489,19 +480,18 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 **Interfaces:** Contract documents list ENV, secret file, UID/GID, volumes, ports, healthcheck, and start command per image. Worker/Runtime require the same host/task socket volume.
 
 - [ ] Write `image_contract_spec`: non-root, healthcheck, persistent paths, no Docker/root mounts, no publicly exposed Runtime SSH ports, and version pins matching `.ruby-version`/`.nvmrc`. Assert Alpine Kirei or recorded dependency evidence for Ubuntu; assert the Runtime base follows Task 6 validation.
-- [ ] Check Campfire's image against `apps/campfire/.ruby-version` and its lockfile. Keep image build and test contexts independent from Kirei.
+- [ ] Verify the selected official Team Edition/push artifacts and mobile build provenance, licenses, notices, and permitted dependencies.
 - [ ] Run `bundle exec rspec spec/integration/image_contract_spec.rb`; expect missing complete image contracts.
-- [ ] Document one PostgreSQL server with separate Kirei/Campfire databases, roles, migrations, and secrets. Campfire is a separate maintained application service.
-- [ ] Document Campfire Redis/Resque, Action Cable, cache, and Kredis through a Redis sidecar. Scope Kirei's no-Redis requirement to Kirei.
-- [ ] Define Redis service address, health check, persistent volume, restart, and backup/restore contracts. Keep its port on private service connectivity.
-- [ ] Enable and validate Redis persistence for queued jobs; upstream disables AOF and snapshots. Reconcile uncertain effects after restart or restore.
-- [ ] Document three independently built images and Campfire's upstream base/pins. Infrastructure owns production orchestration; local Compose supplies integration services.
+- [ ] Document one PostgreSQL server with separate Kirei/Mattermost databases, roles, migrations, and secrets. Mattermost is an independently upgraded upstream service.
+- [ ] Document Team Edition and the existing push proxy as separate services; no inherited Redis/Resque or Rails requirements.
+- [ ] Define mobile application IDs, signing and APNs/FCM secret references, delivery/update ownership, and distribution setup as future human tasks.
+- [ ] Document two independently built application images and pinned upstream chat/push artifacts. Infrastructure owns production orchestration.
 - [ ] Describe private Tailscale/OpenSSH access, Headscale DNS-only through Traefik with trusted TLS; neither Cloudflare Proxy nor Tunnel for Headscale.
 - [ ] Document intentional raw terminal access: the human controls agents directly. No owner-side status/approval CLI or Master session is required for attachment.
 - [ ] State that terminal input is unsupervised. Kirei's dispatch lock cannot prevent direct input; conflicting changes require review reconciliation.
 - [ ] Document ignored `.env`, optional `op://` references, and root/0600 production files in the infrastructure repo. No secret values or login states in images/Git.
-- [ ] Create backup/restore matrix: include both PostgreSQL databases/roles, Campfire attachments/Redis data, Herdr, configuration/audit, and Headscale; exclude clones/worktrees/unpushed work/CLI logins.
-- [ ] Replace SQLite file-copy procedures with consistent PostgreSQL database backups and coordinated attachment restore. Verify relationships and application startup after restore.
+- [ ] Create backup/restore matrix: include both PostgreSQL databases/roles, Mattermost attachments and push configuration, Herdr, configuration/audit, and Headscale; exclude clones/worktrees/unpushed work/CLI logins.
+- [ ] Use consistent PostgreSQL backups and coordinated Mattermost attachment/configuration restore. Verify relationships and application startup after restore.
 - [ ] Hand off daily S3 client-side encryption, external key, 30-day lifecycle, and second-failure alarm to Infra. Explicitly document re-login after restore.
 - [ ] Document an image-by-digest example for Production Compose and Hosted Task, including shared socket. Do not present portability as a tested ECS deployment.
 - [ ] After review, commit: `docs: define production image and recovery contracts`.
@@ -512,13 +502,14 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 
 **Interfaces:** `bin/acceptance local` checks local flows with simulated providers/peer; `bin/acceptance operator` creates a live checklist to complete manually and starts no deployment.
 
-- [ ] Write local full flow: two rooms, mobile interview response, spec review/approval, plan review/approval, implementation review, and one PR delivery.
+- [ ] Write local full flow: two channels, mobile interview response, spec review/approval, plan review/approval, implementation review, and one PR delivery.
 - [ ] Add research flow, optional pushed memory change, peer handoff, and restart between gates. Forbidden approvals/transitions must fail.
 - [ ] Run `docker compose run --rm web bundle exec rspec spec/integration/phase0_spec.rb`; expect missing full integration before implementation.
 - [ ] Complete full integration and run `bundle exec rspec`, `bundle exec spoom srb tc`, `bundle exec rubocop`, `docker compose config --quiet`, and image builds.
-- [ ] From `apps/campfire/`, run `bin/ci` and PostgreSQL migration/restore checks. Complete two mobile interviews without crossed replies or repeated mentions.
+- [ ] Run custom mobile build/unit/device checks and upstream Team Edition compatibility/restore checks. Complete two threaded interviews without crossed replies.
+- [ ] Test self-hosted push on our signed iOS/Android builds: background delivery, correct thread deep link, and restored configuration.
 - [ ] Record output, commit, image digests, and test environment. Report live checks and simulated checks separately.
-- [ ] After separate deployment approval, the operator checks real CLIs, Campfire mobile access, Tailnet attachment, externally closed SSH port, all service health checks, and encrypted restore.
+- [ ] After separate deployment approval, the operator checks real CLIs, Mattermost mobile access, Tailnet attachment, externally closed SSH port, all service health checks, and encrypted restore.
 - [ ] Check every acceptance row below; missing live evidence remains open and must not imply Phase 0 acceptance.
 - [ ] After review, commit: `test: document Phase 0 acceptance evidence`.
 
@@ -527,14 +518,14 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 | No. | Responsibility | Required evidence |
 | --- | --- | --- |
 | 1 | 12/13 + Infra | published OCI digests start in existing infrastructure; separate approval |
-| 2 | 1/2/13 | local Compose integration with fork, separate PostgreSQL databases, and Campfire Redis sidecar; exit 0 |
+| 2 | 1/2/13 | local Compose with upstream Team Edition/push proxy and separate PostgreSQL databases; exit 0 |
 | 3 | 12 | same ENV/volume/health contracts, Compose and Hosted Task definition |
-| 4 | 6/12/13 + Infra | health of Campfire, DB, Web, Worker, Runtime, Headscale, Tailscale |
+| 4 | 6/12/13 + Infra | health of Team Edition, push proxy, DB, Web, Worker, listener, Runtime, Headscale, Tailscale |
 | 5–6 | 6/12 | contract test and inspected container UID/mount/capability state |
 | 7 | 6/11 | host restart, persistent clones/worktrees/Herdr/Wagglebot/login states |
 | 8 | 1/6 | four real CLI starts through pinned Herdr |
 | 9–10 | 12/13 + Infra | Tailnet attachment succeeds; external SSH connection test is rejected |
-| 11 | 4/9 | Master request from two rooms carries the correct source room |
+| 11 | 4/9 | Master request from two channels carries the correct source channel |
 | 12–13 | 5/6/7 | fresh role sessions; duplicate active-thread start rejected; concurrent same-repo threads use separate worktrees |
 | 14–16 | 5 | path/remote checks, three setup actions, one shared service |
 | 17–19 | 7 | revision/bot/race negative tests |
@@ -543,14 +534,16 @@ Keep source actor/context verified; preserve normal coding gates. The Master doe
 | 27 | 9/11 | fresh selected-controller session with same configuration and durably reconstructed status |
 | 28 | 10/13 | simulated peer and separate Git identity, chat/Git only |
 | 29 | 1/12/13 + Infra | encrypted restore of both databases/roles and attachments; logins not restored |
-| 30 | 1/4/6/13 + Operator | mobile thread interviews through session-bound Kirei outbox, visible Worker role, authenticated ordinary replies |
+| 30 | 1/4/6/13 + Operator | mobile thread interviews through session-bound Kirei outbox, visible Worker role, authenticated ordinary replies and own-build push/deep links |
 | 31 | 10/13 | committed research Markdown with sources and uncertainty |
 | 32 | 10/13 + Operator | memory commit and push verified for configured repo identity |
 
-## Open Decisions
+Later provider/MCP integration remains [issue #4](https://github.com/swiknaba/digitaltwin/issues/4), after Phase 2. Mattermost requires no chat-plugin MCP.
+
+## Remaining Validation and Operator Setup
 
 1. **Herdr capability:** Task 1 determines whether four CLIs and the idle handshake are reliable enough. Without proof, do not implement Runtime/review based on assumptions.
 2. **Pins and credentials:** Operator provides company config, memory slug, model configuration, and test credentials. Secrets stay outside the plan. Select release pins after checking them.
-3. **Campfire contract:** Implement and validate the approved Rails fork, PostgreSQL port, Redis sidecar, thread UI/API, and authenticated events. Validate Worker callbacks through Kirei's outbox. Missing secure sender/thread checks block human approval.
+3. **Mattermost contract:** Validate official Team Edition bot APIs, native threads, authenticated events, and REST reconnect recovery. Validate own mobile builds and self-hosted push. Validate Worker callbacks through Kirei's outbox. Missing secure sender/thread checks block human approval.
 4. **Infrastructure:** Production, image publication, Headscale, backup bucket, and restore test are separately authorized work in the infrastructure context. This plan provides contracts only.
 5. **Review exclusion:** Kirei prevents prompt dispatch, checks Git, and monitors Herdr. The accepted shared Runtime domain does not protect against intentional direct terminal/filesystem access. Such access blocks/invalidates review and does not count as approved work.

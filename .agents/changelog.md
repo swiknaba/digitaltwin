@@ -37,3 +37,12 @@
 - Extend planned Runtime provisioning and executable smoke checks with distro package names, GNU/BusyBox and fd/fdfind distinctions, disposable-script cleanup, and live harness execution checks. Reuse existing Wagglebot/CLI setup.
 - Preserve conditional Alpine selection and the Ubuntu host. Compare glibc container fallbacks; Omarchy is a desktop distribution rather than a headless Runtime base. No provisioned runtime or host-package changes are claimed.
 - Checked official package/CLI/distro documentation, final diff whitespace, Markdown structure/local links, task count, and unchanged acceptance matrix.
+
+## 2026-10-01 — Approved Mattermost and LiveKit direction
+
+- Replace the planned Campfire server fork/SQLite-to-PostgreSQL port/Redis sidecar with the official unmodified Mattermost Team Edition artifact and external Kirei bot REST/WebSocket integration. Use explicit channel mappings, verified root posts, durable event identities, and reconnect backfill.
+- Plan our signed mobile builds and the existing self-hosted Mattermost push proxy/APNs/FCM path, with human-owned enrollment/credentials/distribution and upstream security maintenance. Keep push outside Kirei.
+- Distinguish official compiled-server MIT licensing from mixed server-source licensing. Audit exact artifacts, bundled plugins, dependencies, outputs, notices, and branding; exclude commercial components and required Calls/Agents plugins rather than bypass licensing checks.
+- Replace Phase 1 voice transport with independent self-hosted LiveKit group calls and AI voice. Require native client/background/device integration checks; preserve existing controller authority and coding gates.
+- Link issue #4 for the post–Phase 2 LiteLLM/MCP direction; add no current-phase rollout or chat-plugin MCP requirement.
+- Validate Markdown/local links/tables/fences, 13 tasks, 27 spec sections, all 32 acceptance criteria and matrix coverage, obsolete-path removal, and preservation of existing workflow/runtime/peer policies. This remains documentation only.

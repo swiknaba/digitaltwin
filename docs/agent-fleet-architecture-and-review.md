@@ -7,7 +7,7 @@ It also lists the remaining decisions that the implementation plan must resolve.
 ## 1. Outcome
 
 Phase 0 provides a self-hosted agent fleet on one Linux server.
-The owner controls project work through Campfire or an attached Herdr terminal.
+The owner controls project work through Mattermost or an attached Herdr terminal.
 
 Each project workflow uses a writer and a reviewer from different model families.
 The system preserves specifications, plans, reviews, code, and research in Git.
@@ -15,7 +15,7 @@ The system preserves specifications, plans, reviews, code, and research in Git.
 The deployment includes a persistent master controller for operational conversation, status, coordination, and targeted emergency changes.
 The controller uses the same local agent runtime as project work.
 
-Separate deployments communicate only through Campfire and Git.
+Separate deployments communicate only through Mattermost and Git.
 They do not share filesystems, databases, sockets, private networks, or controller APIs.
 
 ## 2. Phase boundary
@@ -26,7 +26,8 @@ All project agents share this boundary for the minimum viable product.
 Phase 0 includes:
 
 - Dockerized application services for one deployment.
-- Campfire for human and agent chat.
+- Mattermost Team Edition for human and agent chat.
+- Our mobile builds and self-hosted Mattermost push proxy/APNs/FCM.
 - Herdr for agent lifecycle management.
 - Codex CLI, Claude Code, OpenCode, and Gemini CLI.
 - Wagglebot for agent and project configuration.
@@ -44,9 +45,9 @@ Phase 0 excludes:
 - A built-in issue tracker.
 - Automatic pull request merge behavior.
 - Automatic post-merge synchronization.
-- Voice control.
+- Group calls and AI voice; Phase 1 owns the LiveKit integration.
 - Scheduled memory grooming.
-- Provider login through Campfire.
+- Provider login through Mattermost.
 - Direct control APIs between independent deployments.
 
 ## 3. Hosting assumptions
@@ -82,72 +83,96 @@ The operator upgrades those versions through reviewed manifest changes and rebui
 The infrastructure repository or hosting platform owns production orchestration.
 This includes production Compose files, networks, volumes, routing, restart policies, and backup schedules.
 
-Digitaltwin maintains a Rails fork of [Campfire](https://github.com/basecamp/once-campfire) under `apps/campfire/`.
-Keep its upstream MIT license and record the imported upstream commit.
-Campfire remains a separate application, image, database, and deployment service.
-The infrastructure layer orchestrates the fork image by OCI digest.
-Initially retain its upstream image base and independent Ruby/dependency pins.
-Review upstream updates and security fixes against the maintained patch set.
+Digitaltwin uses the official, unmodified Mattermost Team Edition server artifact, pinned by version and OCI digest.
+Kirei integrates externally through bot accounts, REST APIs, and authenticated WebSocket events.
+Mattermost supplies channels, real threads, PostgreSQL storage, and the browser interface.
+Keep server migrations, storage, configuration, and upgrades separate from Kirei.
+No chat server fork or database port is required.
+
+The [official compiled license](https://github.com/mattermost/mattermost/blob/master/server/build/MIT-COMPILED-LICENSE.md) is MIT and explicitly excludes source code.
+[Server source licensing](https://github.com/mattermost/mattermost/blob/master/LICENSE.txt) includes AGPL and commercial components; webapp licensing is Apache 2.0.
+A custom server build does not automatically inherit the official compiled-artifact license.
+Prefer the official Team Edition artifact; any later server modification requires a separate source/dependency license review.
+Exclude commercially licensed components from selected plugins and custom builds; replace needed functions independently.
+Do not remove license checks or reuse paid modules to unlock capabilities.
+Audit exact artifacts, bundled plugins, transitive dependencies, notices, and trademark obligations before release.
+An incompatible component blocks that release until omitted or independently replaced.
+
+Use our own [Apache 2.0 mobile app builds](https://github.com/mattermost/mattermost-mobile/blob/main/LICENSE.txt).
+The [desktop client](https://github.com/mattermost/desktop/blob/master/LICENSE.txt) is also Apache 2.0; custom desktop builds are optional.
+Mobile delivery requires our own application IDs, signing, distribution, security updates, and upstream maintenance.
+Use the existing [Mattermost push proxy](https://github.com/mattermost/mattermost-push-proxy) with APNs/FCM for self-hosted push.
+Keep it separate from Kirei; custom mobile builds must use matching push configuration and credentials.
+Human setup of Apple/Google enrollment, signing keys, push credentials, and distribution remains future work.
+Self-hosting still incurs hosting, distribution, and model costs.
+
+Mattermost Calls/rtcd are excluded from the chosen deployment; Phase 1 uses independently integrated LiveKit.
+The [Agents plugin](https://github.com/mattermost/mattermost-plugin-agents) is not a required dependency.
+Mattermost remains chat transport/UI; MCP integration is not required in a chat plugin.
+Its [commercial capability gates](https://github.com/mattermost/mattermost-plugin-agents/blob/master/enterprise/license.go) restrict multi-provider, external MCP, and state-changing tools.
+Its repository includes commercially licensed code despite its Apache label.
+Kirei's external Master/Worker bots provide the selected path without promising free plugin MCP capabilities.
+The [LiteLLM/MCP direction](https://github.com/swiknaba/digitaltwin/issues/4) belongs after Phase 2; it adds no Phase 0/1/2 requirements.
+Keep current agent/controller tool interfaces until that later design.
+Audit optional plugins individually. Hermes remains a candidate, not an adopted dependency.
 
 The application provides portable OCI images and environment configuration.
 The images can run through Docker Compose, AWS ECS, or another compatible platform.
 
-Phase 0 delivers Kirei, agent runtime, and maintained Campfire images.
+Phase 0 builds Kirei and agent Runtime images and integrates pinned upstream Team Edition and push-proxy artifacts.
+It also delivers our own signed mobile builds and their maintenance pipeline; it does not rebuild the chat server.
 PostgreSQL, Headscale, Tailscale networking, and S3 remain external integration services.
 Prefer Alpine for the Kirei image when its pinned dependencies pass runtime checks.
 Select the agent runtime base after validating Herdr and all required CLIs.
 Use Ubuntu for an image only when a verified dependency or runtime need requires it.
 
 The Kirei control plane is a modular monolith.
-One application image runs as separate web and worker services.
+One application image runs as separate web, worker, and authenticated event-listener services.
 
 An operator-supplied PostgreSQL service stores control state and durable jobs.
 Kirei implements a jobs table and worker loop with short [`FOR UPDATE SKIP LOCKED`](https://www.postgresql.org/docs/current/sql-select.html) claims.
 Workers use bounded retries, idempotency keys, leases, and expired-lease recovery.
 Notifications can wake a worker, but job rows remain the durable source of truth.
-The worker dispatches Herdr work, reconciles uncertain effects, and sends outbox messages outside webhook requests.
+The worker dispatches Herdr work, reconciles uncertain effects, and sends outbox messages outside chat event ingestion.
 It does not wait for an entire interactive agent session before accepting the next job.
 Kirei requires neither Sidekiq nor Redis.
 An external effect with an unknown result stays blocked for reconciliation unless its idempotency is proven.
 
-Campfire uses the same PostgreSQL server, with a separate database and role.
+Mattermost uses the same PostgreSQL server, with a separate database and role.
 Each application owns its migrations and cannot read or modify the other's tables.
-Campfire's port replaces SQLite connection settings, FTS5 search, and database-file backup hooks.
-Validate schema creation, search behavior, concurrent writes, attachments, and restore against PostgreSQL.
-Campfire keeps its upstream Redis/Resque jobs, Action Cable, cache, and Kredis dependencies.
-A Campfire-associated Redis sidecar container supplies those services over private service connectivity.
-The fork uses the configured Redis service address instead of starting Redis inside the Rails container.
-Infrastructure owns its production lifecycle, health check, persistent data volume, and restart policy.
-Redis restart reconciliation must not mark uncertain jobs or external effects as complete.
-Attachments remain in Campfire's persistent storage volume.
+Mattermost attachments and configuration use their own persistent storage.
+No Redis/Resque, Rails, SQLite port, or custom chat-thread schema is carried over from the superseded chat design.
+Infrastructure owns Team Edition and push-proxy health checks, persistent storage, restart policies, TLS, and production lifecycle.
 
 ## 5. Service architecture
 
 ```mermaid
 flowchart TD
-    Human["Owner or collaborator"] --> Campfire["Campfire"]
-    Campfire --> Web["Kirei web service"]
+    Human["Owner or collaborator"] --> Mattermost["Mattermost"]
+    Mattermost --> Listener["Kirei authenticated event listener"]
+    Listener --> Database
     subgraph PostgreSQL["Shared PostgreSQL server"]
         Database["Kirei database and role"]
-        CampfireDB["Campfire database and role"]
+        MattermostDB["Mattermost database and role"]
     end
-    Web --> Database
-    Campfire --> CampfireDB
-    Campfire --> Redis["Campfire Redis sidecar"]
+    Web["Kirei web service"] --> Database
+    Mattermost --> MattermostDB
+    Mattermost --> Push["Mattermost push proxy"]
+    Push --> Providers["APNs / FCM"]
     Worker["Kirei worker service"] --> Database
     Worker --> Runtime["Herdr and agent CLIs"]
     Runtime --> Repositories["Persistent Git workspaces"]
     Runtime --> GitHub["GitHub"]
     Runtime --> Web
-    Worker --> Campfire
+    Worker --> Mattermost
     Tailnet["Tailscale sidecar"] --> Runtime
     Headscale["Headscale"] --> Tailnet
 ```
 
 The Kirei application owns these modules:
 
-- Campfire webhook ingestion and message delivery.
-- Project enrollment and room mapping.
+- Mattermost authenticated event ingestion, REST reconciliation, and message delivery.
+- Project enrollment and channel mapping.
 - Workflow state and approval gates.
 - Agent session commands through Herdr.
 - Review phase coordination.
@@ -237,7 +262,7 @@ The local integration test verifies that each CLI starts through Herdr.
 
 The operator signs in to each provider through an interactive terminal session.
 The runtime persists the resulting login state.
-Campfire does not implement a provider authentication flow.
+Mattermost does not implement a provider authentication flow.
 
 Gemini CLI can run and monitor its assigned session through Herdr after integration validation.
 When configured as Master, it can request other sessions through the authorized creation path in §17.
@@ -269,7 +294,7 @@ The Master deliberately shares fleet context under §17; independent fleets neve
 Conversation separation does not create a security boundary within the shared runtime.
 
 The writer and reviewer are workflow phases behind one project bot identity.
-They are not separate Campfire accounts.
+They are not separate Mattermost accounts.
 
 ## 9. Wagglebot integration
 
@@ -292,49 +317,47 @@ Its credentials remain outside Git.
 The runtime image pins the Wagglebot version.
 It updates Wagglebot only after an explicit operator command.
 
-## 10. Campfire room model
+## 10. Mattermost channel model
 
-One Campfire room represents one repository.
-The room name uses the `owner/repository` GitHub slug.
+One Mattermost channel represents one repository; PostgreSQL stores the explicit `channel_id` to `owner/repository` mapping.
+Mattermost channel URL names cannot contain `/`; do not treat a channel name as a trusted repository slug.
+Use a valid channel name and display the repository slug where supported.
+Enrollment accepts an explicit slug and records the verified remote identity.
+A rename cannot change the mapping.
 
-One Campfire thread represents one project workflow.
-The workflow identity binds the verified room ID and the verified thread ID.
+One Mattermost thread represents one project workflow.
+Its identity is the root post ID: use a reply's `root_id`, or the root post's own `id`.
+Verify the post, root, sender, channel, team context, and current membership through the authenticated server API.
+One channel can have several active workflows; different channels can run concurrently.
+The application imposes no fleet-wide concurrency limit and hides internal workflow identifiers in ordinary chat.
 
-One project room can have multiple active workflows in separate threads.
-The system does not expose internal workflow identifiers in normal chat.
+Use authenticated WebSocket events for ordinary replies, including replies without repeated mentions.
+A supervised listener stores verified events in Kirei's durable inbox before dispatch.
+Reconnect with REST history reconciliation and persisted checkpoints; WebSocket connection sequence numbers are not durable delivery IDs.
+Deduplicate post/event revisions and overlap backfill to recover disconnects without duplicate effects.
+The contract spike validates authentication, visibility, membership changes, edits/deletions, reply placement, and restart recovery.
+Outgoing webhooks alone are not assumed to deliver every threaded reply.
+Mattermost owns access and native threads; Kirei owns workflow mapping and gates.
+Mobile thread navigation and reply placement must pass on our own builds.
 
-Different threads and project rooms can run workflows at the same time.
-The application does not impose a fleet-wide concurrency limit.
-The operator manages server capacity and future autoscaling.
+## 11. Mattermost bot identities
 
-The system stores the verified Campfire room ID, repository identity, and thread-to-workflow mapping in PostgreSQL.
-This mapping survives a later room rename.
-
-Task 1 must verify that the selected Campfire release supplies a server-authenticated thread ID or root-post ID.
-The router must not derive a thread identity from message text or model output.
-The maintained fork adds validated root/reply relationships, thread views, and thread-aware bot posting and history.
-Its authenticated events include ordinary human replies without repeated mentions.
-Campfire validates room membership and thread ownership; Kirei owns thread-to-workflow mapping and gates.
-Mobile replies and live updates must remain in their selected thread.
-
-## 11. Campfire bot identities
-
-The deployment uses two Campfire bot accounts:
+The deployment uses two Mattermost bot accounts:
 
 - `@agent` is the master controller.
 - `@worker` handles project workflow phases.
 
 The exact account handles remain configurable for each deployment.
 The default handles are `agent` and `worker` when those names are available.
-An operator selects unique handles when multiple fleets use one Campfire instance.
+An operator selects unique handles when multiple fleets use one Mattermost instance.
 
-Kirei holds the Campfire credentials and posts under the configured Agent or Worker bot identity.
+Kirei holds the Mattermost credentials and posts under the configured Agent or Worker bot identity.
 Writer and Reviewer send interview questions and progress through a session-bound callback to Kirei's durable outbox.
 The callback uses the Runtime's Digitaltwin client and private Kirei endpoint.
-Kirei derives the room, thread, active role, and bot identity from the verified session mapping.
+Kirei derives the channel, thread, active role, and bot identity from the verified session mapping.
 Agents cannot choose another workflow destination through callback parameters.
 Record the source session/generation and deduplicate callback retries before posting.
-An uncertain Campfire post remains subject to reconciliation.
+An uncertain Mattermost post remains subject to reconciliation.
 
 Detailed progress, interview questions, reviews, and work results stay in the project workflow thread.
 Important summaries and blockers also appear in the configured Master chat under the Agent bot identity.
@@ -347,11 +370,11 @@ Each worker response identifies the active role.
 For example, a response can label itself as writer or reviewer.
 
 The message router ignores its own bot messages.
-It deduplicates webhook deliveries before it starts work or posts a response.
+It deduplicates reconciled chat events before it starts work or posts a response.
 
-## 12. Project enrollment and room mapping
+## 12. Project enrollment and channel mapping
 
-The room slug maps directly to a workspace path.
+The enrolled repository slug maps to a workspace path; the channel ID selects its recorded mapping.
 For example, `swiknaba/wagglebot` maps to `/workspace/repos/swiknaba/wagglebot`.
 
 The application stores the repository slug.
@@ -362,11 +385,11 @@ Before use, the application verifies these conditions:
 - The derived path remains under the workspace root.
 - The directory is a Git repository.
 - The configured Git remote matches the repository slug.
-- The Campfire room ID has the expected repository mapping.
+- The Mattermost channel ID has the expected repository mapping.
 
-If a room has no repository, the system asks the owner to select one action:
+If a channel has no repository, the system asks the owner to select one action:
 
-1. Clone the GitHub repository that matches the room name.
+1. Clone the GitHub repository that matches the supplied repository slug.
 2. Create a private GitHub repository with that name, then clone it.
 3. Stop and let the owner perform the setup.
 
@@ -389,17 +412,17 @@ Later human messages in an activated thread route to that workflow's active phas
 The active phase determines whether the writer or reviewer receives the message.
 
 Ordinary Worker messages outside an activated thread require an explicit `@worker start` in a new thread root post.
-The system does not infer a workflow from an idle thread or an unactivated room message.
-Master start requests can use an existing verified thread in the selected project room.
-Master-created threads are an optional Phase 0 convenience when the fork supports straightforward, verified, idempotent creation.
-Kirei must verify and record the returned project-room/thread association before starting the requested workflow.
+The system does not infer a workflow from an idle thread or an unactivated channel message.
+Master start requests can use an existing verified thread in the selected project channel.
+Master-created threads are an optional Phase 0 convenience when the API supports straightforward, verified creation with reconciliation.
+Kirei must verify and record the returned project-channel/thread association before starting the requested workflow.
 An uncertain creation result requires reconciliation before another creation or workflow start.
 If this integration is complex, keep the existing-thread path and defer creation to the [Phase 1 roadmap](phase-1-voice-controller.md).
 Omitting this convenience does not block Phase 0 acceptance.
 
 The owner explicitly closes a delivered workflow with `@worker finish` in its thread.
 The command stops its Herdr sessions, records the outcome, and archives the session metadata.
-It does not close a workflow from elapsed time, room silence, or an idle Herdr state.
+It does not close a workflow from elapsed time, channel silence, or an idle Herdr state.
 
 `@worker cancel` explicitly terminates an incomplete workflow.
 `@worker pause` and `@worker resume` remain thread-scoped and do not bypass workflow gates.
@@ -453,11 +476,11 @@ Agent instructions alone do not provide sufficient enforcement.
 
 An approval records these fields:
 
-- Campfire room and workflow identity.
+- Mattermost channel and workflow identity.
 - Artifact type.
 - Exact Git commit.
 - Authorized approver identity.
-- Campfire message ID.
+- Mattermost message ID.
 - Approval timestamp.
 
 The control plane permits the next gate only when the required approval matches the current artifact commit.
@@ -504,7 +527,7 @@ The reviewer uses the same command to report a committed review verdict.
 Herdr lifecycle events alone do not mark an artifact ready.
 
 If the writer stays active or Herdr reports an uncertain state, the worker does not start review.
-It reports the blocked transition in Campfire and waits for operator direction.
+It reports the blocked transition in Mattermost and waits for operator direction.
 
 The workflow has one committed review file.
 Each round appends one dated section to that file.
@@ -522,17 +545,17 @@ The writer owns all corrective changes.
 
 Each gate permits three unsuccessful review rounds.
 After the third unsuccessful round, the workflow becomes blocked.
-The worker asks an authorized human in Campfire how to continue.
+The worker asks an authorized human in Mattermost how to continue.
 
 ## 17. Master controller
 
-`@agent` routes messages from any room to one logical Master controller.
-The controller receives the source room context with each request.
+`@agent` routes messages from any channel to one logical Master controller.
+The controller receives the source channel context with each request.
 The Master has shared conversational context and operational access across its fleet.
-Room boundaries do not partition its context.
+Channel boundaries do not partition its context.
 Kirei still verifies each request's sender and source context.
 Independent fleets retain separate Master sessions, credentials, runtime, and private control data.
-Their collaboration remains limited to shared Campfire messages and Git artifacts.
+Their collaboration remains limited to shared Mattermost messages and Git artifacts.
 
 The controller is not bound to one repository.
 It does not use the project specification and plan gates.
@@ -585,29 +608,29 @@ The controller reconstructs current state from PostgreSQL and typed operations.
 
 ## 18. Human and peer authorization
 
-Any room member can create ordinary work and send project instructions.
-Peer agents can send instructions to existing workflows through explicit Campfire mentions.
+Any channel member can create ordinary work and send project instructions.
+Peer agents can send instructions to existing workflows through explicit Mattermost mentions.
 A bot cannot run `@worker start` to create a workflow or independently managed session.
 A request for new work requires human approval and creation through Master under §17.
 
-Campfire owns user administration, room access, and room membership.
-An authorized human is a room member whose Campfire user ID is not a configured bot identity.
+Mattermost owns user administration, team/channel access, and channel membership.
+An authorized human is a verified channel member with `is_bot: false` whose user ID is not a configured bot identity.
 Any authorized human can perform these actions:
 
 - Approve a specification.
 - Approve an implementation plan.
 - Confirm a destructive or irreversible operation.
 
-The system verifies the sender's Campfire user ID for human-only actions.
-Configured local and peer bot identities cannot approve or confirm these actions.
+The system verifies the sender's Mattermost user ID for human-only actions.
+Server-identified bots and configured local/peer bot identities cannot approve or confirm these actions.
 Digitaltwin does not maintain a separate human allowlist.
 
 ## 19. Independent deployment collaboration
 
-Independent deployments share only a Campfire room and a Git repository.
+Independent deployments share only a Mattermost channel and a Git repository.
 Each deployment keeps its own bot accounts, credentials, runtime, and control state.
 
-Agents coordinate through explicit mentions in the shared room.
+Agents coordinate through explicit mentions in the shared channel.
 They exchange durable artifacts through branches, commits, and pull requests.
 
 The implementation documents a versioned handoff contract in `docs/interfaces/peer-handoff.md`.
@@ -619,7 +642,7 @@ Its initial envelope identifies these items:
 - The repository slug.
 - The relevant branch, commit, or pull request.
 
-The receiving deployment derives sender identity and room/thread membership from authenticated Campfire events.
+The receiving deployment derives sender identity and channel/thread membership from authenticated Mattermost events.
 It rejects unsupported versions, wrong recipients, replayed requests, and unverified target/artifact bindings.
 A handoff cannot authorize a new session or an automatic onward peer chain.
 An agent needing another session asks a human, then Master handles authorized creation.
@@ -679,15 +702,15 @@ Headscale uses a dedicated DNS-only hostname through Traefik.
 It uses a publicly trusted TLS certificate.
 
 The Headscale endpoint does not use Cloudflare Proxy or Cloudflare Tunnel.
-Campfire can remain behind the existing Cloudflare protection.
+Mattermost can remain behind the existing Cloudflare protection.
 
 ## 23. Backup scope
 
 The infrastructure layer sends encrypted backups to an operator-configured S3-compatible bucket.
 It runs one backup each day.
 A single missed daily backup is acceptable.
-The infrastructure layer sends a Campfire alert after two consecutive backup failures.
-It uses an operator-configured Campfire webhook for that alert.
+The infrastructure layer sends a Mattermost alert after two consecutive backup failures.
+It uses an operator-configured Mattermost webhook for that alert.
 
 The bucket lifecycle expires backup objects after 30 days.
 Digitaltwin does not schedule backups, delete old backups, or manage retention generations.
@@ -698,8 +721,8 @@ It never stores the encryption key in the backup bucket.
 
 Backups include:
 
-- Both Kirei and Campfire PostgreSQL databases, with their independent roles and migration state.
-- Campfire attachments, Redis persistent data, and application configuration.
+- Both Kirei and Mattermost PostgreSQL databases, with their independent roles and migration state.
+- Mattermost attachments and configuration, plus push-proxy configuration and recovery instructions for signing/push credentials.
 - Herdr configuration and session metadata.
 - Digitaltwin configuration and audit data.
 - Headscale state.
@@ -716,7 +739,6 @@ The operator accepts the loss of unpushed repository work after a server loss.
 The operator performs one restore test during initial deployment.
 The operator repeats the test after a backup configuration change.
 Digitaltwin does not schedule recurring restore tests.
-Campfire's SQLite snapshot and file-copy restore hooks do not apply to the PostgreSQL fork.
 Infrastructure restores its database and attachment storage together and verifies message-to-attachment integrity.
 
 ## 24. Monitoring and recovery
@@ -726,7 +748,7 @@ Kirei reuses its generated `/livez` and `/readyz` routes.
 `/readyz` checks database connectivity; startup validates migrations separately.
 The infrastructure layer defines automatic restart policies and bounded log storage.
 
-The infrastructure layer reports two consecutive backup failures through its Campfire webhook.
+The infrastructure layer reports two consecutive backup failures through its Mattermost webhook.
 It does not include Prometheus, Grafana, or a separate alerting stack.
 
 Host monitoring and host-level alerts remain operator concerns.
@@ -738,17 +760,17 @@ Phase 0 is acceptable when all criteria in this section pass.
 1. The published application images start in the existing infrastructure environment.
 2. Local development and integration tests run through the repository's Compose file.
 3. The same image contracts support production Compose and a hosted container platform.
-4. Campfire, PostgreSQL, Kirei web, Kirei worker, Herdr runtime, Headscale, and Tailscale report healthy states.
+4. Mattermost Team Edition, push proxy, PostgreSQL, Kirei web/worker/listener, Herdr Runtime, Headscale, and Tailscale report healthy states.
 5. The documented runtime contract requires no Docker socket, privileged mode, or host root mount.
 6. The runtime process uses a non-root user.
 7. A host restart preserves repositories, Herdr state, Wagglebot state, and CLI login state.
 8. Each of the four supported agent CLIs starts through Herdr.
 9. The operator can attach to Herdr through the private tailnet.
 10. The public internet cannot connect directly to the runtime SSH port.
-11. `@agent` messages from any room reach the master controller with source room context.
+11. `@agent` messages from any channel reach the master controller with source channel context.
 12. `@worker start` creates fresh writer and reviewer sessions for the mapped repository.
 13. A second start in an active thread is rejected without creating sessions; a new thread starts fresh sessions.
-14. A room slug maps to the expected repository path under the configured workspace root.
+14. A verified channel mapping resolves its explicitly enrolled repository slug under the configured workspace root.
 15. A missing repository offers clone, private creation, and stop choices.
 16. The chat flow and shell command use the same enrollment service.
 17. A writer cannot implement before approval of the exact specification and plan commits.
@@ -762,9 +784,9 @@ Phase 0 is acceptable when all criteria in this section pass.
 25. The final workflow uses one branch and one pull request.
 26. The application does not merge the pull request without a direct conversational instruction.
 27. A master restart creates a fresh session with the selected configuration and restores status from durable state.
-28. A simulated peer bot completes a handoff through only Campfire and Git.
+28. A simulated peer bot completes a handoff through only Mattermost and Git.
 29. An encrypted backup restores all included services without restoring excluded CLI credentials.
-30. The owner can complete an agent interview from a mobile Campfire client.
+30. The owner completes a threaded agent interview in our mobile builds; self-hosted push opens the correct channel and thread.
 31. A research workflow produces committed Markdown with sources and stated uncertainty.
 32. A workflow can commit and push a durable memory update to the configured memory repository.
 
@@ -788,5 +810,6 @@ The following earlier ideas no longer apply:
 - Limit application concurrency as a Phase 0 control-plane feature.
 - Give a controller direct access to another deployment.
 - Test collaboration with two complete server stacks.
-- Use separate Campfire accounts for writer and reviewer.
+- Use separate Mattermost accounts for writer and reviewer.
 - Automate pull request merge or post-merge synchronization.
+- Maintain a Campfire Rails fork, port its database, and run its Redis sidecar.
