@@ -43,7 +43,7 @@ CMD ["herdr", "server"]
 # docker build --target with-callback --build-context kirei-clients=<artifact-dir>
 FROM runtime AS with-callback
 COPY --from=kirei-clients --chmod=755 /digitaltwin /usr/local/bin/digitaltwin
-RUN echo "a062e47b3e196256e0ee5a75f63084645835072ac9bf6a9c0d73d41be0dcf7d1  /usr/local/bin/digitaltwin" | sha256sum -c -
+RUN echo "cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054  /usr/local/bin/digitaltwin" | sha256sum -c -
 
 # Default image explicitly leaves gated callbacks/MCP unavailable.
 FROM runtime AS offline
