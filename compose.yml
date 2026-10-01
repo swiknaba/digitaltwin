@@ -1,75 +1,337 @@
-# Local PostgreSQL and reviewed, minimally packaged chat. Backend/Runtime wiring
-# stays opt-in until reviewed component contracts and first boot pass.
+# Reviewed local core. Listener and push require their opt-in profiles.
+# Stage the checksum-verified callback with scripts/prepare-callback-context.
+---
 services:
-  local-volume-init:
-    image: busybox:1.37.0-musl@sha256:dc88b80842580654294472735332ec7c7789a4010ec9a68b69f9b88c19abede6
-    platform: linux/amd64
-    user: "0:0"
-    command: [/bin/sh, /scripts/init-local-volumes.sh]
-    restart: "no"
-    network_mode: none
-    volumes:
-      - ./scripts/init-local-volumes.sh:/scripts/init-local-volumes.sh:ro
-      - ./chat-backend/config/phase0.json:/seed/phase0.json:ro
-      - mattermost-config:/volumes/chat-config
-      - mattermost-data:/volumes/chat-data
-      - mattermost-logs:/volumes/chat-logs
-
-  postgres:
-    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_DB: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set the local database administrator password}
-      KIREI_DB_PASSWORD: ${KIREI_DB_PASSWORD:?Set the local Kirei database password}
-      MATTERMOST_DB_PASSWORD: ${MATTERMOST_DB_PASSWORD:?Set the local Mattermost database password}
-    volumes:
-      - postgres-data:/var/lib/postgresql
-      - ./scripts/init-postgres.sh:/docker-entrypoint-initdb.d/10-digitaltwin.sh:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-
-  mattermost:
-    image: digitaltwin-chat-backend:local
+  agent-runtime:
     build:
-      context: ./chat-backend
+      additional_contexts:
+        kirei-clients: "./.local/kirei-clients"
+      context: "./agent-runtime"
+      dockerfile: Dockerfile
+      target: with-callback
+    cap_drop:
+    - ALL
+    command:
+    - herdr
+    - server
+    depends_on:
+      local-volume-init:
+        condition: service_completed_successfully
+        required: true
+    image: digitaltwin-agent-runtime:local
     platform: linux/amd64
-    user: "2000:2000"
+    security_opt:
+    - no-new-privileges:true
+    user: 10001:10001
+    volumes:
+    - source: runtime-home
+      target: "/home/runtime"
+      type: volume
+      volume: {}
+    - source: runtime-workspace
+      target: "/workspace"
+      type: volume
+      volume: {}
+    - source: herdr-socket
+      target: "/run/herdr"
+      type: volume
+      volume: {}
+  backend-chat-listener:
+    build:
+      context: "./integration-backend"
+      dockerfile: Dockerfile
+    command:
+    - bin/chat-listener
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+        required: true
+      mattermost:
+        condition: service_healthy
+        required: true
+    environment:
+      CHAT_VALIDATION_MODE: '1'
+      DATABASE_URL: postgres://kirei:${KIREI_DB_PASSWORD:?Set the local Kirei database
+        password}@postgres:5432/digitaltwin_development
+      DB_POOL_SIZE: '5'
+      DB_POOL_TIMEOUT: '2'
+      MATTERMOST_URL: http://mattermost:8065
+      PORT: '3000'
+      RACK_ENV: development
+    healthcheck:
+      interval: 5s
+      retries: 12
+      test:
+      - CMD
+      - bin/health
+      - chat-listener
+      timeout: 5s
+    image: digitaltwin-integration-backend:local
+    profiles:
+    - chat-validation
+    user: 10001:10001
+  backend-migrate:
+    build:
+      context: "./integration-backend"
+      dockerfile: Dockerfile
+    command:
+    - bundle
+    - exec
+    - rake
+    - db:migrate
     depends_on:
       postgres:
         condition: service_healthy
+        required: true
+    environment:
+      CHAT_VALIDATION_MODE: '0'
+      DATABASE_URL: postgres://kirei:${KIREI_DB_PASSWORD:?Set the local Kirei database
+        password}@postgres:5432/digitaltwin_development
+      DB_POOL_SIZE: '5'
+      DB_POOL_TIMEOUT: '2'
+      PORT: '3000'
+      RACK_ENV: development
+    image: digitaltwin-integration-backend:local
+    restart: 'no'
+    user: 10001:10001
+  backend-web:
+    build:
+      context: "./integration-backend"
+      dockerfile: Dockerfile
+    command:
+    - bin/web
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      CHAT_VALIDATION_MODE: '0'
+      DATABASE_URL: postgres://kirei:${KIREI_DB_PASSWORD:?Set the local Kirei database
+        password}@postgres:5432/digitaltwin_development
+      DB_POOL_SIZE: '5'
+      DB_POOL_TIMEOUT: '2'
+      PORT: '3000'
+      RACK_ENV: development
+    healthcheck:
+      interval: 5s
+      retries: 12
+      test:
+      - CMD
+      - ruby
+      - "-rnet/http"
+      - "-e"
+      - 'exit(Net::HTTP.get_response(URI(''http://127.0.0.1:3000/readyz'')).code ==
+        ''200'' ? 0 : 1)'
+      timeout: 5s
+    image: digitaltwin-integration-backend:local
+    ports:
+    - 127.0.0.1:${BACKEND_PORT:-3000}:3000
+    user: 10001:10001
+  backend-worker:
+    build:
+      context: "./integration-backend"
+      dockerfile: Dockerfile
+    command:
+    - bin/worker
+    depends_on:
+      agent-runtime:
+        condition: service_healthy
+        required: true
+      backend-migrate:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      CHAT_VALIDATION_MODE: '0'
+      DATABASE_URL: postgres://kirei:${KIREI_DB_PASSWORD:?Set the local Kirei database
+        password}@postgres:5432/digitaltwin_development
+      DB_POOL_SIZE: '5'
+      DB_POOL_TIMEOUT: '2'
+      HERDR_SOCKET_PATH: "/run/herdr/herdr.sock"
+      PORT: '3000'
+      RACK_ENV: development
+    healthcheck:
+      interval: 5s
+      retries: 12
+      test:
+      - CMD
+      - bin/health
+      - worker
+      timeout: 5s
+    image: digitaltwin-integration-backend:local
+    user: 10001:10001
+    volumes:
+    - source: herdr-socket
+      target: "/run/herdr"
+      type: volume
+      volume: {}
+  local-volume-init:
+    command:
+    - "/bin/sh"
+    - "/scripts/init-local-volumes.sh"
+    environment:
+      INIT_RUNTIME_VOLUMES: 'true'
+    image: busybox:1.37.0-musl@sha256:dc88b80842580654294472735332ec7c7789a4010ec9a68b69f9b88c19abede6
+    network_mode: none
+    platform: linux/amd64
+    restart: 'no'
+    user: '0:0'
+    volumes:
+    - bind:
+        create_host_path: true
+      read_only: true
+      source: "./scripts/init-local-volumes.sh"
+      target: "/scripts/init-local-volumes.sh"
+      type: bind
+    - bind:
+        create_host_path: true
+      read_only: true
+      source: "./chat-backend/config/phase0.json"
+      target: "/seed/phase0.json"
+      type: bind
+    - source: mattermost-config
+      target: "/volumes/chat-config"
+      type: volume
+      volume: {}
+    - source: mattermost-data
+      target: "/volumes/chat-data"
+      type: volume
+      volume: {}
+    - source: mattermost-logs
+      target: "/volumes/chat-logs"
+      type: volume
+      volume: {}
+    - source: runtime-home
+      target: "/volumes/runtime-home"
+      type: volume
+      volume: {}
+    - source: runtime-workspace
+      target: "/volumes/runtime-workspace"
+      type: volume
+      volume: {}
+    - source: herdr-socket
+      target: "/volumes/herdr-socket"
+      type: volume
+      volume: {}
+  mattermost:
+    build:
+      context: "./chat-backend"
+      dockerfile: Dockerfile
+    depends_on:
       local-volume-init:
         condition: service_completed_successfully
+        required: true
+      postgres:
+        condition: service_healthy
+        required: true
     environment:
-      MM_SQLSETTINGS_DRIVERNAME: postgres
-      MM_SQLSETTINGS_DATASOURCE: postgres://mattermost:${MATTERMOST_DB_PASSWORD:?Set the local Mattermost database password}@postgres:5432/mattermost?sslmode=disable&connect_timeout=10
+      MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS: 'false'
+      MM_EMAILSETTINGS_SENDPUSHNOTIFICATIONS: 'false'
+      MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS: 'false'
+      MM_PLUGINSETTINGS_ENABLE: 'false'
+      MM_PLUGINSETTINGS_ENABLEMARKETPLACE: 'false'
+      MM_PLUGINSETTINGS_ENABLEREMOTEMARKETPLACE: 'false'
+      MM_PLUGINSETTINGS_ENABLEUPLOADS: 'false'
+      MM_SERVICESETTINGS_ENABLELOCALMODE: 'true'
       MM_SERVICESETTINGS_SITEURL: http://localhost:8065
-      MM_SERVICESETTINGS_ENABLELOCALMODE: "true"
-      MM_PLUGINSETTINGS_ENABLE: "false"
-      MM_PLUGINSETTINGS_ENABLEUPLOADS: "false"
-      MM_PLUGINSETTINGS_ENABLEMARKETPLACE: "false"
-      MM_PLUGINSETTINGS_ENABLEREMOTEMARKETPLACE: "false"
-      MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS: "false"
-      MM_EMAILSETTINGS_SENDPUSHNOTIFICATIONS: "false"
-      MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS: "false"
+      MM_SQLSETTINGS_DATASOURCE: postgres://mattermost:${MATTERMOST_DB_PASSWORD:?Set
+        the local Mattermost database password}@postgres:5432/mattermost?sslmode=disable&connect_timeout=10
+      MM_SQLSETTINGS_DRIVERNAME: postgres
     healthcheck:
-      test: [CMD, /mattermost/bin/mmctl, system, status, --local]
       interval: 5s
-      timeout: 5s
       retries: 36
       start_period: 30s
+      test:
+      - CMD
+      - "/mattermost/bin/mmctl"
+      - system
+      - status
+      - "--local"
+      timeout: 5s
+    image: digitaltwin-chat-backend:local
+    platform: linux/amd64
     ports:
-      - "127.0.0.1:8065:8065"
+    - host_ip: 127.0.0.1
+      mode: ingress
+      protocol: tcp
+      published: '8065'
+      target: 8065
+    user: 2000:2000
     volumes:
-      - mattermost-config:/mattermost/config
-      - mattermost-data:/mattermost/data
-      - mattermost-logs:/mattermost/logs
-
+    - source: mattermost-config
+      target: "/mattermost/config"
+      type: volume
+      volume: {}
+    - source: mattermost-data
+      target: "/mattermost/data"
+      type: volume
+      volume: {}
+    - source: mattermost-logs
+      target: "/mattermost/logs"
+      type: volume
+      volume: {}
+  postgres:
+    environment:
+      KIREI_DB_PASSWORD: "${KIREI_DB_PASSWORD:?Set the local Kirei database password}"
+      MATTERMOST_DB_PASSWORD: "${MATTERMOST_DB_PASSWORD:?Set the local Mattermost
+        database password}"
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set the local database administrator
+        password}"
+      POSTGRES_USER: postgres
+    healthcheck:
+      interval: 5s
+      retries: 12
+      test:
+      - CMD-SHELL
+      - pg_isready -U postgres -d postgres
+      timeout: 5s
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    volumes:
+    - source: postgres-data
+      target: "/var/lib/postgresql"
+      type: volume
+      volume: {}
+    - bind:
+        create_host_path: true
+      read_only: true
+      source: "./scripts/init-postgres.sh"
+      target: "/docker-entrypoint-initdb.d/10-digitaltwin.sh"
+      type: bind
+  push-proxy:
+    cap_drop:
+    - ALL
+    command:
+    - "-config"
+    - "/mattermost-push-proxy/config/mattermost-push-proxy.json"
+    healthcheck:
+      interval: 5s
+      retries: 12
+      start_period: 5s
+      test:
+      - CMD-SHELL
+      - printf 'GET /version HTTP/1.0\r\n\r\n' | nc -w 2 127.0.0.1 8066 | grep -q
+        '"version":"6.6.0"'
+      timeout: 3s
+    image: mattermost/mattermost-push-proxy@sha256:eb47e608ad965306ab4052bfeacff74d4148099eb83831c84685bd8b30897ccd
+    platform: linux/amd64
+    profiles:
+    - push
+    read_only: true
+    security_opt:
+    - no-new-privileges:true
+    user: 65534:65534
+    volumes:
+    - bind:
+        create_host_path: true
+      read_only: true
+      source: "./push-service/config/local.json"
+      target: "/mattermost-push-proxy/config/mattermost-push-proxy.json"
+      type: bind
 volumes:
-  postgres-data:
-  mattermost-config:
-  mattermost-data:
-  mattermost-logs:
+  herdr-socket: {}
+  mattermost-config: {}
+  mattermost-data: {}
+  mattermost-logs: {}
+  postgres-data: {}
+  runtime-home: {}
+  runtime-workspace: {}

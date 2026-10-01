@@ -130,3 +130,10 @@
 - Integrate only the approved backend main merge locally; independently verify the frozen callback from its source commit and final reviewed backend head.
 - Finish authorized Runtime callback source-revision metadata without changing historical PR10 evidence or component behavior. Stage only the hash-checked single-file local build context.
 - Verify 14 root tests and all Compose profiles/configurations; freeze the clean combined baseline for independent actual-stack testing. Publication remains blocked and no full acceptance is claimed.
+
+## 2026-10-01 — Tested local core default
+
+- Integrate the independent six-test live combined-stack pass and sanitized evidence locally, preserving all approved main/root changes.
+- Promote the exact tested resolved service graph into default Compose; retain old overlay paths as no-op compatibility files and keep authenticated listener/push opt-in.
+- Add local `scripts/dev` bootstrap with preserved environment/data, explicit checksum-verified callback staging, and normal Compose build/start. Verify graph equivalence, 15 root tests, shell/Python syntax, and whitespace.
+- Require an independent targeted default-entrypoint rerun before treating the promotion as accepted. Publication remains blocked; authenticated chat/provider/MCP/device and full Phase 0 gates remain open.

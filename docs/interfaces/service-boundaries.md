@@ -32,9 +32,10 @@ Uncertain external results remain blocked for reconciliation unless retry idempo
 | Push proxy | Existing upstream artifact; private port 8066; native config/credential file mounts; `/version` process health | Reviewed config fixture/payload schema and actual provider readiness |
 | Mobile | Pinned source and reproducible iOS/Android builds with retained notices | Source revision/toolchains, app IDs, signing/distribution references and push compatibility |
 
-Root local `compose.yml` and `.env.example` now configure PostgreSQL/Mattermost dependencies only.
+Root local `compose.yml` and `.env.example` configure the reviewed PostgreSQL/chat/backend/Runtime core with migration and volume gates.
 Chat uses the review-cleared minimal derived artifact and writable seeded config; plugins/email/push remain disabled.
-The opt-in `compose.backend.yml` prepares the backend startup proposal; actual image/startup validation remains required.
+The independently tested overlay graph is promoted into default Compose; the old overlay paths are compatibility no-ops.
+The promotion requires its own independent default-entrypoint rerun. Listener and push remain opt-in, with explicit operator credentials.
 See [local integration](local-integration.md) for remaining wiring contracts and the early real roundtrip procedure.
 See [foundation validation](foundation-validation.md) for artifact identities and the distinction between preparation and live gates.
 Do not use floating image tags or dummy applications to make scaffold startup appear successful.

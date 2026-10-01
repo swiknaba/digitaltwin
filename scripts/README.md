@@ -38,6 +38,11 @@ Production infrastructure provisioning remains separately authorized work in the
 
 The integration owner owns this folder. Component workers propose shared script changes through that owner.
 
+`dev` is the normal local boot entrypoint. It preserves existing `.env`, otherwise copies public samples with restrictive permissions,
+stages the hash-checked callback, and executes default Compose `up --build -d --wait`.
+It builds images and creates/starts the core local containers and persistent named volumes; it creates no provider accounts or tokens.
+Extra arguments go to Compose `up`. It does not delete persistent data or enable listener/push profiles.
+
 `prepare-callback-context` requires the reviewed/merged backend `bin/digitaltwin` with the Runtime-agreed SHA256.
 It copies that single file into ignored `.local/kirei-clients/` for Runtime's `with-callback` named build context.
 It refuses changed artifacts or extra context files. It creates no credentials or provider state; exit `1` indicates failure.

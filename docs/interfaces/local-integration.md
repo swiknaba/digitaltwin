@@ -37,7 +37,8 @@ The core binaries and 103 notices retain upstream hashes; full transitive-licens
 
 Validate with `scripts/acceptance config`.
 After the backend handoff, build with `docker compose --env-file .env.example -f compose.yml -f compose.backend.yml build`.
-The overlay is preparation, not a complete roundtrip stack. Do not start worker/listener integration before the remaining contracts are wired.
+The reviewed core is now in default `compose.yml`; `compose.backend.yml` and `compose.integration.yml` are compatibility no-ops.
+The default excludes the authenticated listener and push. Core health does not establish the real provider roundtrip.
 
 ## Contracts Needed Before Startup
 
@@ -110,7 +111,7 @@ It always reports authenticated chat/provider/roundtrip as untested. The final i
 
 ### Prepared Combined Compose
 
-`compose.integration.yml` follows the inspected component PR handoffs; only review-cleared components are merged:
+Default `compose.yml` now contains the review-cleared service graph that passed independent local combined tests:
 
 - Build the chat owner's minimal derived artifact; retain UID2000, native health, config/data/log volumes, and independent database ownership.
 - A network-free one-shot initializer seeds partial chat config into writable storage and assigns named-volume ownership.
@@ -123,9 +124,9 @@ It always reports authenticated chat/provider/roundtrip as untested. The final i
 - Keep push/email disabled in chat. Optional `push` profile starts the private proxy with empty provider settings and process health only.
   Do not infer provider readiness from `/version` or enable delivery without approved credentials and matching app identities.
 
-After review and prerequisite merges, prepare the callback context and run Compose with `compose.yml`,
-`compose.backend.yml`, and `compose.integration.yml`, in that order, using a fresh disposable project.
-The integrator will make this reviewed wiring the default before the promised main-branch boot handoff.
+Use `scripts/dev` for local boot; it prepares public sample environment if absent and stages the callback before default Compose startup.
+The previous backend/integration overlay paths remain as no-op compatibility files for existing test commands.
+The promotion preserves the resolved service graph exactly, including every profile. Its default-entrypoint change requires an independent targeted rerun.
 The reviewed chat build and disposable PostgreSQL/chat default passed root checks after its merge.
 Runtime/backend build contexts, callback artifact packaging, combined first boot, and live callbacks remain unverified here.
 Never reuse old plugin volumes. Retain approved production/credential setup as separate steps.

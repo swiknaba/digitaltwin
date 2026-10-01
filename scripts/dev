@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+# Local boot only. Existing .env values and persistent data are preserved.
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$repo_root"
+umask 077
+if [ ! -e .env ]; then
+  cp .env.example .env
+fi
+scripts/prepare-callback-context
+exec docker compose -f compose.yml up --build -d --wait "$@"

@@ -90,6 +90,11 @@ class CombinedRootContractTest(unittest.TestCase):
             command += ["-f", str(ROOT / name)]
         cls.services = json.loads(acceptance.run(command + ["config", "--format", "json"]).stdout)["services"]
 
+    def test_plain_compose_selects_complete_credential_free_core(self):
+        command = acceptance.COMPOSE + ["-f", str(ROOT / "compose.yml"), "config", "--services"]
+        self.assertEqual(set(acceptance.run(command).stdout.splitlines()),
+                         {"postgres", "mattermost", "local-volume-init", "backend-migrate", "backend-web", "backend-worker", "agent-runtime"})
+
     def test_runtime_is_private_and_nonroot(self):
         runtime = self.services["agent-runtime"]
         self.assertEqual(runtime["user"], "10001:10001")
