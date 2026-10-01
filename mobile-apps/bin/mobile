@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+"""Unsigned mobile build preparation; never signs, enrolls, or publishes."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import shlex
+import subprocess
+import sys
+from urllib.parse import urlsplit
+
+ROOT = Path(__file__).resolve().parents[1]
+LOCK = json.loads((ROOT / 'source.lock.json').read_text())
+
+def run(command, cwd=None, capture=False):
+    return subprocess.run(command, cwd=cwd, check=True, text=True,
+                          stdout=subprocess.PIPE if capture else None).stdout
+
+def verify(source, clean=False):
+    revision = run(['git', 'rev-parse', 'HEAD'], source, True).strip()
+    if revision != LOCK['revision']:
+        raise ValueError('source revision does not match source.lock.json')
+    for name, expected in LOCK['sha256'].items():
+        if hashlib.sha256((source / name).read_bytes()).hexdigest() != expected:
+            raise ValueError('source checksum mismatch: ' + name)
+    if clean and run(['git', 'status', '--porcelain', '--untracked-files=no'], source, True).strip():
+        raise ValueError('source has tracked modifications; use a fresh checkout')
+    if (source / 'libraries/@mattermost/intune/.git').exists():
+        raise ValueError('private Intune source must not be initialized')
+
+def config(path):
+    value = json.loads(path.read_text())
+    if set(value) != {'app_id', 'server_url', 'name'}:
+        raise ValueError('configuration supports only app_id, server_url and name; no secrets')
+    if not all(isinstance(v, str) for v in value.values()):
+        raise ValueError('configuration values must be strings')
+    app = value['app_id']
+    url = urlsplit(value['server_url'])
+    if not re.fullmatch(r'[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*){2,}', app) or app.startswith('com.mattermost'):
+        raise ValueError('configuration requires your own reverse-DNS application ID')
+    if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+        raise ValueError('configuration requires a credential-free HTTPS server URL')
+    if not isinstance(value['name'], str) or not re.fullmatch(r'[A-Za-z0-9 -]{1,40}', value['name']):
+        raise ValueError('configuration name must contain 1–40 plain letters, digits, spaces or hyphens')
+    return value
+
+def commands(platform):
+    if platform == 'android':
+        return [['./gradlew', '--no-daemon', '--console=plain', ':app:assembleUnsigned']]
+    return [['xcodebuild', '-workspace', 'Mattermost.xcworkspace', '-scheme', 'Mattermost',
+             '-configuration', 'Release', '-sdk', 'iphonesimulator',
+             '-destination', 'generic/platform=iOS Simulator', '-derivedDataPath',
+             str(ROOT / 'build/ios'), 'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO',
+             'DEVELOPMENT_TEAM=', 'build']]
+
+def doctor(platform):
+    pins = LOCK['toolchains']
+    failures = []
+    for tool, args, expected in [('node', ['--version'], 'v' + pins['node']),
+                                 ('npm', ['--version'], pins['npm'])]:
+        if not shutil.which(tool) or run([tool, *args], capture=True).strip() != expected:
+            failures.append(tool + ' ' + expected)
+    if platform == 'ios':
+        if not shutil.which('ruby') or pins['ruby'] not in run(['ruby', '--version'], capture=True):
+            failures.append('Ruby ' + pins['ruby'])
+        if not shutil.which('bundle'):
+            failures.append('Bundler ' + pins['bundler'])
+        else:
+            try:
+                run(['bundle', '_' + pins['bundler'] + '_', '--version'], capture=True)
+            except subprocess.CalledProcessError:
+                failures.append('Bundler ' + pins['bundler'])
+        if not shutil.which('xcodebuild'):
+            failures.append('Xcode ' + pins['xcode'])
+        elif run(['xcodebuild', '-version'], capture=True).strip() != 'Xcode ' + pins['xcode'] + '\nBuild version ' + pins['xcode_build']:
+            failures.append('Xcode ' + pins['xcode'] + ' (' + pins['xcode_build'] + ')')
+    elif platform == 'android':
+        java = subprocess.run(['java', '-version'], text=True, capture_output=True) if shutil.which('java') else None
+        if not java or java.returncode or ('"' + pins['java'] + '"') not in java.stderr:
+            failures.append('Java ' + pins['java'])
+        sdk = Path(os.environ.get('ANDROID_HOME', '/nonexistent-sdk'))
+        for part in ['platforms/android-' + pins['android_platform'], 'build-tools/' + pins['android_build_tools'], 'ndk/' + pins['android_ndk']]:
+            if not (sdk / part).is_dir():
+                failures.append('ANDROID_HOME/' + part)
+    if failures:
+        raise ValueError('missing/mismatched toolchain: ' + ', '.join(failures))
+
+def fetch(source):
+    if source.exists():
+        verify(source, clean=True)
+        print('Existing pinned source verified; no reset performed.')
+        return
+    source.parent.mkdir(parents=True, exist_ok=True)
+    run(['git', 'init', str(source)])
+    run(['git', 'remote', 'add', 'origin', LOCK['repository']], source)
+    run(['git', 'fetch', '--depth=1', 'origin', LOCK['revision']], source)
+    run(['git', 'checkout', '--detach', 'FETCH_HEAD'], source)
+    verify(source, clean=True)
+
+def prepare(source, configuration):
+    value = config(configuration)
+    verify(source, clean=True)
+    # Namespace and Java package stay upstream; only Android's installed app ID changes.
+    gradle = source / 'android/app/build.gradle'
+    text = gradle.read_text()
+    needle = 'applicationId "com.mattermost.rnbeta"'
+    if text.count(needle) != 1:
+        raise ValueError('unexpected Android identity layout')
+    gradle.write_text(text.replace(needle, 'applicationId "' + value['app_id'] + '"'))
+    wrapper = source / 'android/gradle/wrapper/gradle-wrapper.properties'
+    wrapper.write_text(wrapper.read_text() + '\ndistributionSha256Sum=' + LOCK['gradle_distribution_sha256'] + '\n')
+    labels = source / 'android/app/src/main/res/values/strings.xml'
+    labels.write_text(labels.read_text().replace('<string name="app_name">Mattermost Beta</string>', '<string name="app_name">' + value['name'] + '</string>'))
+    for path in [source / 'ios/Mattermost.xcodeproj/project.pbxproj', *sorted((source / 'ios').rglob('*.plist')), *sorted((source / 'ios').rglob('*.entitlements'))]:
+        if path.is_file():
+            original = path.read_text()
+            modified = original.replace('com.mattermost.rnbeta', value['app_id'])
+            if path == source / 'ios/Mattermost/Info.plist':
+                modified = re.sub(r'(<key>CFBundleDisplayName</key>\s*<string>)[^<]*(</string>)', lambda m: m[1] + value['name'] + m[2], modified)
+            if modified != original:
+                path.write_text(modified)
+    asset = source / 'assets/override/config.json'
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_text(json.dumps({'DefaultServerUrl': value['server_url'], 'DefaultServerName': value['name'],
+                                'AutoSelectServerUrl': True, 'SentryEnabled': False, 'RudderApiKey': '',
+                                'MobileNoticeURL': 'https://github.com/mattermost/mattermost-mobile/blob/' + LOCK['revision'] + '/NOTICE.txt'}, indent=2) + '\n')
+    # Public Firebase client configuration is operator-specific, not a service-account key.
+    # The source's upstream Firebase project cannot represent our app identity.
+    (source / 'android/app/google-services.json').unlink(missing_ok=True)
+    state = source / '.digitaltwin/prepared.json'
+    state.parent.mkdir(parents=True, exist_ok=True)
+    changed = run(['git', 'diff', '--name-only'], source, True).splitlines()
+    hashes = {name: hashlib.sha256((source / name).read_bytes()).hexdigest()
+              for name in changed if (source / name).is_file()}
+    hashes['assets/override/config.json'] = hashlib.sha256(asset.read_bytes()).hexdigest()
+    state.write_text(json.dumps({'revision': LOCK['revision'], 'configuration': value, 'patch_sha256': hashes}, indent=2) + '\n')
+    print('Prepared app identities and non-secret assets. Supply matching Firebase client config for Android.')
+
+def verify_prepared(source):
+    state = json.loads((source / '.digitaltwin/prepared.json').read_text())
+    if run(['git', 'rev-parse', 'HEAD'], source, True).strip() != state['revision']:
+        raise ValueError('prepared source revision changed')
+    changes = set(run(['git', 'diff', '--name-only'], source, True).splitlines())
+    allowed = set(state['patch_sha256']) | {'android/app/google-services.json'}
+    if not changes <= allowed:
+        raise ValueError('unrecorded source changes')
+    for name, expected in {**LOCK['sha256'], **state['patch_sha256']}.items():
+        if hashlib.sha256((source / name).read_bytes()).hexdigest() != expected:
+            raise ValueError('prepared source checksum mismatch: ' + name)
+    if (source / 'libraries/@mattermost/intune/.git').exists():
+        raise ValueError('private Intune source must not be initialized')
+    return state
+
+def build(source, platform):
+    verify_prepared(source)
+    doctor(platform)
+    installed = source / 'node_modules/@sentry'
+    if installed.exists() and any(p.name == 'cli' or p.name.startswith('cli-') for p in installed.iterdir()):
+        raise ValueError('restricted Sentry CLI build tools remain; run dependencies recipe')
+    if platform == 'android':
+        firebase = json.loads((source / 'android/app/google-services.json').read_text())
+        wanted = json.loads((source / '.digitaltwin/prepared.json').read_text())['configuration']['app_id']
+        if not any(c.get('client_info', {}).get('android_client_info', {}).get('package_name') == wanted for c in firebase.get('client', [])):
+            raise ValueError('Firebase client configuration does not match application ID')
+    if platform == 'ios':
+        # Upstream sources nvm in its Xcode phase; pin the already checked Node executable.
+        node_environment = source / 'ios/.xcode.env.local'
+        content = 'export NODE_BINARY=' + shlex.quote(shutil.which('node')) + '\n'
+        if node_environment.exists() and node_environment.read_text() != content:
+            raise ValueError('existing .xcode.env.local differs; preserve it and use a fresh runner')
+        node_environment.write_text(content)
+    env = os.environ.copy()
+    env.update({'INTUNE_ENABLED': 'false', 'SENTRY_ENABLED': 'false', 'SENTRY_DISABLE_AUTO_UPLOAD': 'true'})
+    for command in commands(platform):
+        subprocess.run(command, cwd=source / ('android' if platform == 'android' else 'ios'), env=env, check=True)
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['fetch', 'verify', 'verify-prepared', 'check-config', 'commands', 'doctor', 'prepare', 'build'])
+    parser.add_argument('platform', nargs='?', choices=['android', 'ios', 'js'])
+    parser.add_argument('--source', type=Path, default=ROOT / 'upstream')
+    parser.add_argument('--config', type=Path, default=ROOT / 'operator.json')
+    args = parser.parse_args()
+    if args.action in {'commands', 'build'} and args.platform == 'js':
+        parser.error('native platform required')
+    if args.action in {'commands', 'doctor', 'build'} and not args.platform:
+        parser.error('platform required')
+    try:
+        if args.action == 'fetch': fetch(args.source)
+        elif args.action == 'verify':
+            verify(args.source, clean=True)
+            print('Pinned source, build inputs and chat/push contract files verified.')
+        elif args.action == 'verify-prepared':
+            verify_prepared(args.source)
+            print('Prepared revision and configuration checksums verified.')
+        elif args.action == 'check-config':
+            config(args.config)
+            print('Non-secret configuration valid.')
+        elif args.action == 'commands': print(json.dumps(commands(args.platform), indent=2))
+        elif args.action == 'doctor':
+            doctor(args.platform)
+            print('Pinned toolchain available.')
+        elif args.action == 'prepare': prepare(args.source, args.config)
+        elif args.action == 'build': build(args.source, args.platform)
+    except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())

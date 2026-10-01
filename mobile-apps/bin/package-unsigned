@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Collect one locally built unsigned artifact, retained notices and provenance. No upload."""
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import sys
+import zipfile
+
+root = Path(__file__).resolve().parents[1]
+if len(sys.argv) != 2:
+    sys.exit('Usage: package-unsigned path/to/unsigned.apk|simulator.app')
+requested = Path(sys.argv[1])
+artifact = requested.resolve()
+if requested.is_symlink() or not artifact.is_relative_to(root):
+    sys.exit('Artifact must be inside this mobile component, without symlinks.')
+if artifact.suffix == '.apk' and artifact.is_file():
+    result = subprocess.run(['apksigner', 'verify', str(artifact)], capture_output=True)
+    if result.returncode == 0:
+        sys.exit('Signed APK refused by the unsigned packaging path.')
+    if b'DOES NOT VERIFY' not in result.stderr and b'Missing META-INF/MANIFEST.MF' not in result.stderr:
+        sys.exit('APK signature check did not establish unsigned status.')
+    files = [artifact]
+elif artifact.suffix == '.app' and artifact.is_dir():
+    result = subprocess.run(['codesign', '--verify', str(artifact)], capture_output=True)
+    if result.returncode == 0 or b'not signed at all' not in result.stderr:
+        sys.exit('App signature check did not establish unsigned status.')
+    entries = list(artifact.rglob('*'))
+    if any(p.is_symlink() for p in entries):
+        sys.exit('Symlinks refused in unsigned review archives.')
+    files = sorted(p for p in entries if p.is_file())
+else:
+    sys.exit('Expected an unsigned APK or simulator .app directory.')
+for p in files:
+    if p.is_symlink() or p.suffix in {'.p8', '.p12', '.jks', '.keystore', '.mobileprovision'} or p.name == 'embedded.mobileprovision':
+        sys.exit('Secret/signing material or symlinks refused.')
+source = root / 'upstream'
+subprocess.run([str(root / 'bin/mobile'), 'verify-prepared'], check=True)
+state = json.loads((source / '.digitaltwin/prepared.json').read_text())
+manifest = {'source': json.loads((root / 'source.lock.json').read_text()), 'prepared': state,
+            'unsigned_only': True, 'device_delivery_verified': False,
+            'license_audit': 'OPEN: dependency and final output audit required before distribution',
+            'artifact_sha256': {str(p.relative_to(artifact.parent)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
+out = root / 'dist'
+out.mkdir(exist_ok=True)
+target = out / (artifact.stem + '-unsigned-review.zip')
+with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
+    for p in files:
+        archive.write(p, str(Path('artifacts') / p.relative_to(artifact.parent)))
+    for notice in ['LICENSE.txt', 'NOTICE.txt']:
+        archive.write(source / notice, 'notices/' + notice)
+    archive.writestr('provenance.json', json.dumps(manifest, indent=2) + '\n')
+print(target)

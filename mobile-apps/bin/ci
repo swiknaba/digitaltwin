@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+component=$(cd "$(dirname "$0")/.." && pwd)
+platform=${1:?Usage: ci js|android|ios [operator-config.json]}
+case "$platform" in js|android|ios) ;; *) exit 2 ;; esac
+"$component/bin/mobile" fetch
+"$component/bin/check"
+if [[ "$platform" == js ]]; then
+    "$component/bin/dependencies" js
+    "$component/bin/check" upstream
+    cd "$component/upstream"
+    npm run check
+    exit
+fi
+config=${2:?Provide a non-secret operator configuration file.}
+"$component/bin/mobile" prepare --config "$config"
+if [[ "$platform" == android ]]; then
+    [[ -f ${MOBILE_FIREBASE_CLIENT_FILE:-} ]] || { echo 'Provide matching Firebase Android client JSON in MOBILE_FIREBASE_CLIENT_FILE; no service-account credentials.' >&2; exit 1; }
+    cp "$MOBILE_FIREBASE_CLIENT_FILE" "$component/upstream/android/app/google-services.json"
+fi
+"$component/bin/dependencies" "$platform"
+"$component/bin/mobile" build "$platform"
+echo 'Unsigned build completed locally. Run package-unsigned on the exact artifact after inspecting it.'

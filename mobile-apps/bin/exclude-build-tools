@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""Omit the exact restricted Sentry CLI build tools; leave MIT SDK source intact."""
+import json
+from pathlib import Path
+import shutil
+import sys
+
+source = Path(sys.argv[1]).resolve()
+packages = json.loads((source / 'package-lock.json').read_text())['packages']
+allowed = {'node_modules/@sentry/cli'} | {
+    'node_modules/@sentry/cli-' + suffix for suffix in
+    ['darwin', 'linux-arm', 'linux-arm64', 'linux-i686', 'linux-x64',
+     'win32-arm64', 'win32-i686', 'win32-x64']
+}
+restricted = {name for name, info in packages.items() if info.get('license', '').startswith('FSL-')}
+if not restricted <= allowed or any(packages[name].get('version') != '3.4.1' for name in restricted):
+    sys.exit('Unexpected restricted package/version; review the license boundary before build.')
+for name in sorted(restricted):
+    path = source / name
+    if path.is_symlink() or not path.resolve().is_relative_to(source):
+        sys.exit('Refusing dependency symlink/path escape.')
+    if path.exists():
+        shutil.rmtree(path)
+link = source / 'node_modules/.bin/sentry-cli'
+if link.is_symlink():
+    link.unlink()
+if any((source / name).exists() for name in restricted):
+    sys.exit('Restricted tools remain installed.')
+print('Excluded restricted build tools: ' + ', '.join(sorted(restricted)))
