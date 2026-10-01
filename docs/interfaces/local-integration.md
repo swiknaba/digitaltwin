@@ -140,5 +140,7 @@ All disposable containers/volumes were removed. No backend, callbacks, CLI/provi
 The backend owner froze the formatted callback file at SHA256 `cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054`.
 Root independently verified that supplied file hash and retained checksum enforcement.
 The reviewed Runtime follow-up merged in `3a84f89d39353f526cf679df14f920504bffe45f` pins the same frozen artifact.
-Root staging and Runtime checksum enforcement now match. The backend's final reviewed commit remains required before staging/building the combined callback image.
+Root staging and Runtime checksum enforcement now match. Reviewed backend head `53c69b7d537b906a06303461c658f62b990f23d9`
+is integrated through merge `0c79c77719713ca38417d5ea6da63ca6bc0fa401`; the frozen client remains identical to source commit `81d5d5c714c73890efccff172103f65171ecde20`.
+The single-file context can now be staged from this checkout. Root callback image build, combined first boot, and actual delivery still require independent integration evidence.
 Do not disable checks or duplicate the client to bypass that packaging gate.
