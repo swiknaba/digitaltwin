@@ -1,0 +1,47 @@
+?   	github.com/mattermost/mattermost-push-proxy	[no test files]
+?   	github.com/mattermost/mattermost-push-proxy/internal/version	[no test files]
+--- PASS: TestAndroidInitialize (0.01s)
+--- PASS: TestAndroidCheckCredentialExpiry (0.00s)
+--- PASS: TestGetErrorCode (0.00s)
+--- PASS: TestSendNotificationTransportRouting (0.00s)
+--- PASS: TestBuildVoIPNotification (0.00s)
+--- PASS: TestCertExpiryReport (0.00s)
+--- PASS: TestCertNotAfter (0.11s)
+--- PASS: TestAppleCheckCredentialExpiry (0.00s)
+=== RUN   TestDigitaltwinAPNsTransportRetry
+=== RUN   TestDigitaltwinAPNsTransportRetry/recovers_after_transport_failure
+=== RUN   TestDigitaltwinAPNsTransportRetry/does_not_retry_provider_rejection
+=== RUN   TestDigitaltwinAPNsTransportRetry/total_deadline_bounds_retries
+=== RUN   TestDigitaltwinAPNsTransportRetry/maximum_attempts
+--- PASS: TestDigitaltwinAPNsTransportRetry (4.07s)
+    --- PASS: TestDigitaltwinAPNsTransportRetry/recovers_after_transport_failure (1.01s)
+    --- PASS: TestDigitaltwinAPNsTransportRetry/does_not_retry_provider_rejection (0.00s)
+    --- PASS: TestDigitaltwinAPNsTransportRetry/total_deadline_bounds_retries (0.05s)
+    --- PASS: TestDigitaltwinAPNsTransportRetry/maximum_attempts (3.01s)
+=== RUN   TestDigitaltwinFCMRetryClassification
+=== RUN   TestDigitaltwinFCMRetryClassification/internal
+=== RUN   TestDigitaltwinFCMRetryClassification/quota
+=== RUN   TestDigitaltwinFCMRetryClassification/invalid_argument
+=== RUN   TestDigitaltwinFCMRetryClassification/revoked_auth
+--- PASS: TestDigitaltwinFCMRetryClassification (0.00s)
+    --- PASS: TestDigitaltwinFCMRetryClassification/internal (0.00s)
+    --- PASS: TestDigitaltwinFCMRetryClassification/quota (0.00s)
+    --- PASS: TestDigitaltwinFCMRetryClassification/invalid_argument (0.00s)
+    --- PASS: TestDigitaltwinFCMRetryClassification/revoked_auth (0.00s)
+--- PASS: TestNewMlogLogger (0.00s)
+--- PASS: TestLevelsFor (0.00s)
+--- PASS: TestIncrementNotificationByAppVersion (0.00s)
+--- PASS: TestMetricDisabled (4.02s)
+--- PASS: TestMetricEnabled (4.01s)
+--- PASS: TestRedactToken (0.00s)
+--- PASS: TestBasicServer (4.01s)
+--- PASS: TestAndroidSend (4.00s)
+--- PASS: TestHandleAckNotificationIncrementsStats (0.00s)
+--- PASS: TestLogThroughput (0.00s)
+--- PASS: TestServerCheckCredentialExpiry (0.00s)
+--- PASS: TestServer_version (0.00s)
+--- PASS: TestStatsIncrementAndSwap (0.00s)
+--- PASS: TestStatsNilReceiverIsSafe (0.00s)
+--- PASS: TestStatsConcurrentIncrement (0.00s)
+PASS
+ok  	github.com/mattermost/mattermost-push-proxy/server	20.262s

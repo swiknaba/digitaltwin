@@ -1,0 +1,16 @@
+{
+  "ListenAddress": ":8066",
+  "ThrottlePerSec": 300,
+  "ThrottleMemoryStoreSize": 50000,
+  "ThrottleVaryByHeader": "",
+  "EnableMetrics": false,
+  "SendTimeoutSec": 30,
+  "RetryTimeoutSec": 8,
+  "ApplePushSettings": [],
+  "AndroidPushSettings": [],
+  "EnableConsoleLog": true,
+  "EnableFileLog": false,
+  "LogFileLocation": "",
+  "LogFormat": "json",
+  "LogLevel": "info"
+}

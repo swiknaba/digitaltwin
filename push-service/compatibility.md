@@ -1,0 +1,15 @@
+# Release-bound push compatibility
+
+| Component | Pin | Evidence |
+| --- | --- | --- |
+| Push | 6.6.0, `20f2a046fef76a7ab1c121cd01bc2b06206979be` | Actual AMD64 image startup, version/source hash, private process health, failure envelopes and `-v2` parsing |
+| Server | Official Team Edition 11.11.1, digest in `chat-backend/artifact.lock.json` | Selected [notification_push.go](https://github.com/mattermost/mattermost/blob/v11.11.1/server/channels/app/notification_push.go) inspected; SHA256 `689b190ab8788e2c1a9ae73348c508d6ee266cb3b2d8cda8361791b12c28717b` |
+| Mobile | release-2.44, `c2fe3beda22befd2178dce431793c09111ed903e` | Selected [app/init/push_notifications.ts](https://github.com/mattermost/mattermost-mobile/blob/c2fe3beda22befd2178dce431793c09111ed903e/app/init/push_notifications.ts) inspected; SHA256 `6695b8fd23407e5947c15170e21f02963540c93a87742081f496a525763650f2` |
+
+Server source serializes `model.PushNotification` and posts to the configured base URL plus `/api/v1/send_push`; it interprets the JSON result including `FAIL` and `REMOVE`. Proxy uses its pinned public-model dependency 0.4.2. Confirmed failure fixtures use `server_id`, `device_id`, `platform`; no device token is retained. Server/mobile/config inspection does not demonstrate a live server-generated push exchange.
+
+Stable mobile registration constructs `${prefix}-v2:${deviceToken}`; proxy splits the `-v2` suffix to route React Native targets. Beta iOS alters its prefix and needs its own operator configuration; it is not silently accepted by our stable recipe. Actual stable platform parsing is exercised with `apple_rn-v2` and `android_rn-v2` in the provider-free image. [Pinned proxy Apple](https://github.com/mattermost/mattermost-push-proxy/blob/20f2a046fef76a7ab1c121cd01bc2b06206979be/server/apple_notification_server.go) and [Android](https://github.com/mattermost/mattermost-push-proxy/blob/20f2a046fef76a7ab1c121cd01bc2b06206979be/server/android_notification_server.go) code preserves channel/post/root fields for chat payloads; selected mobile initialization reads channel/root IDs for thread-aware behavior.
+
+Operator acceptance still requires our own signed stable iOS/Android apps, matching bundle/package identities and FCM project, APNs development/production selection, real target initialization, foreground/background notification delivery, and tapping a notification to open the correct source channel/thread. Repeat with the selected server notification-contents/privacy setting, confirming no unintended content exposure. Restore/rotation must repeat those device checks. Calls/VoIP behavior is outside Phase 0.
+
+Integrator proposals: add a private `push-proxy` service using the provided image/command/config/health contract, update the Mattermost base URL/config, and carry these operator evidence gaps into `docs/interfaces/mobile-push.md` and acceptance reporting. Do not clear Tasks 6–10 or Phase 0 acceptance based on these component checks.
