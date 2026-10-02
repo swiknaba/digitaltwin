@@ -44,7 +44,7 @@
 - Plan our signed mobile builds and the existing self-hosted Mattermost push proxy/APNs/FCM path, with human-owned enrollment/credentials/distribution and upstream security maintenance. Keep push outside Kirei.
 - Distinguish official compiled-server MIT licensing from mixed server-source licensing. Audit exact artifacts, bundled plugins, dependencies, outputs, notices, and branding; exclude commercial components and required Calls/Agents plugins rather than bypass licensing checks.
 - Replace Phase 1 voice transport with independent self-hosted LiveKit group calls and AI voice. Require native client/background/device integration checks; preserve existing controller authority and coding gates.
-- Link issue #4 for the post–Phase 2 LiteLLM/MCP direction; add no current-phase rollout or chat-plugin MCP requirement.
+- Link issue #4 for the post-Phase 2 LiteLLM/MCP direction; add no current-phase rollout or chat-plugin MCP requirement.
 - Validate Markdown/local links/tables/fences, 13 tasks, 27 spec sections, all 32 acceptance criteria and matrix coverage, obsolete-path removal, and preservation of existing workflow/runtime/peer policies. This remains documentation only.
 
 ## 2026-10-01 — Repository scaffold and parallel ownership
@@ -67,7 +67,7 @@
 ## 2026-10-01 — Live foundation checks and numbered migration correction
 
 - Start existing Docker Desktop normally and verify disposable PostgreSQL/Mattermost startup, health, database-role connection separation, and Mattermost HTTP ping/version.
-- Correct the generated timestamp-based migration tasks to IntegerMigrator/schema_info, positive rollback counts through version zero, and contiguous numbered generation. Preserve the planned 001–006 naming.
+- Correct the generated timestamp-based migration tasks to IntegerMigrator/schema_info, positive rollback counts through version zero, and contiguous numbered generation. Preserve the planned 001-006 naming.
 - Add four focused RSpec regressions against disposable PostgreSQL, covering migrate/status/idempotency, rollback, invalid steps, and generation. Record local Ruby 4.0.5 fixture execution separately from required Ruby 4.0.7 application startup.
 - Remove only the disposable Compose project's resources after checks; leave Docker available. No provider sessions, production credentials/access, or paid calls were created.
 

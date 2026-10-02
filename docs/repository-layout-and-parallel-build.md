@@ -101,14 +101,14 @@ Folders reduce conflicts; they do not remove shared contracts or prerequisite wo
 
 1. **Validate the boundary first (Task 1).** Agree on verified Mattermost events, Herdr operations, CLI startup/idle behavior, and Master MCP round trips.
    Record exact pins and sanitized fixtures; prove the disposable mention → Herdr → reply slice before production workflow work.
-2. **Establish the foundation (Tasks 2–3).** Bootstrap Kirei, local Compose, separate databases, shared types, durable jobs, inbox, and outbox.
+2. **Establish the foundation (Tasks 2-3).** Bootstrap Kirei, local Compose, separate databases, shared types, durable jobs, inbox, and outbox.
    Agree on start commands, health checks, ENV/secret names, UID/GID, volumes, socket access, and callback authentication/routing.
 3. **Run the following streams concurrently once their prerequisites pass.** Each session owns its folder and proposes shared-file changes through the integrator.
-4. **Integrate and prove delivery (Tasks 11–13).** Reconcile recovery, finish operations contracts, and run end-to-end acceptance with explicit evidence gaps.
+4. **Integrate and prove delivery (Tasks 11-13).** Reconcile recovery, finish operations contracts, and run end-to-end acceptance with explicit evidence gaps.
 
 | Workstream | Scope and dependencies |
 | --- | --- |
-| Integration backend (Kirei) | Tasks 4–5 routing/enrollment, then Tasks 7–10 gates, reviews, Master, and delivery. Runtime/session contracts and Task 3 state must precede their consumers. |
+| Integration backend (Kirei) | Tasks 4-5 routing/enrollment, then Tasks 7-10 gates, reviews, Master, and delivery. Runtime/session contracts and Task 3 state must precede their consumers. |
 | Agent runtime (Herdr) | Task 6 image, tools, persistence, and provisioning after Task 1 validation. Coordinate Kirei's Herdr adapter, sessions migration, and packaged clients with the Kirei owner. |
 | Chat backend + push service | Configure pinned upstream services, verify authenticated threads/reconnect and push compatibility, and document upgrades/restore. One session can own both small configuration folders. |
 | Mobile apps | Build pipeline, patches, chat/deep links, and push checks against the agreed server/push versions. Device, signing, and distribution checks need operator setup. |
@@ -117,8 +117,8 @@ Folders reduce conflicts; they do not remove shared contracts or prerequisite wo
 Do not split Kirei web, worker, listener, and Master into separate deployable sessions.
 They share one Ruby application, schema, dependencies, and transaction rules.
 Additional Kirei domain sessions can follow later with explicit file ownership and stable shared types.
-Task 1 validation gates still block Tasks 6–10 when required contracts lack evidence.
-Task 3 shared types precede Tasks 4–6; review coordination follows verified routing, sessions, and workflow gates.
+Task 1 validation gates still block Tasks 6-10 when required contracts lack evidence.
+Task 3 shared types precede Tasks 4-6; review coordination follows verified routing, sessions, and workflow gates.
 
 The integration owner controls root files, `tests/`, cross-service version compatibility, shared fixtures, and `docs/interfaces/` contracts.
 Component owners control their dependency lockfiles; the integrator reviews changes that affect another component.

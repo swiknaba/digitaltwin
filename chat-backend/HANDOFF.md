@@ -68,6 +68,6 @@ suppression remain mandatory. Missing post/membership must block human actions.
    acceptance; push/mobile owners: own-build push/deep links. Infra: encrypted
    production restore, production image publication/digest and deployment.
 
-Tasks 6–10 retain required authentication/Herdr/idle/Master MCP gates. This component
+Tasks 6-10 retain required authentication/Herdr/idle/Master MCP gates. This component
 work clears neither those gates nor Phase 0 acceptance. Independent integration
 review/testing and merge belong to the parent/integrator.

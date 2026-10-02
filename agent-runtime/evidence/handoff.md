@@ -61,7 +61,7 @@ slice, real company Wagglebot provisioning, provider login persistence, private
 SSH/Tailnet and complete transitive/redistribution-license audit. Installed MCP
 help is capability discovery only. Native SSH is packaged with operator-key
 preflight but not running; no keys or access state were created. Task1 gates still
-block dependent Tasks6–10. No Phase1 voice or later LiteLLM/review framework added.
+block dependent Tasks6-10. No Phase1 voice or later LiteLLM/review framework added.
 
 The integrator should add root changelog/interface entries for these changes;
 worker ownership prevents concurrent `.agents/changelog.md` or shared docs edits.

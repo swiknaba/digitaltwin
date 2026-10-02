@@ -55,7 +55,7 @@ Compose, shared docs and tests remain integrator-owned and unchanged here.
 ## Execution rulings
 
 - Implement only the independent mobile portion of Task 1 and the component brief;
-  Tasks 6–10 live gates remain unchanged. No mobile source inspection clears them.
+  Tasks 6-10 live gates remain unchanged. No mobile source inspection clears them.
 - Use the plan's executing-plans and verification skills inside our assigned folder;
   this evidence file serves as the scoped progress/handoff ledger. Avoid new
   orchestration sessions; independent integration testing belongs to the parent.

@@ -72,8 +72,8 @@ Ordinary bot history cannot guarantee tombstones: admin-only deleted-post behavi
 Live deletion visibility and channel-discovery/backfill completeness remain acceptance work.
 
 Required operator input: disposable listener/bot accounts and their mounted token files; verified bot/channel IDs and memberships; authorized provider test access.
-Prove the real mention → queued dispatch → Herdr CLI → source-thread reply slice before enabling production Tasks 3–5.
-Tasks 6–10 still require authenticated chat/thread evidence, four CLI prompt/state/stop contracts, Writer settled, and selected Master MCP round trip.
+Prove the real mention → queued dispatch → Herdr CLI → source-thread reply slice before enabling production Tasks 3-5.
+Tasks 6-10 still require authenticated chat/thread evidence, four CLI prompt/state/stop contracts, Writer settled, and selected Master MCP round trip.
 Sessions, review coordinator, state transitions/approvals, Master MCP, artifact/review callbacks, PR delivery, peer and memory flows remain unimplemented behind those gates.
 Prepared tables and pure policy checks do not clear those gates.
 GitHub private creation requires operator-supplied `gh` and authentication; neither is installed/validated in this image.

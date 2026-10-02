@@ -54,5 +54,5 @@ Fixtures/tests are source-derived simulations, not authenticated API/event captu
 Root/integrator owns Compose, separate PostgreSQL role wiring, shared contracts,
 and cross-service acceptance. Full transitive licensing/dependency audit,
 authenticated bot replies/events/reconnect, real attachment restore, signed mobile
-push/deep links, and production encrypted restore remain open. Tasks 6–10 keep
+push/deep links, and production encrypted restore remain open. Tasks 6-10 keep
 required evidence gates; successful packaging/startup does not clear them.

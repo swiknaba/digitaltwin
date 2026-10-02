@@ -23,7 +23,7 @@ Shared entities and migrations remain in Kirei, not a second contract service.
 The Kirei 0.10.0 CLI generated the scaffold now in this folder from an empty staging directory.
 Finish the dependency lock, Linux platforms, startup entry points, and tests under the required Ruby 4.0.7.
 See `bootstrap.lock.json` and the [foundation checkpoint](../docs/interfaces/foundation-validation.md).
-Implement Tasks 2–5 before dependent workflow/review/Master/delivery work in Tasks 7–11.
+Implement Tasks 2-5 before dependent workflow/review/Master/delivery work in Tasks 7-11.
 The integrator reviews Compose/root/shared-contract changes. Runtime owns image provisioning, not this application's sessions migration or adapter.
 Keep component tests in `spec/`; cross-deployable acceptance belongs in root `tests/`.
 
@@ -64,7 +64,7 @@ JSON bodies are bounded at 64 KiB and normalized to StringIO for Kirei's parser.
 The listener and Mattermost delivery handler require `CHAT_VALIDATION_MODE=1` for disposable validation.
 That mode does not enable agent sessions, reviews, approvals, Master MCP, or production workflows.
 
-Migrations `001`–`008` provide jobs/inbox/outbox/audit, projects, and preparatory sessions/workflows/reviews/confirmations storage.
+Migrations `001`-`008` provide jobs/inbox/outbox/audit, projects, and preparatory sessions/workflows/reviews/confirmations storage.
 `Domains::Workflows::Entities` owns the typed shared contracts.
 `Policy` contains pure approval/diversity/settled-state checks; it is not an enabled workflow coordinator.
 Enrollment and Git worktree services validate explicit channel mappings, remote identities, branches, and real paths.
@@ -143,7 +143,7 @@ They are not authenticated server captures. REST may omit human `is_bot:false`; 
 Server-side source pins and offline tests do not clear live authentication, bot permissions, WebSocket, or reconnect gates.
 Ordinary bot backfill cannot promise deleted-post recovery: `include_deleted` is admin-gated, and the `since` path does not forward it.
 
-Tasks 6–10 remain blocked on required authenticated chat/threads, CLI prompt/state/stop, Writer settled, and selected Master MCP evidence.
+Tasks 6-10 remain blocked on required authenticated chat/threads, CLI prompt/state/stop, Writer settled, and selected Master MCP evidence.
 The early real mention → Herdr CLI → source-thread reply slice has not passed.
 Provide operator-controlled disposable listener/bot accounts and provider test access to run those checks.
 No production deployment, provider authentication, paid calls, signed-device push, or final Phase 0 acceptance is claimed.

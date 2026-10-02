@@ -15,7 +15,7 @@ The Phase 0 specification and plan define behavior; the layout document defines 
 
 - Record exact upstream revisions and sanitized contract evidence before implementing dependent adapters.
 - Keep unresolved Task 1 checks explicit. Documentation inspection is not a live compatibility test.
-- Tasks 6–10 remain blocked by missing required Herdr, authenticated chat, idle, and selected Master MCP evidence.
+- Tasks 6-10 remain blocked by missing required Herdr, authenticated chat, idle, and selected Master MCP evidence.
 - Preserve separate Kirei/Mattermost database ownership and production infrastructure ownership.
 - Store no signing keys, provider login state, or credentials in Git or images.
 - Keep LiveKit/voice in Phase 1 and LiteLLM/MCP direction after Phase 2.

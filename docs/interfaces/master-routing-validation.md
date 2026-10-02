@@ -25,7 +25,7 @@ Implementation uses an isolated `build/master-context-routing` worktree.
 ## Evidence
 
 Full checks use disposable PostgreSQL 18.6 and the Ruby 4.0.7 amd64 dependency image: RSpec,
-clean 001–008 migration/rollback, Layout/Lint/Security and shared-contract static typing.
+clean 001-008 migration/rollback, Layout/Lint/Security and shared-contract static typing.
 Fixtures cover concurrency, review release/rollback, credential expiry/replacement, callback
 roles/generations, authoritative context, Master request scope, stdio MCP and actual Git trees.
 Final backend check passed 132 examples (127 main +4 migration helper +1 clean migration),
@@ -57,5 +57,5 @@ runtime identity or authoritative pane absence. No external operation is replaye
 can reconcile uncertain review dispatch using exact Git/runtime evidence. See
 [minimum setup and acceptance](master-routing-setup.md).
 New project enrollment, verified PR delivery/done transition, broader Git/deployment/destructive
-MCP tools and live Task 6–10 acceptance remain outside this bounded increment. The draft is not
+MCP tools and live Task 6-10 acceptance remain outside this bounded increment. The draft is not
 an enabled fleet or completion of all Phase 0 workflows. Preserve those evidence/code gaps.

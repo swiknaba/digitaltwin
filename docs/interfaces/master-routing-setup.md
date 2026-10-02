@@ -35,7 +35,7 @@ writing/review phases; PR delivery only determines when later `finish` can archi
 
 ## Minimum operator setup (no secret values in Git or messages)
 
-1. Run reviewed local backend/Runtime/chat images with migrations 001–008. Worker and Runtime
+1. Run reviewed local backend/Runtime/chat images with migrations 001-008. Worker and Runtime
    share `/workspace` and `/run/herdr` as UID 10001; only Runtime has provider home state. Web
    has neither Git workspaces nor the Herdr socket. Build clients with the checksum staging script.
 2. Provide existing authenticated chat identities through read-only token-file mounts. Listener

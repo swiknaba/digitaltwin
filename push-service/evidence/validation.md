@@ -33,7 +33,7 @@ Initial checks exposed two test assumptions: upstream rejects GET send route wit
 
 ## Handoff and open gates
 
-Ruling: this assigned upstream-configuration scope prepares Task 1/12 evidence; it does not claim the entire Phase 0 plan or dependent Tasks 6–10 complete. Shared Compose/contracts stay integrator ownership. Using an internal provider-free service without a published host port keeps tests isolated; provider egress is an explicit infrastructure delivery change. Wrong integration of those network settings would block delivery, so the README distinguishes them.
+Ruling: this assigned upstream-configuration scope prepares Task 1/12 evidence; it does not claim the entire Phase 0 plan or dependent Tasks 6-10 complete. Shared Compose/contracts stay integrator ownership. Using an internal provider-free service without a published host port keeps tests isolated; provider egress is an explicit infrastructure delivery change. Wrong integration of those network settings would block delivery, so the README distinguishes them.
 
 Author reviewed the final component diff; no additional orchestration session was started. Independent integration testing is the parent/integrator's authorized next stage. No merge or production deployment performed.
 

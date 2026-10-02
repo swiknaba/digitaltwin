@@ -18,3 +18,5 @@ mobile-apps/dist/
 *.mobileprovision
 *.keystore
 *.jks
+tmp/*
+logs/*

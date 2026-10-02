@@ -58,15 +58,15 @@ Without the explicit opt-in, normal discovery skips the live suite and runs conf
 | 2 | Real local default core boot; authenticated chat and push readiness remain open |
 | 3 | Local configuration contracts only; hosted task portability untested |
 | 4 | Real local DB/chat/web/worker/Runtime health; listener/push/Headscale/Tailscale open |
-| 5–6 | Real local UIDs, mounts, capability and socket restrictions |
+| 5-6 | Real local UIDs, mounts, capability and socket restrictions |
 | 7 | Container restart and durable job state; full host/login/workspace recovery untested |
-| 8–10 | Blocked: four real CLIs, Tailnet attachment and external SSH test |
-| 11–16 | Synthetic callback two-thread binding only; Master, role sessions and enrollment acceptance open |
-| 17–24 | Blocked: actual approval/review coordination and settled Writer evidence |
-| 25–26 | Blocked: verified PR delivery and automatic-merge exclusion |
-| 27–28 | Blocked: Master reconstruction and independent peer fleet |
-| 29–30 | Blocked: encrypted restore, authenticated ordinary chat, signed mobile push/deep links |
-| 31–32 | Blocked: research and pushed configured memory repository |
+| 8-10 | Blocked: four real CLIs, Tailnet attachment and external SSH test |
+| 11-16 | Synthetic callback two-thread binding only; Master, role sessions and enrollment acceptance open |
+| 17-24 | Blocked: actual approval/review coordination and settled Writer evidence |
+| 25-26 | Blocked: verified PR delivery and automatic-merge exclusion |
+| 27-28 | Blocked: Master reconstruction and independent peer fleet |
+| 29-30 | Blocked: encrypted restore, authenticated ordinary chat, signed mobile push/deep links |
+| 31-32 | Blocked: research and pushed configured memory repository |
 
 Client pin/staging validation: `python3 -m unittest discover -s tests -p test_client_contract.py`.
 After building the pinned with-callback image, run `tests/fixtures/runtime_clients.rb` via its Ruby

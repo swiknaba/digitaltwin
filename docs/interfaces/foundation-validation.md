@@ -61,9 +61,9 @@ The following live evidence still gates dependent implementation under the exist
 1. Authenticated Mattermost bot/events, verified sender/thread/membership, and reconnect recovery.
 2. Four real CLIs through Linux Herdr, start/prompt/state/stop behavior, and a verified Writer settled handshake.
 3. Selected Master CLI's real MCP round trip with source context.
-4. The disposable mention → queued dispatch → one CLI → reply in its original thread slice before production Tasks 3–5.
+4. The disposable mention → queued dispatch → one CLI → reply in its original thread slice before production Tasks 3-5.
 
-Tasks 6–10 cannot treat schema inspection, successful generation, or simulated fixtures as passing those required checks.
+Tasks 6-10 cannot treat schema inspection, successful generation, or simulated fixtures as passing those required checks.
 Operator test credentials may be needed for real CLIs; create no credentials or paid sessions without authorization.
 Keep signed-device push and production restore/deployment checks separate from local server checks.
 

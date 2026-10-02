@@ -178,12 +178,12 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 - [ ] Write contract tests `starts_four_clis`, `writer_settles_after_ready`, `unknown_is_not_idle`, `selected_master_calls_local_mcp`, `mattermost_verifies_event_and_sender`.
 - [ ] Verify authenticated event delivery for ordinary human replies without repeated mentions. Record server-authenticated thread/root identity and bot reply placement.
 - [ ] Prove an early disposable slice: Mattermost mention → queued dispatch → one CLI through Herdr → bot reply in the source thread.
-- [ ] Record slice commands and sanitized evidence before Tasks 3–5. Use temporary spike fixtures, not production workflow code or real project changes.
+- [ ] Record slice commands and sanitized evidence before Tasks 3-5. Use temporary spike fixtures, not production workflow code or real project changes.
 - [ ] Start all four CLIs with test credentials through Herdr. Record ready→idle/done, crash, timeout, and Gemini-specific screen state, without real project changes.
 - [ ] Check the selected Master CLI's MCP round trip with `list_projects` and source channel context. Check a fresh session with the same configuration.
 - [ ] Save sanitized request/response fixtures and reproducible commands. Expect start, prompt, status, and stop evidence for each CLI.
 - [ ] After Task 2, run `bundle exec rspec spec/contracts`; expect PASS against the validated fixtures. Task 1 provides recorded live checks before that.
-- [ ] Block Tasks 6–10 if the API, idle handshake, event authentication, verified thread identity, or selected Master CLI's MCP is missing. Document a concrete alternative instead of inventing socket methods.
+- [ ] Block Tasks 6-10 if the API, idle handshake, event authentication, verified thread identity, or selected Master CLI's MCP is missing. Document a concrete alternative instead of inventing socket methods.
 - [ ] After review, commit: `docs: validate pinned runtime and chat contracts`.
 
 ## Task 2: Kirei Foundation and Local Images
@@ -211,7 +211,7 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 **Interfaces:** `Jobs.enqueue(kind: String, payload: Hash, key: String) -> String`; `Jobs.claim(worker_id: String, now: Time) -> Job?`; `complete(id:, lease_token:)`; `retry(id:, lease_token:, error:)`. `Outbox.enqueue(channel_id:, thread_id: String?, bot:, role: String?, body:, key:) -> String`. PostgreSQL jobs dispatch Herdr work, reconciliation, and outbox delivery beyond event ingestion; Kirei needs no Sidekiq or Redis.
 
 - [ ] Write PostgreSQL tests: two workers never claim the same job; a unique key returns one job; an expired lease is retryable; an old lease token cannot complete a job.
-- [ ] Define and type-check all shared workflow contracts before Tasks 4–6 consume them. Add the Task 3 schema constraints above.
+- [ ] Define and type-check all shared workflow contracts before Tasks 4-6 consume them. Add the Task 3 schema constraints above.
 - [ ] Add `transaction_rollback_discards_state_and_outbox`, `fifth_failure_blocks`, `effect_succeeded_before_crash`, and `unknown_post_result`: rollback leaves neither state nor outbox row; five failed attempts block; unknown effects do not issue a duplicate network call before reconciliation.
 - [ ] Run `bundle exec rspec spec/domains/jobs_spec.rb`; expect missing schema/store.
 - [ ] Implement short `FOR UPDATE SKIP LOCKED` claims, lease/heartbeat, bounded retry values, and atomic state change plus outbox. Dispatch a long agent session, then release the job; reconcile completion separately.
@@ -433,7 +433,7 @@ These sources validate names and compatibility considerations; Task 1 still sele
 Implemented in the routing draft; live dispatch remains closed. Still outside this bounded
 increment: new project enrollment through MCP, provider login,
 verified PR delivery/done transition, operational Git/deployment/destructive tools and live
-acceptance. These remain Task 6–10 work, not completed features.
+acceptance. These remain Task 6-10 work, not completed features.
 
 ## Task 9: Master and Local MCP Bridge
 
@@ -558,16 +558,16 @@ Keep source actor/context verified; preserve normal coding gates. The Master res
 | 2 | 1/2/13 | local Compose with upstream Team Edition/push proxy and separate PostgreSQL databases; exit 0 |
 | 3 | 12 | same ENV/volume/health contracts, Compose and Hosted Task definition |
 | 4 | 6/12/13 + Infra | health of Team Edition, push proxy, DB, Web, Worker, listener, Runtime, Headscale, Tailscale |
-| 5–6 | 6/12 | contract test and inspected container UID/mount/capability state |
+| 5-6 | 6/12 | contract test and inspected container UID/mount/capability state |
 | 7 | 6/11 | host restart, persistent clones/worktrees/Herdr/Wagglebot/login states |
 | 8 | 1/6 | four real CLI starts through pinned Herdr |
-| 9–10 | 12/13 + Infra | Tailnet attachment succeeds; external SSH connection test is rejected |
+| 9-10 | 12/13 + Infra | Tailnet attachment succeeds; external SSH connection test is rejected |
 | 11 | 4/9 | Master request from two channels carries the correct source channel |
-| 12–13 | 5/6/7 | fresh role sessions; duplicate active-thread start rejected; concurrent same-repo threads use separate worktrees |
-| 14–16 | 5 | path/remote checks, three setup actions, one shared service |
-| 17–19 | 7 | revision/bot/race negative tests |
-| 20–24 | 8 | immutable target/base commits, handshake, Writer lock, queued-message acknowledgement, review handoff, third failure |
-| 25–26 | 10 | one branch/PR, no automatic merge |
+| 12-13 | 5/6/7 | fresh role sessions; duplicate active-thread start rejected; concurrent same-repo threads use separate worktrees |
+| 14-16 | 5 | path/remote checks, three setup actions, one shared service |
+| 17-19 | 7 | revision/bot/race negative tests |
+| 20-24 | 8 | immutable target/base commits, handshake, Writer lock, queued-message acknowledgement, review handoff, third failure |
+| 25-26 | 10 | one branch/PR, no automatic merge |
 | 27 | 9/11 | fresh selected-controller session with same configuration and durably reconstructed status |
 | 28 | 10/13 | simulated peer and separate Git identity, chat/Git only |
 | 29 | 1/12/13 + Infra | encrypted restore of both databases/roles and attachments; logins not restored |

@@ -147,5 +147,5 @@ Still required: authenticated four-CLI prompt/state/stop and crash/timeout check
 Writer artifact-ready then truly settled handshake; actual Writer/Reviewer tool
 execution; selected Master MCP round trip with verified source channel; full source-thread callback delivery; company provisioning; provider login
 persistence; private SSH; complete license audit. The required Task 1 evidence still
-blocks dependent Tasks 6–10 and is not cleared by these component checks. LiveKit
+blocks dependent Tasks 6-10 and is not cleared by these component checks. LiveKit
 stays in Phase 1; future LiteLLM/review frameworks are excluded.

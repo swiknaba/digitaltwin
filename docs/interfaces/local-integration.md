@@ -97,7 +97,7 @@ Without the actual CLI execution, label the result a fixture/adapter check and k
 Dependency ping alone proves neither authenticated chat nor the early slice.
 
 Four-CLI start/prompt/state/stop, Writer settled state, and selected Master MCP remain separate Task 1 gates.
-Tasks 6–10 retain those gates. Signed-device push, restore, and production deployment retain their operator prerequisites.
+Tasks 6-10 retain those gates. Signed-device push, restore, and production deployment retain their operator prerequisites.
 
 ## Combined Local Check Preparation
 

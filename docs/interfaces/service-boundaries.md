@@ -59,10 +59,10 @@ Official documentation inspected on 2026-10-01 provides starting references, not
 | Writer settled handshake; unknown cannot mean idle | Open; docs alone cannot prove CLI state semantics | Runtime/Kirei owners validate before sessions/reviews |
 | Selected Master CLI real MCP round trip with verified channel context | Open; no live provider session started | Kirei/Runtime owners validate with operator-provided test credentials |
 | Authenticated ordinary thread replies, bot identities, membership and REST recovery | Open; dependency health passed, authenticated behavior untested | Mattermost/Kirei owners validate selected artifact locally |
-| Disposable mention → queued dispatch → one Herdr CLI → source-thread reply | Open; no running applications or provider test credentials | Integrator proves slice before Tasks 3–5 production workflow work |
+| Disposable mention → queued dispatch → one Herdr CLI → source-thread reply | Open; no running applications or provider test credentials | Integrator proves slice before Tasks 3-5 production workflow work |
 | Own signed mobile foreground/background push and thread deep links | Open; enrollment/signing/push credentials/device setup remain human tasks | Mobile/push owners separate offline checks from operator evidence |
 
-Tasks 6–10 retain the plan's blocking gates for missing required Herdr, idle, authenticated chat/thread, or selected Master MCP evidence.
+Tasks 6-10 retain the plan's blocking gates for missing required Herdr, idle, authenticated chat/thread, or selected Master MCP evidence.
 Preparing a Dockerfile, build recipe, fixtures, or offline component tests does not clear these gates.
 No production infrastructure, provider login, app-store submission, or signed-device delivery has occurred in this scaffold task.
 
@@ -87,7 +87,7 @@ The standalone `digitaltwin-mcp` stdio bridge reads the current request token fr
 file and calls private `/internal/master/{manifest,tools}` HTTP endpoints. Only a live Controller
 request capability may invoke tools. Tool arguments contain no actor, role configuration or
 session creation authority. Kirei re-fetches the source human and destination memberships.
-`send_prompt` cites 1–10 recent accessible inbox IDs grounded in the target thread, source task
+`send_prompt` cites 1-10 recent accessible inbox IDs grounded in the target thread, source task
 or recorded binding. Conflicts ask for clarification. `workflow_control` queues the exact
 source/workflow/version for worker validation; approval still requires exact human Git binding.
 
