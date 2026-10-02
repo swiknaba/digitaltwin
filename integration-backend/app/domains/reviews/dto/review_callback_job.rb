@@ -5,7 +5,7 @@ module Domains
   module Reviews
     module Dto
       # Payload of review.callback jobs; prop order fixes the dispatch-key digest.
-      class CallbackJob < T::Struct
+      class ReviewCallbackJob < T::Struct
         include Kirei::Domain::ValueObject
 
         const :session_id, String

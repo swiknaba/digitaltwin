@@ -13,8 +13,8 @@ module Adapters
         return unexpected_fields_response unless exact_keys?(values, %w[commit generation kind])
 
         callback = artifact_callback(values)
-        intake.enqueue(token: callback.token, generation: callback.generation, action: "artifact", kind: callback.kind, commit: callback.commit)
-        accepted_response
+        queued = queue_callback.call(token: callback.token, generation: callback.generation, action: "artifact", kind: callback.kind, commit: callback.commit)
+        queued.success? ? accepted_response : rejected_response("Artifact callback rejected")
       rescue Errors::MissingAuthorization, ArgumentError, Sequel::Error
         rejected_response("Artifact callback rejected")
       end
@@ -25,8 +25,8 @@ module Adapters
         return unexpected_fields_response unless exact_keys?(values, %w[commit generation verdict])
 
         callback = review_callback(values)
-        intake.enqueue(token: callback.token, generation: callback.generation, action: "review", commit: callback.commit, verdict: callback.verdict)
-        accepted_response
+        queued = queue_callback.call(token: callback.token, generation: callback.generation, action: "review", commit: callback.commit, verdict: callback.verdict)
+        queued.success? ? accepted_response : rejected_response("Review callback rejected")
       rescue Errors::MissingAuthorization, ArgumentError, Sequel::Error
         rejected_response("Review callback rejected")
       end
@@ -47,9 +47,9 @@ module Adapters
         render_json({ "status" => "rejected", "reason" => "Invalid callback" }, status: 403)
       end
 
-      sig { returns(Domains::Reviews::Intake) }
-      private def intake
-        Domains::Reviews::Intake.new
+      sig { returns(Services::Reviews::QueueCallback) }
+      private def queue_callback
+        Services::Reviews::QueueCallback.new
       end
 
       sig { params(values: Params).returns(Dto::ArtifactCallback) }

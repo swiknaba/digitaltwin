@@ -21,16 +21,17 @@ module Services
 
       sig do
         params(source: Domains::Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, evidence: Adapters::Git::Evidence,
-               reviews: Domains::Reviews::Coordinator, stop_sessions: Sessions::StopWorkflowSessions, catalog: Domains::Workflows::Catalog,
+               stop_sessions: Sessions::StopWorkflowSessions, queue_release: Reviews::QueueRelease, catalog: Domains::Workflows::Catalog,
                transitions: Domains::Workflows::Transitions, phase_prompts: Domains::Workflows::PhasePrompts, audit: Platform::Audit::Log,
                worker_handle: String).void
       end
-      def initialize(source:, herdr:, evidence:, reviews:, stop_sessions:, catalog: Domains::Workflows::Catalog.new, transitions: Domains::Workflows::Transitions.new,
+      def initialize(source:, herdr:, evidence:, stop_sessions:, queue_release: Reviews::QueueRelease.new, catalog: Domains::Workflows::Catalog.new,
+                     transitions: Domains::Workflows::Transitions.new,
                      phase_prompts: Domains::Workflows::PhasePrompts.new, audit: Platform::Audit::Log.new, worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
         @source = source
         @verify_sessions = T.let(VerifySessions.new(herdr: herdr), VerifySessions)
         @evidence = evidence
-        @reviews = reviews
+        @queue_release = queue_release
         @stop_sessions = stop_sessions
         @catalog = catalog
         @transitions = transitions
@@ -149,7 +150,7 @@ module Services
         case action
         when Action::Resume
           @phase_prompts.enqueue(workflow_id: workflow.id, version: version) if workflow.phase.writing? && @phase_prompts.unstarted?(workflow_id: workflow.id)
-          @reviews.queue_release(workflow.id, version)
+          @queue_release.call(workflow_id: workflow.id, version: version)
         when Action::Finish, Action::Cancel
           @stop_sessions.call(workflow_id: workflow.id)
         when Action::Pause

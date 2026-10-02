@@ -14,15 +14,15 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[Domains::Workflows::Dto::WorkflowView] }
 
       sig do
-        params(evidence: Adapters::Git::Evidence, reviews: Domains::Reviews::Coordinator, latest_review: LatestReview,
+        params(evidence: Adapters::Git::Evidence, rounds: Domains::Reviews::Rounds, queue_release: Reviews::QueueRelease,
                catalog: Domains::Workflows::Catalog, transitions: Domains::Workflows::Transitions, approvals: Domains::Workflows::Approvals,
                phase_prompts: Domains::Workflows::PhasePrompts).void
       end
-      def initialize(evidence:, reviews:, latest_review:, catalog: Domains::Workflows::Catalog.new, transitions: Domains::Workflows::Transitions.new,
-                     approvals: Domains::Workflows::Approvals.new, phase_prompts: Domains::Workflows::PhasePrompts.new)
+      def initialize(evidence:, rounds: Domains::Reviews::Rounds.new, queue_release: Reviews::QueueRelease.new, catalog: Domains::Workflows::Catalog.new,
+                     transitions: Domains::Workflows::Transitions.new, approvals: Domains::Workflows::Approvals.new, phase_prompts: Domains::Workflows::PhasePrompts.new)
         @evidence = evidence
-        @reviews = reviews
-        @latest_review = latest_review
+        @rounds = rounds
+        @queue_release = queue_release
         @catalog = catalog
         @transitions = transitions
         @approvals = approvals
@@ -46,8 +46,9 @@ module Services
         ref = workflow.artifacts.fetch(gate)
         return failure(Code::ApprovalMissing, "Exact human approval missing") unless ref && @approvals.find(workflow_id: workflow_id, gate: gate, commit: ref.commit)
 
-        review = @latest_review.call(workflow_id: workflow_id, gate: gate)
-        return failure(Code::ReviewMissing, "Approving review missing") unless review && review.verdict == "approve" && review.target_commit == ref.commit
+        review = @rounds.latest(workflow_id: workflow_id, gate: gate)
+        approving = review&.verdict == Domains::Reviews::Dto::Verdict::Approve && review&.target_commit == ref.commit
+        return failure(Code::ReviewMissing, "Approving review missing") unless review && approving
 
         worktree = Adapters::Git::Dto::WorktreeRef.new(worktree_path: workflow.worktree_path, branch: workflow.branch)
         @evidence.approval(worktree: worktree, binding: ref, target_commit: review.target_commit, review_commit: review.review_commit, review_path: review.review_path)
@@ -60,7 +61,7 @@ module Services
           next advanced if advanced.failed?
 
           @phase_prompts.enqueue(workflow_id: workflow_id, version: version)
-          @reviews.queue_release(workflow_id, version)
+          @queue_release.call(workflow_id: workflow_id, version: version)
           advanced
         end
       end

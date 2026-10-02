@@ -19,17 +19,17 @@ module Services
       APPROVED_BEFORE = T.let({ Phase::PlanWriting => Gate::Spec, Phase::Implementation => Gate::Plan }.freeze, T::Hash[Phase, Gate])
 
       sig do
-        params(source: Domains::Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, evidence: Adapters::Git::Evidence, latest_review: LatestReview,
+        params(source: Domains::Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, evidence: Adapters::Git::Evidence,
                policy: Domains::Workflows::Policy, catalog: Domains::Workflows::Catalog, approvals: Domains::Workflows::Approvals,
-               registry: Domains::Sessions::Registry).void
+               registry: Domains::Sessions::Registry, rounds: Domains::Reviews::Rounds).void
       end
-      def initialize(source:, herdr:, evidence:, latest_review:, policy: Domains::Workflows::Policy.new, catalog: Domains::Workflows::Catalog.new,
-                     approvals: Domains::Workflows::Approvals.new, registry: Domains::Sessions::Registry.new)
+      def initialize(source:, herdr:, evidence:, policy: Domains::Workflows::Policy.new, catalog: Domains::Workflows::Catalog.new,
+                     approvals: Domains::Workflows::Approvals.new, registry: Domains::Sessions::Registry.new, rounds: Domains::Reviews::Rounds.new)
         @source = source
         @herdr = herdr
         @verify_sessions = T.let(VerifySessions.new(herdr: herdr), VerifySessions)
         @prior_approvals = T.let(VerifyPriorApprovals.new(evidence: evidence, approvals: approvals), VerifyPriorApprovals)
-        @latest_review = latest_review
+        @rounds = rounds
         @policy = policy
         @catalog = catalog
         @approvals = approvals
@@ -89,7 +89,7 @@ module Services
         gate = APPROVED_BEFORE[workflow.phase]
         return decided(Decision.complete) unless gate
 
-        review = @latest_review.call(workflow_id: workflow.id, gate: gate)
+        review = @rounds.latest(workflow_id: workflow.id, gate: gate)
         unless review && @approvals.find(workflow_id: workflow.id, gate: gate, commit: review.target_commit)
           return failure(Code::ApprovalMissing, "Required artifact approval missing")
         end
@@ -102,7 +102,7 @@ module Services
 
       sig { params(workflow: Domains::Workflows::Dto::WorkflowView, request: String).returns(String) }
       private def prompt(workflow, request)
-        feedback = @latest_review.call(workflow_id: workflow.id, gate: nil)
+        feedback = @rounds.latest_changes_requested(workflow_id: workflow.id)
         corrective = feedback ? "Read corrective feedback in #{feedback.review_path} at #{feedback.review_commit} for target #{feedback.target_commit}. " : ""
         corrective + "Work only in #{workflow.worktree_path} on #{workflow.branch}. " \
                      "Current phase: #{workflow.phase.serialize}. " \

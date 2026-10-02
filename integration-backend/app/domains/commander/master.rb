@@ -132,7 +132,7 @@ module Domains
           wids = Domains::Workflows::Catalog.new.ids_for_source(inbox_id: original.id)
           start = Domains::Workflows::Requests.new.for_inbox(inbox_id: original.id)
           start_uncertain = start && [Domains::Workflows::Dto::RequestState::Sending, Domains::Workflows::Dto::RequestState::Uncertain].include?(start.state)
-          raise ArgumentError, "Workflow effect still uncertain" if start_uncertain || @db[:reviews].where(workflow_id: wids, dispatch_state: %w[sending uncertain]).count.positive?
+          raise ArgumentError, "Workflow effect still uncertain" if start_uncertain || Domains::Reviews::Rounds.new.unsettled_dispatch?(workflow_ids: wids)
 
           raise ArgumentError, "Session effect still uncertain" if @operations.unsettled_in_workflows?(workflow_ids: wids)
 

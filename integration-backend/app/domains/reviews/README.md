@@ -1,6 +1,5 @@
 # Reviews
-
-This domain accepts signed review callbacks and coordinates artifact and review evidence
-against a workflow's required gates. It reads Git evidence through `Adapters::Git::Evidence`, records the
-result, and queues the next allowed release step. It does not treat an unverified callback
-or an arbitrary filesystem path as review evidence.
+Owns `reviews`: the numbered review rounds of a workflow gate (at most three), their reviewer prompt dispatch state and their verdicts.
+Public API: `Rounds` (open, reads, dispatch state), `Verdicts` (record a round's verdict once), `Dto::*` and `Errors::*`.
+Callers hold the workflow's `Platform::Lock`. Malformed rows fail closed with `Errors::MalformedRecord`.
+Herdr prompts, git evidence, jobs and chat notices live in `Services::Reviews`.

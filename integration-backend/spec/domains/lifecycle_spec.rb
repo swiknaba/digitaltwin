@@ -35,10 +35,13 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   let(:request_start) { Services::Workflows::RequestStart.new(source: source, roles: role_assignments) }
   let(:provision) { Services::Workflows::Provision.new(db, source: source, api: api, bot_id: bot, worktrees: worktrees, reserve_session: reserve_session, policy: policy) }
   let(:reconcile_start) { Services::Workflows::ReconcileStart.new(source: source, api: api, bot_id: bot) }
-  let(:reviews) { Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: routing, policy: policy) }
-  let(:control_service) { Services::Workflows::Control.new(source: source, herdr: herdr, evidence: evidence, reviews: reviews, stop_sessions: stop_sessions) }
-  let(:advance) { Services::Workflows::AdvanceApproval.new(evidence: evidence, reviews: reviews, latest_review: Services::Workflows::LatestReview.new(db)) }
-  let(:dispatch) { Services::Workflows::DispatchPhasePrompt.new(source: source, herdr: herdr, evidence: evidence, latest_review: Services::Workflows::LatestReview.new(db), policy: policy) }
+  let(:artifact_ready) { Services::Reviews::ArtifactReady.new(herdr: herdr, evidence: evidence) }
+  let(:review_finished) { Services::Reviews::ReviewFinished.new(herdr: herdr, evidence: evidence) }
+  let(:dispatch_review) { Services::Reviews::DispatchReview.new(herdr: herdr, evidence: evidence, policy: policy) }
+  let(:release_queued) { Services::Reviews::ReleaseQueued.new(db, routing: routing) }
+  let(:control_service) { Services::Workflows::Control.new(source: source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions) }
+  let(:advance) { Services::Workflows::AdvanceApproval.new(evidence: evidence) }
+  let(:dispatch) { Services::Workflows::DispatchPhasePrompt.new(source: source, herdr: herdr, evidence: evidence, policy: policy) }
   before do
     @credential_root = Dir.mktmpdir
     @inbox = db[:inbox].insert(id: "inbox_1", channel_id: master_channel, thread_id: delivery.thread_id, post_id: delivery.post_id, post_revision: 1,
@@ -127,8 +130,21 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     Platform::Unwrap.call(advance.call(workflow_id: "workflow", gate: Domains::Workflows::Dto::Gate.deserialize(gate)))
   end
 
+  # The token-authenticated review callbacks, as the former Coordinator#ready and #finish.
+  def ready(token:, **args) = artifact_ready.call(caller: Services::Reviews::Dto::BearerToken.new(token: token), **args)
+
+  def finish(token:, **args) = review_finished.call(caller: Services::Reviews::Dto::BearerToken.new(token: token), **args)
+
+  # Runs a review.release job for the workflow without touching other queued jobs.
+  def release(workflow_id)
+    lease = Platform::Jobs::Lease.new(store: Platform::Jobs::Store.new, job_id: "spec-release", token: "spec-release")
+    job = Platform::Jobs::Dto::ClaimedJob.new(id: "spec-release", kind: Platform::Jobs::Dto::JobKind::ReviewRelease, attempts: 1, lease: lease,
+                                              payload: Domains::Reviews::Dto::ReviewReleaseJob.new(workflow_id: workflow_id).serialize)
+    release_queued.call(job: job)
+  end
+
   def review_job(id)
-    tick_job(Platform::Jobs::Dto::JobKind::ReviewPrompt) { |job| reviews.call(job: job) }
+    tick_job(Platform::Jobs::Dto::JobKind::ReviewPrompt) { |job| dispatch_review.call(job: job) }
     expect(db[:reviews][id: id][:dispatch_state]).to eq("delivered")
   end
 
@@ -204,24 +220,24 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
   it "freezes review, dispatches one reviewer prompt, and releases changes to the same writer" do
     workflow
-    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
-    expect(reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)).to eq(id)
+    id = ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    expect(ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)).to eq(id)
     expect(db[:workflows].first[:phase]).to eq("spec_review")
     review_job(id)
     db[:queued_messages].insert(id: "queued_message_1", workflow_id: "workflow", inbox_id: @inbox, workflow_version: 1)
-    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
+    finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
     expect(db[:workflows].first[:phase]).to eq("spec_writing")
     expect(db[:jobs].where(kind: "review.release").count).to eq(1)
-    reviews.release("workflow")
+    release("workflow")
     expect(routing).to have_received(:route).with(inbox_id: @inbox)
     expect(db[:queued_messages].count).to eq(0)
     expect(db[:sessions].where(role: "writer").count).to eq(1)
   end
   it "requires exact approving review and human artifact approval before next phase" do
     workflow
-    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    id = ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
     review_job(id)
-    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "approve")
+    finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "approve")
     expect(db[:workflows].first[:phase]).to eq("spec_human_approval")
     expect { advance_approval("spec") }.to raise_error(ArgumentError)
     db[:approvals].insert(id: "approval_1", workflow_id: "workflow", kind: "spec", target_commit: commit, user_id: delivery.actor.user_id, channel_id: master_channel, post_id: delivery.post_id)
@@ -232,15 +248,15 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   it "rejects unknown Writer state, wrong callback role/generation and nondiverse reviewer" do
     workflow
     allow(herdr).to receive(:pane).and_return(herdr_pane("agent_status" => "unknown"))
-    expect { reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
-    expect { reviews.ready(token: "reviewer-token", generation: 1, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
-    expect { reviews.ready(token: "writer-token", generation: 2, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
+    expect { ready(token: "writer-token", generation: 1, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
+    expect { ready(token: "reviewer-token", generation: 1, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
+    expect { ready(token: "writer-token", generation: 2, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
     expect(db[:reviews].count).to eq(0)
   end
   it "keeps pause orthogonal to callback completion and refuses unverified revision changes on resume" do
     workflow
     control("pause", 0)
-    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    id = ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
     expect(db[:workflows].first.values_at(:phase, :saved_phase)).to eq(["paused", "spec_review"])
     allow(evidence).to receive(:current).and_return("f" * 40)
     expect { control("resume", 2) }.to raise_error(ArgumentError)
@@ -261,18 +277,18 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
   it "retains a durable release across callback replay and one invalid queued source" do
     workflow
-    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    id = ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
     review_job(id)
     db[:queued_messages].insert(id: "queued_message_1", workflow_id: "workflow", inbox_id: @inbox, workflow_version: 1)
     allow(routing).to receive(:route).and_raise(ArgumentError, "Revoked source")
-    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
-    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
+    finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
+    finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
     expect(db[:jobs].where(kind: "review.release").count).to eq(1)
-    reviews.release("workflow")
+    release("workflow")
     expect(db[:queued_messages].count).to eq(1)
     expect(db[:audit].where(action: "release_source_rejected").count).to eq(1)
     allow(routing).to receive(:route).and_return({ id: 123 })
-    reviews.release("workflow")
+    release("workflow")
     expect(db[:queued_messages].count).to eq(0)
   end
 
@@ -290,12 +306,12 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
 
   it "authenticates callback intake without HTTP socket or Git effects and deduplicates" do
     workflow
-    intake = Domains::Reviews::Intake.new
-    2.times { expect(intake.enqueue(token: "writer-token", generation: 1, action: "artifact", kind: "spec", commit: commit)).to eq("queued") }
+    intake = Services::Reviews::QueueCallback.new
+    2.times { expect(intake.call(token: "writer-token", generation: 1, action: "artifact", kind: "spec", commit: commit).result).to eq("queued") }
     expect(db[:jobs].where(kind: "review.callback").count).to eq(1)
     expect(db[:reviews].count).to eq(0)
     expect(herdr).not_to have_received(:pane)
-    expect { intake.enqueue(token: "reviewer-token", generation: 1, action: "artifact", kind: "spec", commit: commit) }.to raise_error(ArgumentError)
+    expect(intake.call(token: "reviewer-token", generation: 1, action: "artifact", kind: "spec", commit: commit).errors.first.detail).to eq("Invalid session")
   end
   it "rolls back terminal transition when durable session cleanup cannot be queued" do
     workflow(phase: "done")
@@ -319,7 +335,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     second = db[:inbox].insert(id: "inbox_2", channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
     [@inbox, second].each { |id| db[:queued_messages].insert(id: "queued_message_#{id}", workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
     allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Adapters::Mattermost::Errors::RequestFailed.new("Mattermost HTTP 404", status: 404))
-    reviews.release("workflow")
+    release("workflow")
     expect(db[:queued_messages].select_map(:inbox_id)).to eq([@inbox])
     expect(routing).to have_received(:route).with(inbox_id: second)
   end
@@ -357,7 +373,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     second = db[:inbox].insert(id: "inbox_2", channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
     [@inbox, second].each { |id| db[:queued_messages].insert(id: "queued_message_#{id}", workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
     allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Adapters::Mattermost::Errors::RequestFailed.new("Mattermost HTTP 500", status: 500))
-    expect { reviews.release("workflow") }.to raise_error(Adapters::Mattermost::Errors::RequestFailed)
+    expect { release("workflow") }.to raise_error(Adapters::Mattermost::Errors::RequestFailed)
     expect(routing).not_to have_received(:route).with(inbox_id: second)
     expect(db[:queued_messages].count).to eq(2)
   end
@@ -422,10 +438,10 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
   it "reconciles uncertain reviewer prompt from a verified exact review callback without resending" do
     workflow
-    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    id = ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
     db[:reviews].where(id: id).update(dispatch_state: "uncertain")
     db[:jobs].where(dispatch_key: "review:#{id}").update(status: "uncertain", effect_started_at: Time.now - 60)
-    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
+    finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
     expect(db[:reviews][id: id][:dispatch_state]).to eq("delivered")
     expect(db[:workflows].first[:phase]).to eq("spec_writing")
     expect(db[:audit].where(action: "verified_review_prompt_reconciliation").count).to eq(1)
@@ -459,10 +475,20 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
         channel_id: channel, thread_id: "t" * 26, post_id: "q" * 26, post_revision: 1, event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: false, body: "@worker pause",
         actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "u" * 26, channel_id: channel, member: true, bot: false)
       )))
-      Services::Workflows::Control.new(source: worker_source, herdr: herdr, evidence: evidence, reviews: reviews, stop_sessions: stop_sessions)
+      Services::Workflows::Control.new(source: worker_source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions)
     end
 
     def job_status(kind) = db[:jobs][kind: kind.serialize][:status]
+
+    it "applies a queued artifact callback from a claimed review.callback job" do
+      workflow
+      Services::Reviews::QueueCallback.new.call(token: "writer-token", generation: 1, action: "artifact", kind: "spec", commit: commit)
+      apply = Services::Reviews::ApplyCallback.new(artifact_ready: artifact_ready, review_finished: review_finished)
+      tick_job(kinds::ReviewCallback) { |job| apply.call(job: job) }
+      expect(job_status(kinds::ReviewCallback)).to eq("complete")
+      expect(db[:reviews].first.values_at(:gate, :round, :target_commit, :dispatch_state)).to eq(["spec", 1, commit, "queued"])
+      expect(db[:jobs].where(kind: "review.prompt").count).to eq(1)
+    end
 
     it "dispatches workflow.phase_prompt from a claimed job" do
       workflow

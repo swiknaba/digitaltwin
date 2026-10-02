@@ -48,14 +48,14 @@ module Domains
           current = @current_commit.call(worktree(w))
           @db.transaction do
             locked = catalog.find_for_update(id: workflow_id) or raise ArgumentError, "Missing workflow"
-            review = @db[:reviews].where(workflow_id: workflow_id, gate: gate).order(Sequel.desc(:round)).first
-            review_commit = optional_text(review && review[:review_commit])
-            approved = review && review[:verdict] == "approve" && review[:target_commit] == commit && current == (review_commit || commit)
-            raise ArgumentError, "Approval binding is stale" unless !locked.archived_at && locked.phase.serialize == "#{gate}_human_approval" && approved
-
             gate_value = Domains::Workflows::Dto::Gate.deserialize(gate)
+            review = Domains::Reviews::Rounds.new.latest(workflow_id: workflow_id, gate: gate_value)
+            review_commit = review&.review_commit
+            approved = review && review.verdict == Domains::Reviews::Dto::Verdict::Approve && review.target_commit == commit && current == (review_commit || commit)
+            raise ArgumentError, "Approval binding is stale" unless !locked.archived_at && locked.phase.serialize == "#{gate}_human_approval" && review && approved
+
             @evidence&.approval(worktree: worktree(locked), binding: locked.artifacts.fetch(gate_value), target_commit: commit,
-                                review_commit: review_commit, review_path: optional_text(review[:review_path]))
+                                review_commit: review_commit, review_path: review.review_path)
             Platform::Unwrap.call(Domains::Workflows::Approvals.new.record(workflow_id: workflow_id, gate: gate_value, target_commit: commit, user_id: d.actor.user_id,
                                                                            channel_id: d.channel_id, post_id: d.post_id)).id
           end
@@ -65,15 +65,6 @@ module Domains
       sig { params(workflow: Domains::Workflows::Dto::WorkflowView).returns(Adapters::Git::Dto::WorktreeRef) }
       private def worktree(workflow)
         Adapters::Git::Dto::WorktreeRef.new(worktree_path: workflow.worktree_path, branch: workflow.branch)
-      end
-
-      # Raw review values are untyped until Task 8; BasicObject accepts them without a cast.
-      sig { params(value: BasicObject).returns(T.nilable(String)) }
-      private def optional_text(value)
-        case value
-        when NilClass, String then value
-        else raise ArgumentError, "Malformed durable review record"
-        end
       end
     end
   end

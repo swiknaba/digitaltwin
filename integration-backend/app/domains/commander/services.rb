@@ -29,9 +29,6 @@ module Domains
       sig { returns(Workflows::RequestStart) }
       attr_reader :request_start
 
-      sig { returns(Domains::Reviews::Coordinator) }
-      attr_reader :reviews
-
       sig { returns(Domains::Messaging::VerifyHumanSource) }
       attr_reader :source
 
@@ -75,16 +72,19 @@ module Domains
         @renew = T.let(::Services::Sessions::Renew.new(herdr: herdr, source: @source, credentials: credentials, policy: policy), ::Services::Sessions::Renew)
         @reconcile_operation = T.let(::Services::Sessions::ReconcileOperation.new(db, herdr: herdr, source: @source, credentials: credentials),
                                      ::Services::Sessions::ReconcileOperation)
-        @reviews = T.let(Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: @routing, policy: policy), Domains::Reviews::Coordinator)
-        latest_review = Workflows::LatestReview.new(db)
-        @advance_approval = T.let(Workflows::AdvanceApproval.new(evidence: evidence, reviews: @reviews, latest_review: latest_review), Workflows::AdvanceApproval)
+        @dispatch_review = T.let(::Services::Reviews::DispatchReview.new(herdr: herdr, evidence: evidence, policy: policy), ::Services::Reviews::DispatchReview)
+        @release_queued = T.let(::Services::Reviews::ReleaseQueued.new(db, routing: @routing), ::Services::Reviews::ReleaseQueued)
+        @apply_callback = T.let(::Services::Reviews::ApplyCallback.new(artifact_ready: ::Services::Reviews::ArtifactReady.new(herdr: herdr, evidence: evidence),
+                                                                       review_finished: ::Services::Reviews::ReviewFinished.new(herdr: herdr, evidence: evidence)),
+                                ::Services::Reviews::ApplyCallback)
+        @advance_approval = T.let(Workflows::AdvanceApproval.new(evidence: evidence), Workflows::AdvanceApproval)
         @request_start = T.let(Workflows::RequestStart.new(source: @source, roles: roles&.assignments), Workflows::RequestStart)
         @reconcile_start = T.let(Workflows::ReconcileStart.new(source: @source, api: api, bot_id: bot_id), Workflows::ReconcileStart)
         @provision = T.let(Workflows::Provision.new(db, source: @source, api: api, bot_id: bot_id, worktrees: worktrees || ::Services::Projects::PrepareWorktree.new,
                                                         reserve_session: @reserve_session, policy: policy), Workflows::Provision)
-        @control = T.let(Workflows::Control.new(source: @source, herdr: herdr, evidence: evidence, reviews: @reviews,
-                                                stop_sessions: ::Services::Sessions::StopWorkflowSessions.new), Workflows::Control)
-        @dispatch_phase_prompt = T.let(Workflows::DispatchPhasePrompt.new(source: @source, herdr: herdr, evidence: evidence, latest_review: latest_review, policy: policy),
+        @control = T.let(Workflows::Control.new(source: @source, herdr: herdr, evidence: evidence, stop_sessions: ::Services::Sessions::StopWorkflowSessions.new),
+                         Workflows::Control)
+        @dispatch_phase_prompt = T.let(Workflows::DispatchPhasePrompt.new(source: @source, herdr: herdr, evidence: evidence, policy: policy),
                                        Workflows::DispatchPhasePrompt)
         @approve_current = T.let(Workflows::ApproveCurrent.new(source: @source, approvals: @approvals, advance: @advance_approval), Workflows::ApproveCurrent)
         @start_existing = T.let(Workflows::StartExisting.new(source: @source, request_start: @request_start), Workflows::StartExisting)
@@ -103,9 +103,9 @@ module Domains
                          Kind::WorkflowProvision => ->(job) { @provision.call(job: job) },
                          Kind::SessionStart => ->(job) { @execute_operation.call(job: job) },
                          Kind::SessionStop => ->(job) { @execute_operation.call(job: job) },
-                         Kind::ReviewPrompt => ->(job) { @reviews.call(job: job) },
-                         Kind::ReviewRelease => ->(job) { @reviews.release_job(job: job) },
-                         Kind::ReviewCallback => ->(job) { review_callback(job: job) },
+                         Kind::ReviewPrompt => ->(job) { @dispatch_review.call(job: job) },
+                         Kind::ReviewRelease => ->(job) { @release_queued.call(job: job) },
+                         Kind::ReviewCallback => ->(job) { @apply_callback.call(job: job) },
                          Kind::MasterControl => ->(job) { @control.call(job: job) },
                          Kind::SessionRenew => ->(job) { @renew.call(job: job) },
                          Kind::WorkflowPhasePrompt => ->(job) { @dispatch_phase_prompt.call(job: job) },
@@ -119,17 +119,6 @@ module Domains
         master = @master
         values[Kind::MasterDispatch] = ->(job) { master.call(job: job) } if master
         values.transform_values { |callable| Platform::Jobs::CallableHandler.new(callable) }
-      end
-
-      sig { params(job: ClaimedJob).returns(Decision) }
-      def review_callback(job:)
-        p = Domains::Reviews::Dto::CallbackJob.from_hash(job.payload, true)
-        if p.action == "artifact"
-          @reviews.ready_session(session_id: p.session_id, generation: p.generation, kind: required(p.kind), commit: p.commit)
-        else
-          @reviews.finish_session(session_id: p.session_id, generation: p.generation, review_commit: p.commit, verdict: required(p.verdict))
-        end
-        Decision.complete
       end
 
       sig { params(job: ClaimedJob).returns(Decision) }
@@ -179,13 +168,6 @@ module Domains
       sig { params(body: String).returns(T.nilable(Commands::Command)) }
       private def parse(body)
         ::Services::Commands::Parser.new.call(body: body, agent_handle: ENV.fetch("AGENT_HANDLE", "agent"), worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
-      end
-
-      sig { params(value: T.nilable(String)).returns(String) }
-      private def required(value)
-        raise ArgumentError, "Controller job is malformed" unless value
-
-        value
       end
     end
   end

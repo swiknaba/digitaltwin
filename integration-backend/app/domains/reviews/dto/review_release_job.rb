@@ -5,7 +5,7 @@ module Domains
   module Reviews
     module Dto
       # Payload of review.release jobs.
-      class ReleaseJob < T::Struct
+      class ReviewReleaseJob < T::Struct
         include Kirei::Domain::ValueObject
 
         const :workflow_id, String
