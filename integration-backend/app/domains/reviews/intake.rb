@@ -1,7 +1,6 @@
 # typed: strict
 # frozen_string_literal: true
 
-require "digest"
 
 module Domains
   module Reviews

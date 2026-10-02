@@ -1,8 +1,6 @@
 # typed: strict
 # frozen_string_literal: true
 
-require "digest"
-require "fileutils"
 module Domains
   module Sessions
     class Lifecycle
