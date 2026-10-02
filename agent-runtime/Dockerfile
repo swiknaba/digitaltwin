@@ -47,9 +47,9 @@ RUN echo "29f5ef18399055a077ddce920496c90ee34b8a4735f6bcb84bc728667737e817  /usr
 COPY --from=kirei-clients --chmod=755 /digitaltwin-mcp /usr/local/bin/digitaltwin-mcp
 RUN echo "9c748dd9a4e1d1655a7ef878f26d3f1b3279b59c2fb24bc66f44073fa618f669  /usr/local/bin/digitaltwin-mcp" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /mcp.rb /usr/local/bin/mcp.rb
-RUN echo "c2e4beb9ebf4fa21129a23419a8a53c150507c6eb0e6bc19625c5dac2a2ed9f7  /usr/local/bin/mcp.rb" | sha256sum -c -
+RUN echo "86a97d79ee7360ddf70736c60f3c9d6cb7102e878bda3998faac32be21b1f953  /usr/local/bin/mcp.rb" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /http_tools.rb /usr/local/bin/http_tools.rb
-RUN echo "0032850360d5e8a6664bc3201cb32b7072db34de907e5ca73397a2f7dd344060  /usr/local/bin/http_tools.rb" | sha256sum -c -
+RUN echo "65fcdcf826026f0f5bcb1a57d17337ebe918aa4e8adb7dff858b527ee7c7751c  /usr/local/bin/http_tools.rb" | sha256sum -c -
 
 # Default image explicitly leaves gated callbacks/MCP unavailable.
 FROM runtime AS offline

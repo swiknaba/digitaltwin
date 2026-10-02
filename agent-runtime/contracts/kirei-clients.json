@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_revision": "68823ec0288270453ec502b5772c4d776d9d227f",
+  "source_revision": "31f47b5733162514432d549aecb70ffd8737ac62",
   "validation": "isolated_fixtures_passed_live_dispatch_gated",
   "files": {
     "digitaltwin": {
@@ -13,11 +13,11 @@
     },
     "mcp.rb": {
       "source": "integration-backend/app/domains/controller/mcp.rb",
-      "sha256": "c2e4beb9ebf4fa21129a23419a8a53c150507c6eb0e6bc19625c5dac2a2ed9f7"
+      "sha256": "86a97d79ee7360ddf70736c60f3c9d6cb7102e878bda3998faac32be21b1f953"
     },
     "http_tools.rb": {
       "source": "integration-backend/app/domains/controller/http_tools.rb",
-      "sha256": "0032850360d5e8a6664bc3201cb32b7072db34de907e5ca73397a2f7dd344060"
+      "sha256": "65fcdcf826026f0f5bcb1a57d17337ebe918aa4e8adb7dff858b527ee7c7751c"
     }
   }
 }
