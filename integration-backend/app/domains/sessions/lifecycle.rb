@@ -12,6 +12,9 @@ module Domains
       Row = T.type_alias { T::Hash[Symbol, Object] }
       Configuration = T.type_alias { T::Hash[String, Object] }
       Job = T.type_alias { T::Hash[Symbol, Object] }
+      # Reconciliation is invoked from a persisted inbox record (integer) or a
+      # transport adapter (string); Controller::Source revalidates either form.
+      InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
         params(
@@ -24,12 +27,12 @@ module Domains
         ).void
       end
       def initialize(db, herdr:, source:, callback_url:, credential_root: "/run/herdr/session-credentials", policy: Domains::Workflows::Policy.new)
-        @db = T.let(db, Sequel::Database)
-        @herdr = T.let(herdr, Domains::Sessions::Herdr)
-        @source = T.let(source, Domains::Controller::Source)
-        @root = T.let(credential_root, String)
-        @url = T.let(callback_url, String)
-        @policy = T.let(policy, Domains::Workflows::Policy)
+        @db = db
+        @herdr = herdr
+        @source = source
+        @root = credential_root
+        @url = callback_url
+        @policy = policy
         @lock = T.let(Domains::Workflows::Lock.new(db), Domains::Workflows::Lock)
       end
 
@@ -221,7 +224,7 @@ module Domains
         @db[:sessions].where(active: true).each { |s| queue_renewal(s) }
       end
 
-      sig { params(operation_id: String, inbox_id: String, pane_id: String).returns(String) }
+      sig { params(operation_id: String, inbox_id: InboxId, pane_id: String).returns(String) }
       def reconcile(operation_id:, inbox_id:, pane_id:)
         op = @db[:session_operations][id: operation_id] or raise ArgumentError, "Unknown session operation"
         s = @db[:sessions][id: op[:session_id]]

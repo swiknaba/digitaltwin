@@ -18,10 +18,13 @@ module Domains
         const :order, T::Array[String]
       end
 
-      sig { params(db: Sequel::Database, client: Client, resolver: ActorResolver, router: Router).void }
+      # History reconciliation only needs authenticated, validated GET responses.
+      # Keep that boundary explicit so callers cannot smuggle an arbitrary object
+      # through the reconciliation path.
+      sig { params(db: Sequel::Database, client: VerifiedDelivery::Transport, resolver: ActorResolver, router: Router).void }
       def initialize(db, client:, resolver:, router:)
         @db = T.let(db, Sequel::Database)
-        @client = T.let(client, Client)
+        @client = T.let(client, VerifiedDelivery::Transport)
         @resolver = T.let(resolver, ActorResolver)
         @router = T.let(router, Router)
       end

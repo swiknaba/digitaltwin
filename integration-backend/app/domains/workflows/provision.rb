@@ -10,6 +10,10 @@ module Domains
       Role = T.type_alias { T::Hash[String, String] }
       Roles = T.type_alias { T::Hash[String, Role] }
       Job = T.type_alias { T::Hash[Symbol, Object] }
+      # Inbox rows are PostgreSQL integer primary keys. String IDs are retained
+      # for callers that originate from a transport adapter and are validated by
+      # Controller::Source before becoming authority for a workflow action.
+      InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
         params(
@@ -34,7 +38,7 @@ module Domains
         @policy = policy
       end
 
-      sig { params(inbox_id: String, project_id: String, title: String, existing_thread: T.nilable(String)).returns(String) }
+      sig { params(inbox_id: InboxId, project_id: String, title: String, existing_thread: T.nilable(String)).returns(String) }
       def request(inbox_id:, project_id:, title:, existing_thread: nil)
         project = @db[:projects][id: project_id] or raise ArgumentError, "Unknown project"
         d = @source.human(inbox_id, destination: project[:channel_id])
@@ -117,7 +121,7 @@ module Domains
         store.block(id: job_id, lease_token: lease_token, reason: "Provision #{state}; evidence/reconciliation required") unless state == "bound"
       end
 
-      sig { params(id: String, inbox_id: String, thread_id: String).returns(String) }
+      sig { params(id: String, inbox_id: InboxId, thread_id: String).returns(String) }
       def reconcile(id:, inbox_id:, thread_id:)
         raise ArgumentError, "Invalid thread" unless thread_id.match?(/\A[a-z0-9]{26}\z/)
 
@@ -244,9 +248,12 @@ module Domains
       sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(T::Hash[String, Object]) }
       def object_value(row, key)
         value = row.fetch(key)
-        raise ArgumentError, "Malformed database row" unless value.is_a?(Hash) && value.keys.all? { |entry| entry.is_a?(String) }
+        raise ArgumentError, "Malformed database row" unless value.is_a?(Hash) || value.is_a?(Sequel::Postgres::JSONBHash)
 
-        value
+        object = value.is_a?(Sequel::Postgres::JSONBHash) ? value.to_hash : value
+        raise ArgumentError, "Malformed database row" unless object.keys.all? { |entry| entry.is_a?(String) }
+
+        object
       end
     end
   end

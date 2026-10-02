@@ -5,6 +5,7 @@ module Domains
   module Controller
     class Tools
       extend T::Sig
+      include Mcp::ToolGateway
 
       FieldDefinitions = T.type_alias { T::Hash[String, T::Hash[String, String]] }
       ToolArguments = T.type_alias { T::Hash[String, Object] }
@@ -17,12 +18,12 @@ module Domains
 
       sig { params(db: Sequel::Database, services: Services, requests: Requests).void }
       def initialize(db, services:, requests:)
-        @db = T.let(db, Sequel::Database)
-        @services = T.let(services, Services)
-        @requests = T.let(requests, Requests)
+        @db = db
+        @services = services
+        @requests = requests
       end
 
-      sig { returns(T::Array[T::Hash[String, Object]]) }
+      sig { override.returns(T::Array[T::Hash[String, Object]]) }
       def definitions
         DEFINITIONS.map do |name, fields|
           properties = fields.transform_values { |type| type == "array" ? { "type" => "array", "items" => { "type" => "integer" }, "maxItems" => 10 } : { "type" => type } }.merge("request_id" => { "type" => "string" })
@@ -30,7 +31,7 @@ module Domains
         end
       end
 
-      sig { params(name: String, args: ToolArguments, token: String).returns(Object) }
+      sig { override.params(name: String, args: ToolArguments, token: String).returns(Object) }
       def call(name, args, token:)
         fields = DEFINITIONS.fetch(name)
         raise ArgumentError, "Unexpected tool fields" unless args.keys.sort == (fields.keys + ["request_id"]).sort

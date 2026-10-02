@@ -141,12 +141,15 @@ module Domains
                 available_at: time!(row, :available_at), effect_started_at: optional_time(row, :effect_started_at), last_error: optional_string(row, :last_error))
       end
 
-      sig { params(value: Object).returns(Payload) }
+      # Sequel returns JSONB through a BasicObject-backed Hash wrapper. Accept
+      # the external boundary's root object, then prove it is a Hash below.
+      sig { params(value: BasicObject).returns(Payload) }
       def payload!(value)
-        raise IOError, "Invalid durable job payload" unless value.is_a?(Hash)
+        payload_hash = Hash.try_convert(value)
+        raise IOError, "Invalid durable job payload" unless payload_hash
 
         payload = T.let({}, Payload)
-        value.each do |key, item|
+        payload_hash.each do |key, item|
           raise IOError, "Invalid durable job payload" unless key.is_a?(String)
 
           payload[key] = json_value!(item)

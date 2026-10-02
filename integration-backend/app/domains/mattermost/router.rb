@@ -8,6 +8,7 @@ module Domains
       extend T::Sig
 
       WorkflowRow = T.type_alias { T::Hash[Symbol, Object] }
+      InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
         params(db: Sequel::Database, agent_handle: String, worker_handle: String,
@@ -61,14 +62,16 @@ module Domains
         handle
       end
 
-      sig { params(delivery: VerifiedDelivery).returns(T.nilable(String)) }
+      sig { params(delivery: VerifiedDelivery).returns(T.nilable(InboxId)) }
       def persist_inbox(delivery)
         record = { channel_id: delivery.channel_id, post_id: delivery.post_id, event_kind: delivery.event_kind,
                    post_revision: delivery.post_revision }
         id = @db[:inbox].insert_conflict(target: record.keys).insert(**record, thread_id: delivery.thread_id,
                                                                                user_id: delivery.actor.user_id,
                                                                                verified_delivery: Sequel.pg_jsonb(delivery.serialize))
-        id.is_a?(String) ? id : nil
+        return id if id.is_a?(Integer) || id.is_a?(String)
+
+        nil
       end
 
       sig { params(delivery: VerifiedDelivery).returns(T.nilable(WorkflowRow)) }
@@ -109,14 +112,14 @@ module Domains
         %w[closed cancelled].include?(workflow_string(workflow, :phase))
       end
 
-      sig { params(workflow: WorkflowRow, inbox_id: String).void }
+      sig { params(workflow: WorkflowRow, inbox_id: InboxId).void }
       def queue_message(workflow, inbox_id)
         @db[:queued_messages].insert(workflow_id: workflow_string(workflow, :id), inbox_id: inbox_id,
                                      workflow_version: workflow_integer(workflow, :version))
       end
 
       sig do
-        params(kind: String, delivery: VerifiedDelivery, inbox_id: String,
+        params(kind: String, delivery: VerifiedDelivery, inbox_id: InboxId,
                workflow: T.nilable(WorkflowRow)).returns(Domains::Workflows::Entities::Outcome)
       end
       def queue(kind, delivery, inbox_id, workflow: nil)

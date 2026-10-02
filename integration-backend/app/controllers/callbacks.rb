@@ -29,6 +29,11 @@ module Controllers
       const :body, String
     end
 
+    # Missing session credentials are an authentication failure. Keep this
+    # distinct from a supplied-but-invalid callback, which is intentionally
+    # opaque to prevent capability probing.
+    class MissingAuthorization < StandardError; end
+
     sig { returns(Response) }
     def artifact_ready
       values = request_params
@@ -37,6 +42,8 @@ module Controllers
       callback = artifact_callback(values)
       intake.enqueue(token: callback.token, generation: callback.generation, action: "artifact", kind: callback.kind, commit: callback.commit)
       accepted_response
+    rescue MissingAuthorization
+      unauthorized_response
     rescue ArgumentError, Sequel::Error
       rejected_response("Artifact callback rejected")
     end
@@ -49,6 +56,8 @@ module Controllers
       callback = review_callback(values)
       intake.enqueue(token: callback.token, generation: callback.generation, action: "review", commit: callback.commit, verdict: callback.verdict)
       accepted_response
+    rescue MissingAuthorization
+      unauthorized_response
     rescue ArgumentError, Sequel::Error
       rejected_response("Review callback rejected")
     end
@@ -63,6 +72,8 @@ module Controllers
         token: callback.token, generation: callback.generation, key: callback.key, body: callback.body
       )
       render_json({ "status" => result.status, "reason" => result.reason }, status: result.status == "accepted" ? 202 : 403)
+    rescue MissingAuthorization
+      unauthorized_response
     rescue ArgumentError, Sequel::Error
       render_json({ "status" => "rejected", "reason" => "Invalid callback" }, status: 403)
     end
@@ -127,7 +138,7 @@ module Controllers
     sig { returns(String) }
     def callback_token
       value = request.env["HTTP_AUTHORIZATION"]
-      raise ArgumentError, "Session authorization required" unless value.is_a?(String) && value.start_with?("Bearer ")
+      raise MissingAuthorization, "Session authorization required" unless value.is_a?(String) && value.start_with?("Bearer ")
 
       value.delete_prefix("Bearer ")
     end
@@ -140,6 +151,11 @@ module Controllers
     sig { params(message: String).returns(Response) }
     def rejected_response(message)
       render_json({ "error" => message }, status: 403)
+    end
+
+    sig { returns(Response) }
+    def unauthorized_response
+      render_json({ "error" => "Session authorization required" }, status: 401)
     end
 
     sig { returns(Response) }

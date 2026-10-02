@@ -7,6 +7,9 @@ module Domains
       extend T::Sig
 
       Job = T.type_alias { T::Hash[Symbol, Object] }
+      # Persisted inbox IDs are integers; adapters may provide a string form
+      # that Controller::Source resolves and verifies at the authority boundary.
+      InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
         params(
@@ -30,7 +33,7 @@ module Domains
         @lock = T.let(Lock.new(db), Lock)
       end
 
-      sig { params(inbox_id: String, workflow_id: String, action: String, expected_version: Integer).returns(String) }
+      sig { params(inbox_id: InboxId, workflow_id: String, action: String, expected_version: Integer).returns(String) }
       def control(inbox_id:, workflow_id:, action:, expected_version:)
         raise ArgumentError, "Unsupported workflow action" unless %w[pause resume finish cancel].include?(action)
 
@@ -164,15 +167,27 @@ module Domains
       sig { params(w: Domains::Reviews::GitEvidence::Workflow, gates: T::Array[String]).void }
       def validate_prior_approvals(w, gates)
         gates.each do |gate|
-          artifacts = w.fetch(:artifacts)
-          raise ArgumentError, "Invalid workflow artifacts" unless artifacts.is_a?(Hash)
+          commit = artifact_commit!(w.fetch(:artifacts), gate)
 
-          ref = artifacts[gate]
-          approval = ref && @db[:approvals][workflow_id: w[:id], kind: gate, target_commit: ref["commit"]]
+          approval = @db[:approvals][workflow_id: w[:id], kind: gate, target_commit: commit]
           raise ArgumentError, "Required exact artifact approval missing" unless approval
 
           @evidence.approved_artifact(w, approval)
         end
+      end
+
+      sig { params(value: BasicObject, gate: String).returns(String) }
+      def artifact_commit!(value, gate)
+        hash = Sequel::Postgres::JSONBHash === value ? value.to_hash : Hash.try_convert(value)
+        raise ArgumentError, "Invalid workflow artifacts" unless hash
+
+        ref = hash[gate]
+        raise ArgumentError, "Invalid workflow artifact" unless ref.is_a?(Hash)
+
+        commit = ref["commit"]
+        raise ArgumentError, "Invalid workflow artifact" unless commit.is_a?(String)
+
+        commit
       end
 
       sig { params(w: T::Hash[Symbol, Object], role: T.nilable(String)).returns(T::Array[T::Hash[Symbol, Object]]) }

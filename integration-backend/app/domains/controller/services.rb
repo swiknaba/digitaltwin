@@ -8,6 +8,8 @@ module Domains
 
       HandlerMap = T.type_alias { T::Hash[String, Object] }
       Roles = T.type_alias { Domains::Workflows::Provision::Roles }
+      LegacyJob = T.type_alias { T::Hash[Symbol, Object] }
+      RoutedJob = T.type_alias { T.any(Domains::Jobs::Store::Job, LegacyJob) }
 
       sig { returns(T.nilable(Master)) }
       attr_reader :master
@@ -59,7 +61,7 @@ module Domains
       def initialize(db, resolver:, membership:, client:, bot_id:, roles:, policy: Domains::Workflows::Policy.new,
                      herdr: Domains::Sessions::Herdr.new, evidence: Domains::Reviews::GitEvidence.new,
                      workspace: nil, credential_root: "/run/herdr/session-credentials")
-        @db = T.let(db, Sequel::Database)
+        @db = db
         @source = T.let(Source.new(db, resolver: resolver, membership: membership), Source)
         @approvals = T.let(Approvals.new(db, resolver: resolver, membership: membership, current_commit: Domains::Controller::GitRevision.new, evidence: evidence), Approvals)
         @routing = T.let(Routing.new(db, resolver: resolver, membership: membership, approvals: @approvals), Routing)
@@ -109,7 +111,10 @@ module Domains
                            action: payload_string(payload, "action"), expected_version: payload_integer(payload, "expected_version"))
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, store: Domains::Jobs::Store).void }
+      # The worker always provides Store::Job. A legacy hash is accepted only
+      # at this controller edge so existing in-process callers can use the
+      # recovery commands while they migrate to the durable job entity.
+      sig { params(job: RoutedJob, store: T.nilable(Domains::Jobs::Store)).void }
       def route(job, store)
         id = inbox_id(job)
         source = @source.human(id)
@@ -139,6 +144,8 @@ module Domains
           @master.ingest(id)
           return
         end
+        raise ArgumentError, "Controller job must be durable" unless job.is_a?(Domains::Jobs::Store::Job) && store
+
         @routing.call(job, store)
         # Exact approvals advance only through the coordinator's independent
         # revision/gate validation. Normal contextual prompts keep their session.
@@ -188,12 +195,28 @@ module Domains
 
       private
 
-      sig { params(job: Domains::Jobs::Store::Job).returns(T.any(Integer, String)) }
+      sig { params(job: RoutedJob).returns(T.any(Integer, String)) }
       def inbox_id(job)
-        value = job.payload.fetch("inbox_id") { raise ArgumentError, "Controller job is malformed" }
+        value = job_payload(job).fetch("inbox_id") { raise ArgumentError, "Controller job is malformed" }
         raise ArgumentError, "Controller job is malformed" unless value.is_a?(Integer) || value.is_a?(String)
 
         value
+      end
+
+      sig { params(job: RoutedJob).returns(Domains::Jobs::Store::Payload) }
+      def job_payload(job)
+        return job.payload if job.is_a?(Domains::Jobs::Store::Job)
+
+        value = job.fetch(:payload) { raise ArgumentError, "Controller job is malformed" }
+        raise ArgumentError, "Controller job is malformed" unless value.is_a?(Hash)
+
+        payload = T.let({}, Domains::Jobs::Store::Payload)
+        value.each do |key, item|
+          raise ArgumentError, "Controller job is malformed" unless key.is_a?(String)
+
+          payload[key] = item
+        end
+        payload
       end
 
       sig { params(value: T.any(Integer, String)).returns(String) }

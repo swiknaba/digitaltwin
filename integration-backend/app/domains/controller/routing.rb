@@ -15,13 +15,13 @@ module Domains
                master_channel_id: T.nilable(String)).void
       end
       def initialize(db, resolver:, membership:, now: -> { Time.now }, approvals: nil, handle: ENV.fetch("AGENT_HANDLE", "agent"), master_channel_id: ENV["MASTER_CHANNEL_ID"])
-        @master_channel = T.let(master_channel_id, T.nilable(String))
-        @db = T.let(db, Sequel::Database)
-        @resolver = T.let(resolver, Source::DeliveryResolver)
-        @membership = T.let(membership, T.proc.params(channel_id: String, user_id: String).returns(T::Boolean))
-        @now = T.let(now, T.proc.returns(Time))
-        @approvals = T.let(approvals, T.nilable(Approvals))
-        @handle = T.let(handle, String)
+        @master_channel = master_channel_id
+        @db = db
+        @resolver = resolver
+        @membership = membership
+        @now = now
+        @approvals = approvals
+        @handle = handle
       end
 
       # Only verified inbox identities enter this service. Selection is a human

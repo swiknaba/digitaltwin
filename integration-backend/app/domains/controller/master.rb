@@ -13,13 +13,13 @@ module Domains
                credential_root: String, policy: Domains::Workflows::Policy).void
       end
       def initialize(db, sessions:, source:, herdr:, configuration:, credential_root: "/run/herdr/session-credentials", policy: Domains::Workflows::Policy.new)
-        @db = T.let(db, Sequel::Database)
-        @sessions = T.let(sessions, Domains::Sessions::Lifecycle)
-        @source = T.let(source, Source)
-        @herdr = T.let(herdr, Domains::Sessions::Herdr)
-        @configuration = T.let(configuration, Domains::Sessions::Lifecycle::Configuration)
-        @root = T.let(credential_root, String)
-        @policy = T.let(policy, Domains::Workflows::Policy)
+        @db = db
+        @sessions = sessions
+        @source = source
+        @herdr = herdr
+        @configuration = configuration
+        @root = credential_root
+        @policy = policy
       end
 
       sig { params(inbox_id: T.any(Integer, String)).returns(String) }
@@ -151,6 +151,7 @@ module Domains
             source = @db[:inbox][id: r[:inbox_id]]
             Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id], bot: "agent", role: "controller", body: text, key: "master:reply:#{r[:id]}")
             @db[:master_requests].where(id: r[:id]).update(state: "complete")
+            "queued"
           end
         end
       end

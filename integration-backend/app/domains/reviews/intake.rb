@@ -21,7 +21,7 @@ module Domains
 
       sig { params(db: Sequel::Database).void }
       def initialize(db)
-        @db = T.let(db, Sequel::Database)
+        @db = db
       end
 
       sig do

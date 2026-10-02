@@ -11,10 +11,10 @@ module Domains
       Response = T.type_alias { T::Hash[String, ResponseValue] }
       PostList = T.type_alias { T::Hash[String, Response] }
       GetResponse = T.type_alias { T.any(Response, T::Hash[String, PostList]) }
-      RowValue = T.type_alias { T.any(String, Time, NilClass) }
+      # Outbox rows include persisted status metadata such as retry counts and
+      # database timestamps in addition to the string delivery identity.
+      RowValue = T.type_alias { T.any(String, Integer, Time, DateTime, NilClass) }
       Row = T.type_alias { T::Hash[Symbol, RowValue] }
-      JobValue = T.type_alias { T.any(String, T::Hash[String, String], NilClass) }
-      Job = T.type_alias { T::Hash[Symbol, JobValue] }
 
       module Transport
         extend T::Helpers
@@ -119,7 +119,7 @@ module Domains
         @bot_ids = T.let(bot_ids, T::Hash[String, String])
       end
 
-      sig { params(job: Job, jobs: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Store::Job, jobs: Domains::Jobs::Store).void }
       def call(job, jobs)
         row = outbox_item(@db[:outbox][id: job_payload(job).fetch("outbox_id")])
         raise ArgumentError, "Unknown outbox item" unless row
@@ -219,7 +219,8 @@ module Domains
 
         row = T.let({}, Row)
         value.each do |key, item|
-          raise ArgumentError, "Malformed outbox item" unless key.is_a?(Symbol) && (item.is_a?(String) || item.is_a?(Time) || item.nil?)
+          valid_value = item.is_a?(String) || item.is_a?(Integer) || item.is_a?(Time) || item.is_a?(DateTime) || item.nil?
+          raise ArgumentError, "Malformed outbox item" unless key.is_a?(Symbol) && valid_value
 
           row[key] = item
         end
@@ -320,9 +321,10 @@ module Domains
       sig { params(row: Row, key: Symbol).returns(Time) }
       def row_time(row, key)
         value = row.fetch(key)
-        raise ArgumentError, "Malformed outbox item" unless value.is_a?(Time)
+        return value if value.is_a?(Time)
+        return value.to_time if value.is_a?(DateTime)
 
-        value
+        raise ArgumentError, "Malformed outbox item"
       end
 
       sig { params(value: String).returns(String) }
@@ -337,20 +339,26 @@ module Domains
         value.match?(/\A[a-z0-9]{26}\z/)
       end
 
-      sig { params(job: Job).returns(T::Hash[String, String]) }
+      sig { params(job: Domains::Jobs::Store::Job).returns(T::Hash[String, String]) }
       def job_payload(job)
-        value = job.fetch(:payload)
-        raise ArgumentError, "Malformed delivery job" unless value.is_a?(Hash) && value.all? { |key, item| key.is_a?(String) && item.is_a?(String) }
+        value = job.payload
+        payload = T.let({}, T::Hash[String, String])
+        value.each do |key, item|
+          raise ArgumentError, "Malformed delivery job" unless item.is_a?(String)
 
-        value
+          payload[key] = item
+        end
+        payload
       end
 
-      sig { params(job: Job, key: Symbol).returns(String) }
+      sig { params(job: Domains::Jobs::Store::Job, key: Symbol).returns(String) }
       def job_string(job, key)
-        value = job.fetch(key)
-        raise ArgumentError, "Malformed delivery job" unless value.is_a?(String)
+        return job.id if key == :id
 
-        value
+        token = job.lease_token
+        return token if key == :lease_token && token
+
+        raise ArgumentError, "Malformed delivery job"
       end
     end
   end

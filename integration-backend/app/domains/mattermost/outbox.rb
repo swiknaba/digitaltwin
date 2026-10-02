@@ -14,7 +14,10 @@ module Domains
         const :body, String
       end
 
-      Row = T.type_alias { T::Hash[Symbol, T.nilable(String)] }
+      # The row includes persisted metadata in addition to the string message
+      # fields compared below (notably PostgreSQL timestamps).
+      RowValue = T.type_alias { T.any(String, Integer, Time, DateTime, NilClass) }
+      Row = T.type_alias { T::Hash[Symbol, RowValue] }
 
       sig { params(db: Sequel::Database).void }
       def initialize(db)
@@ -59,11 +62,16 @@ module Domains
 
         row = T.let({}, Row)
         value.each do |key, item|
-          raise ArgumentError, "Malformed outbox item" unless key.is_a?(Symbol) && (item.is_a?(String) || item.nil?)
+          raise ArgumentError, "Malformed outbox item" unless key.is_a?(Symbol) && row_value?(item)
 
           row[key] = item
         end
         row
+      end
+
+      sig { params(value: Object).returns(T::Boolean) }
+      def row_value?(value)
+        value.is_a?(String) || value.is_a?(Integer) || value.is_a?(Time) || value.is_a?(DateTime) || value.nil?
       end
 
       sig { params(row: Row, message: Message).returns(T::Boolean) }
@@ -83,6 +91,8 @@ module Domains
       sig { params(row: Row, key: Symbol).returns(T.nilable(String)) }
       def optional_row_string(row, key)
         value = row[key]
+        raise ArgumentError, "Malformed outbox item" unless value.nil? || value.is_a?(String)
+
         value
       end
     end

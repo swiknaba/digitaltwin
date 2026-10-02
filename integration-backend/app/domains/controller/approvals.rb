@@ -17,24 +17,27 @@ module Domains
       end
 
       Gate = T.type_alias { String }
+      CurrentCommitSource = T.type_alias do
+        T.any(CurrentCommit, T.proc.params(workflow: GitRevision::Workflow).returns(String))
+      end
 
       sig do
         params(
           db: Sequel::Database,
           resolver: Source::DeliveryResolver,
           membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
-          current_commit: CurrentCommit,
+          current_commit: CurrentCommitSource,
           handle: String,
           evidence: T.nilable(Domains::Reviews::GitEvidence)
         ).void
       end
       def initialize(db, resolver:, membership:, current_commit:, handle: ENV.fetch("AGENT_HANDLE", "agent"), evidence: nil)
-        @db = T.let(db, Sequel::Database)
-        @resolver = T.let(resolver, Source::DeliveryResolver)
-        @membership = T.let(membership, T.proc.params(channel_id: String, user_id: String).returns(T::Boolean))
-        @current_commit = T.let(current_commit, CurrentCommit)
-        @handle = T.let(handle, String)
-        @evidence = T.let(evidence, T.nilable(Domains::Reviews::GitEvidence))
+        @db = db
+        @resolver = resolver
+        @membership = membership
+        @current_commit = current_commit
+        @handle = handle
+        @evidence = evidence
       end
 
       sig { params(inbox_id: T.any(Integer, String), workflow_id: String, gate: Gate, commit: String).returns(Integer) }
@@ -56,7 +59,7 @@ module Domains
           raise ArgumentError, "Workflow busy" unless locked
 
           begin
-            current = @current_commit.call(w)
+            current = current_commit(w)
             @db.transaction do
               w = @db[:workflows].where(id: workflow_id).for_update.first
               review = @db[:reviews].where(workflow_id: workflow_id, gate: gate).order(Sequel.desc(:round)).first
@@ -79,6 +82,16 @@ module Domains
             @db.get(Sequel.function(:pg_advisory_unlock, Sequel.function(:hashtextextended, workflow_id, 0)))
           end
         end
+      end
+
+      private
+
+      # Tests and embedding callers have historically provided a callable
+      # revision verifier. Keep that narrow seam while production uses the
+      # explicit CurrentCommit interface implemented by GitRevision.
+      sig { params(workflow: GitRevision::Workflow).returns(String) }
+      def current_commit(workflow)
+        @current_commit.call(workflow)
       end
     end
   end

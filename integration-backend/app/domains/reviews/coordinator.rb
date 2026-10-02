@@ -10,6 +10,9 @@ module Domains
       PHASES = T.let({ "spec" => "spec_writing", "plan" => "plan_writing", "implementation" => "implementation" }.freeze, T::Hash[String, String])
       Row = T.type_alias { T::Hash[Symbol, Object] }
       Payload = T.type_alias { Domains::Jobs::Store::Payload }
+      Identifier = T.type_alias { T.any(String, Integer) }
+      JsonObject = T.type_alias { T::Hash[String, Object] }
+      Configuration = T.type_alias { T::Hash[String, Object] }
 
       sig do
         params(db: Sequel::Database, herdr: Domains::Sessions::Herdr,
@@ -17,22 +20,22 @@ module Domains
                policy: Domains::Workflows::Policy).void
       end
       def initialize(db, herdr:, evidence:, routing:, policy: Domains::Workflows::Policy.new)
-        @db = T.let(db, Sequel::Database)
-        @herdr = T.let(herdr, Domains::Sessions::Herdr)
-        @evidence = T.let(evidence, GitEvidence)
-        @routing = T.let(routing, Domains::Controller::Routing)
-        @policy = T.let(policy, Domains::Workflows::Policy)
+        @db = db
+        @herdr = herdr
+        @evidence = evidence
+        @routing = routing
+        @policy = policy
         @lock = T.let(Domains::Workflows::Lock.new(db), Domains::Workflows::Lock)
       end
 
-      sig { params(token: String, generation: Integer, kind: String, commit: String).returns(String) }
+      sig { params(token: String, generation: Integer, kind: String, commit: String).returns(Identifier) }
       def ready(token:, generation:, kind:, commit:)
         raise ArgumentError, "Artifact kind/commit required" unless PHASES.key?(kind) && commit.match?(/\A[0-9a-f]{40}\z/)
 
         ready_session(session_id: row_string!(session(token, generation, "writer"), :id), generation: generation, kind: kind, commit: commit)
       end
 
-      sig { params(session_id: String, generation: Integer, kind: String, commit: String).returns(String) }
+      sig { params(session_id: String, generation: Integer, kind: String, commit: String).returns(Identifier) }
       def ready_session(session_id:, generation:, kind:, commit:)
         raise ArgumentError, "Artifact kind/commit required" unless PHASES.key?(kind) && commit.match?(/\A[0-9a-f]{40}\z/)
 
@@ -65,7 +68,7 @@ module Domains
 
           @db.transaction do
             id = @db[:reviews].insert(workflow_id: row_string!(w, :id), gate: kind, round: round, target_commit: commit, base_commit: base,
-                                      review_path: "docs/review.md", reviewer_configuration: reviewer_configuration)
+                                      review_path: "docs/review.md", reviewer_configuration: Sequel.pg_jsonb(reviewer_configuration))
             refs = artifact_refs!(w).merge(kind => { "commit" => commit, "path" => path })
             changes = row_string!(w, :phase) == "paused" ? { saved_phase: "#{kind}_review", paused_commit: commit } : { phase: "#{kind}_review" }
             version = row_integer!(w, :version)
@@ -76,14 +79,14 @@ module Domains
         end
       end
 
-      sig { params(token: String, generation: Integer, review_commit: String, verdict: String).returns(String) }
+      sig { params(token: String, generation: Integer, review_commit: String, verdict: String).returns(Identifier) }
       def finish(token:, generation:, review_commit:, verdict:)
         raise ArgumentError, "Exact review result required" unless %w[approve changes_requested].include?(verdict) && review_commit.match?(/\A[0-9a-f]{40}\z/)
 
         finish_session(session_id: row_string!(session(token, generation, "reviewer"), :id), generation: generation, review_commit: review_commit, verdict: verdict)
       end
 
-      sig { params(session_id: String, generation: Integer, review_commit: String, verdict: String).returns(String) }
+      sig { params(session_id: String, generation: Integer, review_commit: String, verdict: String).returns(Identifier) }
       def finish_session(session_id:, generation:, review_commit:, verdict:)
         raise ArgumentError, "Exact review result required" unless %w[approve changes_requested].include?(verdict) && review_commit.match?(/\A[0-9a-f]{40}\z/)
 
@@ -103,12 +106,12 @@ module Domains
           raise ArgumentError, "Reviewer configuration changed" unless configuration!(s) == configuration!(record, :reviewer_configuration)
 
           if row_string!(record, :dispatch_state) != "delivered"
-            job = @db[:jobs][dispatch_key: "review:#{row_string!(record, :id)}"]
+            job = @db[:jobs][dispatch_key: "review:#{row_identifier!(record, :id)}"]
             raise ArgumentError, "Review prompt effect unproved" unless job && job[:effect_started_at]
             raise ArgumentError, "Review prompt lease still live" if job[:status] == "running" && job[:lease_expires_at] && job[:lease_expires_at] > Time.now
           end
           settled!(s)
-          @evidence.review(evidence_workflow!(w), evidence_record!(record), review_commit, verdict, configuration!(s))
+          @evidence.review(evidence_workflow!(w), evidence_record!(record), review_commit, verdict, review_configuration!(configuration!(s)))
           phase = if verdict == "approve"
                     kind == "implementation" ? "pr_ready" : "#{kind}_human_approval"
                   elsif row_integer!(record, :round) >= 3
@@ -117,11 +120,11 @@ module Domains
                     PHASES.fetch(kind)
                   end
           @db.transaction do
-            @db[:reviews].where(id: row_string!(record, :id)).update(review_commit: review_commit, verdict: verdict, dispatch_state: "delivered")
-            @db[:jobs].where(dispatch_key: "review:#{row_string!(record, :id)}").update(status: "complete", lease_token: nil, lease_expires_at: nil)
+            @db[:reviews].where(id: row_identifier!(record, :id)).update(review_commit: review_commit, verdict: verdict, dispatch_state: "delivered")
+            @db[:jobs].where(dispatch_key: "review:#{row_identifier!(record, :id)}").update(status: "complete", lease_token: nil, lease_expires_at: nil)
             if row_string!(record, :dispatch_state) != "delivered"
-              @db[:audit].insert(event_key: "review:receipt:#{row_string!(record, :id)}", action: "verified_review_prompt_reconciliation",
-                                 details: Sequel.pg_jsonb({ "review_id" => row_string!(record, :id), "target_commit" => row_string!(record, :target_commit), "review_commit" => review_commit, "session_id" => row_string!(s, :id), "generation" => generation }))
+              @db[:audit].insert(event_key: "review:receipt:#{row_identifier!(record, :id)}", action: "verified_review_prompt_reconciliation",
+                                 details: Sequel.pg_jsonb({ "review_id" => row_identifier!(record, :id), "target_commit" => row_string!(record, :target_commit), "review_commit" => review_commit, "session_id" => row_string!(s, :id), "generation" => generation }))
             end
             changes = row_string!(w, :phase) == "paused" ? { saved_phase: phase, paused_commit: review_commit } : { phase: phase }
             version = row_integer!(w, :version)
@@ -132,7 +135,7 @@ module Domains
               Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version + 1 }, key: "workflow:phase:#{workflow_id}:#{version + 1}")
             end
             Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: row_string!(w, :channel_id), thread_id: row_optional_string(w, :thread_id), bot: "worker", role: "reviewer",
-                                                         body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.", key: "review:result:#{row_string!(record, :id)}")
+                                                         body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.", key: "review:result:#{row_identifier!(record, :id)}")
           end
         end
         workflow_id
@@ -176,7 +179,7 @@ module Domains
 
       sig { params(job: Domains::Jobs::Store::Job, store: Domains::Jobs::Store).void }
       def call(job, store)
-        record = row!(@db[:reviews][id: payload_string!(job.payload, "review_id")])
+        record = row!(@db[:reviews][id: payload_identifier!(job.payload, "review_id")])
         @lock.call(row_string!(record, :workflow_id)) do
           return if record[:dispatch_state] == "delivered"
           raise ArgumentError, "Uncertain review prompt" unless record[:dispatch_state] == "queued"
@@ -197,7 +200,7 @@ module Domains
           raise ArgumentError, "Reviewer configuration changed" unless configuration!(s) == configuration!(record, :reviewer_configuration)
 
           live = @herdr.get(row_string!(s, :pane_id))
-          if live["agent_status"] == "working" && live["agent_session"] == row_string!(s, :runtime_identity)
+          if live["agent_status"] == "working" && live["agent_session"] == row_json_object!(s, :runtime_identity)
             store.defer(id: job.id, lease_token: lease_token!(job), reason: "Reviewer busy")
             return
           end
@@ -241,7 +244,7 @@ module Domains
       sig { params(session: Row).void }
       def settled!(session)
         live = @herdr.get(row_string!(session, :pane_id))
-        runtime_identity = row_string!(session, :runtime_identity)
+        runtime_identity = row_json_object!(session, :runtime_identity)
         raise ArgumentError, "Session not settled or replaced" unless live["agent_session"] == runtime_identity && %w[idle done].include?(live["agent_status"])
       end
 
@@ -264,6 +267,29 @@ module Domains
         raise ArgumentError, "Malformed durable review record" unless value.is_a?(String)
 
         value
+      end
+
+      sig { params(row: Row, key: Symbol).returns(Identifier) }
+      def row_identifier!(row, key)
+        value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
+        raise ArgumentError, "Malformed durable review record" unless value.is_a?(String) || value.is_a?(Integer)
+
+        value
+      end
+
+      sig { params(row: Row, key: Symbol).returns(JsonObject) }
+      def row_json_object!(row, key)
+        value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
+        json_object = Hash.try_convert(value)
+        raise ArgumentError, "Malformed durable review record" unless json_object
+
+        object = T.let({}, JsonObject)
+        json_object.each do |object_key, object_value|
+          raise ArgumentError, "Malformed durable review record" unless object_key.is_a?(String)
+
+          object[object_key] = object_value
+        end
+        object
       end
 
       sig { params(row: Row, key: Symbol).returns(Time) }
@@ -320,14 +346,16 @@ module Domains
       sig { params(workflow: Row).returns(GitEvidence::ArtifactRefs) }
       def artifact_refs!(workflow)
         raw = workflow.fetch(:artifacts) { raise ArgumentError, "Malformed workflow record" }
-        raise ArgumentError, "Malformed workflow record" unless raw.is_a?(Hash)
+        artifact_refs = Hash.try_convert(raw)
+        raise ArgumentError, "Malformed workflow record" unless artifact_refs
 
         refs = T.let({}, GitEvidence::ArtifactRefs)
-        raw.each do |kind, raw_ref|
-          raise ArgumentError, "Malformed workflow record" unless kind.is_a?(String) && raw_ref.is_a?(Hash)
+        artifact_refs.each do |kind, raw_ref|
+          ref = Hash.try_convert(raw_ref)
+          raise ArgumentError, "Malformed workflow record" unless kind.is_a?(String) && ref
 
-          commit = raw_ref.fetch("commit") { raise ArgumentError, "Malformed workflow record" }
-          path = raw_ref.fetch("path") { raise ArgumentError, "Malformed workflow record" }
+          commit = ref.fetch("commit") { raise ArgumentError, "Malformed workflow record" }
+          path = ref.fetch("path") { raise ArgumentError, "Malformed workflow record" }
           raise ArgumentError, "Malformed workflow record" unless commit.nil? || commit.is_a?(String)
           raise ArgumentError, "Malformed workflow record" unless path.nil? || path.is_a?(String)
 
@@ -336,14 +364,15 @@ module Domains
         refs
       end
 
-      sig { params(row: Row, key: Symbol).returns(T::Hash[String, String]) }
+      sig { params(row: Row, key: Symbol).returns(Configuration) }
       def configuration!(row, key = :configuration)
         value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
-        raise ArgumentError, "Malformed durable review record" unless value.is_a?(Hash)
+        configuration_values = Hash.try_convert(value)
+        raise ArgumentError, "Malformed durable review record" unless configuration_values
 
-        configuration = T.let({}, T::Hash[String, String])
-        value.each do |configuration_key, configuration_value|
-          raise ArgumentError, "Malformed durable review record" unless configuration_key.is_a?(String) && configuration_value.is_a?(String)
+        configuration = T.let({}, Configuration)
+        configuration_values.each do |configuration_key, configuration_value|
+          raise ArgumentError, "Malformed durable review record" unless configuration_key.is_a?(String)
 
           configuration[configuration_key] = configuration_value
         end
@@ -352,13 +381,36 @@ module Domains
 
       sig { params(row: Row, key: String).returns(String) }
       def configuration_value!(row, key)
-        configuration!(row).fetch(key) { raise ArgumentError, "Malformed durable review record" }
+        value = configuration!(row).fetch(key) { raise ArgumentError, "Malformed durable review record" }
+        raise ArgumentError, "Malformed durable review record" unless value.is_a?(String)
+
+        value
+      end
+
+      sig { params(configuration: Configuration).returns(GitEvidence::Configuration) }
+      def review_configuration!(configuration)
+        required = T.let({}, GitEvidence::Configuration)
+        %w[provider model family].each do |key|
+          value = configuration.fetch(key) { raise ArgumentError, "Malformed durable review record" }
+          raise ArgumentError, "Malformed durable review record" unless value.is_a?(String)
+
+          required[key] = value
+        end
+        required
       end
 
       sig { params(payload: Payload, key: String).returns(String) }
       def payload_string!(payload, key)
         value = payload.fetch(key) { raise ArgumentError, "Malformed durable job payload" }
         raise ArgumentError, "Malformed durable job payload" unless value.is_a?(String)
+
+        value
+      end
+
+      sig { params(payload: Payload, key: String).returns(Identifier) }
+      def payload_identifier!(payload, key)
+        value = payload.fetch(key) { raise ArgumentError, "Malformed durable job payload" }
+        raise ArgumentError, "Malformed durable job payload" unless value.is_a?(String) || value.is_a?(Integer)
 
         value
       end
@@ -373,7 +425,7 @@ module Domains
 
       sig { params(result: Object).returns(T::Boolean) }
       def route_dispatched?(result)
-        result.is_a?(Hash) && result[:id]
+        result.is_a?(Hash) && (result.key?(:id) || result.key?("id"))
       end
 
       sig { params(workflow: Row, gate: String).returns(T.nilable(String)) }

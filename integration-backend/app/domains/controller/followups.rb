@@ -12,12 +12,12 @@ module Domains
                policy: Domains::Workflows::Policy, handle: String).void
       end
       def initialize(db, herdr:, resolver:, membership:, policy: Domains::Workflows::Policy.new, handle: ENV.fetch("AGENT_HANDLE", "agent"))
-        @db = T.let(db, Sequel::Database)
-        @herdr = T.let(herdr, Domains::Sessions::Herdr)
-        @resolver = T.let(resolver, Source::DeliveryResolver)
-        @membership = T.let(membership, T.proc.params(channel_id: String, user_id: String).returns(T::Boolean))
-        @policy = T.let(policy, Domains::Workflows::Policy)
-        @handle = T.let(handle, String)
+        @db = db
+        @herdr = herdr
+        @resolver = resolver
+        @membership = membership
+        @policy = policy
+        @handle = handle
       end
 
       # All future review/session transitions must use this same workflow mutex.

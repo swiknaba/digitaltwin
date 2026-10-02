@@ -24,6 +24,7 @@ RSpec.describe "Release-source history reconciliation (synthetic transport)" do
     @client.define_singleton_method(:get) do |path|
       fixture.request(path)
     end
+    @client.extend(Domains::Mattermost::VerifiedDelivery::Transport)
     @resolver = Domains::Mattermost::ActorResolver.new(@client, local_bot_ids: [bot])
     @service = Domains::Mattermost::Reconcile.new(db, client: @client, resolver: @resolver,
                                                       router: Domains::Mattermost::Router.new(db))

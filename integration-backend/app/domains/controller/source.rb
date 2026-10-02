@@ -10,6 +10,7 @@ module Domains
 
       InboxRow = T.type_alias { T::Hash[Symbol, Object] }
       InboxId = T.type_alias { T.any(Integer, String) }
+      VerifiedDeliveryRecord = T.type_alias { T::Hash[String, Object] }
 
       module DeliveryResolver
         extend T::Helpers
@@ -62,12 +63,22 @@ module Domains
         value
       end
 
-      sig { params(row: InboxRow).returns(T::Hash[String, String]) }
+      sig { params(row: InboxRow).returns(String) }
       def verified_delivery(row)
         value = row.fetch(:verified_delivery)
-        raise ArgumentError, "Invalid verified source" unless value.is_a?(Hash) && value.all? { |key, item| key.is_a?(String) && item.is_a?(String) }
+        json = Hash.try_convert(value)
+        raise ArgumentError, "Invalid verified source" unless json
 
-        value
+        record = T.let({}, VerifiedDeliveryRecord)
+        json.each do |key, item|
+          raise ArgumentError, "Invalid verified source" unless key.is_a?(String)
+
+          record[key] = item
+        end
+        body = record.fetch("body") { raise ArgumentError, "Invalid verified source" }
+        raise ArgumentError, "Invalid verified source" unless body.is_a?(String)
+
+        body
       end
 
       sig { params(delivery: Domains::Mattermost::VerifiedDelivery, row: InboxRow).returns(T::Boolean) }
@@ -75,7 +86,7 @@ module Domains
         delivery.actor.member && !delivery.actor.bot &&
           delivery.actor.user_id == string_value(row, :user_id) &&
           delivery.post_revision == integer_value(row, :post_revision) &&
-          delivery.body == verified_delivery(row).fetch("body")
+          delivery.body == verified_delivery(row)
       end
 
       sig { params(row: InboxRow, key: Symbol).returns(Integer) }

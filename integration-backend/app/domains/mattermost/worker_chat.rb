@@ -72,7 +72,15 @@ module Domains
 
         row = T.let({}, Row)
         value.each do |key, item|
-          raise ArgumentError, "Invalid #{name}" unless key.is_a?(Symbol) && row_value?(item)
+          raise ArgumentError, "Invalid #{name}" unless key.is_a?(Symbol)
+
+          # Sequel returns JSONB columns as a Hash subclass. This command does
+          # not consume any JSONB column, so keep it outside the scalar row
+          # DTO instead of asking Sorbet's runtime `Object` contract to
+          # nominally validate the adapter-owned wrapper.
+          next if item.is_a?(Hash) || item.is_a?(Sequel::Postgres::JSONBHash)
+
+          raise ArgumentError, "Invalid #{name}" unless row_value?(item)
 
           row[key] = item
         end

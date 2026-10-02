@@ -67,7 +67,11 @@ class RackCompatibility
   def rack_body(input)
     case input
     when NilClass then ""
-    when StringIO, Protocol::Rack::Input then input.read(MAX_BODY + 1)
+    when StringIO, Protocol::Rack::Input
+      # IO#read(length) returns nil at EOF, whereas an omitted Rack body is
+      # semantically the same as an empty one. Normalize both forms before
+      # JSON parsing and retain a concrete String at this boundary.
+      input.read(MAX_BODY + 1) || ""
     else
       raise ArgumentError, "rack.input must be readable"
     end
