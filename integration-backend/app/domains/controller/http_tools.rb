@@ -8,6 +8,7 @@ module Domains
   module Controller
     class HttpTools
       extend T::Sig
+      include Mcp::ToolGateway
 
       JsonObject = T.type_alias { T::Hash[String, Object] }
 
