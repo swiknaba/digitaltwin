@@ -7,16 +7,20 @@ module Domains
       extend T::Sig
 
       Status = Adapters::Herdr::Dto::AgentStatus
-      SETTLED = T.let([Status::Idle, Status::Done].freeze, T::Array[Adapters::Herdr::Dto::AgentStatus])
+      Identity = Adapters::Herdr::ConversationIdentity
 
       sig do
-        params(db: Sequel::Database, sessions: Domains::Sessions::Lifecycle, source: Domains::Messaging::VerifyHumanSource,
+        params(db: Sequel::Database, bootstrap: ::Services::Sessions::BootstrapController, source: Domains::Messaging::VerifyHumanSource,
                herdr: Adapters::Herdr::Client, configuration: Domains::Workflows::Dto::RoleConfig,
-               credential_root: String, policy: Domains::Workflows::Policy).void
+               credential_root: String, policy: Domains::Workflows::Policy, registry: Domains::Sessions::Registry,
+               operations: Domains::Sessions::Operations).void
       end
-      def initialize(db, sessions:, source:, herdr:, configuration:, credential_root: "/run/herdr/session-credentials", policy: Domains::Workflows::Policy.new)
+      def initialize(db, bootstrap:, source:, herdr:, configuration:, credential_root: "/run/herdr/session-credentials", policy: Domains::Workflows::Policy.new,
+                     registry: Domains::Sessions::Registry.new, operations: Domains::Sessions::Operations.new)
         @db = db
-        @sessions = sessions
+        @bootstrap = bootstrap
+        @registry = registry
+        @operations = operations
         @source = source
         @herdr = herdr
         @configuration = configuration
@@ -28,7 +32,7 @@ module Domains
       sig { params(inbox_id: String).returns(String) }
       def ingest(inbox_id)
         d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id))
-        controller = @sessions.bootstrap(configuration: @configuration)
+        controller = Platform::Unwrap.call(@bootstrap.call(configuration: @configuration))
         @db.transaction do
           @inbox.lock(id: inbox_id)
           old = @db[:master_requests][inbox_id: inbox_id]
@@ -43,7 +47,7 @@ module Domains
             thread_id: d.thread_id,
             bot: Domains::Messaging::Dto::Bot::Agent,
             role: Domains::Messaging::Dto::SpeakerRole::Controller,
-            body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: "start"]&.dig(:id)}.",
+            body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@operations.for_session(session_id: controller, kind: Domains::Sessions::Dto::OperationKind::Start)&.id}.",
             key: "master:queued:#{id}"
           )
           Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
@@ -79,25 +83,26 @@ module Domains
           return Platform::Jobs::Dto::Decision.block("Prior Master request requires human reconciliation") if uncertain.positive?
 
           busy = @db[:master_requests].where(session_id: r[:session_id], state: %w[active uncertain]).exclude(id: r[:id]).count
-          s = @db[:sessions][id: r[:session_id], active: true, role: "controller"]
+          s = active_session(r[:session_id])
+          s = nil unless s&.role == Domains::Sessions::Dto::SessionRole::Controller
           return Platform::Jobs::Dto::Decision.defer("Master startup or current request pending") if !s || busy.positive?
 
-          raise ArgumentError, "Master request/session expired" unless r[:expires_at] > Time.now && s[:credential_expires_at] > Time.now
+          raise ArgumentError, "Master request/session expired" unless r[:expires_at] > Time.now && s.credential_expires_at > Time.now
 
           d = Platform::Unwrap.call(@source.call(inbox_id: r[:inbox_id]))
-          live = @herdr.pane(s[:pane_id])
-          same_conversation = s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity]
+          live = @herdr.pane(s.pane_id)
+          same_conversation = Identity.same?(s.runtime_identity, live.agent_session)
           if same_conversation && live.agent_status == Status::Working
             return Platform::Jobs::Dto::Decision.defer("Master finishing current turn")
           end
-          raise ArgumentError, "Master conversation replaced or uncertain" unless same_conversation && SETTLED.include?(live.agent_status)
+          raise ArgumentError, "Master conversation replaced or uncertain" unless same_conversation && live.agent_status.settled?
 
           token = @credentials.read(name: "#{r[:id]}.request-token")
           raise ArgumentError, "Request credential changed" unless Digest::SHA256.hexdigest(token) == r[:credential_digest]
 
           # The session-scoped file is the Controller's current request
           # capability; replace it for each dispatched request.
-          session_token = "#{s[:id]}.request-token"
+          session_token = "#{s.id}.request-token"
           @credentials.delete(name: session_token)
           @credentials.write(name: session_token, token: token)
           @db[:master_requests].where(id: r[:id]).update(state: "uncertain")
@@ -108,7 +113,7 @@ module Domains
                    "Reuse the matching existing conversation; ask a concise clarification for multiple plausible matches. " \
                    "Do not invent new sessions for follow-ups. " \
                    "Report completion with master-reply for this exact request."
-          @herdr.prompt(pane_id: s[:pane_id], text: prompt)
+          @herdr.prompt(pane_id: s.pane_id, text: prompt)
           @db[:master_requests].where(id: r[:id]).update(state: "active")
           Platform::Jobs::Dto::Decision.complete
         end
@@ -129,12 +134,11 @@ module Domains
           start_uncertain = start && [Domains::Workflows::Dto::RequestState::Sending, Domains::Workflows::Dto::RequestState::Uncertain].include?(start.state)
           raise ArgumentError, "Workflow effect still uncertain" if start_uncertain || @db[:reviews].where(workflow_id: wids, dispatch_state: %w[sending uncertain]).count.positive?
 
-          sids = @db[:sessions].where(workflow_id: wids).select_map(:id)
-          raise ArgumentError, "Session effect still uncertain" if @db[:session_operations].where(session_id: sids, state: %w[sending uncertain]).count.positive?
+          raise ArgumentError, "Session effect still uncertain" if @operations.unsettled_in_workflows?(workflow_ids: wids)
 
-          s = @db[:sessions][id: r[:session_id], active: true]
-          live = s && @herdr.pane(s[:pane_id])
-          raise ArgumentError, "Master session not positively settled" unless live && s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity] && SETTLED.include?(live.agent_status)
+          s = active_session(r[:session_id])
+          live = s && @herdr.pane(s.pane_id)
+          raise ArgumentError, "Master session not positively settled" unless s && live && Identity.same?(s.runtime_identity, live.agent_session) && live.agent_status.settled?
 
           jobs = Platform::Jobs::Store.new
           @db.transaction do
@@ -177,6 +181,15 @@ module Domains
             "queued"
           end
         end
+      end
+
+      # master_requests rows are untyped until Task 9; only a String id names a session.
+      sig { params(session_id: BasicObject).returns(T.nilable(Domains::Sessions::Dto::SessionView)) }
+      private def active_session(session_id)
+        session = case session_id
+                  when String then @registry.find(id: session_id)
+                  end
+        session if session&.active
       end
 
       sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(String) }

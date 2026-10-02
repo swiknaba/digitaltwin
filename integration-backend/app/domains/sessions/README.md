@@ -1,6 +1,5 @@
 # Sessions
-
-This domain manages the lifecycle of isolated agent sessions. It drives Herdr through
-`Adapters::Herdr`, reserves and renews session records, keeps short-lived credentials in
-`Adapters::Credentials`, and reconciles completed operations. Workflow code requests a session through this domain
-instead of addressing an agent pane or credential file directly.
+Owns `sessions`, `session_operations` and `callbacks`: agent sessions, their start and stop operations, and Worker callback receipts.
+Public API: `Registry` (reads), `Operations` (reserve, stops, proven state), `Authenticate`, `Callbacks`, `Renewals`, `ConfigurationPolicy`, `Records`, `Dto::*` and `Errors::*`.
+A scope is one workflow role, or the controller (`workflow_id` nil). Callers hold the scope's `Platform::Lock`.
+Herdr, credential files and outbox notices live in `Services::Sessions`.

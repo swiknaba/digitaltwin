@@ -37,17 +37,11 @@ module Domains
         raise ArgumentError, "Invalid verdict" if action == "review" && !%w[approve changes_requested].include?(verdict)
       end
 
-      sig { params(token: String, generation: Integer, role: String).returns(Domains::Sessions::RuntimeSession) }
+      sig { params(token: String, generation: Integer, role: String).returns(Domains::Sessions::Dto::SessionView) }
       private def active_session(token:, generation:, role:)
-        session = Domains::Sessions::RuntimeSession.find_by(
-          credential_digest: Digest::SHA256.hexdigest(token), generation: generation, role: role, active: true
-        )
-        raise ArgumentError, "Invalid session" unless session
-
-        latest = Domains::Sessions::RuntimeSession.query.where(workflow_id: session.workflow_id, role: role).max(:generation)
-        raise ArgumentError, "Invalid session" unless latest == generation && session.credential_expires_at > Time.now
-
-        session
+        roles = [Domains::Sessions::Dto::SessionRole.deserialize(role)]
+        # Every failure detail is "Invalid session"; Unwrap raises it as an ArgumentError.
+        Platform::Unwrap.call(Domains::Sessions::Authenticate.new.call(token: token, generation: generation, roles: roles))
       end
 
       sig { params(session_id: String, generation: Integer, action: String, commit: String, kind: T.nilable(String), verdict: T.nilable(String)).returns(Dto::CallbackJob) }

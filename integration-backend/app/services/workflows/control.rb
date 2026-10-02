@@ -21,17 +21,17 @@ module Services
 
       sig do
         params(source: Domains::Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, evidence: Adapters::Git::Evidence,
-               reviews: Domains::Reviews::Coordinator, sessions: Domains::Sessions::Lifecycle, catalog: Domains::Workflows::Catalog,
+               reviews: Domains::Reviews::Coordinator, stop_sessions: Sessions::StopWorkflowSessions, catalog: Domains::Workflows::Catalog,
                transitions: Domains::Workflows::Transitions, phase_prompts: Domains::Workflows::PhasePrompts, audit: Platform::Audit::Log,
                worker_handle: String).void
       end
-      def initialize(source:, herdr:, evidence:, reviews:, sessions:, catalog: Domains::Workflows::Catalog.new, transitions: Domains::Workflows::Transitions.new,
+      def initialize(source:, herdr:, evidence:, reviews:, stop_sessions:, catalog: Domains::Workflows::Catalog.new, transitions: Domains::Workflows::Transitions.new,
                      phase_prompts: Domains::Workflows::PhasePrompts.new, audit: Platform::Audit::Log.new, worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
         @source = source
         @verify_sessions = T.let(VerifySessions.new(herdr: herdr), VerifySessions)
         @evidence = evidence
         @reviews = reviews
-        @sessions = sessions
+        @stop_sessions = stop_sessions
         @catalog = catalog
         @transitions = transitions
         @phase_prompts = phase_prompts
@@ -126,7 +126,7 @@ module Services
         when Action::Pause
           return Kirei::Services::Result.new(result: @evidence.head(worktree: worktree))
         when Action::Resume
-          role = workflow.saved_phase&.review? ? "reviewer" : "writer"
+          role = workflow.saved_phase&.review? ? Domains::Sessions::Dto::SessionRole::Reviewer : Domains::Sessions::Dto::SessionRole::Writer
           sessions = @verify_sessions.call(workflow_id: workflow.id, role: role)
           return Kirei::Services::Result.new(errors: sessions.errors) if sessions.failed?
           unless @evidence.current(worktree: worktree) == workflow.paused_commit
@@ -151,7 +151,7 @@ module Services
           @phase_prompts.enqueue(workflow_id: workflow.id, version: version) if workflow.phase.writing? && @phase_prompts.unstarted?(workflow_id: workflow.id)
           @reviews.queue_release(workflow.id, version)
         when Action::Finish, Action::Cancel
-          @sessions.stop(workflow_id: workflow.id)
+          @stop_sessions.call(workflow_id: workflow.id)
         when Action::Pause
           nil
         else

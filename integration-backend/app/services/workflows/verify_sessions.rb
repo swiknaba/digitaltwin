@@ -9,27 +9,24 @@ module Services
       extend T::Sig
 
       Code = Dto::ErrorCode
-      Session = Domains::Sessions::RuntimeSession
-      Status = Adapters::Herdr::Dto::AgentStatus
+      Session = Domains::Sessions::Dto::SessionView
       Outcome = T.type_alias { Kirei::Services::Result[T::Array[Session]] }
-      SETTLED = T.let([Status::Idle, Status::Done].freeze, T::Array[Status])
 
-      sig { params(herdr: Adapters::Herdr::Client).void }
-      def initialize(herdr:)
+      sig { params(herdr: Adapters::Herdr::Client, registry: Domains::Sessions::Registry).void }
+      def initialize(herdr:, registry: Domains::Sessions::Registry.new)
         @herdr = herdr
+        @registry = registry
       end
 
-      sig { params(workflow_id: String, role: T.nilable(String)).returns(Outcome) }
+      # A nil role selects every active session of the workflow.
+      sig { params(workflow_id: String, role: T.nilable(Domains::Sessions::Dto::SessionRole)).returns(Outcome) }
       def call(workflow_id:, role: nil)
-        query = Session.query.where(workflow_id: workflow_id, active: true)
-        query = query.where(role: role) if role
-        sessions = Session.resolve(query.order(:created_at, :id))
+        sessions = @registry.active(workflow_id: workflow_id, role: role)
         return failure(Code::SessionMissing, "Required session missing") if sessions.empty?
 
         sessions.each do |session|
           live = @herdr.pane(session.pane_id)
-          identity = session.runtime_identity
-          proven = identity && live.agent_session&.serialize == identity && SETTLED.include?(live.agent_status)
+          proven = Adapters::Herdr::ConversationIdentity.same?(session.runtime_identity, live.agent_session) && live.agent_status.settled?
           return failure(Code::SessionUncertain, "Session uncertain or replaced") unless proven && session.credential_expires_at > Time.now
         end
         Kirei::Services::Result.new(result: sessions)

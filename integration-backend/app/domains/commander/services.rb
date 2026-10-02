@@ -23,8 +23,8 @@ module Domains
       sig { returns(Approvals) }
       attr_reader :approvals
 
-      sig { returns(Domains::Sessions::Lifecycle) }
-      attr_reader :sessions
+      sig { returns(::Services::Sessions::ReserveSession) }
+      attr_reader :reserve_session
 
       sig { returns(Workflows::RequestStart) }
       attr_reader :request_start
@@ -67,25 +67,29 @@ module Domains
         member = ->(channel_id, user_id) { membership.member?(channel_id: channel_id, user_id: user_id) }
         @approvals = T.let(Approvals.new(db, resolver: resolver, membership: member, current_commit: current_commit, evidence: evidence), Approvals)
         @routing = T.let(Routing.new(db, resolver: resolver, membership: member, approvals: @approvals), Routing)
-        @sessions = T.let(
-          Domains::Sessions::Lifecycle.new(db, herdr: herdr, source: @source, credential_root: credential_root,
-                                               callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", "http://backend-web:3000"), policy: policy),
-          Domains::Sessions::Lifecycle
-        )
+        credentials = Adapters::Credentials::FileStore.new(root: credential_root)
+        @reserve_session = T.let(::Services::Sessions::ReserveSession.new(source: @source, credentials: credentials), ::Services::Sessions::ReserveSession)
+        @execute_operation = T.let(::Services::Sessions::ExecuteOperation.new(herdr: herdr, source: @source, credentials: credentials, policy: policy,
+                                                                              callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", "http://backend-web:3000")),
+                                   ::Services::Sessions::ExecuteOperation)
+        @renew = T.let(::Services::Sessions::Renew.new(herdr: herdr, source: @source, credentials: credentials, policy: policy), ::Services::Sessions::Renew)
+        @reconcile_operation = T.let(::Services::Sessions::ReconcileOperation.new(db, herdr: herdr, source: @source, credentials: credentials),
+                                     ::Services::Sessions::ReconcileOperation)
         @reviews = T.let(Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: @routing, policy: policy), Domains::Reviews::Coordinator)
         latest_review = Workflows::LatestReview.new(db)
         @advance_approval = T.let(Workflows::AdvanceApproval.new(evidence: evidence, reviews: @reviews, latest_review: latest_review), Workflows::AdvanceApproval)
         @request_start = T.let(Workflows::RequestStart.new(source: @source, roles: roles&.assignments), Workflows::RequestStart)
         @reconcile_start = T.let(Workflows::ReconcileStart.new(source: @source, api: api, bot_id: bot_id), Workflows::ReconcileStart)
         @provision = T.let(Workflows::Provision.new(db, source: @source, api: api, bot_id: bot_id, worktrees: worktrees || ::Services::Projects::PrepareWorktree.new,
-                                                        sessions: @sessions, policy: policy), Workflows::Provision)
-        @control = T.let(Workflows::Control.new(source: @source, herdr: herdr, evidence: evidence, reviews: @reviews, sessions: @sessions), Workflows::Control)
+                                                        reserve_session: @reserve_session, policy: policy), Workflows::Provision)
+        @control = T.let(Workflows::Control.new(source: @source, herdr: herdr, evidence: evidence, reviews: @reviews,
+                                                stop_sessions: ::Services::Sessions::StopWorkflowSessions.new), Workflows::Control)
         @dispatch_phase_prompt = T.let(Workflows::DispatchPhasePrompt.new(source: @source, herdr: herdr, evidence: evidence, latest_review: latest_review, policy: policy),
                                        Workflows::DispatchPhasePrompt)
         @approve_current = T.let(Workflows::ApproveCurrent.new(source: @source, approvals: @approvals, advance: @advance_approval), Workflows::ApproveCurrent)
         @start_existing = T.let(Workflows::StartExisting.new(source: @source, request_start: @request_start), Workflows::StartExisting)
         controller_role = roles&.controller
-        @master = T.let(controller_role && Master.new(db, sessions: @sessions, source: @source, herdr: herdr,
+        @master = T.let(controller_role && Master.new(db, bootstrap: ::Services::Sessions::BootstrapController.new(credentials: credentials), source: @source, herdr: herdr,
                                                           configuration: controller_role, credential_root: credential_root, policy: policy), T.nilable(Master))
         @followups = T.let(Followups.new(db, herdr: herdr, resolver: resolver, membership: member, policy: policy), Followups)
       end
@@ -97,13 +101,13 @@ module Domains
                          Kind::WorkflowPrompt => ->(job) { @routing.call(job: job) },
                          Kind::SessionFollowup => ->(job) { @followups.call(job: job) },
                          Kind::WorkflowProvision => ->(job) { @provision.call(job: job) },
-                         Kind::SessionStart => ->(job) { @sessions.call(job: job) },
-                         Kind::SessionStop => ->(job) { @sessions.call(job: job) },
+                         Kind::SessionStart => ->(job) { @execute_operation.call(job: job) },
+                         Kind::SessionStop => ->(job) { @execute_operation.call(job: job) },
                          Kind::ReviewPrompt => ->(job) { @reviews.call(job: job) },
                          Kind::ReviewRelease => ->(job) { @reviews.release_job(job: job) },
                          Kind::ReviewCallback => ->(job) { review_callback(job: job) },
                          Kind::MasterControl => ->(job) { @control.call(job: job) },
-                         Kind::SessionRenew => ->(job) { @sessions.renew_job(job: job) },
+                         Kind::SessionRenew => ->(job) { @renew.call(job: job) },
                          Kind::WorkflowPhasePrompt => ->(job) { @dispatch_phase_prompt.call(job: job) },
                          Kind::WorkflowStart => ->(job) { @start_existing.call(job: job) },
                          Kind::WorkflowPause => ->(job) { @control.call(job: job) },
@@ -137,7 +141,7 @@ module Domains
           Platform::Unwrap.call(@reconcile_start.call(request_id: command.request_id, inbox_id: id, thread_id: command.thread_id))
           return Decision.complete
         when Commands::RecoverSession
-          @sessions.reconcile(operation_id: command.operation_id, inbox_id: id, pane_id: command.pane_id)
+          Platform::Unwrap.call(@reconcile_operation.call(operation_id: command.operation_id, inbox_id: id, pane_id: command.pane_id))
           return Decision.complete
         when Commands::RecoverFollowup
           @followups.reconcile(id: command.followup_id, inbox_id: id, outcome: command.outcome.serialize)

@@ -14,16 +14,17 @@ module Services
       Decision = Platform::Jobs::Dto::Decision
       Gate = Domains::Workflows::Dto::Gate
       Phase = Domains::Workflows::Dto::Phase
-      Session = Domains::Sessions::RuntimeSession
+      Writer = Domains::Sessions::Dto::SessionRole::Writer
       Outcome = T.type_alias { Kirei::Services::Result[Decision] }
       APPROVED_BEFORE = T.let({ Phase::PlanWriting => Gate::Spec, Phase::Implementation => Gate::Plan }.freeze, T::Hash[Phase, Gate])
 
       sig do
         params(source: Domains::Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, evidence: Adapters::Git::Evidence, latest_review: LatestReview,
-               policy: Domains::Workflows::Policy, catalog: Domains::Workflows::Catalog, approvals: Domains::Workflows::Approvals).void
+               policy: Domains::Workflows::Policy, catalog: Domains::Workflows::Catalog, approvals: Domains::Workflows::Approvals,
+               registry: Domains::Sessions::Registry).void
       end
       def initialize(source:, herdr:, evidence:, latest_review:, policy: Domains::Workflows::Policy.new, catalog: Domains::Workflows::Catalog.new,
-                     approvals: Domains::Workflows::Approvals.new)
+                     approvals: Domains::Workflows::Approvals.new, registry: Domains::Sessions::Registry.new)
         @source = source
         @herdr = herdr
         @verify_sessions = T.let(VerifySessions.new(herdr: herdr), VerifySessions)
@@ -32,6 +33,7 @@ module Services
         @policy = policy
         @catalog = catalog
         @approvals = approvals
+        @registry = registry
       end
 
       sig { override.params(job: Platform::Jobs::Dto::ClaimedJob).returns(Decision) }
@@ -52,7 +54,7 @@ module Services
         return failure(Code::PhaseChanged, "Phase changed") unless workflow.phase.writing?
         return decided(Decision.defer("Writer busy")) if writer_busy?(workflow)
 
-        sessions = @verify_sessions.call(workflow_id: workflow.id, role: "writer")
+        sessions = @verify_sessions.call(workflow_id: workflow.id, role: Writer)
         return Kirei::Services::Result.new(errors: sessions.errors) if sessions.failed?
 
         writer = sessions.result.first
@@ -74,11 +76,11 @@ module Services
 
       sig { params(workflow: Domains::Workflows::Dto::WorkflowView).returns(T::Boolean) }
       private def writer_busy?(workflow)
-        writer = Session.resolve_first(Session.query.where(workflow_id: workflow.id, role: "writer", active: true))
+        writer = @registry.active(workflow_id: workflow.id, role: Writer).first
         return false unless writer
 
         live = @herdr.pane(writer.pane_id)
-        live.agent_status == Adapters::Herdr::Dto::AgentStatus::Working && live.agent_session&.serialize == writer.runtime_identity
+        live.agent_status == Adapters::Herdr::Dto::AgentStatus::Working && live.agent_session&.serialize == writer.runtime_identity&.serialize
       end
 
       # Plan writing needs the approved spec; implementation needs the approved plan.

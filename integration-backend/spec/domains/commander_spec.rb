@@ -29,7 +29,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:projects].insert(id: "p#{n}", channel_id: n.to_s.rjust(26, "c"), slug: "owner/repo#{n}", remote_identity: "github.com/owner/repo#{n}", workspace: "/tmp/p#{n}")
     db[:workflows].insert(id: "w#{n}", project_id: "p#{n}", channel_id: n.to_s.rjust(26, "c"), thread_id: "root#{n}", branch: "b#{n}", worktree_path: "/tmp/w#{n}", phase: phase, role_configurations: workflow_roles)
     db[:sessions].insert(id: "s#{n}", workflow_id: "w#{n}", role: "writer", generation: 1, pane_id: "pane#{n}", alias: "writer#{n}",
-                         credential_digest: "digest#{n}", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({ "cli" => "codex" }), runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation#{n}" }))
+                         credential_digest: "digest#{n}", credential_expires_at: Time.now + 3600, configuration: session_configuration, runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation#{n}" }))
     "w#{n}"
   end
 
@@ -137,7 +137,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:projects].insert(id: "p1", channel_id: "1".rjust(26, "c"), slug: "owner/repo1", remote_identity: "github.com/owner/repo1", workspace: "/tmp/p1")
     db[:workflows].insert(id: id, project_id: "p1", channel_id: "1".rjust(26, "c"), thread_id: "root1", branch: "b1", worktree_path: "/tmp/w1", phase: "implementation", role_configurations: workflow_roles)
     db[:sessions].insert(id: "s1", workflow_id: id, role: "writer", generation: 1, pane_id: "pane1", alias: "writer1",
-                         credential_digest: "digest1", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({ "cli" => "codex" }), runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation1" }))
+                         credential_digest: "digest1", credential_expires_at: Time.now + 3600, configuration: session_configuration, runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation1" }))
     row = routing.route(inbox_id: source(body: "@agent route #{id}\nPlease also cover that case"), selection: id)
     expect(sender.deliver(row[:id])).to eq("delivered")
     expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
@@ -275,7 +275,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   it "records exact Master-chat approval only for the latest reviewed current revision" do
     workflow(1, phase: "spec_human_approval")
     commit = "a" * 40
-    db[:reviews].insert(id: "review_1", workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: Sequel.pg_jsonb({ "cli" => "codex" }))
+    db[:reviews].insert(id: "review_1", workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: session_configuration)
     approvals = Domains::Commander::Approvals.new(db, resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit })
     id = source(body: "@agent approve w1 spec #{commit}")
     args = { inbox_id: id, workflow_id: "w1", gate: "spec", commit: commit }

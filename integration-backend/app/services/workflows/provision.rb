@@ -18,10 +18,10 @@ module Services
 
       sig do
         params(db: Sequel::Database, source: Domains::Messaging::VerifyHumanSource, api: Adapters::Mattermost::Api, bot_id: String,
-               worktrees: Projects::PrepareWorktree, sessions: Domains::Sessions::Lifecycle, policy: Domains::Workflows::Policy,
+               worktrees: Projects::PrepareWorktree, reserve_session: Sessions::ReserveSession, policy: Domains::Workflows::Policy,
                directory: Domains::Projects::Directory, requests: Domains::Workflows::Requests, worktree_root: String, master_channel_id: T.nilable(String)).void
       end
-      def initialize(db, source:, api:, bot_id:, worktrees:, sessions:, policy: Domains::Workflows::Policy.new, directory: Domains::Projects::Directory.new,
+      def initialize(db, source:, api:, bot_id:, worktrees:, reserve_session:, policy: Domains::Workflows::Policy.new, directory: Domains::Projects::Directory.new,
                      requests: Domains::Workflows::Requests.new, worktree_root: ENV.fetch("WORKTREE_ROOT", "/workspace/worktrees"),
                      master_channel_id: ENV["MASTER_CHANNEL_ID"])
         # conversation_bindings stays a raw table until Task 9.
@@ -31,7 +31,7 @@ module Services
         @bot = bot_id
         @thread_bot = T.let(VerifyThreadBot.new(api: api, bot_id: bot_id), VerifyThreadBot)
         @worktrees = worktrees
-        @sessions = sessions
+        @reserve_session = reserve_session
         @policy = policy
         @directory = directory
         @requests = requests
@@ -118,8 +118,9 @@ module Services
         return Kirei::Services::Result.new(errors: prepared.errors) if prepared.failed?
         return failure(Code::WorktreeChanged, "Worktree binding changed") unless prepared.result == workflow.worktree_path
 
-        @sessions.reserve(workflow_id: workflow.id, role: "writer")
-        @sessions.reserve(workflow_id: workflow.id, role: "reviewer")
+        # A failed reservation raises, so the worker keeps today's retry path.
+        Platform::Unwrap.call(@reserve_session.call(workflow_id: workflow.id, role: Domains::Sessions::Dto::SessionRole::Writer))
+        Platform::Unwrap.call(@reserve_session.call(workflow_id: workflow.id, role: Domains::Sessions::Dto::SessionRole::Reviewer))
         @requests.mark(id: request.id, state: State::Bound, reason: nil)
         success(State::Bound)
       end

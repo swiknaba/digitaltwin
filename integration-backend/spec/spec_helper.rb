@@ -68,6 +68,10 @@ module WorkflowFixtures
   }.freeze
 
   def workflow_roles = Sequel.pg_jsonb(WORKFLOW_ROLES)
+
+  # Stored sessions need a complete RoleConfig (Domains::Sessions::Records
+  # fails closed). The controller fixture reuses the Writer entry.
+  def session_configuration(role = "writer") = Sequel.pg_jsonb(WORKFLOW_ROLES.fetch(role == "controller" ? "writer" : role))
 end
 
 RSpec.configure do |config|

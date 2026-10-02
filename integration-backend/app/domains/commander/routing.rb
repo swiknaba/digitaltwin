@@ -24,6 +24,8 @@ module Domains
         @handle = handle
         @inbox = T.let(Domains::Messaging::Inbox.new, Domains::Messaging::Inbox)
         @catalog = T.let(Domains::Workflows::Catalog.new, Domains::Workflows::Catalog)
+        @registry = T.let(Domains::Sessions::Registry.new, Domains::Sessions::Registry)
+        @renewals = T.let(Domains::Sessions::Renewals.new, Domains::Sessions::Renewals)
       end
 
       # Only verified inbox identities enter this service. Selection is a human
@@ -85,20 +87,18 @@ module Domains
           raise ArgumentError, "Workflow became inactive" if !w || w.archived_at || w.phase.terminal?
           raise ArgumentError, "Destination membership required" unless allowed_channels.include?(w.channel_id)
 
-          sessions = @db[:sessions].where(workflow_id: w.id, role: "writer", active: true).all
+          writer = Domains::Sessions::Dto::SessionRole::Writer
+          sessions = @registry.active(workflow_id: w.id, role: writer)
           session = sessions.size == 1 ? sessions.first : nil
           if sessions.empty?
-            starting = @db[:sessions].where(workflow_id: w.id, role: "writer", active: false).join(:session_operations, session_id: :id).where(Sequel[:session_operations][:kind] => "start",
-                                                                                                                                               Sequel[:session_operations][:state] => %w[
-                                                                                                                                                 queued sending uncertain
-                                                                                                                                               ]).select_all(:sessions).all
+            starting = @registry.pending_starts(workflow_id: w.id, role: writer).reject(&:active)
             session = starting.first if starting.size == 1
           end
-          Domains::Sessions::Lifecycle.schedule_renewal(@db, session) if session && session[:active] && session[:credential_expires_at] <= @now.call
+          @renewals.schedule(session: session) if session&.active && session.credential_expires_at <= @now.call
           evidence = { "source_inbox_id" => inbox_id, "selection" => selection, "interpretation" => interpretation,
                        "direct_thread" => direct&.id, "recent_binding" => recent && binding[:inbox_id] }
-          id = @db[:followups].insert(id: Platform::HumanId.call(prefix: "followup"), inbox_id: inbox_id, workflow_id: w.id, session_id: session && session[:id],
-                                      generation: session && session[:generation], evidence: Sequel.pg_jsonb(evidence),
+          id = @db[:followups].insert(id: Platform::HumanId.call(prefix: "followup"), inbox_id: inbox_id, workflow_id: w.id, session_id: session&.id,
+                                      generation: session&.generation, evidence: Sequel.pg_jsonb(evidence),
                                       status: session ? "queued" : "blocked", reason: session ? nil : "Session reconciliation required")
           threads = [conversation_thread]
           threads << "master" if d.root_post && d.channel_id == @master_channel

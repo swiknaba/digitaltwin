@@ -12,7 +12,7 @@ RSpec.describe "Request-bound Master tools and stdio MCP" do
   let(:tools) { Domains::Commander::Tools.new(services: services, requests: requests) }
   before do
     @inbox = db[:inbox].insert(id: "inbox_1", channel_id: "master", thread_id: "root", post_id: "human-post", post_revision: 1, event_kind: "posted", user_id: "human", verified_delivery: Sequel.pg_jsonb({}))
-    db[:sessions].insert(id: "controller", role: "controller", pane_id: "pane", alias: "master", generation: 1, credential_digest: "session-digest", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({}))
+    db[:sessions].insert(id: "controller", role: "controller", pane_id: "pane", alias: "master", generation: 1, credential_digest: "session-digest", credential_expires_at: Time.now + 3600, configuration: session_configuration("controller"))
     db[:master_requests].insert(id: "request", inbox_id: @inbox, session_id: "controller", state: "active", credential_digest: Digest::SHA256.hexdigest("request-token"), expires_at: Time.now + 1800)
   end
   it "requires a live request capability and disallows role/session creation fields" do
@@ -23,7 +23,7 @@ RSpec.describe "Request-bound Master tools and stdio MCP" do
     expect { requests.authorize("request", "request-token") }.to raise_error(ArgumentError)
   end
   it "rejects previous Controller generations even with an unexpired request" do
-    db[:sessions].insert(id: "replacement", role: "controller", pane_id: "replacement", alias: "replacement", generation: 2, credential_digest: "replacement", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({}), active: false)
+    db[:sessions].insert(id: "replacement", role: "controller", pane_id: "replacement", alias: "replacement", generation: 2, credential_digest: "replacement", credential_expires_at: Time.now + 3600, configuration: session_configuration("controller"), active: false)
     expect { requests.authorize("request", "request-token") }.to raise_error(ArgumentError)
   end
   it "queues source and version-bound controls for the socket-owning worker" do
