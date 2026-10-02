@@ -1,19 +1,89 @@
+# typed: strict
 # frozen_string_literal: true
 
 module Domains
   module Controller
+    # Revalidates a persisted inbox record against Mattermost before it becomes
+    # authority for a controller action.
     class Source
-      def initialize(db, resolver:, membership:)
-        @db, @resolver, @membership = db, resolver, membership
+      extend T::Sig
+
+      InboxRow = T.type_alias { T::Hash[Symbol, Object] }
+      InboxId = T.type_alias { T.any(Integer, String) }
+
+      module DeliveryResolver
+        extend T::Helpers
+        extend T::Sig
+
+        interface!
+
+        sig { abstract.params(post_id: String, channel_id: String, event_kind: String).returns(Domains::Mattermost::VerifiedDelivery) }
+        def delivery(post_id:, channel_id:, event_kind:); end
       end
 
-      def human(id, destination: nil)
-        row = @db[:inbox][id: id] or raise ArgumentError, "Missing verified source"
-        d = @resolver.delivery(post_id: row[:post_id], channel_id: row[:channel_id], event_kind: "posted")
-        raise ArgumentError, "Human source changed" unless d.actor.member && !d.actor.bot && d.actor.user_id == row[:user_id] && d.post_revision == row[:post_revision] && d.body == row[:verified_delivery].fetch("body")
-        raise ArgumentError, "Destination membership required" if destination && !@membership.call(destination, d.actor.user_id)
+      sig do
+        params(
+          db: Sequel::Database,
+          resolver: DeliveryResolver,
+          membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean)
+        ).void
+      end
+      def initialize(db, resolver:, membership:)
+        @db = db
+        @resolver = resolver
+        @membership = membership
+      end
 
-        d
+      sig { params(id: InboxId, destination: T.nilable(String)).returns(Domains::Mattermost::VerifiedDelivery) }
+      def human(id, destination: nil)
+        row = inbox_row(id)
+        delivery = @resolver.delivery(post_id: string_value(row, :post_id), channel_id: string_value(row, :channel_id), event_kind: "posted")
+        raise ArgumentError, "Human source changed" unless verified_human?(delivery, row)
+        raise ArgumentError, "Destination membership required" if destination && !@membership.call(destination, delivery.actor.user_id)
+
+        delivery
+      end
+
+      private
+
+      sig { params(id: InboxId).returns(InboxRow) }
+      def inbox_row(id)
+        row = @db[:inbox][id: id]
+        raise ArgumentError, "Missing verified source" unless row.is_a?(Hash)
+
+        row
+      end
+
+      sig { params(row: InboxRow, key: Symbol).returns(String) }
+      def string_value(row, key)
+        value = row.fetch(key)
+        raise ArgumentError, "Invalid verified source" unless value.is_a?(String)
+
+        value
+      end
+
+      sig { params(row: InboxRow).returns(T::Hash[String, String]) }
+      def verified_delivery(row)
+        value = row.fetch(:verified_delivery)
+        raise ArgumentError, "Invalid verified source" unless value.is_a?(Hash) && value.all? { |key, item| key.is_a?(String) && item.is_a?(String) }
+
+        value
+      end
+
+      sig { params(delivery: Domains::Mattermost::VerifiedDelivery, row: InboxRow).returns(T::Boolean) }
+      def verified_human?(delivery, row)
+        delivery.actor.member && !delivery.actor.bot &&
+          delivery.actor.user_id == string_value(row, :user_id) &&
+          delivery.post_revision == integer_value(row, :post_revision) &&
+          delivery.body == verified_delivery(row).fetch("body")
+      end
+
+      sig { params(row: InboxRow, key: Symbol).returns(Integer) }
+      def integer_value(row, key)
+        value = row.fetch(key)
+        raise ArgumentError, "Invalid verified source" unless value.is_a?(Integer)
+
+        value
       end
     end
   end

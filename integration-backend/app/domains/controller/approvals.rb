@@ -1,13 +1,43 @@
+# typed: strict
 # frozen_string_literal: true
 
 module Domains
   module Controller
     class Approvals
-      def initialize(db, resolver:, membership:, current_commit:, handle: ENV.fetch("AGENT_HANDLE", "agent"), evidence: nil)
-        @evidence = evidence
-        @db, @resolver, @membership, @current_commit, @handle = db, resolver, membership, current_commit, handle
+      extend T::Sig
+
+      module CurrentCommit
+        extend T::Helpers
+        extend T::Sig
+
+        interface!
+
+        sig { abstract.params(workflow: GitRevision::Workflow).returns(String) }
+        def call(workflow); end
       end
 
+      Gate = T.type_alias { String }
+
+      sig do
+        params(
+          db: Sequel::Database,
+          resolver: Source::DeliveryResolver,
+          membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
+          current_commit: CurrentCommit,
+          handle: String,
+          evidence: T.nilable(Domains::Reviews::GitEvidence)
+        ).void
+      end
+      def initialize(db, resolver:, membership:, current_commit:, handle: ENV.fetch("AGENT_HANDLE", "agent"), evidence: nil)
+        @db = T.let(db, Sequel::Database)
+        @resolver = T.let(resolver, Source::DeliveryResolver)
+        @membership = T.let(membership, T.proc.params(channel_id: String, user_id: String).returns(T::Boolean))
+        @current_commit = T.let(current_commit, CurrentCommit)
+        @handle = T.let(handle, String)
+        @evidence = T.let(evidence, T.nilable(Domains::Reviews::GitEvidence))
+      end
+
+      sig { params(inbox_id: T.any(Integer, String), workflow_id: String, gate: Gate, commit: String).returns(Integer) }
       def record(inbox_id:, workflow_id:, gate:, commit:)
         raise ArgumentError, "Exact approval required" unless %w[spec plan].include?(gate) && commit.match?(/\A[0-9a-f]{40}\z/)
 
