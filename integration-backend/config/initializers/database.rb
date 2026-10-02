@@ -57,6 +57,7 @@ module BoundedDatabase
         after_connect: configure
       )
       database.extension(:pg_json, :pg_array)
+      database.wrap_json_primitives = true
       database
     end
   end

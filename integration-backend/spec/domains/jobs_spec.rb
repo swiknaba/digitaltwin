@@ -53,7 +53,7 @@ RSpec.describe "Durable jobs and outbox" do
     expect {
       db.transaction {
         enqueue;
-        Domains::Mattermost::Outbox.new(db).enqueue(channel_id: "c", thread_id: "r", bot: "worker", role: "writer",
+        Domains::Mattermost::Outbox.new.enqueue(channel_id: "c", thread_id: "r", bot: "worker", role: "writer",
                                                     body: "hello", key: "response");
         raise "abort"
       }
@@ -62,7 +62,7 @@ RSpec.describe "Durable jobs and outbox" do
     expect(db[:outbox].count).to eq(0)
   end
   it "deduplicates responses and rejects changed bodies" do
-    outbox = Domains::Mattermost::Outbox.new(db)
+    outbox = Domains::Mattermost::Outbox.new
     args = { channel_id: "c", thread_id: "r", bot: "worker", role: "writer", body: "hello", key: "response" }
     expect(outbox.enqueue(**args)).to eq(outbox.enqueue(**args))
     expect { outbox.enqueue(**args.merge(body: "changed")) }.to raise_error(ArgumentError)

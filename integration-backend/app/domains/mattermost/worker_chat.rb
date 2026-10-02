@@ -49,7 +49,7 @@ module Domains
           callback = row_from(@db[:callbacks][session_id: session.id, generation: generation, key: key], "callback")
           raise ArgumentError, "Callback key reused with changed body" unless row_string(callback, :body_digest) == digest
 
-          Outbox.new(@db).enqueue(channel_id: workflow.channel_id, thread_id: workflow.thread_id, bot: "worker", role: session.role,
+          Outbox.new.enqueue(channel_id: workflow.channel_id, thread_id: workflow.thread_id, bot: "worker", role: session.role,
                                   body: "[#{session.role}] #{body}", key: "callback:#{session.id}:#{generation}:#{key}")
           outcome("accepted", "Queued in bound thread")
         end

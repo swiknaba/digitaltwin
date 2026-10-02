@@ -120,7 +120,7 @@ module Domains
 
           @approvals.record(inbox_id: id, workflow_id: approval[1], gate: approval[2], commit: approval[3])
           source = @db[:inbox][id: id]
-          Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id],
+          Domains::Mattermost::Outbox.new.enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id],
                                                        bot: "agent", role: "controller", body: "#{approval[2]} approval recorded for #{approval[1]} at #{approval[3]}.", key: "master:#{id}:approval")
           return
         end
@@ -133,7 +133,7 @@ module Domains
 
       sig { params(d: Domains::Mattermost::VerifiedDelivery, id: T.any(Integer, String), text: String, kind: String).returns(String) }
       private def acknowledge(d, id, text, kind)
-        Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id,
+        Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id,
                                                      bot: "agent", role: "controller", body: text, key: "master:#{id}:#{kind}")
       end
 

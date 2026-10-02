@@ -93,7 +93,7 @@ module Domains
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
             Domains::Jobs::Store.new.enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
-            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: w[:channel_id], thread_id: w[:thread_id], bot: "worker", role: role,
+            Domains::Mattermost::Outbox.new.enqueue(channel_id: w[:channel_id], thread_id: w[:thread_id], bot: "worker", role: role,
                                                          body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.", key: "session:reserved:#{id}")
           end
           id
@@ -281,7 +281,7 @@ module Domains
             complete_operation(op, s, w && @db[:workflows][id: w[:id]])
             @db[:jobs].where(id: job[:id]).update(status: "complete", lease_token: nil, lease_expires_at: nil) if job
             @db[:audit].insert(event_key: key, action: "verified_session_reconciliation", details: Sequel.pg_jsonb({ "inbox_id" => inbox_id, "operation_id" => operation_id, "session_id" => s[:id], "generation" => s[:generation], "pane_id" => pane_id }))
-            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Session operation #{operation_id} reconciled against runtime evidence; no start or stop was repeated.", key: key)
+            Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Session operation #{operation_id} reconciled against runtime evidence; no start or stop was repeated.", key: key)
           end
           FileUtils.rm_f(credential_path(s[:id])) if op[:kind] == "stop"
           "complete"
