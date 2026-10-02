@@ -31,7 +31,11 @@ Handles default to `@agent` and `@worker` (`AGENT_HANDLE`, `WORKER_HANDLE`). Eac
 | `@agent recover-start REQUEST_ID THREAD_ID` | Continue a thread start against the existing root post. |
 | `@agent recover-session OPERATION_ID PANE_ID` | Resolve an uncertain session start or stop. |
 | `@agent recover-followup FOLLOWUP_ID delivered\|discard` | Record the human outcome of a lost follow-up. |
-| `@worker start\|approve\|pause\|resume\|finish\|cancel` | Control the workflow in the current thread. |
+| `@worker start` (new thread root) | Start a workflow for the channel's enrolled project in this thread. |
+| `@worker approve` | Approve the artifact waiting at the current human-approval gate. |
+| `@worker pause` / `resume` | Pause the workflow; resume only if the revision did not change meanwhile. |
+| `@worker finish` | Close a delivered workflow and stop its sessions. |
+| `@worker cancel` | Cancel the workflow and stop its sessions. |
 
 Only the original human can run a recover command. Details: [Master routing setup](../docs/interfaces/master-routing-setup.md).
 
