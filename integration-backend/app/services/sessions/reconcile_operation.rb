@@ -23,13 +23,13 @@ module Services
       Evidence = T.type_alias { Kirei::Services::Result[Adapters::Herdr::Dto::Pane] }
 
       sig do
-        params(herdr: Adapters::Herdr::Client, source: Messaging::VerifyHumanSource, credentials: Adapters::Credentials::FileStore,
+        params(herdr: Adapters::Herdr::Client, source: Messaging::VerifyHumanSource, credentials: Adapters::Credentials::FileStore, handle: String,
                master_requests: Domains::Commander::MasterRequests, registry: Sessions::Registry, operations: Sessions::Operations, catalog: Domains::Workflows::Catalog, complete: CompleteOperation,
-               inbox: Messaging::Inbox, outbox: Messaging::Outbox, audit: Platform::Audit::Log, jobs: Platform::Jobs::Store, lock: Platform::Lock, handle: String).void
+               inbox: Messaging::Inbox, outbox: Messaging::Outbox, audit: Platform::Audit::Log, jobs: Platform::Jobs::Store, lock: Platform::Lock).void
       end
-      def initialize(herdr:, source:, credentials:, master_requests: Domains::Commander::MasterRequests.new, registry: Sessions::Registry.new, operations: Sessions::Operations.new, catalog: Domains::Workflows::Catalog.new,
+      def initialize(herdr:, source:, credentials:, handle:, master_requests: Domains::Commander::MasterRequests.new, registry: Sessions::Registry.new, operations: Sessions::Operations.new, catalog: Domains::Workflows::Catalog.new,
                      complete: CompleteOperation.new, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, audit: Platform::Audit::Log.new,
-                     jobs: Platform::Jobs::Store.new, lock: Platform::Lock.new, handle: ENV.fetch("AGENT_HANDLE", "agent"))
+                     jobs: Platform::Jobs::Store.new, lock: Platform::Lock.new)
         @master_requests = master_requests
         @herdr = herdr
         @source = source

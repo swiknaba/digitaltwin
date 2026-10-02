@@ -18,13 +18,13 @@ module Services
 
       sig do
         params(source: Domains::Messaging::VerifyHumanSource, api: Adapters::Mattermost::Api, bot_id: String,
-               worktrees: Projects::PrepareWorktree, reserve_session: Sessions::ReserveSession, policy: Domains::Workflows::Policy,
-               directory: Domains::Projects::Directory, requests: Domains::Workflows::Requests, bindings: Domains::Commander::Bindings, worktree_root: String,
-               master_channel_id: T.nilable(String)).void
+               worktrees: Projects::PrepareWorktree, reserve_session: Sessions::ReserveSession, worktree_root: String,
+               master_channel_id: T.nilable(String), policy: Domains::Workflows::Policy,
+               directory: Domains::Projects::Directory, requests: Domains::Workflows::Requests, bindings: Domains::Commander::Bindings).void
       end
-      def initialize(source:, api:, bot_id:, worktrees:, reserve_session:, policy: Domains::Workflows::Policy.new, directory: Domains::Projects::Directory.new,
-                     requests: Domains::Workflows::Requests.new, bindings: Domains::Commander::Bindings.new, worktree_root: ENV.fetch("WORKTREE_ROOT", "/workspace/worktrees"),
-                     master_channel_id: ENV["MASTER_CHANNEL_ID"])
+      def initialize(source:, api:, bot_id:, worktrees:, reserve_session:, worktree_root:, master_channel_id:,
+                     policy: Domains::Workflows::Policy.new, directory: Domains::Projects::Directory.new,
+                     requests: Domains::Workflows::Requests.new, bindings: Domains::Commander::Bindings.new)
         @source = source
         @api = api
         @bot = bot_id

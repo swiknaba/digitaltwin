@@ -14,8 +14,7 @@ module Domains
       WORKFLOW_ID_PATTERN = T.let(/\Aworkflow_[A-Za-z0-9]{12}\z/, Regexp)
 
       sig { params(root: String, worktrees_root: String).void }
-      def initialize(root: ENV.fetch("WORKSPACE_ROOT", "/workspace/repos"),
-                     worktrees_root: ENV.fetch("WORKTREE_ROOT", "/workspace/worktrees"))
+      def initialize(root:, worktrees_root:)
         @root = T.let(File.realpath(root), String)
         @trees = T.let(File.realpath(worktrees_root), String)
       end

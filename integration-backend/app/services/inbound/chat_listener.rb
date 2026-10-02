@@ -11,20 +11,13 @@ module Services
       EventEnvelope = T.type_alias { Adapters::Mattermost::DeliveryVerifier::EventEnvelope }
       RequestFailed = Adapters::Mattermost::Errors::RequestFailed
 
-      sig { returns(ChatListener) }
-      def self.from_env
-        client = Adapters::Mattermost::Client.new(url: ENV.fetch("MATTERMOST_URL"), token_file: ENV.fetch("MATTERMOST_LISTENER_TOKEN_FILE"))
-        api = Adapters::Mattermost::Api.new(client: client)
-        verifier = Adapters::Mattermost::DeliveryVerifier.new(api: api, local_bot_ids: ENV.fetch("MATTERMOST_LOCAL_BOT_IDS").split(","),
-                                                              peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","))
-        new(client: client, api: api, verifier: verifier, channels: ENV.fetch("MATTERMOST_CHANNEL_IDS").split(","))
-      end
-
       sig do
-        params(client: Adapters::Mattermost::Client, api: Adapters::Mattermost::Api,
-               verifier: Adapters::Mattermost::DeliveryVerifier, channels: T::Array[String], router: RecordDelivery).void
+        params(client: Adapters::Mattermost::Client, api: Adapters::Mattermost::Api, verifier: Adapters::Mattermost::DeliveryVerifier,
+               channels: T::Array[String], router: RecordDelivery, validation_mode: T::Boolean, heartbeat_dir: String).void
       end
-      def initialize(client:, api:, verifier:, channels:, router: RecordDelivery.new)
+      def initialize(client:, api:, verifier:, channels:, router:, validation_mode:, heartbeat_dir:)
+        @validation_mode = validation_mode
+        @heartbeat_dir = heartbeat_dir
         @client = T.let(client, Adapters::Mattermost::Client)
         @api = T.let(api, Adapters::Mattermost::Api)
         @verifier = T.let(verifier, Adapters::Mattermost::DeliveryVerifier)
@@ -35,7 +28,7 @@ module Services
 
       sig { returns(T.noreturn) }
       def call
-        raise "Chat transport live evidence pending; set CHAT_VALIDATION_MODE=1 only for disposable validation" unless ENV["CHAT_VALIDATION_MODE"] == "1"
+        raise "Chat transport live evidence pending; set CHAT_VALIDATION_MODE=1 only for disposable validation" unless @validation_mode
 
         delay = T.let(1, Integer)
         loop do
@@ -46,7 +39,7 @@ module Services
               recovery = HistoryRecovery.new(api: @api, verifier: @verifier, router: @router)
               @channels.each { |channel_id| recovery.call(channel_id: channel_id) }
               delay = 1
-              Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::ChatListener)
+              Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::ChatListener, dir: @heartbeat_dir)
               consume(socket)
             end
           rescue HistoryRecovery::RecoveryRequired => error
@@ -85,7 +78,7 @@ module Services
           raise EOFError, "WebSocket closed" unless message
 
           ingest_envelope(parse_event(message.to_s))
-          Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::ChatListener)
+          Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::ChatListener, dir: @heartbeat_dir)
         end
       end
 

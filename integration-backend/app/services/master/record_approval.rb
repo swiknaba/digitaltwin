@@ -18,12 +18,12 @@ module Services
 
       sig do
         params(resolver: Domains::Messaging::DeliveryVerifier, membership: Domains::Messaging::MembershipCheck, current_commit: CurrentCommitSource,
-               evidence: T.nilable(Adapters::Git::Evidence), handle: String, worker_handle: String, inbox: Domains::Messaging::Inbox,
+               handle: String, worker_handle: String, evidence: T.nilable(Adapters::Git::Evidence), inbox: Domains::Messaging::Inbox,
                catalog: Domains::Workflows::Catalog, rounds: Domains::Reviews::Rounds, approvals: Domains::Workflows::Approvals,
                lock: Platform::Lock, transaction: Platform::Transaction).void
       end
-      def initialize(resolver:, membership:, current_commit:, evidence: nil, handle: ENV.fetch("AGENT_HANDLE", "agent"),
-                     worker_handle: ENV.fetch("WORKER_HANDLE", "worker"), inbox: Domains::Messaging::Inbox.new, catalog: Domains::Workflows::Catalog.new,
+      def initialize(resolver:, membership:, current_commit:, handle:, worker_handle:,
+                     evidence: nil, inbox: Domains::Messaging::Inbox.new, catalog: Domains::Workflows::Catalog.new,
                      rounds: Domains::Reviews::Rounds.new, approvals: Domains::Workflows::Approvals.new, lock: Platform::Lock.new,
                      transaction: Platform::Transaction.new)
         @resolver = resolver

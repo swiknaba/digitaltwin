@@ -158,10 +158,11 @@ RSpec.describe "Workflows domain" do
 
     it "boots with a controller-only role file and fails a start with RolesMissing" do
       Dir.mktmpdir do |dir|
-        # from_env parses the file this way; its other ENV inputs are clients and paths.
+        # Configuration.from_env parses the file this way; its other inputs are clients and paths.
         file = Domains::Workflows::Records.role_file_from_json(JSON.generate("controller" => controller))
-        services = Domains::Commander::Services.new(resolver: double, membership: double, api: double, bot_id: "b" * 26, roles: file,
-                                                    worktrees: double, credential_root: dir)
+        configuration = Services::Configuration.new(roles: file, mattermost_url: "http://mattermost.test", mattermost_local_bot_ids: [],
+                                                    mattermost_listener_token_file: File.join(dir, "listener-token"))
+        services = Services::Composition.new(configuration: configuration)
         expect(services.reply).not_to be_nil
         id, delivery = inbox("p" * 26)
         allow_any_instance_of(Domains::Messaging::VerifyHumanSource).to receive(:call).and_return(Kirei::Services::Result.new(result: delivery))

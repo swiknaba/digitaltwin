@@ -19,11 +19,10 @@ module Adapters
         return unexpected_fields_response unless exact_keys?(values, %w[arguments name])
 
         request_value = tool_request(values)
-        services = Domains::Commander::Services.from_env
         token = bearer
         # An unknown tool name raises KeyError, outside the rejected response.
         name = Services::Master::Dto::ToolName.deserialize(request_value.name)
-        result = services.tools.call(name: name, arguments: tool_arguments(request_value.arguments), token: token)
+        result = Services::Composition.instance.tools.call(name: name, arguments: tool_arguments(request_value.arguments), token: token)
         return rejected_response if result.failed?
 
         render_json({ "result" => ToolJson.call(result.result) }, status: 200)
@@ -37,7 +36,7 @@ module Adapters
         return unexpected_fields_response unless exact_keys?(values, %w[request_id text])
 
         request_value = reply_request(values)
-        reply = Domains::Commander::Services.from_env.reply
+        reply = Services::Composition.instance.reply
         raise ArgumentError, "Master not configured" unless reply
 
         result = reply.call(request_id: request_value.request_id, token: bearer, text: request_value.text)

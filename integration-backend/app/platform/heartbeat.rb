@@ -4,21 +4,20 @@
 module Platform
   # Liveness marker for processes that expose no HTTP port. Docker only restarts
   # an exited container; the file mtime lets `bin/health` also detect a process
-  # that is alive but no longer progressing. `bin/health` reads the same
-  # `HEARTBEAT_DIR` without booting the application.
+  # that is alive but no longer progressing. The caller passes the configured
+  # `HEARTBEAT_DIR`; `bin/health` reads the same variable without booting the
+  # application.
   class Heartbeat
     extend T::Sig
 
-    DEFAULT_DIR = "/tmp"
-
-    sig { params(role: Role).void }
-    def self.touch(role:)
-      FileUtils.touch(path(role: role))
+    sig { params(role: Role, dir: String).void }
+    def self.touch(role:, dir:)
+      FileUtils.touch(path(role: role, dir: dir))
     end
 
-    sig { params(role: Role).returns(String) }
-    def self.path(role:)
-      File.join(ENV.fetch("HEARTBEAT_DIR", DEFAULT_DIR), "digitaltwin-#{role.serialize}.heartbeat")
+    sig { params(role: Role, dir: String).returns(String) }
+    def self.path(role:, dir:)
+      File.join(dir, "digitaltwin-#{role.serialize}.heartbeat")
     end
   end
 end

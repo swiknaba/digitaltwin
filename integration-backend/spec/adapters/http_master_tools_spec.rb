@@ -57,10 +57,10 @@ RSpec.describe "POST /internal/master/tools wire format" do
   end
 
   def stub_master_tools
-    route = Services::Master::RouteFollowup.new(resolver: resolver, membership: membership)
+    route = Services::Master::RouteFollowup.new(resolver: resolver, membership: membership, handle: "agent", master_channel_id: nil)
     tools = Services::Master::Tools.new(source: source, authorize: Services::Master::AuthorizeRequest.new(source: source), route: route,
                                         request_start: double(call: Kirei::Services::Result.new(result: "workflow_request_1")))
-    allow(Domains::Commander::Services).to receive(:from_env).and_return(double(tools: tools))
+    allow(Services::Composition).to receive(:instance).and_return(double(tools: tools))
   end
 
   def tool(name, arguments = {}, token = "request-token")

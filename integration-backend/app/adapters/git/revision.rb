@@ -8,7 +8,7 @@ module Adapters
       extend T::Sig
 
       sig { params(root: String).void }
-      def initialize(root: ENV.fetch("WORKTREE_ROOT", "/workspace/worktrees"))
+      def initialize(root:)
         @root = root
       end
 

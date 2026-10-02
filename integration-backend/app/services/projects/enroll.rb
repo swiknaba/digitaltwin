@@ -21,7 +21,7 @@ module Services
           git_repos: Adapters::Git::Repositories
         ).void
       end
-      def initialize(paths: Domains::Projects::WorkspacePaths.new, directory: Domains::Projects::Directory.new,
+      def initialize(paths:, directory: Domains::Projects::Directory.new,
                      register: Domains::Projects::Register.new, resolve_repository: ResolveRepository.new(paths: paths),
                      git_repos: Adapters::Git::Repositories.new)
         @paths = paths

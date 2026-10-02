@@ -24,7 +24,7 @@ module Services
                registry: Domains::Sessions::Registry, audit: Platform::Audit::Log, jobs: Platform::Jobs::Store, lock: Platform::Lock,
                transaction: Platform::Transaction).void
       end
-      def initialize(herdr:, resolver:, membership:, handle: ENV.fetch("AGENT_HANDLE", "agent"), followups: Domains::Commander::Followups.new,
+      def initialize(herdr:, resolver:, membership:, handle:, followups: Domains::Commander::Followups.new,
                      inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, catalog: Domains::Workflows::Catalog.new,
                      registry: Domains::Sessions::Registry.new, audit: Platform::Audit::Log.new, jobs: Platform::Jobs::Store.new, lock: Platform::Lock.new,
                      transaction: Platform::Transaction.new)

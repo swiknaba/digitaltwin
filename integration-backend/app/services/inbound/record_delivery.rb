@@ -20,8 +20,8 @@ module Services
                record: Messaging::RecordDelivery, outbox: Messaging::Outbox, catalog: Domains::Workflows::Catalog,
                queued_messages: Domains::Workflows::QueuedMessages).void
       end
-      def initialize(agent_handle: ENV.fetch("AGENT_HANDLE", "agent"), worker_handle: ENV.fetch("WORKER_HANDLE", "worker"),
-                     master_channel_id: ENV["MASTER_CHANNEL_ID"], record: Messaging::RecordDelivery.new, outbox: Messaging::Outbox.new,
+      def initialize(agent_handle:, worker_handle:,
+                     master_channel_id:, record: Messaging::RecordDelivery.new, outbox: Messaging::Outbox.new,
                      catalog: Domains::Workflows::Catalog.new, queued_messages: Domains::Workflows::QueuedMessages.new)
         @agent = T.let(valid_handle!(agent_handle), String)
         @worker = T.let(valid_handle!(worker_handle), String)

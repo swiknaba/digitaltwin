@@ -21,9 +21,9 @@ RSpec.describe Platform::Heartbeat do
 
     expect(system(probe, "worker")).to be(false)
 
-    described_class.touch(role: described_class::Role::Worker)
+    described_class.touch(role: described_class::Role::Worker, dir: @dir)
 
-    expect(described_class.path(role: described_class::Role::Worker)).to eq(path)
+    expect(described_class.path(role: described_class::Role::Worker, dir: @dir)).to eq(path)
     expect(File.exist?(path)).to be(true)
     expect(system(probe, "worker")).to be(true)
 

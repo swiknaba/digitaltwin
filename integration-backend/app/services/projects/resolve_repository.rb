@@ -9,7 +9,7 @@ module Services
       extend T::Sig
 
       sig { params(paths: Domains::Projects::WorkspacePaths, git: Adapters::Git::Worktrees).void }
-      def initialize(paths: Domains::Projects::WorkspacePaths.new, git: Adapters::Git::Worktrees.new)
+      def initialize(paths:, git: Adapters::Git::Worktrees.new)
         @paths = paths
         @git = git
       end

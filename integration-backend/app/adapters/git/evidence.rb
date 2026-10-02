@@ -9,7 +9,7 @@ module Adapters
       extend T::Sig
 
       sig { params(revision: Revision).void }
-      def initialize(revision: Revision.new)
+      def initialize(revision:)
         @revision = revision
       end
 

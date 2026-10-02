@@ -34,11 +34,11 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   }
   let(:herdr) { double(pane: herdr_pane(ready), prompt: nil) }
   let(:policy) { double(dispatch_allowed?: true) }
-  let(:sender) { Services::Master::DeliverFollowup.new(herdr: herdr, resolver: resolver, membership: membership, policy: policy) }
-  let(:reconciler) { Services::Master::ReconcileFollowup.new(herdr: herdr, resolver: resolver, membership: membership) }
+  let(:sender) { Services::Master::DeliverFollowup.new(herdr: herdr, resolver: resolver, membership: membership, handle: "agent", policy: policy) }
+  let(:reconciler) { Services::Master::ReconcileFollowup.new(herdr: herdr, resolver: resolver, membership: membership, handle: "agent") }
 
   def router(membership: self.membership, master_channel_id: nil)
-    RouteRows.new(Services::Master::RouteFollowup.new(resolver: resolver, membership: membership, master_channel_id: master_channel_id))
+    RouteRows.new(Services::Master::RouteFollowup.new(resolver: resolver, membership: membership, handle: "agent", master_channel_id: master_channel_id))
   end
 
   # Runs one delivery attempt as the session.followup handler and returns
@@ -229,7 +229,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   it "keeps production dispatch gated" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
-    gated = Services::Master::DeliverFollowup.new(herdr: herdr, resolver: resolver, membership: membership)
+    gated = Services::Master::DeliverFollowup.new(herdr: herdr, resolver: resolver, membership: membership, handle: "agent")
     expect(deliver(row[:id], gated)).to eq("queued")
     expect(herdr).not_to have_received(:pane)
   end
@@ -291,7 +291,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     allow(herdr).to receive(:pane).and_return(herdr_pane(ready.merge("agent_status" => "working")))
     expect(deliver(row[:id])).to eq("queued")
-    denied = Services::Master::DeliverFollowup.new(herdr: herdr, resolver: resolver, membership: double(member?: false), policy: policy)
+    denied = Services::Master::DeliverFollowup.new(herdr: herdr, resolver: resolver, membership: double(member?: false), handle: "agent", policy: policy)
     expect(deliver(row[:id], denied)).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end
@@ -311,14 +311,15 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     id = source
     d = resolver.delivery(post_id: db[:inbox][id: id][:post_id], channel_id: channel, event_kind: Domains::Messaging::Dto::EventKind::Posted)
     db[:inbox].delete
-    Services::Inbound::RecordDelivery.new(master_channel_id: channel).call(delivery: d)
+    Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", master_channel_id: channel).call(delivery: d)
     expect(db[:jobs].first[:kind]).to eq("master.prompt")
   end
   it "records exact Master-chat approval only for the latest reviewed current revision" do
     workflow(1, phase: "spec_human_approval")
     commit = "a" * 40
     db[:reviews].insert(id: "review_1", workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: session_configuration)
-    service = Services::Master::RecordApproval.new(resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit })
+    service = Services::Master::RecordApproval.new(resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit }, handle: "agent",
+                                                   worker_handle: "worker")
     approvals = Struct.new(:service) do
       def record(gate:, **args)
         result = service.call(gate: Domains::Workflows::Dto::Gate.deserialize(gate), **args)
@@ -423,13 +424,15 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     row = routing.route(inbox_id: source(body: "@agent route w1\nInstruction"), selection: "w1")
     db[:followups].where(id: row[:id]).update(status: "uncertain")
     recovery = source(2, body: "@agent recover-followup #{row[:id]} discard")
-    services = Domains::Commander::Services.allocate
-    services.instance_variable_set(:@source, Domains::Messaging::VerifyHumanSource.new(verifier: resolver, membership: double(member?: true)))
-    services.instance_variable_set(:@reconcile_followup, reconciler)
+    handler = Services::Master::HandleMasterPrompt.new(
+      source: Domains::Messaging::VerifyHumanSource.new(verifier: resolver, membership: double(member?: true)), reconcile_start: double,
+      reconcile_operation: double, reconcile_followup: reconciler, recover: nil, ingest_prompt: nil, handle_workflow_prompt: double,
+      advance_approval: double, agent_handle: "agent", worker_handle: "worker"
+    )
     inbox = db[:inbox][id: recovery]
     Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterPrompt, dispatch_key: "inbox:#{recovery}:master.prompt",
                                       payload: Domains::Commander::Dto::InboxDispatchJob.new(inbox_id: recovery, channel_id: inbox[:channel_id], thread_id: inbox[:thread_id]))
-    expect(services.route(job: claim_job(Platform::Jobs::Dto::JobKind::MasterPrompt))).to eq(Platform::Jobs::Dto::Decision.complete)
+    expect(handler.call(job: claim_job(Platform::Jobs::Dto::JobKind::MasterPrompt))).to eq(Platform::Jobs::Dto::Decision.complete)
     expect(db[:followups][id: row[:id]][:status]).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end

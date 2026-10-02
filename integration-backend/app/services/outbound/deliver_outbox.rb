@@ -15,11 +15,6 @@ module Services
       Bot = Domains::Messaging::Dto::Bot
       Status = Domains::Messaging::Dto::OutboxStatus
 
-      sig { returns(DeliverOutbox) }
-      def self.from_env
-        new(apis: Bots.apis_from_env, bot_ids: Bots.ids_from_env)
-      end
-
       sig { params(apis: T::Hash[Bot, Api], bot_ids: T::Hash[Bot, String], outbox: Domains::Messaging::Outbox).void }
       def initialize(apis:, bot_ids:, outbox: Domains::Messaging::Outbox.new)
         @apis = apis

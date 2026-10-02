@@ -14,11 +14,10 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[String] }
 
       sig do
-        params(source: Domains::Messaging::VerifyHumanSource, request_start: RequestStart, directory: Domains::Projects::Directory,
-               agent_handle: String, worker_handle: String).void
+        params(source: Domains::Messaging::VerifyHumanSource, request_start: RequestStart, agent_handle: String, worker_handle: String,
+               directory: Domains::Projects::Directory).void
       end
-      def initialize(source:, request_start:, directory: Domains::Projects::Directory.new, agent_handle: ENV.fetch("AGENT_HANDLE", "agent"),
-                     worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
+      def initialize(source:, request_start:, agent_handle:, worker_handle:, directory: Domains::Projects::Directory.new)
         @source = source
         @request_start = request_start
         @directory = directory

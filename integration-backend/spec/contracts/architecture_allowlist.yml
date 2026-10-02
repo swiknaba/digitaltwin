@@ -1,4 +1,3 @@
 ---
 layer_dependencies:
 - app/adapters/http/master.rb
-- app/domains/commander/services.rb

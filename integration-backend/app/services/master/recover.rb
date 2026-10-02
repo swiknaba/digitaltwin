@@ -16,15 +16,15 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[String] }
 
       sig do
-        params(source: Domains::Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, requests: Domains::Commander::MasterRequests,
+        params(source: Domains::Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, handle: String, requests: Domains::Commander::MasterRequests,
                registry: Domains::Sessions::Registry, operations: Domains::Sessions::Operations, inbox: Domains::Messaging::Inbox,
                catalog: Domains::Workflows::Catalog, workflow_requests: Domains::Workflows::Requests, rounds: Domains::Reviews::Rounds,
-               jobs: Platform::Jobs::Store, lock: Platform::Lock, transaction: Platform::Transaction, handle: String).void
+               jobs: Platform::Jobs::Store, lock: Platform::Lock, transaction: Platform::Transaction).void
       end
-      def initialize(source:, herdr:, requests: Domains::Commander::MasterRequests.new, registry: Domains::Sessions::Registry.new,
+      def initialize(source:, herdr:, handle:, requests: Domains::Commander::MasterRequests.new, registry: Domains::Sessions::Registry.new,
                      operations: Domains::Sessions::Operations.new, inbox: Domains::Messaging::Inbox.new, catalog: Domains::Workflows::Catalog.new,
                      workflow_requests: Domains::Workflows::Requests.new, rounds: Domains::Reviews::Rounds.new, jobs: Platform::Jobs::Store.new,
-                     lock: Platform::Lock.new, transaction: Platform::Transaction.new, handle: ENV.fetch("AGENT_HANDLE", "agent"))
+                     lock: Platform::Lock.new, transaction: Platform::Transaction.new)
         @source = source
         @herdr = herdr
         @requests = requests

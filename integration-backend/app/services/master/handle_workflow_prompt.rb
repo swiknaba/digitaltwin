@@ -13,11 +13,11 @@ module Services
       Messaging = Domains::Messaging
 
       sig do
-        params(route: RouteFollowup, approvals: RecordApproval, inbox: Messaging::Inbox, outbox: Messaging::Outbox, parser: Commands::Parser,
-               handle: String, worker_handle: String).void
+        params(route: RouteFollowup, approvals: RecordApproval, handle: String, worker_handle: String, inbox: Messaging::Inbox,
+               outbox: Messaging::Outbox, parser: Commands::Parser).void
       end
-      def initialize(route:, approvals:, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, parser: Commands::Parser.new,
-                     handle: ENV.fetch("AGENT_HANDLE", "agent"), worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
+      def initialize(route:, approvals:, handle:, worker_handle:, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new,
+                     parser: Commands::Parser.new)
         @route = route
         @approvals = approvals
         @inbox = inbox

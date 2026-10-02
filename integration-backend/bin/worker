@@ -6,15 +6,14 @@ Startup.validate!
 exit if ENV["BOOT_CHECK_ONLY"] == "1"
 require "async"
 Async do
+  composition = Services::Composition.instance
   handlers = {}
-  if ENV["CHAT_VALIDATION_MODE"] == "1"
-    delivery = Services::Outbound::DeliverOutbox.from_env
-    handlers[Platform::Jobs::Dto::JobKind::MattermostPost] = delivery
-    services = Domains::Commander::Services.from_env
-    handlers.merge!(services.handlers)
+  if composition.configuration.chat_validation_mode
+    handlers[Platform::Jobs::Dto::JobKind::MattermostPost] = composition.deliver_outbox
+    handlers.merge!(Services::JobHandlers.new(composition: composition).call)
     Domains::Sessions::Renewals.new.schedule_active
   end
-  Platform::Jobs::Worker.new(handlers: handlers).run
+  Platform::Jobs::Worker.new(handlers: handlers).run(heartbeat_dir: composition.configuration.heartbeat_dir)
 ensure
   Kirei::App.raw_db_connection.disconnect
 end.wait

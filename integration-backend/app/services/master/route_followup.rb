@@ -22,12 +22,12 @@ module Services
       MASTER_THREAD = "master"
 
       sig do
-        params(resolver: Messaging::DeliveryVerifier, membership: Messaging::MembershipCheck, now: T.proc.returns(Time), handle: String,
-               master_channel_id: T.nilable(String), followups: Commander::Followups, bindings: Commander::Bindings, inbox: Messaging::Inbox,
+        params(resolver: Messaging::DeliveryVerifier, membership: Messaging::MembershipCheck, handle: String,
+               master_channel_id: T.nilable(String), now: T.proc.returns(Time), followups: Commander::Followups, bindings: Commander::Bindings, inbox: Messaging::Inbox,
                outbox: Messaging::Outbox, catalog: Domains::Workflows::Catalog, registry: Domains::Sessions::Registry,
                renewals: Domains::Sessions::Renewals, jobs: Platform::Jobs::Store, transaction: Platform::Transaction).void
       end
-      def initialize(resolver:, membership:, now: -> { Time.now }, handle: ENV.fetch("AGENT_HANDLE", "agent"), master_channel_id: ENV["MASTER_CHANNEL_ID"],
+      def initialize(resolver:, membership:, handle:, master_channel_id:, now: -> { Time.now },
                      followups: Commander::Followups.new, bindings: Commander::Bindings.new, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new,
                      catalog: Domains::Workflows::Catalog.new, registry: Domains::Sessions::Registry.new, renewals: Domains::Sessions::Renewals.new,
                      jobs: Platform::Jobs::Store.new, transaction: Platform::Transaction.new)

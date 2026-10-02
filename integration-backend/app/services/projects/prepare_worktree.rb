@@ -15,7 +15,7 @@ module Services
           git: Adapters::Git::Worktrees
         ).void
       end
-      def initialize(paths: Domains::Projects::WorkspacePaths.new, resolve_repository: ResolveRepository.new(paths: paths),
+      def initialize(paths:, resolve_repository: ResolveRepository.new(paths: paths),
                      git: Adapters::Git::Worktrees.new)
         @paths = paths
         @resolve_repository = resolve_repository

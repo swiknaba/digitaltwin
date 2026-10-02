@@ -16,13 +16,12 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[State] }
 
       sig do
-        params(source: Messaging::VerifyHumanSource, api: Adapters::Mattermost::Api, bot_id: String, directory: Domains::Projects::Directory,
+        params(source: Messaging::VerifyHumanSource, api: Adapters::Mattermost::Api, bot_id: String, agent_handle: String, directory: Domains::Projects::Directory,
                requests: Domains::Workflows::Requests, inbox: Messaging::Inbox, outbox: Messaging::Outbox, audit: Platform::Audit::Log,
-               jobs: Jobs::Store, agent_handle: String).void
+               jobs: Jobs::Store).void
       end
-      def initialize(source:, api:, bot_id:, directory: Domains::Projects::Directory.new, requests: Domains::Workflows::Requests.new,
-                     inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, audit: Platform::Audit::Log.new, jobs: Jobs::Store.new,
-                     agent_handle: ENV.fetch("AGENT_HANDLE", "agent"))
+      def initialize(source:, api:, bot_id:, agent_handle:, directory: Domains::Projects::Directory.new, requests: Domains::Workflows::Requests.new,
+                     inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, audit: Platform::Audit::Log.new, jobs: Jobs::Store.new)
         @source = source
         @api = api
         @bot = bot_id

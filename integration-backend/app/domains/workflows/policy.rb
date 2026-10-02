@@ -30,7 +30,7 @@ module Domains
       sig { params(state: String).returns(T::Boolean) }
       def settled?(state) = %w[idle done].include?(state)
 
-      # Cannot be enabled by ENV: requires reviewed release-bound evidence/code.
+      # Cannot be enabled by the environment: requires reviewed release-bound evidence/code.
       sig { returns(T::Boolean) }
       def dispatch_allowed? = false
     end

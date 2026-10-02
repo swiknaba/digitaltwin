@@ -15,11 +15,11 @@ module Platform
         @worker_id = T.let("#{Process.pid}:#{SecureRandom.uuid}", String)
       end
 
-      sig { void }
-      def run
+      sig { params(heartbeat_dir: String).void }
+      def run(heartbeat_dir:)
         loop do
           tick
-          Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::Worker)
+          Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::Worker, dir: heartbeat_dir)
           Async::Task.current.sleep(0.25)
         end
       end

@@ -21,13 +21,12 @@ module Services
 
       sig do
         params(source: Domains::Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, evidence: Adapters::Git::Evidence,
-               stop_sessions: Sessions::StopWorkflowSessions, queue_release: Reviews::QueueRelease, catalog: Domains::Workflows::Catalog,
-               transitions: Domains::Workflows::Transitions, phase_prompts: Domains::Workflows::PhasePrompts, audit: Platform::Audit::Log,
-               worker_handle: String).void
+               stop_sessions: Sessions::StopWorkflowSessions, worker_handle: String, queue_release: Reviews::QueueRelease, catalog: Domains::Workflows::Catalog,
+               transitions: Domains::Workflows::Transitions, phase_prompts: Domains::Workflows::PhasePrompts, audit: Platform::Audit::Log).void
       end
-      def initialize(source:, herdr:, evidence:, stop_sessions:, queue_release: Reviews::QueueRelease.new, catalog: Domains::Workflows::Catalog.new,
+      def initialize(source:, herdr:, evidence:, stop_sessions:, worker_handle:, queue_release: Reviews::QueueRelease.new, catalog: Domains::Workflows::Catalog.new,
                      transitions: Domains::Workflows::Transitions.new,
-                     phase_prompts: Domains::Workflows::PhasePrompts.new, audit: Platform::Audit::Log.new, worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
+                     phase_prompts: Domains::Workflows::PhasePrompts.new, audit: Platform::Audit::Log.new)
         @source = source
         @verify_sessions = T.let(VerifySessions.new(herdr: herdr), VerifySessions)
         @evidence = evidence

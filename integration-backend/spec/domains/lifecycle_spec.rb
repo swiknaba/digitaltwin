@@ -30,17 +30,17 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   let(:bootstrap) { Services::Sessions::BootstrapController.new(credentials: credentials) }
   let(:execute_operation) { Services::Sessions::ExecuteOperation.new(herdr: herdr, source: source, credentials: credentials, callback_url: "http://fixture.invalid", policy: policy) }
   let(:renew_service) { Services::Sessions::Renew.new(herdr: herdr, source: source, credentials: credentials, policy: policy, renewals: renewals) }
-  let(:reconcile_operation) { Services::Sessions::ReconcileOperation.new(herdr: herdr, source: source, credentials: credentials) }
+  let(:reconcile_operation) { Services::Sessions::ReconcileOperation.new(herdr: herdr, source: source, credentials: credentials, handle: "agent") }
   let(:stop_sessions) { Services::Sessions::StopWorkflowSessions.new }
   let(:role_assignments) { Domains::Workflows::Dto::RoleAssignments.from_hash(roles) }
   let(:request_start) { Services::Workflows::RequestStart.new(source: source, roles: role_assignments) }
-  let(:provision) { Services::Workflows::Provision.new(source: source, api: api, bot_id: bot, worktrees: worktrees, reserve_session: reserve_session, policy: policy) }
-  let(:reconcile_start) { Services::Workflows::ReconcileStart.new(source: source, api: api, bot_id: bot) }
+  let(:provision) { Services::Workflows::Provision.new(source: source, api: api, bot_id: bot, worktrees: worktrees, reserve_session: reserve_session, worktree_root: "/workspace/worktrees", master_channel_id: nil, policy: policy) }
+  let(:reconcile_start) { Services::Workflows::ReconcileStart.new(source: source, api: api, bot_id: bot, agent_handle: "agent") }
   let(:artifact_ready) { Services::Reviews::ArtifactReady.new(herdr: herdr, evidence: evidence) }
   let(:review_finished) { Services::Reviews::ReviewFinished.new(herdr: herdr, evidence: evidence) }
   let(:dispatch_review) { Services::Reviews::DispatchReview.new(herdr: herdr, evidence: evidence, policy: policy) }
   let(:release_queued) { Services::Reviews::ReleaseQueued.new(route: routing) }
-  let(:control_service) { Services::Workflows::Control.new(source: source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions) }
+  let(:control_service) { Services::Workflows::Control.new(source: source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions, worker_handle: "worker") }
   let(:advance) { Services::Workflows::AdvanceApproval.new(evidence: evidence) }
   let(:dispatch) { Services::Workflows::DispatchPhasePrompt.new(source: source, herdr: herdr, evidence: evidence, policy: policy) }
   before do
@@ -142,7 +142,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     ingest = Services::Master::IngestPrompt.new(source: source, bootstrap: bootstrap, configuration: config, credentials: credentials)
     dispatch = Services::Master::Dispatch.new(source: source, herdr: herdr, credentials: credentials, policy: policy)
     reply = Services::Master::Reply.new(authorize: Services::Master::AuthorizeRequest.new(source: source))
-    recover = Services::Master::Recover.new(source: source, herdr: herdr)
+    recover = Services::Master::Recover.new(source: source, herdr: herdr, handle: "agent")
     Struct.new(:ingest_prompt, :dispatch, :reply_service, :recover_service) do
       def ingest(inbox_id) = Platform::Unwrap.call(ingest_prompt.call(inbox_id: inbox_id))
       def call(job:) = dispatch.call(job: job)
@@ -195,14 +195,14 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
   it "raises for an unknown project without creating a thread" do
     id = request("Project work")
-    missing = Services::Workflows::Provision.new(source: source, api: api, bot_id: bot, worktrees: worktrees, reserve_session: reserve_session, policy: policy, directory: double(find: nil))
+    missing = Services::Workflows::Provision.new(source: source, api: api, bot_id: bot, worktrees: worktrees, reserve_session: reserve_session, worktree_root: "/workspace/worktrees", master_channel_id: nil, policy: policy, directory: double(find: nil))
     expect { provision_request(id, missing) }.to raise_error(ArgumentError, "Unknown project")
     expect(client).not_to have_received(:post)
     expect(db[:workflows].count).to eq(0)
   end
   it "keeps real dispatch gated despite durable starts" do
     id = request("Project work")
-    gated = Services::Workflows::Provision.new(source: source, api: api, bot_id: bot, worktrees: worktrees, reserve_session: reserve_session)
+    gated = Services::Workflows::Provision.new(source: source, api: api, bot_id: bot, worktrees: worktrees, reserve_session: reserve_session, worktree_root: "/workspace/worktrees", master_channel_id: nil)
     expect(provision_request(id, gated)).to eq("queued")
     expect(client).not_to have_received(:post)
   end
@@ -491,7 +491,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
         channel_id: channel, thread_id: "t" * 26, post_id: "q" * 26, post_revision: 1, event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: false, body: "@worker pause",
         actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "u" * 26, channel_id: channel, member: true, bot: false)
       )))
-      Services::Workflows::Control.new(source: worker_source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions)
+      Services::Workflows::Control.new(source: worker_source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions, worker_handle: "worker")
     end
 
     def job_status(kind) = db[:jobs][kind: kind.serialize][:status]

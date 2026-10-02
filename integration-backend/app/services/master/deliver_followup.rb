@@ -20,12 +20,12 @@ module Services
       Followup = Domains::Commander::Dto::FollowupView
 
       sig do
-        params(herdr: Adapters::Herdr::Client, resolver: Messaging::DeliveryVerifier, membership: Messaging::MembershipCheck, policy: Domains::Workflows::Policy,
-               handle: String, followups: Domains::Commander::Followups, inbox: Messaging::Inbox, outbox: Messaging::Outbox,
+        params(herdr: Adapters::Herdr::Client, resolver: Messaging::DeliveryVerifier, membership: Messaging::MembershipCheck, handle: String,
+               policy: Domains::Workflows::Policy, followups: Domains::Commander::Followups, inbox: Messaging::Inbox, outbox: Messaging::Outbox,
                catalog: Domains::Workflows::Catalog, registry: Domains::Sessions::Registry, operations: Domains::Sessions::Operations,
                renewals: Domains::Sessions::Renewals, jobs: Platform::Jobs::Store, lock: Platform::Lock, transaction: Platform::Transaction).void
       end
-      def initialize(herdr:, resolver:, membership:, policy: Domains::Workflows::Policy.new, handle: ENV.fetch("AGENT_HANDLE", "agent"),
+      def initialize(herdr:, resolver:, membership:, handle:, policy: Domains::Workflows::Policy.new,
                      followups: Domains::Commander::Followups.new, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new,
                      catalog: Domains::Workflows::Catalog.new, registry: Domains::Sessions::Registry.new, operations: Domains::Sessions::Operations.new,
                      renewals: Domains::Sessions::Renewals.new, jobs: Platform::Jobs::Store.new, lock: Platform::Lock.new, transaction: Platform::Transaction.new)
