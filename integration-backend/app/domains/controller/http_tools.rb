@@ -18,7 +18,7 @@ module Domains
         raise ArgumentError, "Expected private HTTP(S) base URL" unless %w[http https].include?(@base.scheme) && @base.host && !@base.userinfo && ["", "/"].include?(@base.path) && !@base.query && !@base.fragment
       end
 
-      sig { returns(T::Array[JsonObject]) }
+      sig { override.returns(T::Array[JsonObject]) }
       def definitions
         value = request("GET", "/internal/master/manifest").fetch("tools")
         raise ArgumentError, "Invalid tool manifest" unless value.is_a?(Array) && value.all? { |item| json_object?(item) }
@@ -26,7 +26,7 @@ module Domains
         value
       end
 
-      sig { params(name: String, args: JsonObject, token: String).returns(Object) }
+      sig { override.params(name: String, args: JsonObject, token: String).returns(Object) }
       def call(name, args, token:)
         request("POST", "/internal/master/tools", { "name" => name, "arguments" => args }, token).fetch("result")
       end
