@@ -103,6 +103,12 @@
 - Seed writable UID2000 chat configuration in a network-free one-shot initializer. Keep Runtime volume setup opt-in and push/email disabled.
 - Verify root Compose contracts and disposable derived-chat dependency startup/database isolation; retain all authenticated chat/provider and combined-stack gates. Publication remains blocked; no alternate route is used.
 
+## 2026-10-02 — Backend loading conventions
+
+- Remove explicit requires from integration-backend application source and rely on Bundler group loading plus Zeitwerk.
+- Remove `require: false` from all Gemfile dependencies and add component rules for typed Ruby, persistence, and checkpoint invariants.
+- Record the backend loading boundary in repository memory for future component work.
+
 ## 2026-10-01 — Reviewed Runtime root check
 
 - Integrate the review-cleared Runtime merge locally; build only its explicit offline target and verify fresh root volume initialization, native Herdr 0.9.3/protocol22 health, and same-UID mode0600 socket access from a second container.

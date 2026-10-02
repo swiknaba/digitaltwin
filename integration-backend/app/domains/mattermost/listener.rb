@@ -1,8 +1,6 @@
 # typed: strict
 # frozen_string_literal: true
 
-require "async/http/endpoint"
-require "async/websocket/client"
 
 module Domains
   module Mattermost

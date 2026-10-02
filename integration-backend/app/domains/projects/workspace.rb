@@ -1,8 +1,6 @@
 # typed: strict
 # frozen_string_literal: true
 
-require "fileutils"
-require "open3"
 module Domains
   module Projects
     class Workspace
