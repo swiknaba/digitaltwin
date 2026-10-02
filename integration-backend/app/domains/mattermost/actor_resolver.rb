@@ -5,6 +5,7 @@ module Domains
   module Mattermost
     class ActorResolver
       extend T::Sig
+      include Domains::Controller::Source::DeliveryResolver
 
       KINDS = T.let(["posted", "post_edited", "post_deleted"].freeze, T::Array[String])
       EventValue = T.type_alias { T.any(String, Integer, T::Hash[String, String]) }
@@ -35,7 +36,7 @@ module Domains
         delivery(post_id: candidate.id, channel_id: candidate.channel_id, event_kind: kind)
       end
 
-      sig { params(post_id: String, channel_id: String, event_kind: String).returns(VerifiedDelivery) }
+      sig { override.params(post_id: String, channel_id: String, event_kind: String).returns(VerifiedDelivery) }
       def delivery(post_id:, channel_id:, event_kind:)
         identifier!(post_id)
         identifier!(channel_id)

@@ -4,7 +4,9 @@
 module Domains
   module Mattermost
     class VerifiedDelivery < T::Struct
-      TransportValue = T.type_alias { T.any(String, Integer, T::Boolean, NilClass) }
+      # HTTP JSON is a transport boundary; endpoint parsers validate fields
+      # before they become a verified delivery identity.
+      TransportValue = T.type_alias { Object }
       TransportResponse = T.type_alias { T::Hash[String, TransportValue] }
 
       module Transport

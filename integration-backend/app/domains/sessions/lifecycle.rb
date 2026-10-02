@@ -168,6 +168,8 @@ module Domains
       def queue_renewal(session) = self.class.schedule_renewal(@db, session)
 
       class << self
+        extend T::Sig
+
         sig { params(db: Sequel::Database, session: Row).returns(String) }
         def schedule_renewal(db, session)
           id = row_string(session, :id)

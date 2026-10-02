@@ -7,6 +7,7 @@ module Domains
   module Controller
     class GitRevision
       extend T::Sig
+      include Approvals::CurrentCommit
 
       Workflow = T.type_alias { T::Hash[Symbol, Object] }
 
@@ -15,7 +16,7 @@ module Domains
         @root = root
       end
 
-      sig { params(workflow: Workflow).returns(String) }
+      sig { override.params(workflow: Workflow).returns(String) }
       def call(workflow)
         root = File.realpath(@root)
         path = File.realpath(workflow_value(workflow, :worktree_path))

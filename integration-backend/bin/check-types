@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+cd "$(dirname "$0")/.."
+
+missing_sigils="$(find app config db lib -type f -name '*.rb' -print | sort | while IFS= read -r file; do
+  if ! head -n 1 "$file" | grep -qx '# typed: strict'; then
+    printf '%s\n' "$file"
+  fi
+done)"
+
+if [ -n "$missing_sigils" ]; then
+  printf '%s\n%s\n' "Every production Ruby file must start with # typed: strict:" "$missing_sigils" >&2
+  exit 1
+fi
+
+metrics="$(bundle exec spoom srb metrics show --dump app config db lib bin)"
+printf '%s\n' "$metrics"
+
+if ! printf '%s\n' "$metrics" | awk '
+  $1 == "methods" { total = $2; saw_total = 1 }
+  $1 == "methods_with_srb_sig" { signed = $2; saw_signed = 1 }
+  $1 == "methods_without_sig" { unsigned = $2 }
+  END { exit(!(saw_total && saw_signed && total == signed && unsigned == 0)) }
+'; then
+  printf '%s\n' "Spoom reports unsigned production methods." >&2
+  exit 1
+fi

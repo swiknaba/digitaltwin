@@ -10,6 +10,7 @@ module Domains
   module Mattermost
     class Client
       extend T::Sig
+      include VerifiedDelivery::Transport
 
       JsonObject = T.type_alias { T::Hash[String, Object] }
 
@@ -55,7 +56,7 @@ module Domains
         value
       end
 
-      sig { params(path: String).returns(JsonObject) }
+      sig { override.params(path: String).returns(JsonObject) }
       def get(path)
         request("GET", path)
       end
