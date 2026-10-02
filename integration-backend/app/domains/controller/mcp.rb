@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "sorbet-runtime"
 require "stringio"
 module Domains
   module Controller
