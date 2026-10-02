@@ -43,7 +43,7 @@ module Domains
         end
         case name
         when "list_projects"
-          @db[:projects].all.select { |p| @services.source.call(inbox_id: request_inbox_id(r), destination: p[:channel_id]).success? rescue false }.map { |p| p.slice(:id, :slug, :channel_id) }
+          Domains::Projects::Directory.new.all.select { |p| @services.source.call(inbox_id: request_inbox_id(r), destination: p.channel_id).success? rescue false }.map { |p| { id: p.id, slug: p.slug, channel_id: p.channel_id } }
         when "list_workflows"
           @db[:workflows].where(archived_at: nil).all.select { |w|
             @services.source.call(inbox_id: request_inbox_id(r), destination: w[:channel_id]).success? rescue false

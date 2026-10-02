@@ -16,7 +16,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     Domains::Messaging::Dto::VerifiedDelivery.new(channel_id: master_channel, thread_id: "r" * 26, post_id: "p" * 26, post_revision: 1,
                                                   event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: true, body: "Build this project", actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "u" * 26, channel_id: master_channel, member: true, bot: false))
   }
-  let(:workspace) { double }
+  let(:worktrees) { double }
   let(:routing) { double(route: { id: 123 }) }
   let(:evidence) { double(artifact: true, review: true, approval: true, approved_artifact: true, head: commit, current: commit, base: "f" * 40) }
   let(:herdr) { double }
@@ -24,7 +24,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   let(:client) { double }
   let(:api) { Adapters::Mattermost::Api.new(client: client) }
   let(:sessions) { Domains::Sessions::Lifecycle.new(db, herdr: herdr, source: source, credential_root: @credential_root, callback_url: "http://fixture.invalid", policy: policy) }
-  let(:provision) { Domains::Workflows::Provision.new(db, source: source, api: api, bot_id: bot, workspace: workspace, sessions: sessions, roles: roles, policy: policy) }
+  let(:provision) { Domains::Workflows::Provision.new(db, source: source, api: api, bot_id: bot, worktrees: worktrees, sessions: sessions, roles: roles, policy: policy) }
   let(:reviews) { Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: routing, policy: policy) }
   let(:workflows) { Domains::Workflows::Coordinator.new(db, source: source, herdr: herdr, evidence: evidence, reviews: reviews, sessions: sessions, policy: policy) }
   before do
@@ -32,7 +32,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     @inbox = db[:inbox].insert(channel_id: master_channel, thread_id: delivery.thread_id, post_id: delivery.post_id, post_revision: 1,
                                event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
     db[:projects].insert(id: "project", channel_id: channel, slug: "owner/repo", remote_identity: "github.com/owner/repo", workspace: "/workspace/repos/owner/repo")
-    allow(workspace).to receive(:for_workflow) { |**args| "/workspace/worktrees/#{args[:workflow_id]}" }
+    allow(worktrees).to receive(:call) { |**args| Kirei::Services::Result.new(result: "/workspace/worktrees/#{args[:workflow_id]}") }
     allow(client).to receive(:get) do |path|
       path.end_with?("/users/me") ? { "id" => bot, "is_bot" => true } : { "channel_id" => channel, "user_id" => bot }
     end
@@ -88,7 +88,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
   it "keeps real dispatch gated despite durable starts" do
     id = provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")
-    gated = Domains::Workflows::Provision.new(db, source: source, api: api, bot_id: bot, workspace: workspace, sessions: sessions, roles: roles)
+    gated = Domains::Workflows::Provision.new(db, source: source, api: api, bot_id: bot, worktrees: worktrees, sessions: sessions, roles: roles)
     expect(gated.execute(id)).to eq("queued")
     expect(client).not_to have_received(:post)
   end

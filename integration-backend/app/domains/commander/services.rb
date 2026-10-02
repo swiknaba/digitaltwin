@@ -53,12 +53,12 @@ module Domains
                membership: Domains::Messaging::MembershipCheck,
                api: Adapters::Mattermost::Api, bot_id: String, roles: Roles,
                policy: Domains::Workflows::Policy, herdr: Adapters::Herdr::Client,
-               evidence: Adapters::Git::Evidence, workspace: T.nilable(Domains::Projects::Workspace),
+               evidence: Adapters::Git::Evidence, worktrees: T.nilable(::Services::Projects::PrepareWorktree),
                credential_root: String).void
       end
       def initialize(db, resolver:, membership:, api:, bot_id:, roles:, policy: Domains::Workflows::Policy.new,
                      herdr: Adapters::Herdr::Client.new, evidence: Adapters::Git::Evidence.new,
-                     workspace: nil, credential_root: "/run/herdr/session-credentials")
+                     worktrees: nil, credential_root: "/run/herdr/session-credentials")
         @db = db
         revision = Adapters::Git::Revision.new
         current_commit = ->(worktree) { revision.call(worktree_path: worktree.worktree_path, branch: worktree.branch) }
@@ -75,7 +75,7 @@ module Domains
         @reviews = T.let(Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: @routing, policy: policy), Domains::Reviews::Coordinator)
         @workflows = T.let(Domains::Workflows::Coordinator.new(db, source: @source, herdr: herdr, evidence: evidence, reviews: @reviews, sessions: @sessions, policy: policy), Domains::Workflows::Coordinator)
         @provision = T.let(Domains::Workflows::Provision.new(db, source: @source, api: api, bot_id: bot_id,
-                                                                 workspace: workspace || Domains::Projects::Workspace.new, sessions: @sessions, roles: roles, policy: policy), Domains::Workflows::Provision)
+                                                                 worktrees: worktrees || ::Services::Projects::PrepareWorktree.new, sessions: @sessions, roles: roles, policy: policy), Domains::Workflows::Provision)
         controller_role = roles["controller"]
         @master = T.let(controller_role && Master.new(db, sessions: @sessions, source: @source, herdr: herdr,
                                                           configuration: controller_role, credential_root: credential_root, policy: policy), T.nilable(Master))
@@ -200,10 +200,10 @@ module Domains
         start = command.is_a?(Commands::WorkerCommand) && command.action == Commands::WorkerAction::Start && command.single_space_separator
         raise ArgumentError, "Human root start required" unless d.root_post && start
 
-        project = @db[:projects][channel_id: d.channel_id]
+        project = Domains::Projects::Directory.new.for_channel(channel_id: d.channel_id)
         raise ArgumentError, "Use verified project mapping through Master" unless project
 
-        @provision.request(inbox_id: id, project_id: project[:id], title: d.body, existing_thread: d.thread_id)
+        @provision.request(inbox_id: id, project_id: project.id, title: d.body, existing_thread: d.thread_id)
         Decision.complete
       end
 

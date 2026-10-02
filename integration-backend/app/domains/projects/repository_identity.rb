@@ -6,12 +6,16 @@ module Domains
     class RepositoryIdentity
       extend T::Sig
 
+      SLUG_PATTERN = T.let(%r{\A[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_.-]*\z}, Regexp)
+
+      sig { params(slug: String).returns(T::Boolean) }
+      def self.slug?(slug)
+        slug.match?(SLUG_PATTERN) && !slug.end_with?(".git", ".")
+      end
+
       sig { params(slug: String).returns(String) }
       def self.slug!(slug)
-        raise ArgumentError,
-              "Expected owner/repository slug" unless slug.match?(%r{\A[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_.-]*\z}) && !slug.end_with?(
-                ".git", "."
-              )
+        raise ArgumentError, "Expected owner/repository slug" unless slug?(slug)
 
         slug
       end

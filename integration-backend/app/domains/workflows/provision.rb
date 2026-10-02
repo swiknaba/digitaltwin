@@ -15,18 +15,21 @@ module Domains
           source: Domains::Messaging::VerifyHumanSource,
           api: Adapters::Mattermost::Api,
           bot_id: String,
-          workspace: Domains::Projects::Workspace,
+          worktrees: ::Services::Projects::PrepareWorktree,
           sessions: Domains::Sessions::Lifecycle,
           roles: Roles,
-          policy: Policy
+          policy: Policy,
+          directory: Domains::Projects::Directory
         ).void
       end
-      def initialize(db, source:, api:, bot_id:, workspace:, sessions:, roles:, policy: Policy.new)
+      def initialize(db, source:, api:, bot_id:, worktrees:, sessions:, roles:, policy: Policy.new,
+                     directory: Domains::Projects::Directory.new)
         @db = db
         @source = source
         @api = api
         @bot = bot_id
-        @workspace = workspace
+        @worktrees = worktrees
+        @directory = directory
         @sessions = sessions
         @roles = roles
         @policy = policy
@@ -34,10 +37,10 @@ module Domains
 
       sig { params(inbox_id: Integer, project_id: String, title: String, existing_thread: T.nilable(String)).returns(String) }
       def request(inbox_id:, project_id:, title:, existing_thread: nil)
-        project = @db[:projects][id: project_id] or raise ArgumentError, "Unknown project"
-        d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: project[:channel_id]))
+        project = @directory.find(id: project_id) or raise ArgumentError, "Unknown project"
+        d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: project.channel_id))
         raise ArgumentError, "Invalid title" unless title.bytesize.between?(1, 1000)
-        raise ArgumentError, "Existing thread must be verified human source" if existing_thread && (d.channel_id != project[:channel_id] || d.thread_id != existing_thread || !d.root_post)
+        raise ArgumentError, "Existing thread must be verified human source" if existing_thread && (d.channel_id != project.channel_id || d.thread_id != existing_thread || !d.root_post)
 
         writer, reviewer = @roles.fetch("writer"), @roles.fetch("reviewer")
         raise ArgumentError, "Writer/reviewer diversity required" unless writer.fetch("provider") != reviewer.fetch("provider") && writer.fetch("family") != reviewer.fetch("family")
@@ -75,20 +78,20 @@ module Domains
           return request[:state] unless request[:state] == "queued"
           return "queued" unless @policy.dispatch_allowed?
 
-          project = @db[:projects][id: request[:project_id]]
-          delivery = Platform::Unwrap.call(@source.call(inbox_id: request[:inbox_id], destination: project[:channel_id]))
+          project = project_for(request[:project_id])
+          delivery = Platform::Unwrap.call(@source.call(inbox_id: request[:inbox_id], destination: project.channel_id))
           thread = request[:thread_id]
           unless thread
-            raise ArgumentError, "Unverified thread bot" unless thread_bot?(project[:channel_id])
+            raise ArgumentError, "Unverified thread bot" unless thread_bot?(project.channel_id)
 
             @db[:workflow_requests].where(id: id).update(state: "sending")
             begin
               raise IOError, "Dispatch lease lost" unless before_effect.call
 
               title = request[:parameters].fetch("title")
-              post = @api.create_post(Adapters::Mattermost::Dto::NewPost.new(channel_id: project[:channel_id], root_id: "", message: title,
+              post = @api.create_post(Adapters::Mattermost::Dto::NewPost.new(channel_id: project.channel_id, root_id: "", message: title,
                                                                              props: { "digitaltwin_workflow_request" => id }))
-              valid = post.id.match?(/\A[a-z0-9]{26}\z/) && post.channel_id == project[:channel_id]
+              valid = post.id.match?(/\A[a-z0-9]{26}\z/) && post.channel_id == project.channel_id
               valid &&= post.root_id.to_s.empty? && post.user_id == @bot && post.message == title
               valid &&= post.props["digitaltwin_workflow_request"] == id
               raise IOError, "Unverified created thread" unless valid
@@ -102,7 +105,7 @@ module Domains
           end
           workflow = bind(request, project, thread, delivery)
           workflow_id = row_string(workflow, :id)
-          path = @workspace.for_workflow(slug: project[:slug], workflow_id: workflow_id, branch: row_string(workflow, :branch))
+          path = Platform::Unwrap.call(@worktrees.call(slug: project.slug, workflow_id: workflow_id, branch: row_string(workflow, :branch)))
           raise ArgumentError, "Worktree binding changed" unless path == row_string(workflow, :worktree_path)
 
           @sessions.reserve(workflow_id: workflow_id, role: "writer")
@@ -127,8 +130,8 @@ module Domains
 
         Platform::Lock.new.call(key: "provision:#{id}") do
           request = @db[:workflow_requests][id: id] or raise ArgumentError, "Unknown start request"
-          project = @db[:projects][id: request[:project_id]]
-          d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: project[:channel_id]))
+          project = project_for(request[:project_id])
+          d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: project.channel_id))
           original = T.must(Domains::Messaging::Inbox.new.find(id: request[:inbox_id]))
           command = "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-start #{id} #{thread_id}"
           raise ArgumentError, "Exact original-human thread recovery required" unless d.actor.user_id == original.user_id && d.body == command
@@ -148,9 +151,9 @@ module Domains
           lease_expires_at = job&.lease_expires_at
           raise ArgumentError, "Creation lease still live" if job&.status == Platform::Jobs::Dto::JobStatus::Running && lease_expires_at && lease_expires_at > Time.now
 
-          valid = thread_bot?(project[:channel_id])
+          valid = thread_bot?(project.channel_id)
           post = @api.post(thread_id)
-          valid &&= post.id == thread_id && post.channel_id == project[:channel_id] && post.root_id.to_s.empty? && post.delete_at.zero?
+          valid &&= post.id == thread_id && post.channel_id == project.channel_id && post.root_id.to_s.empty? && post.delete_at.zero?
           valid &&= post.user_id == @bot && post.message == request[:parameters]["title"] && post.props["digitaltwin_workflow_request"] == id
           raise ArgumentError, "Unproved created thread" unless valid
 
@@ -176,7 +179,7 @@ module Domains
       sig do
         params(
           request: T::Hash[Symbol, Object],
-          project: T::Hash[Symbol, Object],
+          project: Domains::Projects::Dto::Project,
           thread: String,
           delivery: Domains::Messaging::Dto::VerifiedDelivery
         ).returns(T::Hash[Symbol, Object])
@@ -187,11 +190,11 @@ module Domains
           if request[:workflow_id]
             return @db[:workflows][id: request[:workflow_id]]
           end
-          raise ArgumentError, "Active thread already owns a workflow" if @db[:workflows][channel_id: project[:channel_id], thread_id: thread, archived_at: nil]
+          raise ArgumentError, "Active thread already owns a workflow" if @db[:workflows][channel_id: project.channel_id, thread_id: thread, archived_at: nil]
 
           id = SecureRandom.uuid
           root = ENV.fetch("WORKTREE_ROOT", "/workspace/worktrees")
-          @db[:workflows].insert(id: id, project_id: project[:id], channel_id: project[:channel_id], thread_id: thread,
+          @db[:workflows].insert(id: id, project_id: project.id, channel_id: project.channel_id, thread_id: thread,
                                  branch: "digitaltwin/#{id}", worktree_path: File.join(root, id), source_inbox_id: request[:inbox_id], role_configurations: Sequel.pg_jsonb(object_value(request, :parameters).fetch("roles")))
           @db[:workflow_requests].where(id: request[:id]).update(workflow_id: id)
           threads = [delivery.thread_id]
@@ -209,6 +212,13 @@ module Domains
         me = @api.me
         member = @api.member(channel_id: channel_id, user_id: @bot)
         me.id == @bot && me.bot && !member.nil? && member.channel_id == channel_id && member.user_id == @bot
+      end
+
+      sig { params(id: Object).returns(Domains::Projects::Dto::Project) }
+      private def project_for(id)
+        raise ArgumentError, "Malformed database row" unless id.is_a?(String)
+
+        @directory.find(id: id) or raise ArgumentError, "Unknown project"
       end
 
       sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(String) }
