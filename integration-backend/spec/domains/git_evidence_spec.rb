@@ -13,7 +13,7 @@ RSpec.describe Domains::Reviews::GitEvidence do
       run.call("-c", "commit.gpgsign=false", "commit", "-qm", "spec")
       target = run.call("rev-parse", "HEAD")
       w = { worktree_path: path, branch: "workflow", artifacts: { "spec" => { "commit" => target, "path" => "docs/spec.md" } } }
-      evidence = described_class.new(revision: Domains::Controller::GitRevision.new(root: root))
+      evidence = described_class.new(revision: Domains::Commander::GitRevision.new(root: root))
       record = { gate: "spec", target_commit: target, review_path: "docs/review.md" }
       config = { "provider" => "fixture", "model" => "fixture", "family" => "fixture" }
       evidence.artifact(w, target, "docs/spec.md")

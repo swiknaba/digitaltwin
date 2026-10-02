@@ -6,10 +6,10 @@ module Kirei::Routing
 end
 Kirei::Routing::Router.add_routes([
                                     Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::POST, path: "/internal/callbacks/say",
-                                                              controller: Controllers::Callbacks, action: "say"),
-                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::POST, path: "/internal/callbacks/artifact-ready", controller: Controllers::Callbacks, action: "artifact_ready"),
-                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::POST, path: "/internal/callbacks/review-ready", controller: Controllers::Callbacks, action: "review_ready"),
-                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::POST, path: "/internal/master/tools", controller: Controllers::Master, action: "tools"),
-                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::POST, path: "/internal/master/reply", controller: Controllers::Master, action: "reply"),
-                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::GET, path: "/internal/master/manifest", controller: Controllers::Master, action: "manifest")
+                                                              controller: Domains::Commander::Http::Callbacks, action: "say"),
+                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::POST, path: "/internal/callbacks/artifact-ready", controller: Domains::Commander::Http::Callbacks, action: "artifact_ready"),
+                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::POST, path: "/internal/callbacks/review-ready", controller: Domains::Commander::Http::Callbacks, action: "review_ready"),
+                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::POST, path: "/internal/master/tools", controller: Domains::Commander::Http::Master, action: "tools"),
+                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::POST, path: "/internal/master/reply", controller: Domains::Commander::Http::Master, action: "reply"),
+                                    Kirei::Routing::Route.new(verb: Kirei::Routing::Verb::GET, path: "/internal/master/manifest", controller: Domains::Commander::Http::Master, action: "manifest")
                                   ])

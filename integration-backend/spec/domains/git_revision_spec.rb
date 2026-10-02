@@ -1,5 +1,5 @@
 require_relative "../spec_helper"
-RSpec.describe Domains::Controller::GitRevision do
+RSpec.describe Domains::Commander::GitRevision do
   it "requires the bound clean worktree and reports its exact revision" do
     Dir.mktmpdir do |root|
       path = File.join(root, "workflow")

@@ -5,7 +5,7 @@ module Domains
   module Mattermost
     class ActorResolver
       extend T::Sig
-      include Domains::Controller::Source::DeliveryResolver
+      include Domains::Commander::Source::DeliveryResolver
 
       KINDS = T.let(["posted", "post_edited", "post_deleted"].freeze, T::Array[String])
       EventValue = T.type_alias { T.any(String, Integer, T::Hash[String, String]) }

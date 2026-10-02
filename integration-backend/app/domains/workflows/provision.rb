@@ -11,13 +11,13 @@ module Domains
       Job = T.type_alias { T::Hash[Symbol, Object] }
       # Inbox rows are PostgreSQL integer primary keys. String IDs are retained
       # for callers that originate from a transport adapter and are validated by
-      # Controller::Source before becoming authority for a workflow action.
+      # Commander::Source before becoming authority for a workflow action.
       InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
         params(
           db: Sequel::Database,
-          source: Domains::Controller::Source,
+          source: Domains::Commander::Source,
           client: Domains::Mattermost::Client,
           bot_id: String,
           workspace: Domains::Projects::Workspace,

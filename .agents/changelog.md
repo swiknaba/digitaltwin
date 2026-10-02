@@ -143,3 +143,12 @@
 - Promote the exact tested resolved service graph into default Compose; retain old overlay paths as no-op compatibility files and keep authenticated listener/push opt-in.
 - Add local `scripts/dev` bootstrap with preserved environment/data, explicit checksum-verified callback staging, and normal Compose build/start. Verify graph equivalence, 15 root tests, shell/Python syntax, and whitespace.
 - Require an independent targeted default-entrypoint rerun before treating the promotion as accepted. Publication remains blocked; authenticated chat/provider/MCP/device and full Phase 0 gates remain open.
+
+## 2026-10-02 — Backend domain-only layout
+
+- Move HTTP controllers, DTOs, and errors from `app/controllers/` to `app/domains/orchestration/http/` (`Domains::Orchestration::Http`). Rename `requests/` to `dto/`.
+- Rename the `controller` domain to `orchestration` (`Domains::Orchestration`), including its spec, bin scripts, and contract paths.
+- Verify whole-project Sorbet check passes. Six RSpec failures (migration tasks, projects) also fail on the original commit.
+- Rename the `orchestration` domain to `commander` (`Domains::Commander`).
+- Rename the `forge` domain to `git_repos` (`Domains::GitRepos`) and the `Projects::Enroll` `forge:` argument to `git_repos:`.
+- Add the layered DDD refactor plan `docs/superpowers/plans/2026-10-02-backend-ddd-refactor.md`, and update backend `AGENTS.md` layout rules to match it.

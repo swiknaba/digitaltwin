@@ -10,13 +10,13 @@ module Domains
         params(
           db: Sequel::Database,
           workspace: Workspace,
-          forge: Domains::Forge::Client
+          git_repos: Domains::GitRepos::Client
         ).void
       end
-      def initialize(db, workspace:, forge: Domains::Forge::Client.new)
+      def initialize(db, workspace:, git_repos: Domains::GitRepos::Client.new)
         @db = db
         @workspace = workspace
-        @forge = forge
+        @git_repos = git_repos
       end
 
       sig do
@@ -46,9 +46,9 @@ module Domains
           return outcome("blocked", "Choose clone/create_private/stop") if choice == "stop"
 
           # Network work happens before short DB registration, never under a lock.
-          @forge.create_private(slug: slug) if choice == "create_private"
+          @git_repos.create_private(slug: slug) if choice == "create_private"
           FileUtils.mkdir_p(File.dirname(path))
-          @forge.clone(slug: slug, destination: path)
+          @git_repos.clone(slug: slug, destination: path)
         end
         verified = @workspace.resolve(slug: slug)
         @db[:projects].insert(id: SecureRandom.uuid, channel_id: channel_id, slug: slug,

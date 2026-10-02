@@ -11,7 +11,7 @@ Async do
   if ENV["CHAT_VALIDATION_MODE"] == "1"
     delivery = Domains::Mattermost::Delivery.from_env(db)
     handlers["mattermost.post"] = delivery.method(:call)
-    services = Domains::Controller::Services.from_env(db)
+    services = Domains::Commander::Services.from_env(db)
     handlers.merge!(services.handlers)
     services.sessions.renew_due
   end

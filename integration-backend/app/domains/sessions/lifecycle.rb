@@ -11,14 +11,14 @@ module Domains
       Configuration = T.type_alias { T::Hash[String, Object] }
       Job = T.type_alias { T::Hash[Symbol, Object] }
       # Reconciliation is invoked from a persisted inbox record (integer) or a
-      # transport adapter (string); Controller::Source revalidates either form.
+      # transport adapter (string); Commander::Source revalidates either form.
       InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
         params(
           db: Sequel::Database,
           herdr: Domains::Sessions::Herdr,
-          source: Domains::Controller::Source,
+          source: Domains::Commander::Source,
           callback_url: String,
           credential_root: String,
           policy: Domains::Workflows::Policy

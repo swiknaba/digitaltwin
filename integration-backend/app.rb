@@ -17,15 +17,8 @@ Dir[File.join(__dir__, "config/initializers", "*.rb")].each { require(_1) }
 APP_ROOT = T.let(T.must(__dir__), String)
 APP_LOADER = Zeitwerk::Loader.new
 APP_LOADER.tag = File.basename(__FILE__, ".rb")
-[
-  "/app",
-  "/app/models",
-  "/app/services",
-].each do |root_namespace|
-  # a root namespace skips the auto-infered module for this folder
-  # so we don't have to write e.g. `Models::` or `Services::`
-  APP_LOADER.push_dir("#{File.dirname(__FILE__)}#{root_namespace}")
-end
+# every application class lives in a domain: `app/domains/<domain>/` maps to `Domains::<Domain>`
+APP_LOADER.push_dir("#{File.dirname(__FILE__)}/app")
 APP_LOADER.setup
 
 # Fifth: load configs

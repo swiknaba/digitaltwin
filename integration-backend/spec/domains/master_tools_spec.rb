@@ -3,9 +3,9 @@ require "stringio"
 RSpec.describe "Request-bound Master tools and stdio MCP" do
   let(:db) { Kirei::App.raw_db_connection }
   let(:source) { double(human: true) }
-  let(:requests) { Domains::Controller::Requests.new(db, source: source) }
+  let(:requests) { Domains::Commander::Requests.new(db, source: source) }
   let(:services) { double(source: source, provision: double(request: "provision-id")) }
-  let(:tools) { Domains::Controller::Tools.new(db, services: services, requests: requests) }
+  let(:tools) { Domains::Commander::Tools.new(db, services: services, requests: requests) }
   before do
     @inbox = db[:inbox].insert(channel_id: "master", thread_id: "root", post_id: "human-post", post_revision: 1, event_kind: "posted", user_id: "human", verified_delivery: Sequel.pg_jsonb({}))
     db[:sessions].insert(id: "controller", role: "controller", pane_id: "pane", alias: "master", generation: 1, credential_digest: "session-digest", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({}))
@@ -37,7 +37,7 @@ RSpec.describe "Request-bound Master tools and stdio MCP" do
       File.write(token_path, "request-token")
       input = StringIO.new("invalid\n" + JSON.generate(jsonrpc: "2.0", id: 1, method: "initialize") + "\n" + JSON.generate(jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_projects", arguments: { request_id: "request" } }) + "\n")
       output = StringIO.new
-      Domains::Controller::Mcp.new(tools: tools, token_file: token_path).serve(input: input, output: output)
+      Domains::Commander::Mcp.new(tools: tools, token_file: token_path).serve(input: input, output: output)
       rows = output.string.lines.map { |line| JSON.parse(line) }
       expect(rows[0].dig("error", "code")).to eq(-32700)
       expect(rows[1].dig("result", "serverInfo", "name")).to eq("digitaltwin")

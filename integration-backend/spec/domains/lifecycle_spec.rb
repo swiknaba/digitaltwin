@@ -247,7 +247,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     sid = sessions.bootstrap(configuration: config)
     identity = { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "master-conversation" }
     db[:sessions].where(id: sid).update(active: true, pane_id: "master-pane", runtime_identity: Sequel.pg_jsonb(identity))
-    master = Domains::Controller::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
+    master = Domains::Commander::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
     request = master.ingest(@inbox)
     db[:jobs].exclude(kind: "master.dispatch").update(available_at: Time.now + 3600)
     store = Domains::Jobs::Store.new
@@ -354,7 +354,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
 
   it "recovers Controller startup only for the first associated human request and exact neutral conversation" do
     config = roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini")
-    master = Domains::Controller::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
+    master = Domains::Commander::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
     master.ingest(@inbox)
     controller = db[:sessions][role: "controller"]
     op = db[:session_operations][session_id: controller[:id]]

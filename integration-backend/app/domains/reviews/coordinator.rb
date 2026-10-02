@@ -15,7 +15,7 @@ module Domains
 
       sig do
         params(db: Sequel::Database, herdr: Domains::Sessions::Herdr,
-               evidence: GitEvidence, routing: Domains::Controller::Routing,
+               evidence: GitEvidence, routing: Domains::Commander::Routing,
                policy: Domains::Workflows::Policy).void
       end
       def initialize(db, herdr:, evidence:, routing:, policy: Domains::Workflows::Policy.new)

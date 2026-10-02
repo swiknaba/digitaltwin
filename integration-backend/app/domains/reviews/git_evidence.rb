@@ -14,8 +14,8 @@ module Domains
       Approval = T.type_alias { T::Hash[Symbol, String] }
       Configuration = T.type_alias { T::Hash[String, String] }
 
-      sig { params(revision: Domains::Controller::GitRevision).void }
-      def initialize(revision: Domains::Controller::GitRevision.new)
+      sig { params(revision: Domains::Commander::GitRevision).void }
+      def initialize(revision: Domains::Commander::GitRevision.new)
         @revision = revision
       end
 

@@ -3,9 +3,9 @@
 # frozen_string_literal: true
 
 # Standalone stdio bridge: no database or provider credentials in Runtime.
-source_root = File.expand_path("../app/domains/controller", __dir__)
+source_root = File.expand_path("../app/domains/commander", __dir__)
 source_root = __dir__ unless File.directory?(source_root)
 require File.join(source_root, "mcp.rb")
 require File.join(source_root, "http_tools.rb")
-tools = Domains::Controller::HttpTools.new(url: ENV.fetch("DIGITALTWIN_CALLBACK_URL"))
-Domains::Controller::Mcp.new(tools: tools, token_file: ENV.fetch("DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE")).serve
+tools = Domains::Commander::HttpTools.new(url: ENV.fetch("DIGITALTWIN_CALLBACK_URL"))
+Domains::Commander::Mcp.new(tools: tools, token_file: ENV.fetch("DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE")).serve

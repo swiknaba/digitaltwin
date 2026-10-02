@@ -8,13 +8,13 @@ module Domains
 
       Job = T.type_alias { T::Hash[Symbol, Object] }
       # Persisted inbox IDs are integers; adapters may provide a string form
-      # that Controller::Source resolves and verifies at the authority boundary.
+      # that Commander::Source resolves and verifies at the authority boundary.
       InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
         params(
           db: Sequel::Database,
-          source: Domains::Controller::Source,
+          source: Domains::Commander::Source,
           herdr: Domains::Sessions::Herdr,
           evidence: Domains::Reviews::GitEvidence,
           reviews: Domains::Reviews::Coordinator,

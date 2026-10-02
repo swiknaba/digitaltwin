@@ -247,9 +247,9 @@ Workflow notices require a verified thread; Master replies may use source-channe
 
 ## Task 5: Enrollment and Git Workspace
 
-**Files:** Create `db/migrate/002_projects.rb`, `app/domains/projects/{enroll,repository_identity,workspace}.rb`, `app/domains/forge/client.rb`, `spec/domains/projects_spec.rb`, `bin/digitaltwin` enrollment.
+**Files:** Create `db/migrate/002_projects.rb`, `app/domains/projects/{enroll,repository_identity,workspace}.rb`, `app/domains/git_repos/client.rb`, `spec/domains/projects_spec.rb`, `bin/digitaltwin` enrollment.
 
-**Interfaces:** `Projects.enroll(actor: Actor, channel_id: String, slug: String, choice: clone|create_private|stop) -> Outcome`; `Workspace.resolve(slug: String) -> String`; `Forge.clone(slug:, destination:)`, `create_private(slug:)`, `read_revision(repo:, commit:)`.
+**Interfaces:** `Projects.enroll(actor: Actor, channel_id: String, slug: String, choice: clone|create_private|stop) -> Outcome`; `Workspace.resolve(slug: String) -> String`; `GitRepos.clone(slug:, destination:)`, `create_private(slug:)`, `read_revision(repo:, commit:)`.
 
 `Workspace.resolve` returns the enrolled shared clone. `Workspace.for_workflow(slug:, workflow_id:, branch:) -> String` creates or verifies the workflow worktree.
 Validate UUID, branch ownership, remote identity, and realpath containment under `/workspace/worktrees`. Never switch the shared clone for project work.
@@ -437,7 +437,7 @@ acceptance. These remain Task 6-10 work, not completed features.
 
 ## Task 9: Master and Local MCP Bridge
 
-**Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/controller/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/controller_spec.rb`; update `docs/phase-1-voice-controller.md` if thread creation is deferred.
+**Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/commander/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/commander_spec.rb`; update `docs/phase-1-voice-controller.md` if thread creation is deferred.
 
 **Interfaces:** Master `RoleConfig(cli: String, provider: String, model: String, family: String)` reaches `Sessions.start(workflow_id: nil, generation:, role: controller, config:, repo: nil)` unchanged. MCP tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `finish_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials` receive server-side Actor/Channel/Thread context.
 
@@ -458,7 +458,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master res
 - [ ] Test `master_starts_in_verified_existing_thread` independently of optional thread creation.
 - [ ] If Task 1 confirms straightforward creation, test verified association, duplicate requests, and uncertain-result reconciliation before enabling it.
 - [ ] Otherwise record deferral and keep existing-thread starts. Do not block Phase 0 acceptance on automatic thread creation.
-- [ ] Run `bundle exec rspec spec/domains/controller_spec.rb`; expect missing Master/MCP server.
+- [ ] Run `bundle exec rspec spec/domains/commander_spec.rb`; expect missing Master/MCP server.
 - [ ] Implement the stdio MCP bridge against the same application services, with no raw shell or credential-read tools.
 - [ ] Route MCP `send_prompt` through the same review lock and queue as chat. Test that a Master request cannot bypass Writer exclusion.
 - [ ] Serialize requests to one logical Master session with shared fleet context and access. Pass verified source context through a request-bound capability.
@@ -471,7 +471,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master res
 
 ## Task 10: Verified Delivery, Research, Memory, and Peer Handoffs
 
-**Files:** Create `app/domains/forge/{delivery,memory}.rb`, `app/domains/mattermost/peer_handoff.rb`, `docs/interfaces/peer-handoff.md`, `docs/operations/project-runbook.md`, `spec/domains/delivery_spec.rb`.
+**Files:** Create `app/domains/git_repos/{delivery,memory}.rb`, `app/domains/mattermost/peer_handoff.rb`, `docs/interfaces/peer-handoff.md`, `docs/operations/project-runbook.md`, `spec/domains/delivery_spec.rb`.
 
 **Interfaces:** `Delivery.finalize(workflow_id:, commit:, evidence:) -> Outcome`; `Memory.change(actor:, slug:, path:, mode: additive|reorganization) -> Outcome`; `PeerHandoff.receive(actor:, version:, request_key:, recipient:, thread_id:, slug:, revision:, action:) -> Outcome`. Sender/source identity comes from verified Mattermost context, not untrusted envelope claims.
 
@@ -490,7 +490,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master res
 
 ## Task 11: Recovery and Operational Status
 
-**Files:** Create `app/domains/runtime/recovery.rb`, `app/domains/controller/status.rb`, `spec/integration/recovery_spec.rb`.
+**Files:** Create `app/domains/runtime/recovery.rb`, `app/domains/commander/status.rb`, `spec/integration/recovery_spec.rb`.
 
 **Interfaces:** `Recovery.run(now: Time) -> RecoveryReport`; `Status.snapshot(project_id:, now:) -> StatusSnapshot` with phase, revision, session state, activity, PR, blocker, evidence, and staleness.
 
