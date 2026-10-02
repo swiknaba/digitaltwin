@@ -16,6 +16,6 @@ RSpec.describe "Process startup" do
       expect(output).to include("Pending migrations")
     end
   ensure
-    Kirei::App.raw_db_connection[:schema_info].update(version: 7)
+    Kirei::App.raw_db_connection[:schema_info].update(version: 8)
   end
 end

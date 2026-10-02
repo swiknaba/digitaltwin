@@ -8,13 +8,16 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   let(:resolver) { double(delivery: nil) }
   let(:membership) { ->(_channel, _user) { true } }
   let(:routing) { Domains::Controller::Routing.new(db, resolver: resolver, membership: membership) }
-  let(:herdr) { double(get: { "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false, "name" => "writer1", "cwd" => "/tmp/w1", "agent" => "codex" }, prompt: {}) }
+  let(:herdr) {
+    double(get: { "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false, "name" => "writer1", "cwd" => "/tmp/w1", "agent" => "codex", "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation1" } },
+           prompt: {})
+  }
   let(:policy) { double(dispatch_allowed?: true) }
   let(:sender) { Domains::Controller::Followups.new(db, herdr: herdr, resolver: resolver, membership: membership, policy: policy) }
 
-  def source(n = 1, channel_id: channel, thread_id: thread, bot: false, body: "Please also cover that case")
+  def source(n = 1, channel_id: channel, thread_id: thread, bot: false, root_post: false, body: "Please also cover that case")
     d = Domains::Mattermost::VerifiedDelivery.new(channel_id: channel_id, thread_id: thread_id, post_id: n.to_s.rjust(26, "p"),
-                                                  post_revision: n, event_kind: "posted", root_post: false, body: body,
+                                                  post_revision: n, event_kind: "posted", root_post: root_post, body: body,
                                                   actor: Domains::Workflows::Entities::Actor.new(channel_id: channel_id, user_id: user, member: true, bot: bot))
     allow(resolver).to receive(:delivery).with(post_id: d.post_id, channel_id: channel_id, event_kind: "posted").and_return(d)
     db[:inbox].insert(channel_id: channel_id, thread_id: thread_id, post_id: d.post_id, post_revision: n,
@@ -25,7 +28,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:projects].insert(id: "p#{n}", channel_id: n.to_s.rjust(26, "c"), slug: "owner/repo#{n}", remote_identity: "github.com/owner/repo#{n}", workspace: "/tmp/p#{n}")
     db[:workflows].insert(id: "w#{n}", project_id: "p#{n}", channel_id: n.to_s.rjust(26, "c"), thread_id: "root#{n}", branch: "b#{n}", worktree_path: "/tmp/w#{n}", phase: phase)
     db[:sessions].insert(id: "s#{n}", workflow_id: "w#{n}", role: "writer", generation: 1, pane_id: "pane#{n}", alias: "writer#{n}",
-                         credential_digest: "digest#{n}", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({ "cli" => "codex" }))
+                         credential_digest: "digest#{n}", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({ "cli" => "codex" }), runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation#{n}" }))
     "w#{n}"
   end
 
@@ -44,6 +47,21 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     expect(next_row.values_at(:workflow_id, :session_id, :generation)).to eq(["w1", "s1", 1])
     expect(db[:outbox].count).to eq(2)
     expect(db[:sessions].count).to eq(1)
+  end
+  it "retains Master context across distinct top-level posts while acknowledging each source thread" do
+    workflow; workflow(2)
+    master = Domains::Controller::Routing.new(db, resolver: resolver, membership: membership, master_channel_id: channel)
+    first_thread = "1".rjust(26, "p")
+    second_thread = "2".rjust(26, "p")
+    first = source(thread_id: first_thread, root_post: true, body: "@agent route w1\nPlease cover that case")
+    master.route(inbox_id: first, selection: "w1")
+    second = source(2, thread_id: second_thread, root_post: true)
+    row = master.route(inbox_id: second)
+    expect(row.values_at(:workflow_id, :session_id, :generation)).to eq(["w1", "s1", 1])
+    expect(row[:evidence]["recent_binding"]).to eq(first)
+    expect(db[:conversation_bindings][thread_id: "master"]).not_to be_nil
+    expect(db[:outbox].order(:response_key).select_map(:thread_id)).to contain_exactly(first_thread, second_thread)
+    expect(db[:sessions].count).to eq(2)
   end
   it "uses authoritative project thread mapping" do
     workflow
@@ -113,6 +131,49 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     expect(sender.deliver(row[:id])).to eq("delivered")
     expect(herdr).to have_received(:prompt).once.with("pane1", "Please also cover that case")
   end
+  it "delivers a busy-session follow-up through worker ticks after the writer becomes idle" do
+    workflow
+    row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
+    db[:jobs].where(kind: "mattermost.post").update(status: "complete")
+    ready = herdr.get("pane1")
+    allow(herdr).to receive(:get).and_return(ready.merge("agent_status" => "working"))
+    worker = Domains::Jobs::Worker.new(db, handlers: { "session.followup" => sender.method(:call) })
+    Async { expect(worker.tick).to eq(true) }.wait
+    job = db[:jobs][kind: "session.followup"]
+    expect(job[:status]).to eq("pending")
+    expect(job[:attempts]).to eq(0)
+    expect(job[:effect_started_at]).to be_nil
+    expect(job[:available_at]).to be > Time.now
+    expect(db[:followups][id: row[:id]][:status]).to eq("queued")
+    expect(herdr).not_to have_received(:prompt)
+    allow(herdr).to receive(:get).and_return(ready)
+    db[:jobs].where(id: job[:id]).update(available_at: Time.now - 1)
+    Async { expect(worker.tick).to eq(true) }.wait
+    expect(db[:jobs][id: job[:id]][:status]).to eq("complete")
+    expect(db[:followups][id: row[:id]][:status]).to eq("delivered")
+    expect(herdr).to have_received(:prompt).once.with("pane1", "Please also cover that case")
+    Async { expect(worker.tick).to eq(false) }.wait
+  end
+  it "keeps a review-locked worker job retryable and delivers after writing resumes" do
+    workflow(1, phase: "implementation_review")
+    row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
+    db[:jobs].where(kind: "mattermost.post").update(status: "complete")
+    before = db[:workflows][id: "w1"]
+    worker = Domains::Jobs::Worker.new(db, handlers: { "session.followup" => sender.method(:call) })
+    Async { expect(worker.tick).to eq(true) }.wait
+    job = db[:jobs][kind: "session.followup"]
+    expect(job[:status]).to eq("pending")
+    expect(job[:effect_started_at]).to be_nil
+    expect(db[:workflows][id: "w1"]).to eq(before)
+    expect(herdr).not_to have_received(:get)
+    expect(herdr).not_to have_received(:prompt)
+    db[:workflows].where(id: "w1").update(phase: "implementation", version: 1)
+    db[:jobs].where(id: job[:id]).update(available_at: Time.now - 1)
+    Async { expect(worker.tick).to eq(true) }.wait
+    expect(db[:jobs][id: job[:id]][:status]).to eq("complete")
+    expect(db[:followups][id: row[:id]][:status]).to eq("delivered")
+    expect(herdr).to have_received(:prompt).once.with("pane1", "Please also cover that case")
+  end
   it "keeps production dispatch gated" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
@@ -165,6 +226,15 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     expect(sender.deliver(row[:id])).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end
+  it "rejects a replacement conversation even when its pane alias directory and CLI are unchanged" do
+    workflow
+    row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
+    live = herdr.get("pane1")
+    allow(herdr).to receive(:get).and_return(live.merge("agent_session" => live.fetch("agent_session").merge("value" => "replacement")))
+    expect(sender.deliver(row[:id])).to eq("blocked")
+    expect(db[:followups][id: row[:id]][:status]).to eq("blocked")
+    expect(herdr).not_to have_received(:prompt)
+  end
   it "keeps a busy session queued and rechecks membership before delivery" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
@@ -206,5 +276,22 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     expect(db[:approvals].first[:channel_id]).to eq(channel)
     expect { approvals.record(**args.merge(commit: "b" * 40)) }.to raise_error(ArgumentError)
     expect { approvals.record(**args.merge(commit: "approve")) }.to raise_error(ArgumentError)
+  end
+  it "grounds semantic interpretation in accessible recent task evidence" do
+    workflow; workflow(2)
+    cited = source(channel_id: ("c" * 25) + "1", thread_id: "root1", body: "We should cover retries")
+    request = source(2, body: "Add that retry behavior please")
+    row = routing.route(inbox_id: request, interpretation: { "workflow_id" => "w1", "evidence_inbox_ids" => [cited] })
+    expect(row[:session_id]).to eq("s1")
+    expect { routing.route(inbox_id: source(3), interpretation: { "workflow_id" => "w2", "evidence_inbox_ids" => [cited] }) }.to raise_error(ArgumentError)
+  end
+
+  it "preserves parallel Master reply bindings when another root changes current context" do
+    workflow; workflow(2)
+    master = Domains::Controller::Routing.new(db, resolver: resolver, membership: membership, master_channel_id: channel)
+    master.route(inbox_id: source(root_post: true, thread_id: "master-a", body: "@agent route w1\nFirst task"), selection: "w1")
+    master.route(inbox_id: source(2, root_post: true, thread_id: "master-b", body: "@agent route w2\nSecond task"), selection: "w2")
+    expect(master.route(inbox_id: source(3, thread_id: "master-a"))[:workflow_id]).to eq("w1")
+    expect(master.route(inbox_id: source(4, thread_id: "new-root", root_post: true))[:workflow_id]).to eq("w2")
   end
 end

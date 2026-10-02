@@ -416,8 +416,24 @@ These sources validate names and compatibility considerations; Task 1 still sele
    and response checks. Test Unix-socket fixtures and real PostgreSQL concurrency.
 5. Bind Master-chat approval to exact workflow/gate/revision plus destination membership.
 6. Keep provider dispatch disabled until authenticated chat, selected Master MCP and real
-   CLI prompt/settled evidence pass. The unimplemented Master interpretation/bootstrap,
-   project-thread creation and session creation remain explicit follow-on gates.
+   CLI prompt/settled evidence pass.
+7. Add migration 008 for workflow requests, role lifecycle receipts and request-bound Master
+   capabilities. Provision verified bot roots, isolated worktrees and trusted role profiles.
+8. Queue signed artifact/review callbacks for the worker. Freeze exact targets, require
+   append-only review evidence and diverse roles, and durably release corrective follow-ups.
+9. Implement typed stdio MCP over private HTTP: project/workflow/context reads, workflow
+   starts, evidence-grounded follow-ups and version-bound controls. Master reply receipts
+   complete one request before the next dispatch. Expired/uncertain requests require an exact
+   same-human recovery command; no replay of uncertain external effects.
+10. Renew credentials against the same authoritative runtime conversation, source and token
+    digest. Commit renewal successors and terminal cleanup jobs atomically.
+11. Package checksum-pinned standalone callbacks/MCP; give only the worker Git/socket access.
+    Run isolated PostgreSQL, actual Git, Unix-socket and stdio fixtures plus independent review.
+
+Implemented in the routing draft; live dispatch remains closed. Still outside this bounded
+increment: new project enrollment, provider login, uncertain runtime-effect reconciliation,
+verified PR delivery/done transition, operational Git/deployment/destructive tools and live
+acceptance. These remain Task 6–10 work, not completed features.
 
 ## Task 9: Master and Local MCP Bridge
 

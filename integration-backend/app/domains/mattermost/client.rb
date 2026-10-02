@@ -5,7 +5,14 @@ require "async/http/endpoint"
 module Domains
   module Mattermost
     class Client
-      class Error < StandardError; end
+      class Error < StandardError
+        attr_reader :status
+
+        def initialize(message, status: nil)
+          @status = status
+          super(message)
+        end
+      end
       attr_reader :url
 
       def initialize(url:, token_file:)
@@ -44,7 +51,7 @@ module Domains
             data << chunk
             raise Error, "Mattermost response too large" if data.bytesize > 2_097_152
           end
-          raise Error, "Mattermost HTTP #{response.status}" unless (200..299).cover?(response.status)
+          raise Error.new("Mattermost HTTP #{response.status}", status: response.status) unless (200..299).cover?(response.status)
 
           JSON.parse(data)
         ensure

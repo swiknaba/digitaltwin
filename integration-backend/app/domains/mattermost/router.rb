@@ -37,15 +37,17 @@ module Domains
                                     body: "Message queued; delivery waits for review or pause completion.", key: "queued:#{id}")
             result("accepted", "Queued under dispatch suppression")
           elsif workflow && !d.actor.bot && !%w[closed cancelled].include?(workflow[:phase])
-            queue(command ? "workflow.#{command}" : "workflow.prompt", d, id)
+            queue(command ? "workflow.#{command}" : "workflow.prompt", d, id, workflow: workflow)
           else
             result("accepted", "No activated workflow")
           end
         end
       end
-      private def queue(kind, delivery, inbox_id)
+      private def queue(kind, delivery, inbox_id, workflow: nil)
+        payload = { "inbox_id" => inbox_id, "channel_id" => delivery.channel_id, "thread_id" => delivery.thread_id }
+        payload.merge!("workflow_id" => workflow[:id], "expected_version" => workflow[:version]) if workflow
         Domains::Jobs::Store.new(@db).enqueue(kind: kind,
-                                              payload: { "inbox_id" => inbox_id, "channel_id" => delivery.channel_id, "thread_id" => delivery.thread_id }, key: "inbox:#{inbox_id}:#{kind}")
+                                              payload: payload, key: "inbox:#{inbox_id}:#{kind}")
         result("blocked", "Recorded durably; live Task 1 workflow dispatch is gated")
       end
       private def result(status, reason)

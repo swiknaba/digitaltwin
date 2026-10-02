@@ -37,4 +37,14 @@ RSpec.describe Domains::Sessions::Herdr do
     socket_fixture(pane: "other") { |client, _| expect { client.get("pane") }.to raise_error(IOError) }
     socket_fixture(type: "ok") { |client, _| expect { client.get("pane") }.to raise_error(IOError) }
   end
+  it "maps start and close to captured lifecycle operations on a Unix socket" do
+    socket_fixture(type: "agent_started") do |client, requests|
+      client.start("pane", "writer", { "cli" => "codex", "launch_args" => ["--model", "fixture"] })
+      expect(requests.first.values_at("method", "params")).to eq(["agent.start", { "pane_id" => "pane", "name" => "writer", "kind" => "codex", "args" => ["--model", "fixture"] }])
+    end
+    socket_fixture(type: "ok") do |client, requests|
+      client.close("pane")
+      expect(requests.first.values_at("method", "params")).to eq(["pane.close", { "pane_id" => "pane" }])
+    end
+  end
 end

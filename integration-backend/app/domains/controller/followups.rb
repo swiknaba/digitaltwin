@@ -42,7 +42,7 @@ module Domains
             return "queued" if live["agent_status"] == "working"
 
             ready = %w[idle done].include?(live["agent_status"]) && live["interactive_ready"] == true && live["launch_pending"] == false
-            identity = live["name"] == session[:alias] && live["cwd"] == w[:worktree_path] && live["agent"] == session[:configuration]["cli"]
+            identity = session[:runtime_identity] && live["agent_session"] == session[:runtime_identity] && live["name"] == session[:alias] && live["cwd"] == w[:worktree_path] && live["agent"] == session[:configuration]["cli"]
             return block(id, "Session not ready") unless ready && identity
 
             @db[:followups].where(id: id, status: "queued").update(status: "sending")
@@ -64,7 +64,11 @@ module Domains
 
       def call(job, store)
         state = deliver(job[:payload].fetch("followup_id"), before_effect: -> { store.begin_effect(id: job[:id], lease_token: job[:lease_token]) })
-        store.block(id: job[:id], lease_token: job[:lease_token], reason: "Follow-up #{state}; reconciliation or gated release required") unless state == "delivered"
+        if state == "queued" && @policy.dispatch_allowed?
+          store.defer(id: job[:id], lease_token: job[:lease_token], reason: "Waiting for workflow/session readiness")
+        elsif state != "delivered"
+          store.block(id: job[:id], lease_token: job[:lease_token], reason: "Follow-up #{state}; reconciliation or gated release required")
+        end
       end
 
       private def block(id, reason)

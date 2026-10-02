@@ -3,7 +3,8 @@
 module Domains
   module Controller
     class Approvals
-      def initialize(db, resolver:, membership:, current_commit:, handle: ENV.fetch("AGENT_HANDLE", "agent"))
+      def initialize(db, resolver:, membership:, current_commit:, handle: ENV.fetch("AGENT_HANDLE", "agent"), evidence: nil)
+        @evidence = evidence
         @db, @resolver, @membership, @current_commit, @handle = db, resolver, membership, current_commit, handle
       end
 
@@ -14,9 +15,10 @@ module Domains
         d = @resolver.delivery(post_id: source[:post_id], channel_id: source[:channel_id], event_kind: "posted")
         raise ArgumentError, "Human source changed" unless d.actor.member && !d.actor.bot && d.actor.user_id == source[:user_id] && d.post_revision == source[:post_revision]
 
-        raise ArgumentError, "Approval requires an exact human command" unless d.body == "@#{@handle} approve #{workflow_id} #{gate} #{commit}"
-
         w = @db[:workflows][id: workflow_id] or raise ArgumentError, "Missing workflow"
+        contextual = d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch('WORKER_HANDLE', 'worker')} approve"
+        exact = d.body == "@#{@handle} approve #{workflow_id} #{gate} #{commit}"
+        raise ArgumentError, "Approval requires exact or verified thread binding" unless exact || contextual
         raise ArgumentError, "Destination membership required" unless @membership.call(w[:channel_id], d.actor.user_id)
 
         @db.synchronize do
@@ -28,7 +30,9 @@ module Domains
             @db.transaction do
               w = @db[:workflows].where(id: workflow_id).for_update.first
               review = @db[:reviews].where(workflow_id: workflow_id, gate: gate).order(Sequel.desc(:round)).first
-              raise ArgumentError, "Approval binding is stale" unless !w[:archived_at] && w[:phase] == "#{gate}_human_approval" && review && review[:verdict] == "approve" && review[:target_commit] == commit && current == commit
+              raise ArgumentError, "Approval binding is stale" unless !w[:archived_at] && w[:phase] == "#{gate}_human_approval" && review && review[:verdict] == "approve" && review[:target_commit] == commit && current == (review[:review_commit] || commit)
+
+              @evidence.approval(w, review) if @evidence
 
               old = @db[:approvals][post_id: d.post_id]
               if old

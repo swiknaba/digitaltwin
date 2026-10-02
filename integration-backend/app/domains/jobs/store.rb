@@ -6,10 +6,10 @@ module Domains
       BACKOFF = [1, 5, 15, 60].freeze
       def initialize(db) = @db = db
 
-      def enqueue(kind:, payload:, key:)
+      def enqueue(kind:, payload:, key:, available_at: Time.now)
         id = SecureRandom.uuid
         @db[:jobs].insert_conflict(target: :dispatch_key).insert(id: id, kind: kind, payload: Sequel.pg_jsonb(payload),
-                                                                 dispatch_key: key, available_at: Time.now)
+                                                                 dispatch_key: key, available_at: available_at)
         row = @db[:jobs][dispatch_key: key]
         raise ArgumentError,
               "Dispatch key reused with changed content" unless row[:kind] == kind && row[:payload] == payload
@@ -59,6 +59,11 @@ module Domains
                                           available_at: now + BACKOFF.fetch([row[:attempts] - 1, 3].min), last_error: error.to_s[0, 512])
           true
         end
+      end
+
+      def defer(id:, lease_token:, reason:, now: Time.now)
+        live(id, lease_token, now).where(effect_started_at: nil).update(status: "pending", lease_token: nil,
+                                                                        lease_expires_at: nil, available_at: now + 2, attempts: Sequel.lit("GREATEST(attempts - 1, 0)"), last_error: reason) == 1
       end
 
       def block(id:, lease_token:, reason:, now: Time.now)
