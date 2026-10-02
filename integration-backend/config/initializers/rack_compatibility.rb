@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "protocol/rack/input"
 require "stringio"
 
 # Kirei 0.10.0 stores env on its singleton router. Thread#[] is fiber-local
