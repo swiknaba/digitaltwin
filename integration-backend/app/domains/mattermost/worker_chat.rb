@@ -11,22 +11,6 @@ module Domains
       RowValue = T.type_alias { T.any(String, Integer, Time, NilClass, T::Boolean) }
       Row = T.type_alias { T::Hash[Symbol, RowValue] }
 
-      class Session < T::Struct
-        const :id, String
-        const :workflow_id, String
-        const :role, String
-        const :generation, Integer
-        const :credential_expires_at, Time
-      end
-
-      class Workflow < T::Struct
-        const :channel_id, String
-        const :thread_id, String
-        const :phase, String
-        const :saved_phase, T.nilable(String)
-        const :archived_at, T.nilable(Time)
-      end
-
       sig { params(db: Sequel::Database).void }
       def initialize(db)
         @db = T.let(db, Sequel::Database)
@@ -50,7 +34,7 @@ module Domains
           raise ArgumentError, "Callback key reused with changed body" unless row_string(callback, :body_digest) == digest
 
           Outbox.new.enqueue(channel_id: workflow.channel_id, thread_id: workflow.thread_id, bot: "worker", role: session.role,
-                                  body: "[#{session.role}] #{body}", key: "callback:#{session.id}:#{generation}:#{key}")
+                             body: "[#{session.role}] #{body}", key: "callback:#{session.id}:#{generation}:#{key}")
           outcome("accepted", "Queued in bound thread")
         end
       rescue ArgumentError => error

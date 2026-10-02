@@ -81,7 +81,7 @@ module Domains
 
           job = T.must(Job.resolve([row]).first)
           Job.query.where(id: job.id).update(status: "pending", lease_token: nil, lease_expires_at: nil,
-                                              available_at: now + 2, attempts: [job.attempts - 1, 0].max, last_error: reason) == 1
+                                             available_at: now + 2, attempts: [job.attempts - 1, 0].max, last_error: reason) == 1
         end
       end
 

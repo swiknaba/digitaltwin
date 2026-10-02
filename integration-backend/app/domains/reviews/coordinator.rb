@@ -135,7 +135,7 @@ module Domains
               Domains::Jobs::Store.new.enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version + 1 }, key: "workflow:phase:#{workflow_id}:#{version + 1}")
             end
             Domains::Mattermost::Outbox.new.enqueue(channel_id: row_string!(w, :channel_id), thread_id: row_optional_string(w, :thread_id), bot: "worker", role: "reviewer",
-                                                         body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.", key: "review:result:#{row_identifier!(record, :id)}")
+                                                    body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.", key: "review:result:#{row_identifier!(record, :id)}")
           end
         end
         workflow_id

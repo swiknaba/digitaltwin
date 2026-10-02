@@ -94,7 +94,7 @@ module Domains
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
             Domains::Jobs::Store.new.enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
             Domains::Mattermost::Outbox.new.enqueue(channel_id: w[:channel_id], thread_id: w[:thread_id], bot: "worker", role: role,
-                                                         body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.", key: "session:reserved:#{id}")
+                                                    body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.", key: "session:reserved:#{id}")
           end
           id
         end
@@ -173,8 +173,8 @@ module Domains
       class << self
         extend T::Sig
 
-        sig { params(db: Sequel::Database, session: Row).returns(String) }
-        def schedule_renewal(db, session)
+        sig { params(_db: Sequel::Database, session: Row).returns(String) }
+        def schedule_renewal(_db, session)
           id = row_string(session, :id)
           expires_at = row_time(session, :credential_expires_at)
           key = "session:renew:#{id}:#{expires_at.to_i}"

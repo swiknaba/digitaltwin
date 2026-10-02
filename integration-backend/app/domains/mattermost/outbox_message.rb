@@ -1,6 +1,22 @@
 # typed: strict
 # frozen_string_literal: true
 
+# == Schema Info
+#
+# Table name: outbox
+#
+#  id                  :text                not null, primary key
+#  response_key        :text                not null
+#  channel_id          :text                not null
+#  thread_id           :text                null
+#  bot                 :text                not null
+#  role                :text                null
+#  body                :text                not null
+#  status              :text                not null
+#  remote_post_id      :text                null
+#  created_at          :timestamp without time zone, not null
+#
+
 module Domains
   module Mattermost
     class OutboxMessage < T::Struct

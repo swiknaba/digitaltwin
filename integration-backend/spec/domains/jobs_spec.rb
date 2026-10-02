@@ -54,7 +54,7 @@ RSpec.describe "Durable jobs and outbox" do
       db.transaction {
         enqueue;
         Domains::Mattermost::Outbox.new.enqueue(channel_id: "c", thread_id: "r", bot: "worker", role: "writer",
-                                                    body: "hello", key: "response");
+                                                body: "hello", key: "response");
         raise "abort"
       }
     }.to raise_error("abort")

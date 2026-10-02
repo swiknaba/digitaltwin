@@ -7,8 +7,6 @@ module Domains
     class Client
       extend T::Sig
 
-      class OperationError < RuntimeError; end
-
       sig { params(slug: String, destination: String).void }
       def clone(slug:, destination:)
         Domains::Projects::RepositoryIdentity.slug!(slug)

@@ -43,7 +43,7 @@ module Domains
           elsif workflow && dispatch_suppressed?(workflow) && command.nil?
             queue_message(workflow, inbox_id)
             Outbox.new.enqueue(channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: "worker", role: "writer",
-                                    body: "Message queued; delivery waits for review or pause completion.", key: "queued:#{inbox_id}")
+                               body: "Message queued; delivery waits for review or pause completion.", key: "queued:#{inbox_id}")
             result("accepted", "Queued under dispatch suppression")
           elsif workflow && !delivery.actor.bot && !closed?(workflow)
             queue(command ? "workflow.#{command}" : "workflow.prompt", delivery, inbox_id, workflow: workflow)

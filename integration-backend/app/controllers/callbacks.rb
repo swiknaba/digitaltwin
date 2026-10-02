@@ -8,32 +8,6 @@ module Controllers
     Response = T.type_alias { Kirei::Routing::RackResponseType }
     Params = T.type_alias { T::Hash[String, Object] }
 
-    class ArtifactCallback < T::Struct
-      const :token, String
-      const :generation, Integer
-      const :kind, String
-      const :commit, String
-    end
-
-    class ReviewCallback < T::Struct
-      const :token, String
-      const :generation, Integer
-      const :verdict, String
-      const :commit, String
-    end
-
-    class SayCallback < T::Struct
-      const :token, String
-      const :generation, Integer
-      const :key, String
-      const :body, String
-    end
-
-    # A missing header is tracked separately so the interactive `say` endpoint
-    # can return HTTP 401. The legacy artifact/review callback endpoints remain
-    # opaque and map both absent and invalid capabilities to rejection.
-    class MissingAuthorization < StandardError; end
-
     sig { returns(Response) }
     def artifact_ready
       values = request_params
@@ -78,7 +52,7 @@ module Controllers
 
     sig { returns(Domains::Reviews::Intake) }
     def intake
-      Domains::Reviews::Intake.new(Kirei::App.raw_db_connection)
+      Domains::Reviews::Intake.new
     end
 
     sig { params(values: Params).returns(ArtifactCallback) }

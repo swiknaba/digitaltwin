@@ -70,7 +70,7 @@ RSpec.describe "Async HTTP ownership and Worker execution (local transport fixtu
     calls = 0
     handler = ->(job, jobs) do
       expect(db.in_transaction?).to be(false)
-    expect(jobs.begin_effect(id: job.id, lease_token: T.must(job.lease_token))).to be(true)
+      expect(jobs.begin_effect(id: job.id, lease_token: T.must(job.lease_token))).to be(true)
       calls += 1
       raise IOError, "Unknown network result"
     end

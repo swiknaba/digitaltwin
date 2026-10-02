@@ -37,7 +37,7 @@ module Domains
           @db[:master_requests].insert(id: id, inbox_id: inbox_id, session_id: controller, credential_digest: Digest::SHA256.hexdigest(token), expires_at: Time.now + 1800)
           Domains::Jobs::Store.new.enqueue(kind: "master.dispatch", payload: { "request_id" => id }, key: "master:dispatch:#{id}")
           Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller",
-                                                       body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: "start"]&.dig(:id)}.", key: "master:queued:#{id}")
+                                                  body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: "start"]&.dig(:id)}.", key: "master:queued:#{id}")
           id
         end
       end
@@ -62,7 +62,7 @@ module Domains
             @db[:master_requests].where(id: old[:id]).update(state: "uncertain", reason: "Expired; human reconciliation required")
             old_source = @db[:inbox][id: old[:inbox_id]]
             Domains::Mattermost::Outbox.new.enqueue(channel_id: old_source[:channel_id], thread_id: old_source[:thread_id], bot: "agent", role: "controller",
-                                                         body: "Master request #{old[:id]} expired without a completion receipt. Verify its outcome, then use @agent recover-master #{old[:id]} to continue the same session.", key: "master:expired:#{old[:id]}")
+                                                    body: "Master request #{old[:id]} expired without a completion receipt. Verify its outcome, then use @agent recover-master #{old[:id]} to continue the same session.", key: "master:expired:#{old[:id]}")
           end
           uncertain = @db[:master_requests].where(session_id: r[:session_id], state: "uncertain").exclude(id: r[:id]).count
           if uncertain.positive?

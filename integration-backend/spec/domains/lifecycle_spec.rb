@@ -208,7 +208,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
 
   it "authenticates callback intake without HTTP socket or Git effects and deduplicates" do
     workflow
-    intake = Domains::Reviews::Intake.new(db)
+    intake = Domains::Reviews::Intake.new
     2.times { expect(intake.enqueue(token: "writer-token", generation: 1, action: "artifact", kind: "spec", commit: commit)).to eq("queued") }
     expect(db[:jobs].where(kind: "review.callback").count).to eq(1)
     expect(db[:reviews].count).to eq(0)

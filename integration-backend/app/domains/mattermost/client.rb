@@ -14,24 +14,6 @@ module Domains
 
       JsonObject = T.type_alias { T::Hash[String, Object] }
 
-      class Error < StandardError
-        extend T::Sig
-
-        sig { returns(T.nilable(Integer)) }
-        attr_reader :status
-
-        sig { params(message: String, status: T.nilable(Integer)).void }
-        def initialize(message, status: nil)
-          @status = status
-          super(message)
-        end
-      end
-
-      class HttpResponse < T::Struct
-        const :status, Integer
-        const :body, String
-      end
-
       MAX_RESPONSE_BYTES = T.let(2_097_152, Integer)
 
       sig { returns(String) }

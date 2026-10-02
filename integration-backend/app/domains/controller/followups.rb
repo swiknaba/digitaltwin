@@ -81,8 +81,8 @@ module Domains
               @db.transaction do
                 @db[:followups].where(id: id).update(status: "uncertain", reason: "Socket effect requires reconciliation; do not resend")
                 Domains::Mattermost::Outbox.new.enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id], bot: "agent", role: "controller",
-                                                             body: "Instruction #{id} has an uncertain send result. Inspect this conversation, then use @#{@handle} recover-followup #{id} delivered|discard. No automatic resend.",
-                                                             key: "followup:uncertain:#{id}")
+                                                        body: "Instruction #{id} has an uncertain send result. Inspect this conversation, then use @#{@handle} recover-followup #{id} delivered|discard. No automatic resend.",
+                                                        key: "followup:uncertain:#{id}")
               end
               "uncertain"
             end

@@ -9,16 +9,6 @@ module Controllers
     Params = T.type_alias { T::Hash[String, Object] }
     ToolArguments = T.type_alias { T::Hash[String, Object] }
 
-    class ToolRequest < T::Struct
-      const :name, String
-      const :arguments, ToolArguments
-    end
-
-    class ReplyRequest < T::Struct
-      const :request_id, String
-      const :text, String
-    end
-
     sig { returns(Response) }
     def manifest
       render_json({ "tools" => manifest_definitions }, status: 200)
