@@ -1,13 +1,27 @@
+# typed: strict
 # frozen_string_literal: true
 
 require "digest"
 module Domains
   module Controller
     class Master
+      extend T::Sig
+      sig do
+        params(db: Sequel::Database, sessions: Domains::Sessions::Lifecycle, source: Source,
+               herdr: Domains::Sessions::Herdr, configuration: Domains::Sessions::Lifecycle::Configuration,
+               credential_root: String, policy: Domains::Workflows::Policy).void
+      end
       def initialize(db, sessions:, source:, herdr:, configuration:, credential_root: "/run/herdr/session-credentials", policy: Domains::Workflows::Policy.new)
-        @db, @sessions, @source, @herdr, @configuration, @root, @policy = db, sessions, source, herdr, configuration, credential_root, policy
+        @db = T.let(db, Sequel::Database)
+        @sessions = T.let(sessions, Domains::Sessions::Lifecycle)
+        @source = T.let(source, Source)
+        @herdr = T.let(herdr, Domains::Sessions::Herdr)
+        @configuration = T.let(configuration, Domains::Sessions::Lifecycle::Configuration)
+        @root = T.let(credential_root, String)
+        @policy = T.let(policy, Domains::Workflows::Policy)
       end
 
+      sig { params(inbox_id: T.any(Integer, String)).returns(String) }
       def ingest(inbox_id)
         d = @source.human(inbox_id)
         controller = @sessions.bootstrap(configuration: @configuration)
@@ -27,18 +41,22 @@ module Domains
         end
       end
 
+      sig { params(job: Domains::Jobs::Store::Job, store: Domains::Jobs::Store).void }
       def call(job, store)
-        r = @db[:master_requests][id: job[:payload].fetch("request_id")]
+        lease_token = job.lease_token
+        raise ArgumentError, "Master job has no lease" unless lease_token
+
+        r = @db[:master_requests][id: request_id(job)]
         Domains::Workflows::Lock.new(@db).call("controller") do
           r = @db[:master_requests][id: r[:id]]
           return if r[:state] == "active" || r[:state] == "complete"
           raise ArgumentError, "Master request uncertain" unless r[:state] == "queued"
 
           unless @policy.dispatch_allowed?
-            store.block(id: job[:id], lease_token: job[:lease_token], reason: "Selected Master CLI/MCP live evidence required")
+            store.block(id: job.id, lease_token: lease_token, reason: "Selected Master CLI/MCP live evidence required")
             return
           end
-          expired = @db[:master_requests].where(session_id: r[:session_id], state: "active").where { expires_at <= Time.now }.all
+          expired = @db[:master_requests].where(session_id: r[:session_id], state: "active").where(Sequel[:master_requests][:expires_at] <= Time.now).all
           expired.each do |old|
             @db[:master_requests].where(id: old[:id]).update(state: "uncertain", reason: "Expired; human reconciliation required")
             old_source = @db[:inbox][id: old[:inbox_id]]
@@ -47,13 +65,13 @@ module Domains
           end
           uncertain = @db[:master_requests].where(session_id: r[:session_id], state: "uncertain").exclude(id: r[:id]).count
           if uncertain.positive?
-            store.block(id: job[:id], lease_token: job[:lease_token], reason: "Prior Master request requires human reconciliation")
+            store.block(id: job.id, lease_token: lease_token, reason: "Prior Master request requires human reconciliation")
             return
           end
           busy = @db[:master_requests].where(session_id: r[:session_id], state: %w[active uncertain]).exclude(id: r[:id]).count
           s = @db[:sessions][id: r[:session_id], active: true, role: "controller"]
           if !s || busy.positive?
-            store.defer(id: job[:id], lease_token: job[:lease_token], reason: "Master startup or current request pending")
+            store.defer(id: job.id, lease_token: lease_token, reason: "Master startup or current request pending")
             return
           end
           raise ArgumentError, "Master request/session expired" unless r[:expires_at] > Time.now && s[:credential_expires_at] > Time.now
@@ -61,7 +79,7 @@ module Domains
           d = @source.human(r[:inbox_id])
           live = @herdr.get(s[:pane_id])
           if s[:runtime_identity] && live["agent_session"] == s[:runtime_identity] && live["agent_status"] == "working"
-            store.defer(id: job[:id], lease_token: job[:lease_token], reason: "Master finishing current turn")
+            store.defer(id: job.id, lease_token: lease_token, reason: "Master finishing current turn")
             return
           end
           raise ArgumentError, "Master conversation replaced or uncertain" unless s[:runtime_identity] && live["agent_session"] == s[:runtime_identity] && %w[idle done].include?(live["agent_status"])
@@ -72,7 +90,7 @@ module Domains
           path = File.join(@root, "#{s[:id]}.request-token")
           File.open(path, File::WRONLY | File::CREAT | File::TRUNC, 0600) { |file| file.write(token) }
           @db[:master_requests].where(id: r[:id]).update(state: "uncertain")
-          raise IOError, "Dispatch lease lost" unless store.begin_effect(id: job[:id], lease_token: job[:lease_token])
+          raise IOError, "Dispatch lease lost" unless store.begin_effect(id: job.id, lease_token: lease_token)
 
           prompt = "Verified human request #{r[:id]} from channel #{d.channel_id}, thread #{d.thread_id}: #{d.body}\nUse typed MCP tools with request_id #{r[:id]}. " \
                    "Inspect authoritative projects/workflows and relevant conversation context. " \
@@ -84,6 +102,7 @@ module Domains
         end
       end
 
+      sig { params(request_id: String, inbox_id: T.any(Integer, String)).void }
       def recover(request_id:, inbox_id:)
         r = @db[:master_requests][id: request_id] or raise ArgumentError, "Unknown Master request"
         original = @db[:inbox][id: r[:inbox_id]]
@@ -112,9 +131,10 @@ module Domains
         end
       end
 
+      sig { params(request_id: String, token: String, text: String).returns(String) }
       def reply(request_id:, token:, text:)
         r = Requests.new(@db, source: @source).authorize(request_id, token, states: %w[active complete])
-        raise ArgumentError, "Invalid Master reply" unless text.is_a?(String) && text.bytesize.between?(1, 60_000)
+        raise ArgumentError, "Invalid Master reply" unless text.bytesize.between?(1, 60_000)
 
         Domains::Workflows::Lock.new(@db).call("controller") do
           @db.transaction do
@@ -132,6 +152,16 @@ module Domains
             @db[:master_requests].where(id: r[:id]).update(state: "complete")
           end
         end
+      end
+
+      private
+
+      sig { params(job: Domains::Jobs::Store::Job).returns(String) }
+      def request_id(job)
+        value = job.payload.fetch("request_id") { raise ArgumentError, "Master job is malformed" }
+        raise ArgumentError, "Master job is malformed" unless value.is_a?(String) && value.match?(/\A[0-9a-f-]+\z/)
+
+        value
       end
     end
   end

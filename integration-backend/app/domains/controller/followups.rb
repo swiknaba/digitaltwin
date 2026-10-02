@@ -1,14 +1,27 @@
+# typed: strict
 # frozen_string_literal: true
 
 module Domains
   module Controller
     class Followups
+      extend T::Sig
+      sig do
+        params(db: Sequel::Database, herdr: Domains::Sessions::Herdr, resolver: Source::DeliveryResolver,
+               membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
+               policy: Domains::Workflows::Policy, handle: String).void
+      end
       def initialize(db, herdr:, resolver:, membership:, policy: Domains::Workflows::Policy.new, handle: ENV.fetch("AGENT_HANDLE", "agent"))
-        @db, @herdr, @resolver, @membership, @policy, @handle = db, herdr, resolver, membership, policy, handle
+        @db = T.let(db, Sequel::Database)
+        @herdr = T.let(herdr, Domains::Sessions::Herdr)
+        @resolver = T.let(resolver, Source::DeliveryResolver)
+        @membership = T.let(membership, T.proc.params(channel_id: String, user_id: String).returns(T::Boolean))
+        @policy = T.let(policy, Domains::Workflows::Policy)
+        @handle = T.let(handle, String)
       end
 
       # All future review/session transitions must use this same workflow mutex.
       # Keep the connection checked out across commits, never network in a DB tx.
+      sig { params(id: Integer, before_effect: T.proc.returns(T::Boolean)).returns(String) }
       def deliver(id, before_effect: -> { true })
         row = @db[:followups][id: id] or raise ArgumentError, "Missing instruction"
         @db.synchronize do
@@ -46,7 +59,7 @@ module Domains
               return %w[pending running].include?(state) ? "queued" : block(id, "Credential renewal requires reconciliation")
             end
 
-            pending = @db[:followups].where(workflow_id: w[:id]).where { self.id < id }.where(status: %w[queued sending uncertain]).count
+            pending = @db[:followups].where(workflow_id: w[:id]).where(Sequel[:followups][:id] < id).where(status: %w[queued sending uncertain]).count
             return "queued" unless pending.zero?
 
             live = @herdr.get(session[:pane_id])
@@ -78,15 +91,20 @@ module Domains
         end
       end
 
+      sig { params(job: Domains::Jobs::Store::Job, store: Domains::Jobs::Store).void }
       def call(job, store)
-        state = deliver(job[:payload].fetch("followup_id"), before_effect: -> { store.begin_effect(id: job[:id], lease_token: job[:lease_token]) })
+        lease_token = job.lease_token
+        raise ArgumentError, "Follow-up job has no lease" unless lease_token
+
+        state = deliver(followup_id(job), before_effect: -> { store.begin_effect(id: job.id, lease_token: lease_token) })
         if state == "queued" && @policy.dispatch_allowed?
-          store.defer(id: job[:id], lease_token: job[:lease_token], reason: "Waiting for workflow/session readiness")
+          store.defer(id: job.id, lease_token: lease_token, reason: "Waiting for workflow/session readiness")
         elsif state != "delivered"
-          store.block(id: job[:id], lease_token: job[:lease_token], reason: "Follow-up #{state}; reconciliation or gated release required")
+          store.block(id: job.id, lease_token: lease_token, reason: "Follow-up #{state}; reconciliation or gated release required")
         end
       end
 
+      sig { params(id: Integer, inbox_id: T.any(Integer, String), outcome: String).returns(String) }
       def reconcile(id:, inbox_id:, outcome:)
         raise ArgumentError, "Explicit outcome required" unless %w[delivered discard].include?(outcome)
 
@@ -135,9 +153,18 @@ module Domains
         end
       end
 
+      sig { params(id: Integer, reason: String).returns(String) }
       private def block(id, reason)
         @db[:followups].where(id: id).update(status: "blocked", reason: reason)
         "blocked"
+      end
+
+      sig { params(job: Domains::Jobs::Store::Job).returns(Integer) }
+      private def followup_id(job)
+        value = job.payload.fetch("followup_id") { raise ArgumentError, "Follow-up job is malformed" }
+        raise ArgumentError, "Follow-up job is malformed" unless value.is_a?(Integer) && value.positive?
+
+        value
       end
     end
   end

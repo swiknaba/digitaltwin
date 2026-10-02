@@ -1,16 +1,31 @@
+# typed: strict
 # frozen_string_literal: true
 
 module Domains
   module Controller
     class Routing
-      TERMINAL = %w[closed cancelled].freeze
+      extend T::Sig
+      TERMINAL = T.let(%w[closed cancelled].freeze, T::Array[String])
+      Interpretation = T.type_alias { T::Hash[String, Object] }
+      sig do
+        params(db: Sequel::Database, resolver: Source::DeliveryResolver,
+               membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
+               now: T.proc.returns(Time), approvals: T.nilable(Approvals), handle: String,
+               master_channel_id: T.nilable(String)).void
+      end
       def initialize(db, resolver:, membership:, now: -> { Time.now }, approvals: nil, handle: ENV.fetch("AGENT_HANDLE", "agent"), master_channel_id: ENV["MASTER_CHANNEL_ID"])
-        @master_channel = master_channel_id
-        @db, @resolver, @membership, @now, @approvals, @handle = db, resolver, membership, now, approvals, handle
+        @master_channel = T.let(master_channel_id, T.nilable(String))
+        @db = T.let(db, Sequel::Database)
+        @resolver = T.let(resolver, Source::DeliveryResolver)
+        @membership = T.let(membership, T.proc.params(channel_id: String, user_id: String).returns(T::Boolean))
+        @now = T.let(now, T.proc.returns(Time))
+        @approvals = T.let(approvals, T.nilable(Approvals))
+        @handle = T.let(handle, String)
       end
 
       # Only verified inbox identities enter this service. Selection is a human
       # clarification, not a model's authority to invent workflow/session IDs.
+      sig { params(inbox_id: T.any(Integer, String), selection: T.nilable(String), interpretation: T.nilable(Interpretation), clarify: T::Boolean).returns(Object) }
       def route(inbox_id:, selection: nil, interpretation: nil, clarify: true)
         source = @db[:inbox][id: inbox_id] or raise ArgumentError, "Missing source"
         d = @resolver.delivery(post_id: source[:post_id], channel_id: source[:channel_id], event_kind: "posted")
@@ -94,8 +109,9 @@ module Domains
         end
       end
 
+      sig { params(job: Domains::Jobs::Store::Job, _store: Domains::Jobs::Store).void }
       def call(job, _store)
-        id = job[:payload].fetch("inbox_id")
+        id = inbox_id(job)
         body = @db[:inbox][id: id][:verified_delivery].fetch("body")
         approval = body.match(/\A@#{Regexp.escape(@handle)} approve ([a-zA-Z0-9-]+) (spec|plan) ([0-9a-f]{40})\z/)
         if approval
@@ -111,10 +127,21 @@ module Domains
         route(inbox_id: id, selection: selection)
       end
 
+      sig { returns(Sequel::Dataset) }
       private def active = @db[:workflows].where(archived_at: nil).exclude(phase: TERMINAL)
+
+      sig { params(d: Domains::Mattermost::VerifiedDelivery, id: T.any(Integer, String), text: String, kind: String).returns(String) }
       private def acknowledge(d, id, text, kind)
         Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id,
                                                      bot: "agent", role: "controller", body: text, key: "master:#{id}:#{kind}")
+      end
+
+      sig { params(job: Domains::Jobs::Store::Job).returns(T.any(Integer, String)) }
+      private def inbox_id(job)
+        value = job.payload.fetch("inbox_id") { raise ArgumentError, "Routing job is malformed" }
+        raise ArgumentError, "Routing job is malformed" unless value.is_a?(Integer) || value.is_a?(String)
+
+        value
       end
     end
   end
