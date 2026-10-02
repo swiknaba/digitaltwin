@@ -38,7 +38,7 @@ module Controllers
       return unexpected_callback_fields_response unless allowed_keys?(values, %w[generation key text])
 
       callback = say_callback(values)
-      result = Domains::Mattermost::WorkerChat.new(Kirei::App.raw_db_connection).post(
+      result = Domains::Mattermost::WorkerChat.new.post(
         token: callback.token, generation: callback.generation, key: callback.key, body: callback.body
       )
       render_json({ "status" => result.status, "reason" => result.reason }, status: result.status == "accepted" ? 202 : 403)

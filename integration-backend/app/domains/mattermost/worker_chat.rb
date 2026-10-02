@@ -11,26 +11,30 @@ module Domains
       RowValue = T.type_alias { T.any(String, Integer, Time, NilClass, T::Boolean) }
       Row = T.type_alias { T::Hash[Symbol, RowValue] }
 
-      sig { params(db: Sequel::Database).void }
-      def initialize(db)
-        @db = T.let(db, Sequel::Database)
-      end
-
       sig { params(token: String, generation: Integer, body: String, key: String).returns(Domains::Workflows::Entities::Outcome) }
       def post(token:, generation:, body:, key:)
         validate_request!(token, body, key)
-        @db.transaction do
-          session = session_from(@db[:sessions].where(credential_digest: Digest::SHA256.hexdigest(token), generation: generation, active: true).for_update.first)
+        Domains::Sessions::RuntimeSession.db.transaction do
+          session = Domains::Sessions::RuntimeSession.resolve_first(
+            Domains::Sessions::RuntimeSession.query.where(
+              credential_digest: Digest::SHA256.hexdigest(token), generation: generation, active: true
+            ).for_update
+          )
+          raise ArgumentError, "Invalid or stale session" unless session
+
           validate_session!(session)
-          workflow = workflow_from(@db[:workflows].where(id: session.workflow_id).for_update.first)
+          raise ArgumentError, "Invalid or stale session" unless session.workflow_id
+
+          database = Domains::Sessions::RuntimeSession.db
+          workflow = workflow_from(database[:workflows].where(id: session.workflow_id).for_update.first)
           validate_workflow!(workflow)
           validate_role!(session, workflow)
-          latest = @db[:sessions].where(workflow_id: session.workflow_id, role: session.role).max(:generation)
+          latest = Domains::Sessions::RuntimeSession.query.where(workflow_id: session.workflow_id, role: session.role).max(:generation)
           raise ArgumentError, "Stale session generation" unless latest == generation
 
           digest = Digest::SHA256.hexdigest(body)
-          @db[:callbacks].insert_conflict(target: %i[session_id generation key]).insert(session_id: session.id, generation: generation, key: key, body_digest: digest)
-          callback = row_from(@db[:callbacks][session_id: session.id, generation: generation, key: key], "callback")
+          database[:callbacks].insert_conflict(target: %i[session_id generation key]).insert(session_id: session.id, generation: generation, key: key, body_digest: digest)
+          callback = row_from(database[:callbacks][session_id: session.id, generation: generation, key: key], "callback")
           raise ArgumentError, "Callback key reused with changed body" unless row_string(callback, :body_digest) == digest
 
           Outbox.new.enqueue(channel_id: workflow.channel_id, thread_id: workflow.thread_id, bot: "worker", role: session.role,
@@ -76,13 +80,6 @@ module Domains
         value.is_a?(String) || value.is_a?(Integer) || value.is_a?(Time) || value.nil? || value == true || value == false
       end
 
-      sig { params(value: Object).returns(Session) }
-      def session_from(value)
-        row = row_from(value, "or stale session")
-        Session.new(id: row_string(row, :id), workflow_id: row_string(row, :workflow_id), role: row_string(row, :role),
-                    generation: row_integer(row, :generation), credential_expires_at: row_time(row, :credential_expires_at))
-      end
-
       sig { params(value: Object).returns(Workflow) }
       def workflow_from(value)
         row = row_from(value, "workflow")
@@ -90,7 +87,7 @@ module Domains
                      saved_phase: optional_row_string(row, :saved_phase), archived_at: optional_row_time(row, :archived_at))
       end
 
-      sig { params(session: Session).void }
+      sig { params(session: Domains::Sessions::RuntimeSession).void }
       def validate_session!(session)
         raise ArgumentError, "Invalid or stale session" unless session.credential_expires_at > Time.now && %w[writer reviewer].include?(session.role)
       end
@@ -100,7 +97,7 @@ module Domains
         raise ArgumentError, "Inactive workflow" unless workflow.archived_at.nil? && !%w[cancelled closed].include?(workflow.phase)
       end
 
-      sig { params(session: Session, workflow: Workflow).void }
+      sig { params(session: Domains::Sessions::RuntimeSession, workflow: Workflow).void }
       def validate_role!(session, workflow)
         phase = workflow.phase == "paused" ? workflow.saved_phase : workflow.phase
         raise ArgumentError, "Session role is not active in this phase" unless session.role == active_role(phase)
@@ -118,22 +115,6 @@ module Domains
       def row_string(row, key)
         value = row.fetch(key)
         raise ArgumentError, "Malformed database record" unless value.is_a?(String)
-
-        value
-      end
-
-      sig { params(row: Row, key: Symbol).returns(Integer) }
-      def row_integer(row, key)
-        value = row.fetch(key)
-        raise ArgumentError, "Malformed database record" unless value.is_a?(Integer)
-
-        value
-      end
-
-      sig { params(row: Row, key: Symbol).returns(Time) }
-      def row_time(row, key)
-        value = row.fetch(key)
-        raise ArgumentError, "Malformed database record" unless value.is_a?(Time)
 
         value
       end
