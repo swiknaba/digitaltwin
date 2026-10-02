@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 production_ruby_files() {
   find app config db lib -type f \( -name '*.rb' -o -name '*.rake' \) -print
-  printf '%s\n' Rakefile config.ru
+  printf '%s\n' Rakefile config.ru app.rb
   grep -l '^#!/usr/bin/env ruby$' bin/* 2>/dev/null || true
 }
 
@@ -20,7 +20,7 @@ if [ -n "$missing_sigils" ]; then
   exit 1
 fi
 
-metrics="$(bundle exec spoom srb metrics show --dump app config db lib bin Rakefile config.ru lib/tasks/db.rake)"
+metrics="$(bundle exec spoom srb metrics show --dump app config db lib bin Rakefile config.ru app.rb lib/tasks/db.rake)"
 printf '%s\n' "$metrics"
 
 if ! printf '%s\n' "$metrics" | awk '

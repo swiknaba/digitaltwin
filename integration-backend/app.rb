@@ -1,4 +1,4 @@
-# typed: true
+# typed: strict
 # frozen_string_literal: true
 
 # First: check if all gems are installed correctly
@@ -14,7 +14,7 @@ Bundler.require(:test) if ENV["RACK_ENV"] == "test"
 Dir[File.join(__dir__, "config/initializers", "*.rb")].each { require(_1) }
 
 # Fourth: load all application code
-APP_ROOT = __dir__
+APP_ROOT = T.let(T.must(__dir__), String)
 APP_LOADER = Zeitwerk::Loader.new
 APP_LOADER.tag = File.basename(__FILE__, ".rb")
 [
@@ -37,16 +37,25 @@ Dir[File.join(__dir__, "config", "**", "*.rb")].each do |cnf|
 end
 
 class Digitaltwin < Kirei::App
+  extend T::Sig
+
   # Kirei configuration
   config.app_name = "digitaltwin"
   config.sensitive_keys += [/text|body|authorization|credential/i]
 
+  sig { params(env: RequestLocalRouter::Environment).returns(RackBoundary::Response) }
   def call(env)
     RackCompatibility.new(super_method_app).call(env)
   end
 
-  private def super_method_app
-    method(:call).super_method
+  private
+
+  sig { returns(Method) }
+  def super_method_app
+    parent = method(:call).super_method
+    raise "Kirei application call handler is unavailable" unless parent
+
+    parent
   end
 end
 
