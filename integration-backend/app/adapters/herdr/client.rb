@@ -55,10 +55,8 @@ module Adapters
         request("pane.close", { "pane_id" => pane_id }, "ok")
       end
 
-      private
-
       sig { params(operation: String, params: JsonObject, expected: String, pane_id: String).returns(Dto::Pane) }
-      def agent(operation, params, expected, pane_id)
+      private def agent(operation, params, expected, pane_id)
         value = object_field!(request(operation, params, expected), "agent")
         raise Errors::ProtocolViolation, "Herdr identity mismatch" unless string_field!(value, "pane_id") == pane_id
 
@@ -69,7 +67,7 @@ module Adapters
       end
 
       sig { params(object: JsonObject).returns(Dto::AgentStatus) }
-      def agent_status!(object)
+      private def agent_status!(object)
         status = Dto::AgentStatus.try_deserialize(string_field!(object, "agent_status"))
         raise Errors::ProtocolViolation, "Herdr status invalid" unless status
 
@@ -77,7 +75,7 @@ module Adapters
       end
 
       sig { params(object: JsonObject).returns(T.nilable(Dto::AgentSession)) }
-      def agent_session!(object)
+      private def agent_session!(object)
         return nil if object["agent_session"].nil?
 
         session = object_field!(object, "agent_session")
@@ -86,7 +84,7 @@ module Adapters
       end
 
       sig { params(operation: String, params: JsonObject, expected: String).returns(JsonObject) }
-      def request(operation, params, expected)
+      private def request(operation, params, expected)
         socket = T.let(nil, T.nilable(UNIXSocket))
         Timeout.timeout(5) do
           socket = UNIXSocket.new(@path)
@@ -106,7 +104,7 @@ module Adapters
       end
 
       sig { params(line: String).returns(Response) }
-      def response_from(line)
+      private def response_from(line)
         response = json_object!(JSON.parse(line))
         raise Errors::ProtocolViolation, "Herdr rejected operation" if response.key?("error")
 
@@ -117,7 +115,7 @@ module Adapters
       end
 
       sig { params(value: JsonValue).returns(JsonObject) }
-      def json_object!(value)
+      private def json_object!(value)
         raise Errors::ProtocolViolation, "Invalid Herdr response" unless value.is_a?(Hash)
 
         object = T.let({}, JsonObject)
@@ -130,7 +128,7 @@ module Adapters
       end
 
       sig { params(value: JsonValue).returns(JsonValue) }
-      def json_value!(value)
+      private def json_value!(value)
         case value
         when String, Integer, Float, TrueClass, FalseClass, NilClass
           value
@@ -144,7 +142,7 @@ module Adapters
       end
 
       sig { params(object: JsonObject, key: String).returns(String) }
-      def string_field!(object, key)
+      private def string_field!(object, key)
         value = object.fetch(key) { raise Errors::ProtocolViolation, "Invalid Herdr response" }
         raise Errors::ProtocolViolation, "Invalid Herdr response" unless value.is_a?(String)
 
@@ -152,7 +150,7 @@ module Adapters
       end
 
       sig { params(object: JsonObject, key: String).returns(T.nilable(String)) }
-      def optional_string_field!(object, key)
+      private def optional_string_field!(object, key)
         value = object[key]
         raise Errors::ProtocolViolation, "Invalid Herdr response" unless value.nil? || value.is_a?(String)
 
@@ -160,7 +158,7 @@ module Adapters
       end
 
       sig { params(object: JsonObject, key: String).returns(T.nilable(T::Boolean)) }
-      def optional_boolean_field!(object, key)
+      private def optional_boolean_field!(object, key)
         value = object[key]
         raise Errors::ProtocolViolation, "Invalid Herdr response" unless value.nil? || value == true || value == false
 
@@ -168,12 +166,12 @@ module Adapters
       end
 
       sig { params(object: JsonObject, key: String).returns(JsonObject) }
-      def object_field!(object, key)
+      private def object_field!(object, key)
         json_object!(object.fetch(key) { raise Errors::ProtocolViolation, "Invalid Herdr response" })
       end
 
       sig { params(object: JsonObject, key: String).returns(T::Array[JsonObject]) }
-      def object_array_field!(object, key)
+      private def object_array_field!(object, key)
         value = object.fetch(key) { raise Errors::ProtocolViolation, "Invalid Herdr response" }
         raise Errors::ProtocolViolation, "Invalid Herdr response" unless value.is_a?(Array)
 

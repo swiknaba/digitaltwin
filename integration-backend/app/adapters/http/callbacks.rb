@@ -47,40 +47,38 @@ module Adapters
         render_json({ "status" => "rejected", "reason" => "Invalid callback" }, status: 403)
       end
 
-      private
-
       sig { returns(Domains::Reviews::Intake) }
-      def intake
+      private def intake
         Domains::Reviews::Intake.new
       end
 
       sig { params(values: Params).returns(Dto::ArtifactCallback) }
-      def artifact_callback(values)
+      private def artifact_callback(values)
         Dto::ArtifactCallback.new(token: callback_token, generation: integer(values, "generation"), kind: string(values, "kind"), commit: string(values, "commit"))
       end
 
       sig { params(values: Params).returns(Dto::ReviewCallback) }
-      def review_callback(values)
+      private def review_callback(values)
         Dto::ReviewCallback.new(token: callback_token, generation: integer(values, "generation"), verdict: string(values, "verdict"), commit: string(values, "commit"))
       end
 
       sig { params(values: Params).returns(Dto::SayCallback) }
-      def say_callback(values)
+      private def say_callback(values)
         Dto::SayCallback.new(token: callback_token, generation: integer(values, "generation"), key: string(values, "key"), body: string(values, "text"))
       end
 
       sig { params(values: Params, expected: T::Array[String]).returns(T::Boolean) }
-      def exact_keys?(values, expected)
+      private def exact_keys?(values, expected)
         values.keys.sort == expected
       end
 
       sig { params(values: Params, expected: T::Array[String]).returns(T::Boolean) }
-      def allowed_keys?(values, expected)
+      private def allowed_keys?(values, expected)
         (values.keys - expected).empty?
       end
 
       sig { returns(Params) }
-      def request_params
+      private def request_params
         values = T.let({}, Params)
         params.each do |key, value|
           values[key] = value
@@ -89,7 +87,7 @@ module Adapters
       end
 
       sig { params(values: Params, key: String).returns(String) }
-      def string(values, key)
+      private def string(values, key)
         value = values.fetch(key)
         raise ArgumentError, "Invalid callback" unless value.is_a?(String)
 
@@ -97,7 +95,7 @@ module Adapters
       end
 
       sig { params(values: Params, key: String).returns(Integer) }
-      def integer(values, key)
+      private def integer(values, key)
         value = values.fetch(key)
         raise ArgumentError, "Invalid callback" unless value.is_a?(Integer)
 
@@ -105,7 +103,7 @@ module Adapters
       end
 
       sig { returns(String) }
-      def callback_token
+      private def callback_token
         value = request.env["HTTP_AUTHORIZATION"]
         raise Errors::MissingAuthorization, "Session authorization required" unless value.is_a?(String) && value.start_with?("Bearer ")
 
@@ -113,27 +111,27 @@ module Adapters
       end
 
       sig { returns(Response) }
-      def accepted_response
+      private def accepted_response
         render_json({ "status" => "callback_queued" }, status: 202)
       end
 
       sig { params(message: String).returns(Response) }
-      def rejected_response(message)
+      private def rejected_response(message)
         render_json({ "error" => message }, status: 403)
       end
 
       sig { returns(Response) }
-      def unauthorized_response
+      private def unauthorized_response
         render_json({ "error" => "Session authorization required" }, status: 401)
       end
 
       sig { returns(Response) }
-      def unexpected_fields_response
+      private def unexpected_fields_response
         render_json({ "error" => "Unexpected fields" }, status: 400)
       end
 
       sig { returns(Response) }
-      def unexpected_callback_fields_response
+      private def unexpected_callback_fields_response
         render_json({ "error" => "Unexpected callback fields" }, status: 400)
       end
     end

@@ -154,10 +154,8 @@ module Domains
         end
       end
 
-      private
-
       sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(String) }
-      def request_id(job)
+      private def request_id(job)
         value = Dto::MasterDispatchJob.from_hash(job.payload, true).request_id
         raise ArgumentError, "Master job is malformed" unless value.match?(/\A[0-9a-f-]+\z/)
 

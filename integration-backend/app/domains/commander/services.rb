@@ -209,22 +209,20 @@ module Domains
         Decision.complete
       end
 
-      private
-
       sig { params(body: String).returns(T.nilable(Commands::Command)) }
-      def parse(body)
+      private def parse(body)
         ::Services::Commands::Parser.new.call(body: body, agent_handle: ENV.fetch("AGENT_HANDLE", "agent"), worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
       end
 
       sig { params(value: T.nilable(String)).returns(String) }
-      def required(value)
+      private def required(value)
         raise ArgumentError, "Controller job is malformed" unless value
 
         value
       end
 
       sig { params(value: T.nilable(Integer)).returns(Integer) }
-      def required_integer(value)
+      private def required_integer(value)
         raise ArgumentError, "Controller job is malformed" unless value
 
         value

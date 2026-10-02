@@ -61,10 +61,8 @@ class RackCompatibility
     Kirei::Routing::Router.instance.current_env = previous
   end
 
-  private
-
   sig { params(input: Object).returns(String) }
-  def rack_body(input)
+  private def rack_body(input)
     case input
     when NilClass then ""
     when StringIO, Protocol::Rack::Input
@@ -78,7 +76,7 @@ class RackCompatibility
   end
 
   sig { params(body: String).returns(T.nilable(T::Hash[String, Object])) }
-  def parse_object(body)
+  private def parse_object(body)
     return {} if body.empty?
 
     parsed = JSON.parse(body)
@@ -86,7 +84,7 @@ class RackCompatibility
   end
 
   sig { params(status: Integer, message: String).returns(RackBoundary::Response) }
-  def error(status, message)
+  private def error(status, message)
     [status, { "content-type" => "application/json" }, [JSON.generate({ "error" => message })]]
   end
 end

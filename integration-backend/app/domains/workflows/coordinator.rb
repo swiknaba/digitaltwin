@@ -152,10 +152,8 @@ module Domains
                                           dispatch_key: "workflow:phase:#{id}:#{version}")
       end
 
-      private
-
       sig { params(w: T::Hash[Symbol, Object], gates: T::Array[String]).void }
-      def validate_prior_approvals(w, gates)
+      private def validate_prior_approvals(w, gates)
         gates.each do |gate|
           commit = artifact_commit!(w.fetch(:artifacts), gate)
 
@@ -167,7 +165,7 @@ module Domains
       end
 
       sig { params(value: BasicObject, gate: String).returns(String) }
-      def artifact_commit!(value, gate)
+      private def artifact_commit!(value, gate)
         hash = Sequel::Postgres::JSONBHash === value ? value.to_hash : Hash.try_convert(value)
         raise ArgumentError, "Invalid workflow artifacts" unless hash
 
@@ -181,7 +179,7 @@ module Domains
       end
 
       sig { params(w: T::Hash[Symbol, Object], role: T.nilable(String)).returns(T::Array[T::Hash[Symbol, Object]]) }
-      def validate_sessions(w, role = nil)
+      private def validate_sessions(w, role = nil)
         rows = @db[:sessions].where(workflow_id: w[:id], active: true)
         rows = rows.where(role: role) if role
         rows = rows.all
@@ -196,12 +194,12 @@ module Domains
       end
 
       sig { params(w: T::Hash[Symbol, Object]).returns(Adapters::Git::Dto::WorktreeRef) }
-      def worktree(w)
+      private def worktree(w)
         Adapters::Git::Dto::WorktreeRef.new(worktree_path: row_string(w, :worktree_path), branch: row_string(w, :branch))
       end
 
       sig { params(artifacts: BasicObject, gate: String).returns(T.nilable(Adapters::Git::Dto::ArtifactBinding)) }
-      def artifact_binding(artifacts, gate)
+      private def artifact_binding(artifacts, gate)
         # Sequel returns JSONB columns as a Delegator, which is not an Object.
         refs = Sequel::Postgres::JSONBHash === artifacts ? artifacts.to_hash : Hash.try_convert(artifacts)
         ref = refs && Hash.try_convert(refs[gate])
@@ -213,7 +211,7 @@ module Domains
       end
 
       sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(String) }
-      def row_string(row, key)
+      private def row_string(row, key)
         value = row.fetch(key)
         raise ArgumentError, "Invalid workflow row" unless value.is_a?(String)
 

@@ -15,10 +15,8 @@ module Services
         agent_command(body, agent) || worker_command(body, Regexp.escape(worker_handle))
       end
 
-      private
-
       sig { params(body: String, agent: String).returns(T.nilable(Dto::Command)) }
-      def agent_command(body, agent)
+      private def agent_command(body, agent)
         match = body.match(/\A@#{agent} recover-start ([0-9a-f-]+) ([a-z0-9]{26})\z/)
         return Dto::RecoverStart.new(request_id: capture(match, 1), thread_id: capture(match, 2)) if match
 
@@ -41,7 +39,7 @@ module Services
       end
 
       sig { params(body: String, worker: String).returns(T.nilable(Dto::WorkerCommand)) }
-      def worker_command(body, worker)
+      private def worker_command(body, worker)
         match = body.match(/\A@#{worker}(\s+)(start|approve|pause|resume|finish|cancel)\b/)
         return nil unless match
 
@@ -49,7 +47,7 @@ module Services
       end
 
       sig { params(match: MatchData, index: Integer).returns(String) }
-      def capture(match, index)
+      private def capture(match, index)
         value = match[index]
         raise ArgumentError, "Invalid chat command" unless value
 

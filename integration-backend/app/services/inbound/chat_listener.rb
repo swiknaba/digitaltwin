@@ -61,15 +61,13 @@ module Services
         end
       end
 
-      private
-
       sig { returns(String) }
-      def websocket_url
+      private def websocket_url
         "#{@client.url.sub(/^http/, "ws")}/api/v4/websocket"
       end
 
       sig { params(socket: Async::WebSocket::Connection).void }
-      def authenticate!(socket)
+      private def authenticate!(socket)
         socket.write(JSON.generate({ seq: 1, action: "authentication_challenge", data: { token: @client.token } }))
         socket.flush
         auth = Async::Task.current.with_timeout(10) do
@@ -82,7 +80,7 @@ module Services
       end
 
       sig { params(socket: Async::WebSocket::Connection).returns(T.noreturn) }
-      def consume(socket)
+      private def consume(socket)
         loop do
           message = Async::Task.current.with_timeout(30) { socket.read }
           raise EOFError, "WebSocket closed" unless message
@@ -93,7 +91,7 @@ module Services
       end
 
       sig { params(envelope: EventEnvelope).void }
-      def ingest_envelope(envelope)
+      private def ingest_envelope(envelope)
         return unless Adapters::Mattermost::DeliveryVerifier::KINDS.include?(envelope["event"])
 
         delivery = @verifier.event(envelope)
@@ -105,7 +103,7 @@ module Services
       end
 
       sig { params(json: String).returns(AuthEnvelope) }
-      def parse_auth(json)
+      private def parse_auth(json)
         parsed = JSON.parse(json)
         raise RequestFailed, "Malformed WebSocket authentication response" unless parsed.is_a?(Hash)
 
@@ -119,7 +117,7 @@ module Services
       end
 
       sig { params(json: String).returns(EventEnvelope) }
-      def parse_event(json)
+      private def parse_event(json)
         parsed = JSON.parse(json)
         raise RequestFailed, "Malformed WebSocket event" unless parsed.is_a?(Hash)
 
@@ -133,7 +131,7 @@ module Services
       end
 
       sig { params(value: Object).returns(T::Boolean) }
-      def event_value?(value)
+      private def event_value?(value)
         value.is_a?(String) || value.is_a?(Integer) ||
           (value.is_a?(Hash) && value.all? { |key, item| key.is_a?(String) && item.is_a?(String) })
       end

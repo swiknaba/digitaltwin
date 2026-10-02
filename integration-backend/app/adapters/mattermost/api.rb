@@ -88,17 +88,15 @@ module Adapters
         post_from(@client.parse(serialized))
       end
 
-      private
-
       sig { params(value: String).returns(String) }
-      def identifier!(value)
+      private def identifier!(value)
         raise ArgumentError, "Invalid Mattermost identifier" unless value.match?(IDENTIFIER)
 
         value
       end
 
       sig { params(key: String, raw: Object).returns(Dto::HistoryEntry) }
-      def history_entry(key, raw)
+      private def history_entry(key, raw)
         object = json_object(raw)
         raw_id = object["id"]
         post_id = raw_id.is_a?(String) ? raw_id : nil
@@ -112,7 +110,7 @@ module Adapters
       end
 
       sig { params(value: Object).returns(Client::JsonObject) }
-      def json_object(value)
+      private def json_object(value)
         raise Errors::RequestFailed, MALFORMED_ENVELOPE unless value.is_a?(Hash)
 
         object = T.let({}, Client::JsonObject)
@@ -125,7 +123,7 @@ module Adapters
       end
 
       sig { params(object: Client::JsonObject, malformed: String, invalid_revision: String).returns(Dto::Post) }
-      def post_from(object, malformed: MALFORMED, invalid_revision: INVALID_REVISION)
+      private def post_from(object, malformed: MALFORMED, invalid_revision: INVALID_REVISION)
         Dto::Post.new(id: string(object, "id", malformed), channel_id: string(object, "channel_id", malformed),
                       user_id: string(object, "user_id", malformed), root_id: optional_string(object, "root_id", malformed),
                       message: string(object, "message", malformed),
@@ -136,7 +134,7 @@ module Adapters
       end
 
       sig { params(object: Client::JsonObject).returns(Dto::User) }
-      def user_from(object)
+      private def user_from(object)
         delete_at = object.key?("delete_at") ? non_negative_integer(object, "delete_at", INVALID_REVISION) : 0
         bot = object.fetch("is_bot", false)
         raise Errors::MalformedResponse, "Unverified bot status" unless bot == true || bot == false
@@ -145,7 +143,7 @@ module Adapters
       end
 
       sig { params(object: Client::JsonObject, key: String, message: String).returns(String) }
-      def string(object, key, message = MALFORMED)
+      private def string(object, key, message = MALFORMED)
         value = object[key]
         raise Errors::MalformedResponse, message unless value.is_a?(String)
 
@@ -153,7 +151,7 @@ module Adapters
       end
 
       sig { params(object: Client::JsonObject, key: String, message: String).returns(T.nilable(String)) }
-      def optional_string(object, key, message)
+      private def optional_string(object, key, message)
         value = object[key]
         raise Errors::MalformedResponse, message unless value.nil? || value.is_a?(String)
 
@@ -161,7 +159,7 @@ module Adapters
       end
 
       sig { params(object: Client::JsonObject, key: String, message: String).returns(Integer) }
-      def non_negative_integer(object, key, message)
+      private def non_negative_integer(object, key, message)
         value = object[key]
         raise Errors::MalformedResponse, message unless value.is_a?(Integer) && value >= 0
 
@@ -169,7 +167,7 @@ module Adapters
       end
 
       sig { params(object: Client::JsonObject, message: String).returns(T::Hash[String, String]) }
-      def props(object, message)
+      private def props(object, message)
         value = object["props"]
         return {} if value.nil?
         raise Errors::MalformedResponse, message unless value.is_a?(Hash)

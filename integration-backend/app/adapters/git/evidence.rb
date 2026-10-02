@@ -90,15 +90,13 @@ module Adapters
         true
       end
 
-      private
-
       sig { params(worktree: Dto::WorktreeRef).returns(String) }
-      def clean_revision(worktree)
+      private def clean_revision(worktree)
         @revision.call(worktree_path: worktree.worktree_path, branch: worktree.branch)
       end
 
       sig { params(path: T.nilable(String)).void }
-      def path!(path)
+      private def path!(path)
         raise ArgumentError, "Invalid artifact path" if path && (!path.match?(/\A[a-zA-Z0-9_.\/-]+\.md\z/) || path.split("/").any? { |part| %w[. ..].include?(part) } || path.start_with?("/"))
       end
 
@@ -106,7 +104,7 @@ module Adapters
         params(worktree: Dto::WorktreeRef, command: String, argument: String, subject: T.nilable(String), revision: T.nilable(String),
                missing: T::Boolean).returns(String)
       end
-      def git(worktree, command, argument, subject = nil, revision = nil, missing: false)
+      private def git(worktree, command, argument, subject = nil, revision = nil, missing: false)
         path = worktree.worktree_path
         output, status = if revision && subject
                            Open3.capture2e("git", "-C", path, command, argument, subject, revision)

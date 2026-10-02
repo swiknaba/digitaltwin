@@ -7,6 +7,7 @@
 - Model boundaries with explicit types and typed results. Do not use `T.untyped`, `T.unsafe`, unchecked casts, broad hashes, or blanket suppressions.
 - Define one concrete class per Ruby file. Keep controllers thin and services stateless with a small `.call` API.
 - Use Kirei persistence abstractions and typed row resolution. Add low-level Sequel only for a demonstrated Kirei gap.
+- Define class methods with `def self.`, not `class << self`. Make private methods private inline: `private def name` and `private_class_method def self.name`. Do not use a bare `private` section. RuboCop enforces both rules.
 - Use double-quoted strings. Handle only narrow, real boundary failures and preserve their cause in typed results.
 
 ## Layout

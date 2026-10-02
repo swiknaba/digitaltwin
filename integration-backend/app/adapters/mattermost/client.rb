@@ -53,10 +53,8 @@ module Adapters
         raise Errors::MalformedResponse, "Malformed Mattermost JSON"
       end
 
-      private
-
       sig { params(method: String, path: String, body: T.nilable(JsonObject)).returns(JsonObject) }
-      def request(method, path, body = nil)
+      private def request(method, path, body = nil)
         validate_path!(path)
         response = perform_request(method: method, path: path, body: body)
         raise Errors::RequestFailed.new("Mattermost HTTP #{response.status}", status: response.status) unless (200..299).cover?(response.status)
@@ -67,12 +65,12 @@ module Adapters
       end
 
       sig { params(path: String).void }
-      def validate_path!(path)
+      private def validate_path!(path)
         raise ArgumentError, "Expected API4 path" unless path.start_with?("/api/v4/") && !path.include?("\n")
       end
 
       sig { params(method: String, path: String, body: T.nilable(JsonObject)).returns(HttpResponse) }
-      def perform_request(method:, path:, body:)
+      private def perform_request(method:, path:, body:)
         client = T.let(nil, T.nilable(Async::HTTP::Client))
         response = T.let(nil, T.nilable(Protocol::HTTP::Response))
         request_body = body.nil? ? nil : JSON.generate(body)
@@ -90,7 +88,7 @@ module Adapters
       end
 
       sig { params(response: Protocol::HTTP::Response).returns(String) }
-      def response_body(response)
+      private def response_body(response)
         body = +""
         response.body&.each do |chunk|
           body << chunk
@@ -100,7 +98,7 @@ module Adapters
       end
 
       sig { params(value: Object).returns(JsonObject) }
-      def json_object(value)
+      private def json_object(value)
         raise Errors::RequestFailed, "Malformed Mattermost JSON response" unless value.is_a?(Hash)
 
         object = T.let({}, JsonObject)
@@ -113,7 +111,7 @@ module Adapters
       end
 
       sig { params(value: Object).returns(T::Boolean) }
-      def json_value?(value)
+      private def json_value?(value)
         case value
         when String, Integer, Float, TrueClass, FalseClass, NilClass
           true

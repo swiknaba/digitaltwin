@@ -23,24 +23,22 @@ module Domains
         "queued"
       end
 
-      private
-
       sig { params(action: String).returns(String) }
-      def callback_role(action)
+      private def callback_role(action)
         raise ArgumentError, "Invalid callback" unless %w[artifact review].include?(action)
 
         action == "artifact" ? "writer" : "reviewer"
       end
 
       sig { params(action: String, generation: Integer, commit: String, kind: T.nilable(String), verdict: T.nilable(String)).void }
-      def validate_callback!(action:, generation:, commit:, kind:, verdict:)
+      private def validate_callback!(action:, generation:, commit:, kind:, verdict:)
         raise ArgumentError, "Invalid callback" unless generation >= 0 && commit.match?(/\A[0-9a-f]{40}\z/)
         raise ArgumentError, "Invalid artifact" if action == "artifact" && !%w[spec plan implementation].include?(kind)
         raise ArgumentError, "Invalid verdict" if action == "review" && !%w[approve changes_requested].include?(verdict)
       end
 
       sig { params(token: String, generation: Integer, role: String).returns(Domains::Sessions::RuntimeSession) }
-      def active_session(token:, generation:, role:)
+      private def active_session(token:, generation:, role:)
         session = Domains::Sessions::RuntimeSession.find_by(
           credential_digest: Digest::SHA256.hexdigest(token), generation: generation, role: role, active: true
         )
@@ -53,7 +51,7 @@ module Domains
       end
 
       sig { params(session_id: String, generation: Integer, action: String, commit: String, kind: T.nilable(String), verdict: T.nilable(String)).returns(Dto::CallbackJob) }
-      def callback_payload(session_id:, generation:, action:, commit:, kind:, verdict:)
+      private def callback_payload(session_id:, generation:, action:, commit:, kind:, verdict:)
         if action == "artifact"
           raise ArgumentError, "Invalid artifact" unless kind
 

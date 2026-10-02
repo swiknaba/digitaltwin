@@ -137,20 +137,18 @@ module Platform
         Entities::Job.resolve(candidates).any? { |job| job.payload[field] == value }
       end
 
-      private
-
       sig { params(job: T.nilable(Entities::Job)).returns(T.nilable(Dto::JobSnapshot)) }
-      def snapshot(job)
+      private def snapshot(job)
         return nil unless job
 
         Dto::JobSnapshot.new(id: job.id, status: job.status, lease_expires_at: job.lease_expires_at, effect_started_at: job.effect_started_at)
       end
 
       sig { params(status: Dto::JobStatus).returns(Sequel::Dataset) }
-      def with_status(status) = Entities::Job.query.where(status: status.serialize)
+      private def with_status(status) = Entities::Job.query.where(status: status.serialize)
 
       sig { params(id: String, token: String, now: Time).returns(Sequel::Dataset) }
-      def live(id, token, now)
+      private def live(id, token, now)
         with_status(Dto::JobStatus::Running).where(id: id, lease_token: token).where(Sequel[:jobs][:lease_expires_at] > now)
       end
     end

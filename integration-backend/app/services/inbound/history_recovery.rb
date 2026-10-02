@@ -62,10 +62,8 @@ module Services
         end
       end
 
-      private
-
       sig { params(channel_id: String).returns(Integer) }
-      def checkpoint_for(channel_id)
+      private def checkpoint_for(channel_id)
         row = @db[:chat_checkpoints][channel_id: channel_id]
         return 0 unless row.is_a?(Hash)
 
@@ -76,7 +74,7 @@ module Services
       end
 
       sig { params(channel_id: String, since: Integer, page_number: Integer).returns(Adapters::Mattermost::Dto::HistoryPage) }
-      def history_page(channel_id, since, page_number)
+      private def history_page(channel_id, since, page_number)
         page = @api.channel_history(channel_id: channel_id, since: since, page: since.zero? ? page_number : nil)
         keys = page.entries.map(&:key)
         raise Adapters::Mattermost::Errors::RequestFailed, Adapters::Mattermost::Api::MALFORMED_ENVELOPE unless page.order.all? { |id| keys.include?(id) }
@@ -85,7 +83,7 @@ module Services
       end
 
       sig { params(page: Adapters::Mattermost::Dto::HistoryPage, channel_id: String).returns(T::Array[[Entry, Post, Integer]]) }
-      def verified_history(page, channel_id)
+      private def verified_history(page, channel_id)
         posts = T.let([], T::Array[[Entry, Post, Integer]])
         page.entries.each do |entry|
           post = entry.post
@@ -100,7 +98,7 @@ module Services
       end
 
       sig { params(entry: Entry, post: T.nilable(Post), channel_id: String).returns(T.nilable(String)) }
-      def rejection(entry, post, channel_id)
+      private def rejection(entry, post, channel_id)
         return Adapters::Mattermost::Api::MALFORMED_HISTORY_POST unless post
         return "History identity mismatch" unless post.id == entry.key
         return "History channel mismatch" unless post.channel_id == channel_id
@@ -112,14 +110,14 @@ module Services
       end
 
       sig { params(post: Post).returns(String) }
-      def event_kind(post)
+      private def event_kind(post)
         return "post_deleted" if post.delete_at.positive?
 
         post.update_at > post.create_at ? "post_edited" : "posted"
       end
 
       sig { params(channel_id: String, revision: Integer).void }
-      def advance_checkpoint(channel_id, revision)
+      private def advance_checkpoint(channel_id, revision)
         @db[:chat_checkpoints].insert_conflict(
           target: :channel_id,
           update: { post_revision: Sequel.function(:greatest, Sequel[:chat_checkpoints][:post_revision], revision) }
@@ -129,7 +127,7 @@ module Services
       # The digest equals SHA256(JSON.generate([channel_id, post])) over the
       # post as received, so event keys match pre-refactor receipts.
       sig { params(channel_id: String, entry: Entry, reason: String).void }
-      def quarantine(channel_id, entry, reason)
+      private def quarantine(channel_id, entry, reason)
         digest = Digest::SHA256.hexdigest("[#{JSON.generate(channel_id)},#{entry.canonical_json}]")
         raw_id = entry.post_id
         post_id = raw_id&.match?(Adapters::Mattermost::Api::IDENTIFIER) ? raw_id : nil

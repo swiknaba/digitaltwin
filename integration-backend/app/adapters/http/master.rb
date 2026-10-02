@@ -44,10 +44,8 @@ module Adapters
         rejected_response
       end
 
-      private
-
       sig { returns(T::Array[T::Hash[String, Object]]) }
-      def manifest_definitions
+      private def manifest_definitions
         Domains::Commander::Tools::DEFINITIONS.map do |name, fields|
           properties = T.let({}, T::Hash[String, Object])
           fields.each do |field, type|
@@ -59,22 +57,22 @@ module Adapters
       end
 
       sig { params(values: Params).returns(Dto::ToolRequest) }
-      def tool_request(values)
+      private def tool_request(values)
         Dto::ToolRequest.new(name: string(values, "name"), arguments: arguments(values.fetch("arguments")))
       end
 
       sig { params(values: Params).returns(Dto::ReplyRequest) }
-      def reply_request(values)
+      private def reply_request(values)
         Dto::ReplyRequest.new(request_id: string(values, "request_id"), text: string(values, "text"))
       end
 
       sig { params(values: Params, expected: T::Array[String]).returns(T::Boolean) }
-      def exact_keys?(values, expected)
+      private def exact_keys?(values, expected)
         values.keys.sort == expected
       end
 
       sig { returns(Params) }
-      def request_params
+      private def request_params
         values = T.let({}, Params)
         params.each do |key, value|
           values[key] = value
@@ -83,7 +81,7 @@ module Adapters
       end
 
       sig { params(value: Object).returns(ToolArguments) }
-      def arguments(value)
+      private def arguments(value)
         raise ArgumentError, "Invalid tool arguments" unless value.is_a?(Hash)
 
         result = T.let({}, ToolArguments)
@@ -96,7 +94,7 @@ module Adapters
       end
 
       sig { params(values: Params, key: String).returns(String) }
-      def string(values, key)
+      private def string(values, key)
         value = values.fetch(key)
         raise ArgumentError, "Invalid request" unless value.is_a?(String)
 
@@ -104,7 +102,7 @@ module Adapters
       end
 
       sig { returns(String) }
-      def bearer
+      private def bearer
         value = request.env["HTTP_AUTHORIZATION"]
         raise ArgumentError, "Request authorization required" unless value.is_a?(String) && value.start_with?("Bearer ") && value.length > 7
 
@@ -112,12 +110,12 @@ module Adapters
       end
 
       sig { returns(Response) }
-      def rejected_response
+      private def rejected_response
         render_json({ "error" => "Request rejected" }, status: 403)
       end
 
       sig { returns(Response) }
-      def unexpected_fields_response
+      private def unexpected_fields_response
         render_json({ "error" => "Unexpected fields" }, status: 400)
       end
     end

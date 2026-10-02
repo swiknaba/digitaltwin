@@ -32,10 +32,8 @@ module Adapters
         checked_output(*Open3.capture2e("git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
       end
 
-      private
-
       sig { params(output: String, status: Process::Status).returns(String) }
-      def checked_output(output, status)
+      private def checked_output(output, status)
         raise Errors::ValidationFailed, "Git validation failed" unless status.success?
 
         output.strip

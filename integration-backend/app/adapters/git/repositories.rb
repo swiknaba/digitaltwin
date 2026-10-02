@@ -22,17 +22,15 @@ module Adapters
         ensure_success!(status)
       end
 
-      private
-
       sig { params(slug: String).returns(String) }
-      def slug!(slug)
+      private def slug!(slug)
         raise ArgumentError, "Expected owner/repository slug" unless slug.match?(SLUG)
 
         slug
       end
 
       sig { params(status: Process::Status).void }
-      def ensure_success!(status)
+      private def ensure_success!(status)
         raise Errors::OperationFailed, "GitHub operation failed; reconcile before retry" unless status.success?
       end
     end

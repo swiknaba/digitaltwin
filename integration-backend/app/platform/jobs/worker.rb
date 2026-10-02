@@ -52,12 +52,10 @@ module Platform
         heartbeat&.stop
       end
 
-      private
-
       # A defer or block that cannot apply (effect already began, or lease lost)
       # falls through to completion, matching the pre-Decision handler contract.
       sig { params(job: Dto::ClaimedJob, decision: Dto::Decision).void }
-      def apply(job, decision)
+      private def apply(job, decision)
         token = job.lease.token
         reason = decision.reason.to_s
         action = decision.action

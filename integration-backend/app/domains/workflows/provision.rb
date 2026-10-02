@@ -161,8 +161,6 @@ module Domains
         end
       end
 
-      private
-
       sig do
         params(
           request: T::Hash[Symbol, Object],
@@ -171,7 +169,7 @@ module Domains
           delivery: Domains::Mattermost::VerifiedDelivery
         ).returns(T::Hash[Symbol, Object])
       end
-      def bind(request, project, thread, delivery)
+      private def bind(request, project, thread, delivery)
         @db.transaction do
           @db[:workflow_requests].where(id: request[:id]).for_update.first
           if request[:workflow_id]
@@ -195,14 +193,14 @@ module Domains
       end
 
       sig { params(channel_id: String).returns(T::Boolean) }
-      def thread_bot?(channel_id)
+      private def thread_bot?(channel_id)
         me = @api.me
         member = @api.member(channel_id: channel_id, user_id: @bot)
         me.id == @bot && me.bot && !member.nil? && member.channel_id == channel_id && member.user_id == @bot
       end
 
       sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(String) }
-      def row_string(row, key)
+      private def row_string(row, key)
         value = row.fetch(key)
         raise ArgumentError, "Malformed database row" unless value.is_a?(String)
 
@@ -210,7 +208,7 @@ module Domains
       end
 
       sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(T::Hash[String, Object]) }
-      def object_value(row, key)
+      private def object_value(row, key)
         value = row.fetch(key)
         raise ArgumentError, "Malformed database row" unless value.is_a?(Hash) || value.is_a?(Sequel::Postgres::JSONBHash)
 

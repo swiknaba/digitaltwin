@@ -148,10 +148,8 @@ module Domains
         end
       end
 
-      private
-
       sig { params(op: Row, session: Row, workflow: T.nilable(Row)).void }
-      def complete_operation(op, session, workflow)
+      private def complete_operation(op, session, workflow)
         @db[:session_operations].where(id: op[:id]).update(state: "complete")
         queue_renewal(@db[:sessions][id: session[:id]]) if op[:kind] == "start"
         if workflow && row_string(op, :kind) == "start" && row_string(session, :role) == "writer"
@@ -165,25 +163,19 @@ module Domains
       end
 
       sig { params(session: Row).returns(String) }
-      def queue_renewal(session) = self.class.schedule_renewal(@db, session)
+      private def queue_renewal(session) = self.class.schedule_renewal(@db, session)
 
-      class << self
-        extend T::Sig
-
-        sig { params(_db: Sequel::Database, session: Row).returns(String) }
-        def schedule_renewal(_db, session)
-          id = row_string(session, :id)
-          expires_at = row_time(session, :credential_expires_at)
-          key = "session:renew:#{id}:#{expires_at.to_i}"
-          Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionRenew, payload: Dto::RenewalJob.new(session_id: id, generation: row_integer(session, :generation)),
-                                            dispatch_key: key, available_at: [Time.now, expires_at - 300].max)
-        end
+      sig { params(_db: Sequel::Database, session: Row).returns(String) }
+      def self.schedule_renewal(_db, session)
+        id = row_string(session, :id)
+        expires_at = row_time(session, :credential_expires_at)
+        key = "session:renew:#{id}:#{expires_at.to_i}"
+        Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionRenew, payload: Dto::RenewalJob.new(session_id: id, generation: row_integer(session, :generation)),
+                                          dispatch_key: key, available_at: [Time.now, expires_at - 300].max)
       end
 
-      public
-
       sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
-      def renew_job(job:)
+      public def renew_job(job:)
         return Platform::Jobs::Dto::Decision.block("Live session renewal evidence required") unless @policy.dispatch_allowed?
 
         payload = Dto::RenewalJob.from_hash(job.payload, true)
@@ -192,7 +184,7 @@ module Domains
       end
 
       sig { params(session_id: String, generation: Integer).void }
-      def renew(session_id:, generation:)
+      public def renew(session_id:, generation:)
         s = @db[:sessions][id: session_id, generation: generation, active: true] or raise ArgumentError, "Inactive renewal session"
         @lock.call(key: s[:workflow_id] || "controller") do
           s = @db[:sessions][id: session_id, generation: generation, active: true] or raise ArgumentError, "Inactive renewal session"
@@ -215,12 +207,12 @@ module Domains
       end
 
       sig { void }
-      def renew_due
+      public def renew_due
         @db[:sessions].where(active: true).each { |s| queue_renewal(s) }
       end
 
       sig { params(operation_id: String, inbox_id: Integer, pane_id: String).returns(String) }
-      def reconcile(operation_id:, inbox_id:, pane_id:)
+      public def reconcile(operation_id:, inbox_id:, pane_id:)
         op = @db[:session_operations][id: operation_id] or raise ArgumentError, "Unknown session operation"
         s = @db[:sessions][id: op[:session_id]]
         w = s[:workflow_id] && @db[:workflows][id: s[:workflow_id]]
@@ -289,7 +281,7 @@ module Domains
       end
 
       sig { params(workflow_id: String).void }
-      def stop(workflow_id:)
+      public def stop(workflow_id:)
         @lock.call(key: workflow_id) do
           @db.transaction do
             @db[:sessions].where(workflow_id: workflow_id, active: true).each do |s|
@@ -304,7 +296,7 @@ module Domains
       end
 
       sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
-      def call(job:)
+      public def call(job:)
         state = execute(Dto::SessionOperationJob.from_hash(job.payload, true).operation_id, before_effect: -> { job.lease.begin_effect })
         if state == "queued" && @policy.dispatch_allowed?
           Platform::Jobs::Dto::Decision.defer("Session start waits for phase")
@@ -315,10 +307,8 @@ module Domains
         end
       end
 
-      private
-
       sig { params(config: Configuration).void }
-      def validate_configuration!(config)
+      private def validate_configuration!(config)
         required = %w[cli provider model family]
         required.each do |key|
           value = config[key]
@@ -333,17 +323,17 @@ module Domains
         end
       end
       sig { params(id: String).returns(String) }
-      def credential_name(id) = "#{id}.token"
+      private def credential_name(id) = "#{id}.token"
 
       sig { params(identity: Adapters::Herdr::Dto::AgentSession).returns(T::Boolean) }
-      def proven_identity?(identity)
+      private def proven_identity?(identity)
         [identity.source, identity.agent, identity.kind, identity.value].none?(&:empty?)
       end
 
       # Sequel returns the JSONB configuration as a Delegator, which is not an
       # Object. validate_configuration! already checked it at reservation.
       sig { params(value: BasicObject).returns(Adapters::Herdr::Dto::LaunchSpec) }
-      def launch_spec(value)
+      private def launch_spec(value)
         configuration = Sequel::Postgres::JSONBHash === value ? value.to_hash : Hash.try_convert(value)
         raise IOError, "Invalid Herdr configuration" unless configuration
 
@@ -354,39 +344,35 @@ module Domains
         Adapters::Herdr::Dto::LaunchSpec.new(cli: cli, launch_args: args)
       end
 
-      class << self
-        extend T::Sig
+      sig { params(row: Row, key: Symbol).returns(String) }
+      def self.row_string(row, key)
+        value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
+        raise ArgumentError, "Malformed database row" unless value.is_a?(String)
 
-        sig { params(row: Row, key: Symbol).returns(String) }
-        def row_string(row, key)
-          value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
-          raise ArgumentError, "Malformed database row" unless value.is_a?(String)
+        value
+      end
 
-          value
-        end
+      sig { params(row: Row, key: Symbol).returns(Integer) }
+      def self.row_integer(row, key)
+        value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
+        raise ArgumentError, "Malformed database row" unless value.is_a?(Integer)
 
-        sig { params(row: Row, key: Symbol).returns(Integer) }
-        def row_integer(row, key)
-          value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
-          raise ArgumentError, "Malformed database row" unless value.is_a?(Integer)
+        value
+      end
 
-          value
-        end
+      sig { params(row: Row, key: Symbol).returns(Time) }
+      def self.row_time(row, key)
+        value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
+        raise ArgumentError, "Malformed database row" unless value.is_a?(Time)
 
-        sig { params(row: Row, key: Symbol).returns(Time) }
-        def row_time(row, key)
-          value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
-          raise ArgumentError, "Malformed database row" unless value.is_a?(Time)
-
-          value
-        end
+        value
       end
 
       sig { params(row: Row, key: Symbol).returns(String) }
-      def row_string(row, key) = self.class.row_string(row, key)
+      private def row_string(row, key) = self.class.row_string(row, key)
 
       sig { params(row: Row, key: Symbol).returns(Integer) }
-      def row_integer(row, key) = self.class.row_integer(row, key)
+      private def row_integer(row, key) = self.class.row_integer(row, key)
     end
   end
 end

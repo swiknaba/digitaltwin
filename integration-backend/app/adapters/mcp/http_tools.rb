@@ -30,10 +30,8 @@ module Adapters
         request("POST", "/internal/master/tools", { "name" => name, "arguments" => args }, token).fetch("result")
       end
 
-      private
-
       sig { params(method: String, path: String, body: T.nilable(JsonObject), token: T.nilable(String)).returns(JsonObject) }
-      def request(method, path, body = nil, token = nil)
+      private def request(method, path, body = nil, token = nil)
         target = URI.join(@base.to_s, path)
         headers = { "Content-Type" => "application/json" }
         headers["Authorization"] = "Bearer #{token}" if token
@@ -51,7 +49,7 @@ module Adapters
       end
 
       sig { params(value: Object).returns(T::Boolean) }
-      def json_object?(value)
+      private def json_object?(value)
         value.is_a?(Hash) && value.keys.all? { |key| key.is_a?(String) }
       end
     end

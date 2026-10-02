@@ -73,17 +73,15 @@ module Domains
         end
       end
 
-      private
-
       sig { params(worktree_path: Object, branch: Object).returns(Adapters::Git::Dto::WorktreeRef) }
-      def worktree(worktree_path, branch)
+      private def worktree(worktree_path, branch)
         raise ArgumentError, "Invalid workflow evidence" unless worktree_path.is_a?(String) && branch.is_a?(String)
 
         Adapters::Git::Dto::WorktreeRef.new(worktree_path: worktree_path, branch: branch)
       end
 
       sig { params(artifacts: BasicObject, gate: String).returns(T.nilable(Adapters::Git::Dto::ArtifactBinding)) }
-      def artifact_binding(artifacts, gate)
+      private def artifact_binding(artifacts, gate)
         # Sequel returns JSONB columns as a Delegator, which is not an Object.
         refs = Sequel::Postgres::JSONBHash === artifacts ? artifacts.to_hash : Hash.try_convert(artifacts)
         ref = refs && Hash.try_convert(refs[gate])

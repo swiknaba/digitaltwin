@@ -58,10 +58,8 @@ module Domains
         outcome("rejected", e.is_a?(ArgumentError) ? e.message : "Repository/channel already enrolled")
       end
 
-      private
-
       sig { params(status: String, reason: String).returns(Domains::Workflows::Entities::Outcome) }
-      def outcome(status, reason)
+      private def outcome(status, reason)
         Domains::Workflows::Entities::Outcome.new(status: status, reason: reason)
       end
     end

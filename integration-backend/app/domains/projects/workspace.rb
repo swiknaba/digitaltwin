@@ -52,10 +52,8 @@ module Domains
         path
       end
 
-      private
-
       sig { params(root: String, path: String).returns(String) }
-      def contained!(root, path)
+      private def contained!(root, path)
         expanded = File.expand_path(path)
         raise ArgumentError, "Workspace escape" unless expanded.start_with?("#{root}/")
 

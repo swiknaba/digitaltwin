@@ -41,10 +41,8 @@ class Digitaltwin < Kirei::App
     RackCompatibility.new(super_method_app).call(env)
   end
 
-  private
-
   sig { returns(Method) }
-  def super_method_app
+  private def super_method_app
     parent = method(:call).super_method
     raise "Kirei application call handler is unavailable" unless parent
 

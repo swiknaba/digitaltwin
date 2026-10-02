@@ -69,25 +69,23 @@ module Adapters
         end
       end
 
-      private
-
       sig { params(value: Object).returns(T::Boolean) }
-      def json_object?(value)
+      private def json_object?(value)
         value.is_a?(Hash) && value.keys.all? { |key| key.is_a?(String) }
       end
 
       sig { params(value: Object).returns(JsonObject) }
-      def tool_params(value)
+      private def tool_params(value)
         object_value(value, "Tool parameters must be an object")
       end
 
       sig { params(value: Object).returns(JsonObject) }
-      def arguments(value)
+      private def arguments(value)
         object_value(value, "Tool arguments must be an object")
       end
 
       sig { params(value: Object, message: String).returns(JsonObject) }
-      def object_value(value, message)
+      private def object_value(value, message)
         raise ArgumentError, message unless value.is_a?(Hash)
 
         object = T.let({}, JsonObject)
@@ -100,7 +98,7 @@ module Adapters
       end
 
       sig { params(object: JsonObject, key: String).returns(String) }
-      def string_value(object, key)
+      private def string_value(object, key)
         value = object.fetch(key)
         raise ArgumentError, "Expected string tool parameter" unless value.is_a?(String)
 

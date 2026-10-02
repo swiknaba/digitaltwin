@@ -45,10 +45,8 @@ module Domains
         delivery
       end
 
-      private
-
       sig { params(id: InboxId).returns(InboxRow) }
-      def inbox_row(id)
+      private def inbox_row(id)
         row = @db[:inbox][id: id]
         raise ArgumentError, "Missing verified source" unless row.is_a?(Hash)
 
@@ -56,7 +54,7 @@ module Domains
       end
 
       sig { params(row: InboxRow, key: Symbol).returns(String) }
-      def string_value(row, key)
+      private def string_value(row, key)
         value = row.fetch(key)
         raise ArgumentError, "Invalid verified source" unless value.is_a?(String)
 
@@ -64,7 +62,7 @@ module Domains
       end
 
       sig { params(row: InboxRow).returns(String) }
-      def verified_delivery(row)
+      private def verified_delivery(row)
         value = row.fetch(:verified_delivery)
         json = Hash.try_convert(value)
         raise ArgumentError, "Invalid verified source" unless json
@@ -82,7 +80,7 @@ module Domains
       end
 
       sig { params(delivery: Domains::Mattermost::VerifiedDelivery, row: InboxRow).returns(T::Boolean) }
-      def verified_human?(delivery, row)
+      private def verified_human?(delivery, row)
         delivery.actor.member && !delivery.actor.bot &&
           delivery.actor.user_id == string_value(row, :user_id) &&
           delivery.post_revision == integer_value(row, :post_revision) &&
@@ -90,7 +88,7 @@ module Domains
       end
 
       sig { params(row: InboxRow, key: Symbol).returns(Integer) }
-      def integer_value(row, key)
+      private def integer_value(row, key)
         value = row.fetch(key)
         raise ArgumentError, "Invalid verified source" unless value.is_a?(Integer)
 

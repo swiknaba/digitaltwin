@@ -229,10 +229,8 @@ module Domains
         end
       end
 
-      private
-
       sig { params(token: String, generation: Integer, role: String).returns(Row) }
-      def session(token, generation, role)
+      private def session(token, generation, role)
         raw = @db[:sessions][credential_digest: Digest::SHA256.hexdigest(token), generation: generation, active: true, role: role]
         s = row!(raw)
         latest = @db[:sessions].where(workflow_id: row_string!(s, :workflow_id), role: role).max(:generation)
@@ -241,7 +239,7 @@ module Domains
         s
       end
       sig { params(id: String, generation: Integer, role: String).returns(Row) }
-      def checked_session(id, generation, role)
+      private def checked_session(id, generation, role)
         raw = @db[:sessions][id: id, generation: generation, active: true, role: role]
         s = row!(raw)
         latest = @db[:sessions].where(workflow_id: row_string!(s, :workflow_id), role: role).max(:generation)
@@ -250,7 +248,7 @@ module Domains
         s
       end
       sig { params(session: Row).void }
-      def settled!(session)
+      private def settled!(session)
         live = @herdr.pane(row_string!(session, :pane_id))
         runtime_identity = row_json_object!(session, :runtime_identity)
         settled = [Adapters::Herdr::Dto::AgentStatus::Idle, Adapters::Herdr::Dto::AgentStatus::Done].include?(live.agent_status)
@@ -258,7 +256,7 @@ module Domains
       end
 
       sig { params(row: Object).returns(Row) }
-      def row!(row)
+      private def row!(row)
         raise ArgumentError, "Malformed durable review record" unless row.is_a?(Hash)
 
         typed = T.let({}, Row)
@@ -271,7 +269,7 @@ module Domains
       end
 
       sig { params(row: Row, key: Symbol).returns(String) }
-      def row_string!(row, key)
+      private def row_string!(row, key)
         value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
         raise ArgumentError, "Malformed durable review record" unless value.is_a?(String)
 
@@ -279,7 +277,7 @@ module Domains
       end
 
       sig { params(row: Row, key: Symbol).returns(Identifier) }
-      def row_identifier!(row, key)
+      private def row_identifier!(row, key)
         value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
         raise ArgumentError, "Malformed durable review record" unless value.is_a?(String) || value.is_a?(Integer)
 
@@ -287,7 +285,7 @@ module Domains
       end
 
       sig { params(row: Row, key: Symbol).returns(JsonObject) }
-      def row_json_object!(row, key)
+      private def row_json_object!(row, key)
         value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
         json_object = Hash.try_convert(value)
         raise ArgumentError, "Malformed durable review record" unless json_object
@@ -302,7 +300,7 @@ module Domains
       end
 
       sig { params(row: Row, key: Symbol).returns(Time) }
-      def row_time!(row, key)
+      private def row_time!(row, key)
         value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
         raise ArgumentError, "Malformed durable review record" unless value.is_a?(Time)
 
@@ -310,7 +308,7 @@ module Domains
       end
 
       sig { params(row: Row, key: Symbol).returns(T.nilable(Time)) }
-      def row_optional_time(row, key)
+      private def row_optional_time(row, key)
         value = row.fetch(key) { return nil }
         raise ArgumentError, "Malformed durable review record" unless value.nil? || value.is_a?(Time)
 
@@ -318,7 +316,7 @@ module Domains
       end
 
       sig { params(row: Row, key: Symbol).returns(Integer) }
-      def row_integer!(row, key)
+      private def row_integer!(row, key)
         value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
         raise ArgumentError, "Malformed durable review record" unless value.is_a?(Integer)
 
@@ -326,7 +324,7 @@ module Domains
       end
 
       sig { params(row: Row, key: Symbol).returns(T.nilable(String)) }
-      def row_optional_string(row, key)
+      private def row_optional_string(row, key)
         value = row.fetch(key) { return nil }
         raise ArgumentError, "Malformed durable review record" unless value.nil? || value.is_a?(String)
 
@@ -334,17 +332,17 @@ module Domains
       end
 
       sig { params(workflow: Row).returns(String) }
-      def phase_for(workflow)
+      private def phase_for(workflow)
         row_string!(workflow, row_string!(workflow, :phase) == "paused" ? :saved_phase : :phase)
       end
 
       sig { params(workflow: Row).returns(Adapters::Git::Dto::WorktreeRef) }
-      def worktree!(workflow)
+      private def worktree!(workflow)
         Adapters::Git::Dto::WorktreeRef.new(worktree_path: row_string!(workflow, :worktree_path), branch: row_string!(workflow, :branch))
       end
 
       sig { params(record: Row, key: Symbol).returns(String) }
-      def review_evidence!(record, key)
+      private def review_evidence!(record, key)
         value = row_optional_string(record, key)
         raise ArgumentError, "Invalid review evidence" unless value
 
@@ -352,7 +350,7 @@ module Domains
       end
 
       sig { params(workflow: Row).returns(ArtifactRefs) }
-      def artifact_refs!(workflow)
+      private def artifact_refs!(workflow)
         raw = workflow.fetch(:artifacts) { raise ArgumentError, "Malformed workflow record" }
         artifact_refs = Hash.try_convert(raw)
         raise ArgumentError, "Malformed workflow record" unless artifact_refs
@@ -373,7 +371,7 @@ module Domains
       end
 
       sig { params(row: Row, key: Symbol).returns(Configuration) }
-      def configuration!(row, key = :configuration)
+      private def configuration!(row, key = :configuration)
         value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
         configuration_values = Hash.try_convert(value)
         raise ArgumentError, "Malformed durable review record" unless configuration_values
@@ -388,7 +386,7 @@ module Domains
       end
 
       sig { params(row: Row, key: String).returns(String) }
-      def configuration_value!(row, key)
+      private def configuration_value!(row, key)
         value = configuration!(row).fetch(key) { raise ArgumentError, "Malformed durable review record" }
         raise ArgumentError, "Malformed durable review record" unless value.is_a?(String)
 
@@ -396,13 +394,13 @@ module Domains
       end
 
       sig { params(configuration: Configuration).returns(Adapters::Git::Dto::ReviewerIdentity) }
-      def reviewer_identity!(configuration)
+      private def reviewer_identity!(configuration)
         Adapters::Git::Dto::ReviewerIdentity.new(provider: reviewer_field!(configuration, "provider"), model: reviewer_field!(configuration, "model"),
                                                  family: reviewer_field!(configuration, "family"))
       end
 
       sig { params(configuration: Configuration, key: String).returns(String) }
-      def reviewer_field!(configuration, key)
+      private def reviewer_field!(configuration, key)
         value = configuration.fetch(key) { raise ArgumentError, "Malformed durable review record" }
         raise ArgumentError, "Malformed durable review record" unless value.is_a?(String)
 
@@ -410,12 +408,12 @@ module Domains
       end
 
       sig { params(result: Object).returns(T::Boolean) }
-      def route_dispatched?(result)
+      private def route_dispatched?(result)
         result.is_a?(Hash) && (result.key?(:id) || result.key?("id"))
       end
 
       sig { params(workflow: Row, gate: String).returns(T.nilable(String)) }
-      def artifact_path!(workflow, gate)
+      private def artifact_path!(workflow, gate)
         artifact_refs!(workflow).fetch(gate) { raise ArgumentError, "Malformed workflow record" }.fetch("path")
       end
     end

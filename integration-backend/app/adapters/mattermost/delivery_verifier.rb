@@ -89,15 +89,13 @@ module Adapters
         value
       end
 
-      private
-
       sig { params(event_kind: String).void }
-      def validate_event_kind!(event_kind)
+      private def validate_event_kind!(event_kind)
         raise ArgumentError, "Unsupported event" unless KINDS.include?(event_kind)
       end
 
       sig { params(envelope: EventEnvelope, key: String).returns(String) }
-      def event_string(envelope, key)
+      private def event_string(envelope, key)
         value = envelope.fetch(key) { raise ArgumentError, "Malformed event" }
         raise ArgumentError, "Malformed event" unless value.is_a?(String)
 
@@ -105,7 +103,7 @@ module Adapters
       end
 
       sig { params(envelope: EventEnvelope).returns(T::Hash[String, String]) }
-      def event_data(envelope)
+      private def event_data(envelope)
         value = envelope.fetch("data") { raise ArgumentError, "Malformed event data" }
         raise ArgumentError, "Malformed event data" unless value.is_a?(Hash) && value.values.all? { |item| item.is_a?(String) } && value.key?("post")
 
@@ -113,7 +111,7 @@ module Adapters
       end
 
       sig { params(envelope: EventEnvelope).returns(T.nilable(String)) }
-      def optional_broadcast_channel(envelope)
+      private def optional_broadcast_channel(envelope)
         value = envelope["broadcast"]
         return nil if value.nil?
 

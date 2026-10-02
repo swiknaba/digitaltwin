@@ -24,17 +24,15 @@ module Domains
         end
       end
 
-      private
-
       sig { params(message: OutboxMessage).void }
-      def validate!(message)
+      private def validate!(message)
         return unless message.bot == "worker" && (message.thread_id.to_s.empty? || !%w[writer reviewer].include?(message.role))
 
         raise ArgumentError, "Worker messages require thread and role"
       end
 
       sig { params(persisted: OutboxMessage, message: OutboxMessage).returns(T::Boolean) }
-      def same_message?(persisted, message)
+      private def same_message?(persisted, message)
         persisted.channel_id == message.channel_id && persisted.thread_id == message.thread_id &&
           persisted.bot == message.bot && persisted.role == message.role && persisted.body == message.body
       end

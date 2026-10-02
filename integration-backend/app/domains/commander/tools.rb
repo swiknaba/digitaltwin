@@ -78,10 +78,8 @@ module Domains
         end
       end
 
-      private
-
       sig { params(args: ToolArguments, key: String).returns(String) }
-      def required_string(args, key)
+      private def required_string(args, key)
         value = args.fetch(key) { raise ArgumentError, "Missing #{key}" }
         raise ArgumentError, "Invalid #{key}" unless value.is_a?(String)
 
@@ -89,7 +87,7 @@ module Domains
       end
 
       sig { params(args: ToolArguments, key: String).returns(Integer) }
-      def required_integer(args, key)
+      private def required_integer(args, key)
         value = args.fetch(key) { raise ArgumentError, "Missing #{key}" }
         raise ArgumentError, "Invalid #{key}" unless value.is_a?(Integer)
 
@@ -97,7 +95,7 @@ module Domains
       end
 
       sig { params(args: ToolArguments).returns(T::Array[Integer]) }
-      def evidence_ids(args)
+      private def evidence_ids(args)
         value = args.fetch("evidence_inbox_ids") { raise ArgumentError, "Missing evidence IDs" }
         raise ArgumentError, "Invalid evidence IDs" unless value.is_a?(Array)
 
@@ -108,7 +106,7 @@ module Domains
       end
 
       sig { params(request: Requests::RequestRow).returns(T.any(Integer, String)) }
-      def request_inbox_id(request)
+      private def request_inbox_id(request)
         value = request.fetch(:inbox_id)
         raise ArgumentError, "Invalid request capability" unless value.is_a?(Integer) || value.is_a?(String)
 

@@ -50,17 +50,15 @@ module Domains
         end
       end
 
-      private
-
       sig { params(handle: String).returns(String) }
-      def valid_handle!(handle)
+      private def valid_handle!(handle)
         raise ArgumentError, "Invalid bot handle" unless handle.match?(/\A[a-z0-9_.-]+\z/)
 
         handle
       end
 
       sig { params(delivery: VerifiedDelivery).returns(T.nilable(Integer)) }
-      def persist_inbox(delivery)
+      private def persist_inbox(delivery)
         record = { channel_id: delivery.channel_id, post_id: delivery.post_id, event_kind: delivery.event_kind,
                    post_revision: delivery.post_revision }
         id = @db[:inbox].insert_conflict(target: record.keys).insert(**record, thread_id: delivery.thread_id,
@@ -72,25 +70,25 @@ module Domains
       end
 
       sig { params(delivery: VerifiedDelivery).returns(T.nilable(Domains::Workflows::Workflow)) }
-      def workflow_for(delivery)
+      private def workflow_for(delivery)
         Domains::Workflows::Workflow.find_by(channel_id: delivery.channel_id, thread_id: delivery.thread_id, archived_at: nil)
       end
 
       sig { params(body: String).returns(T.nilable(String)) }
-      def command_for(body)
+      private def command_for(body)
         command = ::Services::Commands::Parser.new.call(body: body, agent_handle: @agent, worker_handle: @worker)
         command.action.serialize if command.is_a?(::Services::Commands::Dto::WorkerCommand)
       end
 
       # A mention anywhere in the body, not a command, so it stays out of the parser.
       sig { params(delivery: VerifiedDelivery).returns(T::Boolean) }
-      def master_prompt?(delivery)
+      private def master_prompt?(delivery)
         (delivery.channel_id == @master_channel || delivery.body.match?(/(?:\A|\s)@#{Regexp.escape(@agent)}\b/)) &&
           delivery.actor.member && !delivery.actor.bot
       end
 
       sig { params(workflow: T.nilable(Domains::Workflows::Workflow)).returns(T::Boolean) }
-      def dispatch_suppressed?(workflow)
+      private def dispatch_suppressed?(workflow)
         return false unless workflow
 
         phase = workflow.phase
@@ -98,12 +96,12 @@ module Domains
       end
 
       sig { params(workflow: Domains::Workflows::Workflow).returns(T::Boolean) }
-      def closed?(workflow)
+      private def closed?(workflow)
         %w[closed cancelled].include?(workflow.phase)
       end
 
       sig { params(workflow: Domains::Workflows::Workflow, inbox_id: Integer).void }
-      def queue_message(workflow, inbox_id)
+      private def queue_message(workflow, inbox_id)
         @db[:queued_messages].insert(workflow_id: workflow.id, inbox_id: inbox_id, workflow_version: workflow.version)
       end
 
@@ -111,7 +109,7 @@ module Domains
         params(kind: Platform::Jobs::Dto::JobKind, delivery: VerifiedDelivery, inbox_id: Integer,
                workflow: T.nilable(Domains::Workflows::Workflow)).returns(Domains::Workflows::Entities::Outcome)
       end
-      def queue(kind, delivery, inbox_id, workflow: nil)
+      private def queue(kind, delivery, inbox_id, workflow: nil)
         payload = Domains::Commander::Dto::InboxDispatchJob.new(inbox_id: inbox_id, channel_id: delivery.channel_id, thread_id: delivery.thread_id,
                                                                 workflow_id: workflow&.id, expected_version: workflow&.version)
         Platform::Jobs::Store.new.enqueue(kind: kind, payload: payload, dispatch_key: "inbox:#{inbox_id}:#{kind.serialize}")
@@ -119,7 +117,7 @@ module Domains
       end
 
       sig { params(status: String, reason: String).returns(Domains::Workflows::Entities::Outcome) }
-      def result(status, reason)
+      private def result(status, reason)
         Domains::Workflows::Entities::Outcome.new(status: status, reason: reason)
       end
     end

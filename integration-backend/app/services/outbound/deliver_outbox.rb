@@ -87,10 +87,8 @@ module Services
         true
       end
 
-      private
-
       sig { params(api: Api, row: OutboxItem, bot: String).void }
-      def verify_destination!(api, row, bot)
+      private def verify_destination!(api, row, bot)
         [row.channel_id, bot, row.thread_id].compact.each { |identifier| identifier!(identifier) }
         me = api.me
         raise ArgumentError, "Wrong bot identity" unless me.id == bot && me.bot
@@ -109,14 +107,14 @@ module Services
       end
 
       sig { params(post: Adapters::Mattermost::Dto::Post, row: OutboxItem, bot: String).void }
-      def verify_result!(post, row, bot)
+      private def verify_result!(post, row, bot)
         verified = [identifier?(post.id), post.channel_id == row.channel_id, post.root_id.to_s == row.thread_id.to_s,
                     post.user_id == bot, post.message == row.body].all?
         raise "Unverified Mattermost delivery result" unless verified
       end
 
       sig { params(value: Object).returns(T.nilable(OutboxItem)) }
-      def outbox_item(value)
+      private def outbox_item(value)
         return nil unless value.is_a?(Hash)
 
         row = row_from(value)
@@ -126,7 +124,7 @@ module Services
       end
 
       sig { params(value: Object).returns(Row) }
-      def row_from(value)
+      private def row_from(value)
         raise ArgumentError, "Malformed outbox item" unless value.is_a?(Hash)
 
         row = T.let({}, Row)
@@ -140,7 +138,7 @@ module Services
       end
 
       sig { params(row: Row, key: Symbol).returns(String) }
-      def row_string(row, key)
+      private def row_string(row, key)
         value = row.fetch(key)
         raise ArgumentError, "Malformed outbox item" unless value.is_a?(String)
 
@@ -148,7 +146,7 @@ module Services
       end
 
       sig { params(row: Row, key: Symbol).returns(T.nilable(String)) }
-      def optional_row_string(row, key)
+      private def optional_row_string(row, key)
         value = row[key]
         raise ArgumentError, "Malformed outbox item" unless value.nil? || value.is_a?(String)
 
@@ -156,7 +154,7 @@ module Services
       end
 
       sig { params(row: Row, key: Symbol).returns(Time) }
-      def row_time(row, key)
+      private def row_time(row, key)
         value = row.fetch(key)
         return value if value.is_a?(Time)
         return value.to_time if value.is_a?(DateTime)
@@ -165,14 +163,14 @@ module Services
       end
 
       sig { params(value: String).returns(String) }
-      def identifier!(value)
+      private def identifier!(value)
         raise ArgumentError, "Invalid Mattermost destination ID" unless identifier?(value)
 
         value
       end
 
       sig { params(value: String).returns(T::Boolean) }
-      def identifier?(value)
+      private def identifier?(value)
         value.match?(Api::IDENTIFIER)
       end
     end
