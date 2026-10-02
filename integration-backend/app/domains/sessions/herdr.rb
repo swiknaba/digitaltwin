@@ -22,6 +22,13 @@ module Domains
         result
       end
 
+      def panes
+        result = request("pane.list", {}, "pane_list").fetch("panes")
+        raise IOError, "Invalid pane inventory" unless result.is_a?(Array) && result.all? { |pane| pane.is_a?(Hash) && pane["pane_id"].is_a?(String) }
+
+        result
+      end
+
       def close(pane) = request("pane.close", { "pane_id" => pane }, "ok")
 
       private def agent(method, params, expected, pane)

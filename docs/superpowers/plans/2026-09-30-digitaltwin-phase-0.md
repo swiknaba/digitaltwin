@@ -431,7 +431,7 @@ These sources validate names and compatibility considerations; Task 1 still sele
     Run isolated PostgreSQL, actual Git, Unix-socket and stdio fixtures plus independent review.
 
 Implemented in the routing draft; live dispatch remains closed. Still outside this bounded
-increment: new project enrollment, provider login, uncertain runtime-effect reconciliation,
+increment: new project enrollment through MCP, provider login,
 verified PR delivery/done transition, operational Git/deployment/destructive tools and live
 acceptance. These remain Task 6–10 work, not completed features.
 
@@ -584,3 +584,17 @@ Later provider/MCP integration remains [issue #4](https://github.com/swiknaba/di
 3. **Mattermost contract:** Validate official Team Edition bot APIs, native threads, authenticated events, and REST reconnect recovery. Validate own mobile builds and self-hosted push. Validate Worker callbacks through Kirei's outbox. Missing secure sender/thread checks block human approval.
 4. **Infrastructure:** Production, image publication, Headscale, backup bucket, and restore test are separately authorized work in the infrastructure context. This plan provides contracts only.
 5. **Review exclusion:** Kirei prevents prompt dispatch, checks Git, and monitors Herdr. The accepted shared Runtime domain does not protect against intentional direct terminal/filesystem access. Such access blocks/invalidates review and does not count as approved work.
+
+
+### Bounded routing recovery follow-through
+
+- Preserve follow-up bindings during reserved-session startup, uncertain start reconciliation and
+  same-conversation renewal. No replacement generation is selected implicitly.
+- Include correlation/operation IDs in queue receipts. Persist uncertain state and recovery notice
+  atomically; human follow-up confirmation never triggers resend.
+- Reconcile lost thread/start/stop receipts only from exact human binding and authoritative root,
+  role conversation or global pane absence. Complete receipts and dependent jobs atomically.
+- Accept an uncertain review prompt's valid exact review callback only after its effect lease expires
+  and the existing identity/frozen-target/clean append-only Git checks pass.
+- Keep hosted CI absence, expanded independent review scope, and minimum manual setup/evidence
+  explicit in `docs/interfaces/master-routing-setup.md`.

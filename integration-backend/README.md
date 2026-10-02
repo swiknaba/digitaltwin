@@ -127,7 +127,7 @@ approval advances through independent review/current-tree checks; changed approv
 Operator overlays must provide existing verified bot/token references to the appropriate processes.
 Only the worker mounts Git workspaces and the Herdr socket. No environment switch enables dispatch.
 All positive lifecycle tests inject fixture policy; real `Policy#dispatch_allowed?` remains false.
-New project enrollment, uncertain-effect reconciliation, verified PR delivery/done transition and broader
+New project enrollment through MCP, verified PR delivery/done transition and broader
 operational/destructive MCP tools remain separate implementation and acceptance work.
 
 ## Checks and remaining gates
@@ -148,3 +148,7 @@ Tasks 6–10 remain blocked on required authenticated chat/threads, CLI prompt/s
 The early real mention → Herdr CLI → source-thread reply slice has not passed.
 Provide operator-controlled disposable listener/bot accounts and provider test access to run those checks.
 No production deployment, provider authentication, paid calls, signed-device push, or final Phase 0 acceptance is claimed.
+
+Bounded receipt recovery and the exact minimum manual setup are documented in
+[Master routing setup](../docs/interfaces/master-routing-setup.md). Startup/renewal follow-ups remain
+bound and queued; human/remote evidence resolves uncertainty without repeating network effects.

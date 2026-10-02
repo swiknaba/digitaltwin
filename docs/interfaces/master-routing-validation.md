@@ -28,16 +28,17 @@ Full checks use disposable PostgreSQL 18.6 and the Ruby 4.0.7 amd64 dependency i
 clean 001–008 migration/rollback, Layout/Lint/Security and shared-contract static typing.
 Fixtures cover concurrency, review release/rollback, credential expiry/replacement, callback
 roles/generations, authoritative context, Master request scope, stdio MCP and actual Git trees.
-Final backend check passed 121 examples (116 main +4 migration helper +1 clean migration),
-87 files without lint offenses, and shared-contract static typing. Root Compose passed 15 tests;
-client provenance/staging passed 2 tests. Independent read-only review found no remaining material
+Final backend check passed 132 examples (127 main +4 migration helper +1 clean migration),
+87 files without lint offenses, and shared-contract static typing. Root contract tests passed 15; six opt-in live Compose tests were skipped.
+Client provenance/staging passed 2 tests. Independent read-only review found no remaining material
 code issue after durable release, cleanup, renewal, busy readiness and FIFO fixes.
 
 Captured Herdr 0.9.3/protocol22 schema SHA256:
 `9e2af207e9aa8183d4aeca5fde9cc48e7909bb40cdbd7cf21608a6d3ea78075b`.
 Actual Unix-socket fixtures validate get/prompt/start/close envelopes. A disposable offline
 Herdr container passed health and actual missing-target rejection. The new adapter also passed
-actual workspace.create (including env) and pane.close against Herdr0.9.3. No CLI/provider started.
+actual workspace.create (including env), pane.close and unfiltered pane.list presence/absence
+against Herdr0.9.3. No CLI/provider started.
 The built Runtime image passed installed stdio MCP and artifact callback HTTP fixtures with external
 networking disabled. Client provenance is frozen at backend commit
 `68823ec0288270453ec502b5772c4d776d9d227f`; image ID
@@ -50,7 +51,11 @@ This is not positive CLI send/settled or selected Gemini MCP evidence.
 `dispatch_allowed?` stays false. Authenticated chat, actual role CLI lifecycle/settled behavior
 and selected Master MCP roundtrip remain unproved; operator profiles/credentials are not supplied.
 No provider login, paid request, infrastructure change, Hermes/OpenClaw or LiteLLM was introduced.
-Uncertain thread/runtime effects require operator reconciliation; no blind resend is implemented.
+Uncertain follow-up outcomes have exact original-human delivered/discard reconciliation. Lost
+thread receipts recover only against verified bot roots; session receipts recover only against exact
+runtime identity or authoritative pane absence. No external operation is replayed. Review callbacks
+can reconcile uncertain review dispatch using exact Git/runtime evidence. See
+[minimum setup and acceptance](master-routing-setup.md).
 New project enrollment, verified PR delivery/done transition, broader Git/deployment/destructive
 MCP tools and live Task 6–10 acceptance remain outside this bounded increment. The draft is not
 an enabled fleet or completion of all Phase 0 workflows. Preserve those evidence/code gaps.

@@ -1,6 +1,6 @@
 require_relative "../spec_helper"
 RSpec.describe Domains::Sessions::Herdr do
-  def socket_fixture(type: "agent_info", pane: "pane", wrong_id: false)
+  def socket_fixture(type: "agent_info", pane: "pane", wrong_id: false, extra: {})
     Dir.mktmpdir do |dir|
       path = File.join(dir, "herdr.sock")
       server = UNIXServer.new(path)
@@ -10,7 +10,7 @@ RSpec.describe Domains::Sessions::Herdr do
         request = JSON.parse(socket.gets)
         requests << request
         socket.puts(JSON.generate(id: wrong_id ? "wrong" : request["id"], result: {
-                                    type: type, agent: { pane_id: pane, agent_status: "idle" }
+                                    type: type, agent: { pane_id: pane, agent_status: "idle" }, **extra
                                   }))
         socket.close
       end
@@ -45,6 +45,15 @@ RSpec.describe Domains::Sessions::Herdr do
     socket_fixture(type: "ok") do |client, requests|
       client.close("pane")
       expect(requests.first.values_at("method", "params")).to eq(["pane.close", { "pane_id" => "pane" }])
+    end
+  end
+  it "uses authoritative unfiltered pane inventory for stop receipt recovery" do
+    socket_fixture(type: "pane_list", extra: { panes: [{ pane_id: "pane" }] }) do |client, requests|
+      expect(client.panes).to eq([{ "pane_id" => "pane" }])
+      expect(requests.first.values_at("method", "params")).to eq(["pane.list", {}])
+    end
+    socket_fixture(type: "pane_list", extra: { panes: [{ other: "unproved" }] }) do |client, _requests|
+      expect { client.panes }.to raise_error(IOError)
     end
   end
 end

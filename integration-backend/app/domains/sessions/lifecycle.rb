@@ -65,6 +65,8 @@ module Domains
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
             Domains::Jobs::Store.new(@db).enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
+            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: w[:channel_id], thread_id: w[:thread_id], bot: "worker", role: role,
+                                                         body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.", key: "session:reserved:#{id}")
           end
           id
         end
@@ -130,9 +132,11 @@ module Domains
         end
       end
 
-      def queue_renewal(session)
+      def queue_renewal(session) = self.class.schedule_renewal(@db, session)
+
+      def self.schedule_renewal(db, session)
         key = "session:renew:#{session[:id]}:#{session[:credential_expires_at].to_i}"
-        Domains::Jobs::Store.new(@db).enqueue(kind: "session.renew", payload: { "session_id" => session[:id], "generation" => session[:generation] }, key: key, available_at: [Time.now, session[:credential_expires_at] - 300].max)
+        Domains::Jobs::Store.new(db).enqueue(kind: "session.renew", payload: { "session_id" => session[:id], "generation" => session[:generation] }, key: key, available_at: [Time.now, session[:credential_expires_at] - 300].max)
       end
 
       def renew_job(job, store)
@@ -167,6 +171,69 @@ module Domains
 
       def renew_due
         @db[:sessions].where(active: true).each { |s| queue_renewal(s) }
+      end
+
+      def reconcile(operation_id:, inbox_id:, pane_id:)
+        op = @db[:session_operations][id: operation_id] or raise ArgumentError, "Unknown session operation"
+        s = @db[:sessions][id: op[:session_id]]
+        w = s[:workflow_id] && @db[:workflows][id: s[:workflow_id]]
+        initial_request = !w && @db[:master_requests].where(session_id: s[:id]).order(:inbox_id).first
+        original_id = w ? w[:source_inbox_id] : initial_request && initial_request[:inbox_id]
+        original = original_id && @db[:inbox][id: original_id]
+        raise ArgumentError, "Human source binding required" unless original
+
+        d = @source.human(inbox_id, destination: w ? w[:channel_id] : original[:channel_id])
+        command = "@#{ENV.fetch('AGENT_HANDLE', 'agent')} recover-session #{operation_id} #{pane_id}"
+        raise ArgumentError, "Exact original-human session recovery required" unless d.actor.user_id == original[:user_id] && d.body == command
+
+        @lock.call(w ? w[:id] : "controller") do
+          op = @db[:session_operations][id: operation_id]
+          key = "session:recovery:#{operation_id}"
+          receipt = @db[:audit][event_key: key]
+          if receipt
+            raise ArgumentError, "Recovery pane changed" unless receipt[:details]["pane_id"] == pane_id
+
+            return "complete"
+          end
+          raise ArgumentError, "Operation not uncertain" unless %w[sending uncertain].include?(op[:state])
+
+          s = @db[:sessions][id: s[:id]]
+          raise ArgumentError, "Session generation replaced" unless @db[:sessions].where(w ? { workflow_id: w[:id], role: s[:role] } : { role: "controller" }).max(:generation) == s[:generation]
+          raise ArgumentError, "Different recorded pane" unless s[:pane_id].start_with?("pending:") || s[:pane_id] == pane_id
+
+          job = @db[:jobs][dispatch_key: "session:#{op[:kind]}:#{s[:id]}"]
+          raise ArgumentError, "Operation lease still live" if job && job[:status] == "running" && job[:lease_expires_at] && job[:lease_expires_at] > Time.now
+
+          changes = if op[:kind] == "start"
+                      raise ArgumentError, "Workflow closed" if w && (w[:archived_at] || %w[closed cancelled].include?(w[:phase]))
+
+                      live = @herdr.get(pane_id)
+                      identity = live["agent_session"]
+                      valid = identity.is_a?(Hash) && %w[source agent kind value].all? { |field| identity[field].is_a?(String) && !identity[field].empty? }
+                      valid &&= live["name"] == s[:alias] && live["cwd"] == (w ? w[:worktree_path] : "/home/runtime") && live["agent"] == s[:configuration]["cli"] && identity["agent"] == s[:configuration]["cli"]
+                      valid &&= %w[idle done].include?(live["agent_status"]) && live["interactive_ready"] == true && live["launch_pending"] == false
+                      raise ArgumentError, "Unproved exact role conversation" unless valid
+
+                      token = File.read(credential_path(s[:id]))
+                      raise ArgumentError, "Credential changed" unless Digest::SHA256.hexdigest(token) == s[:credential_digest]
+
+                      { pane_id: pane_id, active: true, runtime_identity: Sequel.pg_jsonb(identity), state: live["agent_status"], credential_expires_at: Time.now + 3600, last_verified_at: Time.now }
+                    else
+                      raise ArgumentError, "Stop pane mismatch" unless s[:pane_id] == pane_id
+                      raise ArgumentError, "Recorded pane still exists" if @herdr.panes.any? { |pane| pane["pane_id"] == pane_id }
+
+                      { active: false, state: "done" }
+                    end
+          @db.transaction do
+            @db[:sessions].where(id: s[:id]).update(changes)
+            complete_operation(op, s, w && @db[:workflows][id: w[:id]])
+            @db[:jobs].where(id: job[:id]).update(status: "complete", lease_token: nil, lease_expires_at: nil) if job
+            @db[:audit].insert(event_key: key, action: "verified_session_reconciliation", details: Sequel.pg_jsonb({ "inbox_id" => inbox_id, "operation_id" => operation_id, "session_id" => s[:id], "generation" => s[:generation], "pane_id" => pane_id }))
+            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Session operation #{operation_id} reconciled against runtime evidence; no start or stop was repeated.", key: key)
+          end
+          FileUtils.rm_f(credential_path(s[:id])) if op[:kind] == "stop"
+          "complete"
+        end
       end
 
       def stop(workflow_id:)

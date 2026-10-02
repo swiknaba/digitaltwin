@@ -27,7 +27,7 @@ module Domains
         @approvals = Approvals.new(db, resolver: resolver, membership: membership, current_commit: Domains::Controller::GitRevision.new, evidence: evidence)
         @routing = Routing.new(db, resolver: resolver, membership: membership, approvals: @approvals)
         @sessions = Domains::Sessions::Lifecycle.new(db, herdr: herdr, source: @source, credential_root: credential_root,
-                                                         callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", "http://backend:3000"), policy: policy)
+                                                         callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", "http://backend-web:3000"), policy: policy)
         @reviews = Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: @routing, policy: policy)
         @workflows = Domains::Workflows::Coordinator.new(db, source: @source, herdr: herdr, evidence: evidence, reviews: @reviews, sessions: @sessions, policy: policy)
         @provision = Domains::Workflows::Provision.new(db, source: @source, client: client, bot_id: bot_id,
@@ -66,6 +66,21 @@ module Domains
       def route(job, store)
         id = job[:payload].fetch("inbox_id")
         source = @source.human(id)
+        start_recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-start ([0-9a-f-]+) ([a-z0-9]{26})\z/)
+        if start_recovery
+          @provision.reconcile(id: start_recovery[1], inbox_id: id, thread_id: start_recovery[2])
+          return
+        end
+        session_recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-session ([0-9a-f-]+) ([a-zA-Z0-9_.:-]+)\z/)
+        if session_recovery
+          @sessions.reconcile(operation_id: session_recovery[1], inbox_id: id, pane_id: session_recovery[2])
+          return
+        end
+        followup_recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-followup ([0-9]+) (delivered|discard)\z/)
+        if followup_recovery
+          @followups.reconcile(id: followup_recovery[1].to_i, inbox_id: id, outcome: followup_recovery[2])
+          return
+        end
         recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-master ([0-9a-f-]+)\z/)
         if recovery
           raise ArgumentError, "Master not configured" unless @master

@@ -77,6 +77,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(db[:sessions].count).to eq(2)
     expect(db[:sessions].where(active: true).count).to eq(0)
     expect(db[:session_operations].count).to eq(2)
+    expect(db[:conversation_bindings][inbox_id: @inbox][:workflow_id]).to eq(db[:workflows].first[:id])
     expect { provision.request(inbox_id: @inbox, project_id: "project", title: "Different work") }.to raise_error(ArgumentError)
   end
   it "retains uncertain thread creation and never resends" do
@@ -279,5 +280,94 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect { reviews.release("workflow") }.to raise_error(Domains::Mattermost::Client::Error)
     expect(routing).not_to have_received(:route).with(inbox_id: second)
     expect(db[:queued_messages].count).to eq(2)
+  end
+  it "reconciles a lost thread receipt by exact bot root evidence without posting again" do
+    allow(client).to receive(:post).and_raise(IOError)
+    id = provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")
+    expect(provision.execute(id)).to eq("uncertain")
+    thread_id = "t" * 26
+    root = { "id" => thread_id, "channel_id" => channel, "root_id" => "", "delete_at" => 0, "user_id" => bot, "message" => "Project work", "props" => { "digitaltwin_workflow_request" => id } }
+    allow(client).to receive(:get).with("/api/v4/posts/#{thread_id}").and_return(root)
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-start #{id} #{thread_id}")
+    allow(source).to receive(:human).and_return(recovery)
+    2.times { expect(provision.reconcile(id: id, inbox_id: @inbox, thread_id: thread_id)).to eq("queued") }
+    expect(provision.execute(id)).to eq("bound")
+    expect(client).to have_received(:post).once
+    expect(db[:workflows].count).to eq(1)
+    expect(db[:audit].where(action: "verified_thread_reconciliation").count).to eq(1)
+  end
+
+  it "reconciles a started role against its exact alias cwd CLI and conversation without restarting" do
+    workflow(active_sessions: false)
+    sid = sessions.reserve(workflow_id: "workflow", role: "writer")
+    allow(herdr).to receive(:workspace).and_return({ "workspace" => { "workspace_id" => "runtime" }, "root_pane" => { "pane_id" => "pane" } })
+    allow(herdr).to receive(:start).and_raise(IOError)
+    op = db[:session_operations][session_id: sid]
+    expect(sessions.execute(op[:id])).to eq("uncertain")
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} pane")
+    allow(source).to receive(:human).and_return(recovery)
+    live = { "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
+             "name" => "digitaltwin-#{sid}", "cwd" => "/workspace/worktrees/workflow", "agent" => "codex" }
+    allow(herdr).to receive(:get).and_return(live.merge("name" => "different"))
+    expect { sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "pane") }.to raise_error(ArgumentError)
+    allow(herdr).to receive(:get).and_return(live)
+    2.times { expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "pane")).to eq("complete") }
+    expect(sessions.execute(op[:id])).to eq("complete")
+    expect(herdr).to have_received(:start).once
+    expect(db[:sessions][id: sid][:runtime_identity]).to eq(live["agent_session"])
+  end
+
+  it "reconciles an uncertain stop only from authoritative absence and archives after both stops" do
+    workflow(phase: "done")
+    workflows.control(inbox_id: @inbox, workflow_id: "workflow", action: "finish", expected_version: 0)
+    op = db[:session_operations][session_id: "writer", kind: "stop"]
+    allow(herdr).to receive(:close).and_raise(IOError)
+    expect(sessions.execute(op[:id])).to eq("uncertain")
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} writer")
+    allow(source).to receive(:human).and_return(recovery)
+    allow(herdr).to receive(:panes).and_return([{ "pane_id" => "writer" }])
+    expect { sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "writer") }.to raise_error(ArgumentError)
+    allow(herdr).to receive(:panes).and_return([])
+    expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "writer")).to eq("complete")
+    expect(db[:sessions][id: "writer"][:active]).to eq(false)
+    expect(db[:workflows].first[:archived_at]).to be_nil
+    allow(herdr).to receive(:close).and_return({})
+    reviewer = db[:session_operations][session_id: "reviewer", kind: "stop"]
+    expect(sessions.execute(reviewer[:id])).to eq("complete")
+    expect(db[:workflows].first[:archived_at]).not_to be_nil
+  end
+  it "reconciles uncertain reviewer prompt from a verified exact review callback without resending" do
+    workflow
+    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    db[:reviews].where(id: id).update(dispatch_state: "uncertain")
+    db[:jobs].where(dispatch_key: "review:#{id}").update(status: "uncertain", effect_started_at: Time.now - 60)
+    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
+    expect(db[:reviews][id: id][:dispatch_state]).to eq("delivered")
+    expect(db[:workflows].first[:phase]).to eq("spec_writing")
+    expect(db[:audit].where(action: "verified_review_prompt_reconciliation").count).to eq(1)
+    expect(db[:jobs][dispatch_key: "review:#{id}"][:status]).to eq("complete")
+    expect(herdr).not_to have_received(:prompt)
+  end
+
+  it "recovers Controller startup only for the first associated human request and exact neutral conversation" do
+    config = roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini")
+    master = Domains::Controller::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
+    master.ingest(@inbox)
+    controller = db[:sessions][role: "controller"]
+    op = db[:session_operations][session_id: controller[:id]]
+    db[:sessions].where(id: controller[:id]).update(pane_id: "controller-pane")
+    db[:session_operations].where(id: op[:id]).update(state: "uncertain")
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} controller-pane")
+    allow(source).to receive(:human).and_return(recovery)
+    live = { "agent_session" => { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
+             "name" => controller[:alias], "cwd" => "/home/runtime", "agent" => "gemini" }
+    allow(herdr).to receive(:get).and_return(live)
+    expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "controller-pane")).to eq("complete")
+    expect(db[:sessions][id: controller[:id]][:active]).to eq(true)
+    expect(db[:workflows].count).to eq(0)
   end
 end

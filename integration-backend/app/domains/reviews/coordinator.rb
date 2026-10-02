@@ -71,9 +71,14 @@ module Domains
           raise ArgumentError, "Review lock required" unless PHASES.key?(kind) && current_phase.end_with?("_review")
 
           record = @db[:reviews].where(workflow_id: workflow_id, gate: kind).order(Sequel.desc(:round)).first
-          raise ArgumentError, "Undispatched review" unless record && record[:dispatch_state] == "delivered" && !record[:verdict]
+          raise ArgumentError, "Undispatched review" unless record && %w[delivered sending uncertain].include?(record[:dispatch_state]) && !record[:verdict]
           raise ArgumentError, "Reviewer configuration changed" unless s[:configuration] == record[:reviewer_configuration]
 
+          if record[:dispatch_state] != "delivered"
+            job = @db[:jobs][dispatch_key: "review:#{record[:id]}"]
+            raise ArgumentError, "Review prompt effect unproved" unless job && job[:effect_started_at]
+            raise ArgumentError, "Review prompt lease still live" if job[:status] == "running" && job[:lease_expires_at] && job[:lease_expires_at] > Time.now
+          end
           settled!(s)
           @evidence.review(w, record, review_commit, verdict, s[:configuration])
           phase = if verdict == "approve"
@@ -84,7 +89,12 @@ module Domains
                     PHASES.fetch(kind)
                   end
           @db.transaction do
-            @db[:reviews].where(id: record[:id]).update(review_commit: review_commit, verdict: verdict)
+            @db[:reviews].where(id: record[:id]).update(review_commit: review_commit, verdict: verdict, dispatch_state: "delivered")
+            @db[:jobs].where(dispatch_key: "review:#{record[:id]}").update(status: "complete", lease_token: nil, lease_expires_at: nil)
+            if record[:dispatch_state] != "delivered"
+              @db[:audit].insert(event_key: "review:receipt:#{record[:id]}", action: "verified_review_prompt_reconciliation",
+                                 details: Sequel.pg_jsonb({ "review_id" => record[:id], "target_commit" => record[:target_commit], "review_commit" => review_commit, "session_id" => s[:id], "generation" => generation }))
+            end
             changes = w[:phase] == "paused" ? { saved_phase: phase, paused_commit: review_commit } : { phase: phase }
             @db[:workflows].where(id: workflow_id, version: w[:version]).update(**changes, version: w[:version] + 1,
                                                                                            blocker: phase == "blocked" ? "Three review rounds requested changes" : nil)

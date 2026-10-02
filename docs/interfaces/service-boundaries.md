@@ -104,3 +104,8 @@ as needed; mount no provider state into Git/images. Only the worker mounts `/wor
 `/run/herdr`; web has neither. Runtime packages backend-owned clients from a checksum manifest.
 No environment variable enables `dispatch_allowed?`; live evidence and reviewed policy code are
 still required. Gemini remains the specified Master CLI; its actual launch/MCP profile is unproved.
+
+Bounded recovery commands and the minimum operator setup/evidence are recorded in
+[Master routing setup](master-routing-setup.md). Human follow-up outcome confirmation is explicitly
+audited and never treated as an automatic socket acknowledgment. Thread/session receipt recovery
+requires authoritative remote evidence and does not repeat an uncertain external action.

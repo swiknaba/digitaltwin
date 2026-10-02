@@ -96,9 +96,9 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     service = Domains::Controller::Routing.new(db, resolver: resolver, membership: ->(*) { false })
     expect { service.route(inbox_id: source(2, body: "@agent route w1\nPlease also cover that case"), selection: "w1") }.to raise_error(ArgumentError)
   end
-  it "blocks stale or duplicate live sessions without replacement" do
+  it "blocks inactive sessions without replacement" do
     workflow
-    db[:sessions].update(credential_expires_at: Time.now - 1)
+    db[:sessions].update(active: false)
     expect(routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")[:status]).to eq("blocked")
     expect(db[:sessions].count).to eq(1)
   end
@@ -238,7 +238,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   it "keeps a busy session queued and rechecks membership before delivery" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
-    allow(herdr).to receive(:get).and_return({ "agent_status" => "working" })
+    allow(herdr).to receive(:get).and_return(herdr.get("pane1").merge("agent_status" => "working"))
     expect(sender.deliver(row[:id])).to eq("queued")
     denied = Domains::Controller::Followups.new(db, herdr: herdr, resolver: resolver, membership: ->(*) { false }, policy: policy)
     expect(denied.deliver(row[:id])).to eq("blocked")
@@ -293,5 +293,83 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     master.route(inbox_id: source(2, root_post: true, thread_id: "master-b", body: "@agent route w2\nSecond task"), selection: "w2")
     expect(master.route(inbox_id: source(3, thread_id: "master-a"))[:workflow_id]).to eq("w1")
     expect(master.route(inbox_id: source(4, thread_id: "new-root", root_post: true))[:workflow_id]).to eq("w2")
+  end
+  it "queues a follow-up against a reserved starting conversation and delivers after activation" do
+    workflow
+    db[:sessions].where(id: "s1").update(active: false)
+    db[:session_operations].insert(id: "start", session_id: "s1", kind: "start")
+    row = routing.route(inbox_id: source(body: "@agent route w1\nStartup instruction"), selection: "w1")
+    expect(row.values_at(:status, :session_id, :generation)).to eq(["queued", "s1", 1])
+    expect(sender.deliver(row[:id])).to eq("queued")
+    db[:session_operations].where(id: "start").update(state: "uncertain")
+    expect(sender.deliver(row[:id])).to eq("queued")
+    expect(db[:followups][id: row[:id]][:status]).to eq("queued")
+    expect(herdr).not_to have_received(:prompt)
+    db[:sessions].where(id: "s1").update(active: true)
+    db[:session_operations].where(id: "start").update(state: "complete")
+    expect(sender.deliver(row[:id])).to eq("delivered")
+    expect(db[:sessions].count).to eq(1)
+  end
+
+  it "waits for same-conversation credential renewal instead of losing the instruction" do
+    workflow
+    db[:sessions].where(id: "s1").update(credential_expires_at: Time.now - 1)
+    row = routing.route(inbox_id: source(body: "@agent route w1\nRenewal instruction"), selection: "w1")
+    expect(row.values_at(:status, :session_id)).to eq(["queued", "s1"])
+    expect(sender.deliver(row[:id])).to eq("queued")
+    expect(db[:jobs].where(kind: "session.renew").count).to eq(1)
+    db[:sessions].where(id: "s1").update(credential_expires_at: Time.now + 3600)
+    expect(sender.deliver(row[:id])).to eq("delivered")
+  end
+
+  it "requires exact human outcome reconciliation before advancing past an uncertain send" do
+    workflow
+    row = routing.route(inbox_id: source(body: "@agent route w1\nFirst instruction"), selection: "w1")
+    allow(herdr).to receive(:prompt).and_raise(IOError)
+    expect(sender.deliver(row[:id])).to eq("uncertain")
+    later = routing.route(inbox_id: source(2, body: "Second instruction"))
+    expect(sender.deliver(later[:id])).to eq("queued")
+    recovery = source(3, body: "@agent recover-followup #{row[:id]} discard")
+    expect(sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "discard")).to eq("discard")
+    expect(sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "discard")).to eq("discard")
+    expect(db[:followups][id: row[:id]][:status]).to eq("blocked")
+    expect(db[:audit].where(action: "human_followup_reconciliation").count).to eq(1)
+    allow(herdr).to receive(:prompt).and_return({})
+    expect(sender.deliver(later[:id])).to eq("delivered")
+    expect(herdr).to have_received(:prompt).with("pane1", "First instruction").once
+    expect(herdr).to have_received(:prompt).with("pane1", "Second instruction").once
+  end
+
+  it "rejects bot, changed outcome, live send leases and replaced conversation recovery" do
+    workflow
+    row = routing.route(inbox_id: source(body: "@agent route w1\nInstruction"), selection: "w1")
+    db[:followups].where(id: row[:id]).update(status: "uncertain")
+    bot = source(2, bot: true, body: "@agent recover-followup #{row[:id]} delivered")
+    expect { sender.reconcile(id: row[:id], inbox_id: bot, outcome: "delivered") }.to raise_error(ArgumentError)
+    recovery = source(3, body: "@agent recover-followup #{row[:id]} delivered")
+    job = db[:jobs][dispatch_key: "followup:#{row[:id]}"]
+    db[:jobs].where(id: job[:id]).update(status: "running", lease_expires_at: Time.now + 30)
+    expect { sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered") }.to raise_error(ArgumentError)
+    db[:jobs].where(id: job[:id]).update(status: "uncertain")
+    ready = herdr.get("pane1")
+    allow(herdr).to receive(:get).and_return(ready.merge("agent_session" => { "value" => "replacement" }))
+    expect { sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered") }.to raise_error(ArgumentError)
+    allow(herdr).to receive(:get).and_return(ready)
+    expect(sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered")).to eq("delivered")
+    expect(herdr).not_to have_received(:prompt)
+    other = source(4, body: "@agent recover-followup #{row[:id]} discard")
+    expect { sender.reconcile(id: row[:id], inbox_id: other, outcome: "discard") }.to raise_error(ArgumentError)
+  end
+  it "routes an exact recovery command in Master chat before model interpretation" do
+    workflow
+    row = routing.route(inbox_id: source(body: "@agent route w1\nInstruction"), selection: "w1")
+    db[:followups].where(id: row[:id]).update(status: "uncertain")
+    recovery = source(2, body: "@agent recover-followup #{row[:id]} discard")
+    services = Domains::Controller::Services.allocate
+    services.instance_variable_set(:@source, Domains::Controller::Source.new(db, resolver: resolver, membership: membership))
+    services.instance_variable_set(:@followups, sender)
+    services.route({ payload: { "inbox_id" => recovery } }, nil)
+    expect(db[:followups][id: row[:id]][:status]).to eq("blocked")
+    expect(herdr).not_to have_received(:prompt)
   end
 end

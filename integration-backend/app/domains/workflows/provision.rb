@@ -30,7 +30,7 @@ module Domains
           id = SecureRandom.uuid
           @db[:workflow_requests].insert(id: id, inbox_id: inbox_id, project_id: project_id, request_digest: digest, parameters: Sequel.pg_jsonb(parameters), thread_id: existing_thread)
           Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.provision", payload: { "request_id" => id }, key: "workflow:provision:#{id}")
-          Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Workflow request queued; project thread and sessions are not yet created.", key: "workflow:request:#{id}")
+          Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Workflow request #{id} queued; project thread and sessions are not yet created.", key: "workflow:request:#{id}")
           id
         end
       end
@@ -42,7 +42,7 @@ module Domains
           return "queued" unless @policy.dispatch_allowed?
 
           project = @db[:projects][id: request[:project_id]]
-          @source.human(request[:inbox_id], destination: project[:channel_id])
+          delivery = @source.human(request[:inbox_id], destination: project[:channel_id])
           thread = request[:thread_id]
           unless thread
             me = @client.get("/api/v4/users/me")
@@ -67,7 +67,7 @@ module Domains
               return "uncertain"
             end
           end
-          workflow = bind(request, project, thread)
+          workflow = bind(request, project, thread, delivery)
           path = @workspace.for_workflow(slug: project[:slug], workflow_id: workflow[:id], branch: workflow[:branch])
           raise ArgumentError, "Worktree binding changed" unless path == workflow[:worktree_path]
 
@@ -83,7 +83,49 @@ module Domains
         store.block(id: job[:id], lease_token: job[:lease_token], reason: "Provision #{state}; evidence/reconciliation required") unless state == "bound"
       end
 
-      private def bind(request, project, thread)
+      def reconcile(id:, inbox_id:, thread_id:)
+        raise ArgumentError, "Invalid thread" unless thread_id.match?(/\A[a-z0-9]{26}\z/)
+
+        Domains::Workflows::Lock.new(@db).call("provision:#{id}") do
+          request = @db[:workflow_requests][id: id] or raise ArgumentError, "Unknown start request"
+          project = @db[:projects][id: request[:project_id]]
+          d = @source.human(inbox_id, destination: project[:channel_id])
+          original = @db[:inbox][id: request[:inbox_id]]
+          command = "@#{ENV.fetch('AGENT_HANDLE', 'agent')} recover-start #{id} #{thread_id}"
+          raise ArgumentError, "Exact original-human thread recovery required" unless d.actor.user_id == original[:user_id] && d.body == command
+
+          key = "workflow:recovery:#{id}"
+          receipt = @db[:audit][event_key: key]
+          if receipt
+            raise ArgumentError, "Recovery thread changed" unless receipt[:details]["thread_id"] == thread_id
+
+            return "queued"
+          end
+          raise ArgumentError, "Start does not require reconciliation" unless %w[sending uncertain].include?(request[:state])
+
+          job = @db[:jobs][dispatch_key: "workflow:provision:#{id}"]
+          raise ArgumentError, "Creation lease still live" if job && job[:status] == "running" && job[:lease_expires_at] && job[:lease_expires_at] > Time.now
+
+          me = @client.get("/api/v4/users/me")
+          member = @client.get("/api/v4/channels/#{project[:channel_id]}/members/#{@bot}")
+          post = @client.get("/api/v4/posts/#{thread_id}")
+          valid = me["id"] == @bot && me["is_bot"] == true && member["channel_id"] == project[:channel_id] && member["user_id"] == @bot
+          valid &&= post["id"] == thread_id && post["channel_id"] == project[:channel_id] && post["root_id"].to_s.empty? && post["delete_at"] == 0
+          valid &&= post["user_id"] == @bot && post["message"] == request[:parameters]["title"] && post.fetch("props", {})["digitaltwin_workflow_request"] == id
+          raise ArgumentError, "Unproved created thread" unless valid
+
+          @db.transaction do
+            @db[:workflow_requests].where(id: id).update(thread_id: thread_id, state: "queued", reason: nil)
+            @db[:jobs].where(id: job[:id]).update(status: "complete", lease_token: nil, lease_expires_at: nil) if job
+            Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.provision", payload: { "request_id" => id }, key: "workflow:provision:reconciled:#{id}:#{thread_id}")
+            @db[:audit].insert(event_key: key, action: "verified_thread_reconciliation", details: Sequel.pg_jsonb({ "inbox_id" => inbox_id, "request_id" => id, "thread_id" => thread_id }))
+            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Start #{id} reconciled to verified thread #{thread_id}; continuation queued without recreating the thread.", key: key)
+          end
+          "queued"
+        end
+      end
+
+      private def bind(request, project, thread, delivery)
         @db.transaction do
           @db[:workflow_requests].where(id: request[:id]).for_update.first
           if request[:workflow_id]
@@ -96,6 +138,12 @@ module Domains
           @db[:workflows].insert(id: id, project_id: project[:id], channel_id: project[:channel_id], thread_id: thread,
                                  branch: "digitaltwin/#{id}", worktree_path: File.join(root, id), source_inbox_id: request[:inbox_id], role_configurations: Sequel.pg_jsonb(request[:parameters].fetch("roles")))
           @db[:workflow_requests].where(id: request[:id]).update(workflow_id: id)
+          threads = [delivery.thread_id]
+          threads << "master" if delivery.root_post && delivery.channel_id == ENV["MASTER_CHANNEL_ID"]
+          threads.each do |context_thread|
+            values = { workflow_id: id, inbox_id: request[:inbox_id], updated_at: Time.now }
+            @db[:conversation_bindings].insert_conflict(target: %i[channel_id thread_id user_id], update: values).insert(**values, channel_id: delivery.channel_id, thread_id: context_thread, user_id: delivery.actor.user_id)
+          end
           @db[:workflows][id: id]
         end
       end

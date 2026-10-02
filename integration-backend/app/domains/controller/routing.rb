@@ -67,7 +67,14 @@ module Domains
 
           sessions = @db[:sessions].where(workflow_id: w[:id], role: "writer", active: true).all
           session = sessions.size == 1 ? sessions.first : nil
-          session = nil if session && session[:credential_expires_at] <= @now.call
+          if sessions.empty?
+            starting = @db[:sessions].where(workflow_id: w[:id], role: "writer", active: false).join(:session_operations, session_id: :id).where(Sequel[:session_operations][:kind] => "start",
+                                                                                                                                                 Sequel[:session_operations][:state] => %w[
+                                                                                                                                                   queued sending uncertain
+                                                                                                                                                 ]).select_all(:sessions).all
+            session = starting.first if starting.size == 1
+          end
+          Domains::Sessions::Lifecycle.schedule_renewal(@db, session) if session && session[:active] && session[:credential_expires_at] <= @now.call
           evidence = { "source_inbox_id" => inbox_id, "selection" => selection, "interpretation" => interpretation,
                        "direct_thread" => direct && direct[:id], "recent_binding" => recent && binding[:inbox_id] }
           id = @db[:followups].insert(inbox_id: inbox_id, workflow_id: w[:id], session_id: session && session[:id],
@@ -81,7 +88,7 @@ module Domains
                                                         }).insert(channel_id: d.channel_id, thread_id: context_thread, user_id: d.actor.user_id,
                                                                   workflow_id: w[:id], inbox_id: inbox_id, updated_at: @now.call)
           end
-          acknowledge(d, inbox_id, session ? "Instruction queued for the existing project session; delivery is pending." : "Instruction recorded; session reconciliation is required before delivery.", "queued")
+          acknowledge(d, inbox_id, session ? "Instruction #{id} queued for the existing project session; delivery is pending." : "Instruction #{id} recorded; session reconciliation is required before delivery.", "queued")
           Domains::Jobs::Store.new(@db).enqueue(kind: "session.followup", payload: { "followup_id" => id }, key: "followup:#{id}") if session
           @db[:followups][id: id]
         end
