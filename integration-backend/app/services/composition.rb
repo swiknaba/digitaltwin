@@ -5,7 +5,7 @@ module Services
   # Composition root: builds the adapters and use cases from one
   # Configuration. Each reader builds its object on first use and then
   # reuses it, so a process needs only the variables of the objects it uses.
-  # A missing required variable raises KeyError, as ENV.fetch did.
+  # A missing required variable raises KeyError, as the former fetch calls did.
   class Composition
     extend T::Sig
 

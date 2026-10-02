@@ -80,7 +80,7 @@ RSpec.describe "Async HTTP ownership and Worker execution (local transport fixtu
     kind = Platform::Jobs::Dto::JobKind::MattermostPost
     id = store.enqueue(kind: kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "effect"), dispatch_key: "effect")
     calls = 0
-    handler = Platform::Jobs::CallableHandler.new(lambda do |job|
+    handler = SpecHandler.new(lambda do |job|
       expect(db.in_transaction?).to be(false)
       expect(job.lease.begin_effect).to be(true)
       calls += 1

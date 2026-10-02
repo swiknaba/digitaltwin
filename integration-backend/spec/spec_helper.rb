@@ -21,6 +21,17 @@ T::Configuration.call_validation_error_handler = lambda do |_signature, options|
   raise TypeError, options.fetch(:pretty_message)
 end
 
+# Wraps a spec lambda as a job handler; production handlers are use cases.
+class SpecHandler
+  include Platform::Jobs::Handler
+
+  def initialize(callable)
+    @callable = callable
+  end
+
+  def call(job:) = @callable.call(job)
+end
+
 # Drives real Store/Worker paths. Other kinds' jobs are pushed past the
 # claim horizon so the next claim selects a job of the requested kind.
 module JobFixtures
@@ -31,7 +42,7 @@ module JobFixtures
 
   def tick_job(kind, &handler)
     Kirei::App.raw_db_connection[:jobs].exclude(kind: kind.serialize).update(available_at: Time.now + 3600)
-    worker = Platform::Jobs::Worker.new(handlers: { kind => Platform::Jobs::CallableHandler.new(handler) })
+    worker = Platform::Jobs::Worker.new(handlers: { kind => SpecHandler.new(handler) })
     Async { worker.tick }.wait
   end
 end

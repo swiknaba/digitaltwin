@@ -189,7 +189,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     db[:jobs].where(kind: "mattermost.post").update(status: "complete")
     allow(herdr).to receive(:pane).and_return(herdr_pane(ready.merge("agent_status" => "working")))
-    worker = Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::SessionFollowup => Platform::Jobs::CallableHandler.new(->(job) { sender.call(job: job) }) })
+    worker = Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::SessionFollowup => SpecHandler.new(->(job) { sender.call(job: job) }) })
     Async { expect(worker.tick).to eq(true) }.wait
     job = db[:jobs][kind: "session.followup"]
     expect(job[:status]).to eq("pending")
@@ -211,7 +211,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     db[:jobs].where(kind: "mattermost.post").update(status: "complete")
     before = db[:workflows][id: "w1"]
-    worker = Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::SessionFollowup => Platform::Jobs::CallableHandler.new(->(job) { sender.call(job: job) }) })
+    worker = Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::SessionFollowup => SpecHandler.new(->(job) { sender.call(job: job) }) })
     Async { expect(worker.tick).to eq(true) }.wait
     job = db[:jobs][kind: "session.followup"]
     expect(job[:status]).to eq("pending")

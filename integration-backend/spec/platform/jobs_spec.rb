@@ -162,7 +162,7 @@ RSpec.describe Platform::Jobs::Worker do
 
   def tick_with(decision)
     id = store.enqueue(kind: kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one")
-    handler = Platform::Jobs::CallableHandler.new(->(_job) { decision })
+    handler = SpecHandler.new(->(_job) { decision })
     Async { expect(described_class.new(handlers: { kind => handler }).tick).to be(true) }.wait
     db[:jobs][id: id]
   end
@@ -179,7 +179,7 @@ RSpec.describe Platform::Jobs::Worker do
 
   it "completes a defer decision when the effect already began" do
     id = store.enqueue(kind: kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one")
-    handler = Platform::Jobs::CallableHandler.new(lambda do |job|
+    handler = SpecHandler.new(lambda do |job|
       job.lease.begin_effect
       Platform::Jobs::Dto::Decision.defer("too late")
     end)
