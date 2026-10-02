@@ -47,7 +47,7 @@ module Services
               recovery = HistoryRecovery.new(@db, api: @api, verifier: @verifier, router: @router)
               @channels.each { |channel_id| recovery.call(channel_id: channel_id) }
               delay = 1
-              Health.touch("chat-listener")
+              Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::ChatListener)
               consume(socket)
             end
           rescue HistoryRecovery::RecoveryRequired => error
@@ -86,7 +86,7 @@ module Services
           raise EOFError, "WebSocket closed" unless message
 
           ingest_envelope(parse_event(message.to_s))
-          Health.touch("chat-listener")
+          Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::ChatListener)
         end
       end
 

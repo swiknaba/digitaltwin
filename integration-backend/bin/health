@@ -1,20 +1,18 @@
 #!/usr/bin/env ruby
 # typed: strict
 
-require "json"
+# Lightweight container probe; must not boot the application.
+# Non-web roles touch a heartbeat file (see Platform::Heartbeat) and are
+# unhealthy when it is missing or older than MAX_AGE seconds.
 require "net/http"
+MAX_AGE = 60
 role = ARGV.fetch(0)
 if role == "web"
   response = Net::HTTP.get_response(URI("http://127.0.0.1:#{ENV.fetch("PORT", "3000")}/readyz"))
   exit(response.code == "200" ? 0 : 1)
 elsif %w[worker chat-listener].include?(role)
-  begin
-    state = JSON.parse(File.read("/tmp/digitaltwin-#{role}.json"))
-    Process.kill(0, state.fetch("pid"))
-    exit(Time.now.to_f - state.fetch("at") < 60 ? 0 : 1)
-  rescue StandardError
-    exit 1
-  end
+  path = File.join(ENV.fetch("HEARTBEAT_DIR", "/tmp"), "digitaltwin-#{role}.heartbeat")
+  exit(File.exist?(path) && Time.now - File.mtime(path) < MAX_AGE ? 0 : 1)
 else
   abort "Unknown process role"
 end

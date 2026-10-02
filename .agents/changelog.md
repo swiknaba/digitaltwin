@@ -156,3 +156,4 @@
 ## 2026-10-02
 
 - Removed the backend `config/initializers/database.rb` override of `Kirei::App.raw_db_connection`; `app.rb` now sets `db_global_extensions` (`fiber_concurrency`), pool bounds from `DB_POOL_SIZE`/`DB_POOL_TIMEOUT`, and session timeouts through Kirei 0.11 config. The Gemfile now sources Kirei from its git `main` branch; run `bundle install` and `bundle exec tapioca gem kirei` after swiknaba/kirei#41 merges.
+- Replaced the backend `config/initializers/health.rb` JSON heartbeat with `Platform::Heartbeat`, which touches `digitaltwin-<role>.heartbeat` under `HEARTBEAT_DIR` (default `/tmp`); `bin/health` now fails on a missing or stale mtime only. `config/initializers/startup.rb` resolves migrations from `Kirei::App.root`.

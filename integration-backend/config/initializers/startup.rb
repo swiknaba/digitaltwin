@@ -17,8 +17,8 @@ module Startup
 
   sig { returns(Integer) }
   private_class_method def self.expected_migration_version
-    path = File.expand_path("../../db/migrate", __dir__)
-    versions = Dir["#{path}/*.rb"].map { |name| File.basename(name).to_i }
+    pattern = Kirei::App.root.join("db", "migrate", "*.rb").to_s
+    versions = Dir[pattern].map { |name| File.basename(name).to_i }
     versions.max || 0
   end
 

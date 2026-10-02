@@ -19,7 +19,7 @@ module Platform
       def run
         loop do
           tick
-          Health.touch("worker")
+          Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::Worker)
           Async::Task.current.sleep(0.25)
         end
       end

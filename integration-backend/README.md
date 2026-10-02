@@ -91,7 +91,7 @@ No network operation runs inside a database transaction.
 | `AGENT_HANDLE`, `WORKER_HANDLE` | Defaults `agent`, `worker` |
 | `CHAT_VALIDATION_MODE` | `1` permits disposable chat transport checks; absent keeps delivery/listener closed |
 | Health | `bin/health web`, `bin/health worker`, `bin/health chat-listener`; Compose must override the image's web probe per role |
-| Writable files | `/tmp` for role heartbeat; backend image contains no provider login state |
+| `HEARTBEAT_DIR` | Default `/tmp`; worker and chat-listener touch `digitaltwin-<role>.heartbeat` there, and `bin/health` fails when it is missing or older than 60 seconds; backend image contains no provider login state |
 | Herdr | Agreed `/run/herdr/herdr.sock`, mode 0600, UID 10001; adapter still gated on provider evidence |
 
 Web startup checks schema in the parent, disconnects its database, and creates independent pools in Falcon children.
