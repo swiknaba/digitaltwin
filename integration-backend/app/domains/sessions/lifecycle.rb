@@ -1,3 +1,4 @@
+# typed: strict
 # frozen_string_literal: true
 
 require "digest"
@@ -5,13 +6,36 @@ require "fileutils"
 module Domains
   module Sessions
     class Lifecycle
-      def initialize(db, herdr:, source:, credential_root: "/run/herdr/session-credentials", callback_url:, policy: Domains::Workflows::Policy.new)
-        @db, @herdr, @source, @root, @url, @policy = db, herdr, source, credential_root, callback_url, policy
-        @lock = Domains::Workflows::Lock.new(db)
+      extend T::Sig
+
+      JsonObject = T.type_alias { T::Hash[String, Object] }
+      Row = T.type_alias { T::Hash[Symbol, Object] }
+      Configuration = T.type_alias { T::Hash[String, Object] }
+      Job = T.type_alias { T::Hash[Symbol, Object] }
+
+      sig do
+        params(
+          db: Sequel::Database,
+          herdr: Domains::Sessions::Herdr,
+          source: Domains::Controller::Source,
+          callback_url: String,
+          credential_root: String,
+          policy: Domains::Workflows::Policy
+        ).void
+      end
+      def initialize(db, herdr:, source:, callback_url:, credential_root: "/run/herdr/session-credentials", policy: Domains::Workflows::Policy.new)
+        @db = T.let(db, Sequel::Database)
+        @herdr = T.let(herdr, Domains::Sessions::Herdr)
+        @source = T.let(source, Domains::Controller::Source)
+        @root = T.let(credential_root, String)
+        @url = T.let(callback_url, String)
+        @policy = T.let(policy, Domains::Workflows::Policy)
+        @lock = T.let(Domains::Workflows::Lock.new(db), Domains::Workflows::Lock)
       end
 
       # Called only by operator-configured bootstrap; never exposed as an MCP
       # tool to Worker/Reviewer or accepted from a model-supplied role.
+      sig { params(configuration: Configuration).returns(String) }
       def bootstrap(configuration:)
         @lock.call("controller") do
           existing = @db[:sessions][role: "controller", active: true]
@@ -38,6 +62,7 @@ module Domains
         end
       end
 
+      sig { params(workflow_id: String, role: String).returns(String) }
       def reserve(workflow_id:, role:)
         raise ArgumentError, "Workflow role required" unless %w[writer reviewer].include?(role)
 
@@ -72,6 +97,7 @@ module Domains
         end
       end
 
+      sig { params(operation_id: String, before_effect: T.proc.returns(T::Boolean)).returns(String) }
       def execute(operation_id, before_effect: -> { true })
         op = @db[:session_operations][id: operation_id] or raise ArgumentError, "Missing session operation"
         session = @db[:sessions][id: op[:session_id]]
@@ -93,8 +119,9 @@ module Domains
               env = { "DIGITALTWIN_SESSION_TOKEN_FILE" => credential_path(session[:id]), "DIGITALTWIN_SESSION_GENERATION" => session[:generation].to_s, "DIGITALTWIN_CALLBACK_URL" => @url,
                       "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE" => File.join(@root, "#{session[:id]}.request-token") }
               created = @herdr.workspace(cwd: w ? w[:worktree_path] : nil, label: session[:alias], env: env)
-              pane = created.fetch("root_pane").fetch("pane_id")
-              @db[:sessions].where(id: session[:id]).update(pane_id: pane, workspace_id: created.fetch("workspace").fetch("workspace_id"))
+              pane = object_string(object(created.fetch("root_pane")), "pane_id")
+              workspace_id = object_string(object(created.fetch("workspace")), "workspace_id")
+              @db[:sessions].where(id: session[:id]).update(pane_id: pane, workspace_id: workspace_id)
               live = @herdr.start(pane, session[:alias], session[:configuration])
               identity = live["agent_session"]
               raise IOError, "Unproved conversation identity" unless identity.is_a?(Hash) && %w[source agent kind value].all? { |key| identity[key].is_a?(String) && !identity[key].empty? }
@@ -122,31 +149,49 @@ module Domains
         end
       end
 
-      private def complete_operation(op, session, w)
+      private
+
+      sig { params(op: Row, session: Row, workflow: T.nilable(Row)).void }
+      def complete_operation(op, session, workflow)
         @db[:session_operations].where(id: op[:id]).update(state: "complete")
         queue_renewal(@db[:sessions][id: session[:id]]) if op[:kind] == "start"
-        if w && op[:kind] == "start" && session[:role] == "writer"
-          Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => w[:id], "version" => w[:version] }, key: "workflow:phase:#{w[:id]}:#{w[:version]}")
-        elsif w && op[:kind] == "stop" && %w[closed cancelled].include?(w[:phase]) && @db[:sessions].where(workflow_id: w[:id], active: true).empty?
-          @db[:workflows].where(id: w[:id]).update(archived_at: Time.now)
+        if workflow && row_string(op, :kind) == "start" && row_string(session, :role) == "writer"
+          workflow_id = row_string(workflow, :id)
+          version = row_integer(workflow, :version)
+          Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version }, key: "workflow:phase:#{workflow_id}:#{version}")
+        elsif workflow && row_string(op, :kind) == "stop" && %w[closed cancelled].include?(row_string(workflow, :phase)) && @db[:sessions].where(workflow_id: row_string(workflow, :id), active: true).empty?
+          @db[:workflows].where(id: row_string(workflow, :id)).update(archived_at: Time.now)
         end
       end
 
+      sig { params(session: Row).returns(String) }
       def queue_renewal(session) = self.class.schedule_renewal(@db, session)
 
-      def self.schedule_renewal(db, session)
-        key = "session:renew:#{session[:id]}:#{session[:credential_expires_at].to_i}"
-        Domains::Jobs::Store.new(db).enqueue(kind: "session.renew", payload: { "session_id" => session[:id], "generation" => session[:generation] }, key: key, available_at: [Time.now, session[:credential_expires_at] - 300].max)
+      class << self
+        sig { params(db: Sequel::Database, session: Row).returns(String) }
+        def schedule_renewal(db, session)
+          id = row_string(session, :id)
+          expires_at = row_time(session, :credential_expires_at)
+          key = "session:renew:#{id}:#{expires_at.to_i}"
+          Domains::Jobs::Store.new(db).enqueue(kind: "session.renew", payload: { "session_id" => id, "generation" => row_integer(session, :generation) }, key: key, available_at: [Time.now, expires_at - 300].max)
+        end
       end
 
+      public
+
+      sig { params(job: Job, store: Domains::Jobs::Store).void }
       def renew_job(job, store)
+        id = row_string(job, :id)
+        lease_token = row_string(job, :lease_token)
         unless @policy.dispatch_allowed?
-          store.block(id: job[:id], lease_token: job[:lease_token], reason: "Live session renewal evidence required")
+          store.block(id: id, lease_token: lease_token, reason: "Live session renewal evidence required")
           return
         end
-        renew(session_id: job[:payload].fetch("session_id"), generation: job[:payload].fetch("generation"))
+        payload = row_object(job, :payload)
+        renew(session_id: object_string(payload, "session_id"), generation: object_integer(payload, "generation"))
       end
 
+      sig { params(session_id: String, generation: Integer).void }
       def renew(session_id:, generation:)
         s = @db[:sessions][id: session_id, generation: generation, active: true] or raise ArgumentError, "Inactive renewal session"
         @lock.call(s[:workflow_id] || "controller") do
@@ -169,10 +214,12 @@ module Domains
         end
       end
 
+      sig { void }
       def renew_due
         @db[:sessions].where(active: true).each { |s| queue_renewal(s) }
       end
 
+      sig { params(operation_id: String, inbox_id: String, pane_id: String).returns(String) }
       def reconcile(operation_id:, inbox_id:, pane_id:)
         op = @db[:session_operations][id: operation_id] or raise ArgumentError, "Unknown session operation"
         s = @db[:sessions][id: op[:session_id]]
@@ -236,6 +283,7 @@ module Domains
         end
       end
 
+      sig { params(workflow_id: String).void }
       def stop(workflow_id:)
         @lock.call(workflow_id) do
           @db.transaction do
@@ -250,24 +298,113 @@ module Domains
         end
       end
 
+      sig { params(job: Job, store: Domains::Jobs::Store).void }
       def call(job, store)
-        state = execute(job[:payload].fetch("operation_id"), before_effect: -> { store.begin_effect(id: job[:id], lease_token: job[:lease_token]) })
+        id = row_string(job, :id)
+        lease_token = row_string(job, :lease_token)
+        state = execute(object_string(row_object(job, :payload), "operation_id"), before_effect: -> { store.begin_effect(id: id, lease_token: lease_token) })
         if state == "queued" && @policy.dispatch_allowed?
-          store.defer(id: job[:id], lease_token: job[:lease_token], reason: "Session start waits for phase")
+          store.defer(id: id, lease_token: lease_token, reason: "Session start waits for phase")
         elsif state != "complete"
-          store.block(id: job[:id], lease_token: job[:lease_token], reason: "Session #{state}; evidence/reconciliation required")
+          store.block(id: id, lease_token: lease_token, reason: "Session #{state}; evidence/reconciliation required")
         end
       end
 
-      private def validate_configuration!(config)
-        raise ArgumentError, "Incomplete role configuration" unless %w[cli provider model family].all? { |key| config[key].is_a?(String) && !config[key].empty? } && config["launch_args"].is_a?(Array) && config["launch_args"].all? { |arg| arg.is_a?(String) && !arg.include?("\0") }
+      private
+
+      sig { params(config: Configuration).void }
+      def validate_configuration!(config)
+        required = %w[cli provider model family]
+        required.each do |key|
+          value = config[key]
+          raise ArgumentError, "Incomplete role configuration" unless value.is_a?(String) && !value.empty?
+        end
+
+        args = config["launch_args"]
+        raise ArgumentError, "Incomplete role configuration" unless args.is_a?(Array)
+
+        args.each do |argument|
+          raise ArgumentError, "Incomplete role configuration" unless argument.is_a?(String) && !argument.include?("\0")
+        end
       end
-      private def credential_path(id) = File.join(@root, "#{id}.token")
-      private def write_credential(id, token)
+      sig { params(id: String).returns(String) }
+      def credential_path(id) = File.join(@root, "#{id}.token")
+
+      sig { params(id: String, token: String).void }
+      def write_credential(id, token)
         FileUtils.mkdir_p(@root, mode: 0700)
         raise ArgumentError, "Credential root symlink" if File.symlink?(@root)
 
         File.open(credential_path(id), File::WRONLY | File::CREAT | File::EXCL, 0600) { |file| file.write(token) }
+      end
+
+      class << self
+        extend T::Sig
+
+        sig { params(row: Row, key: Symbol).returns(String) }
+        def row_string(row, key)
+          value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
+          raise ArgumentError, "Malformed database row" unless value.is_a?(String)
+
+          value
+        end
+
+        sig { params(row: Row, key: Symbol).returns(Integer) }
+        def row_integer(row, key)
+          value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
+          raise ArgumentError, "Malformed database row" unless value.is_a?(Integer)
+
+          value
+        end
+
+        sig { params(row: Row, key: Symbol).returns(Time) }
+        def row_time(row, key)
+          value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
+          raise ArgumentError, "Malformed database row" unless value.is_a?(Time)
+
+          value
+        end
+      end
+
+      sig { params(row: Row, key: Symbol).returns(String) }
+      def row_string(row, key) = self.class.row_string(row, key)
+
+      sig { params(row: Row, key: Symbol).returns(Integer) }
+      def row_integer(row, key) = self.class.row_integer(row, key)
+
+      sig { params(row: Row, key: Symbol).returns(T::Hash[String, Object]) }
+      def row_object(row, key)
+        value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
+        object(value)
+      end
+
+      sig { params(value: Object).returns(T::Hash[String, Object]) }
+      def object(value)
+        raise ArgumentError, "Malformed JSON object" unless value.is_a?(Hash)
+
+        typed = T.let({}, T::Hash[String, Object])
+        value.each do |key, item|
+          raise ArgumentError, "Malformed JSON object" unless key.is_a?(String)
+
+          typed[key] = item
+        end
+        typed
+      end
+
+      sig { params(object: T::Hash[String, Object], key: String).returns(String) }
+      def object_string(object, key)
+        value = object.fetch(key) { raise ArgumentError, "Malformed JSON object" }
+        raise ArgumentError, "Malformed JSON object" unless value.is_a?(String)
+
+        value
+      end
+
+      sig { params(object: T::Hash[String, Object], key: String).returns(Integer) }
+      def object_integer(object, key)
+        value = object.fetch(key) { raise ArgumentError, "Malformed JSON object" }
+        raise ArgumentError, "Malformed JSON object" unless value.is_a?(Integer)
+
+        value
       end
     end
   end
