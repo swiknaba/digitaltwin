@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ENV = {k: v for k, v in os.environ.items() if not k.startswith(("COMPOSE_", "DOCKER_")) and k not in
        {"POSTGRES_PASSWORD", "KIREI_DB_PASSWORD", "MATTERMOST_DB_PASSWORD", "BACKEND_PORT"}}
 CALLBACK_SHA = json.loads((ROOT / "agent-runtime/contracts/kirei-clients.json").read_text())["files"]["digitaltwin"]["sha256"]
+EXPECTED_MIGRATION_VERSION = max(int(path.name.split("_", 1)[0]) for path in (ROOT / "integration-backend/db/migrate").glob("[0-9][0-9][0-9]_*.rb"))
 
 
 @unittest.skipUnless(os.getenv("DIGITALTWIN_RUN_COMPOSE_TESTS") == "1", "explicit disposable Compose opt-in required")
@@ -136,7 +137,7 @@ class DisposableComposeTest(unittest.TestCase):
         _, body, headers = self.get("mattermost", "/api/v4/system/ping")
         self.assertEqual(body["status"], "OK")
         self.assertTrue(headers.get("X-Version-Id", "").startswith("11.11.1"))
-        self.ruby("abort 'migrations' unless Kirei::App.raw_db_connection[:schema_info].get(:version) == 6")
+        self.ruby(f"abort 'migrations' unless Kirei::App.raw_db_connection[:schema_info].get(:version) == {EXPECTED_MIGRATION_VERSION}")
         for user, password, database, other in [
             ("kirei", "local-only-kirei", "digitaltwin_development", "mattermost"),
             ("mattermost", "local-only-mattermost", "mattermost", "digitaltwin_development")]:
@@ -239,13 +240,13 @@ class DisposableComposeTest(unittest.TestCase):
 
     def test_06_pending_migrations_fail_closed_and_pool_bounds(self):
         self.ruby((ROOT / "tests/fixtures/pool_bounds.rb").read_text())
-        self.ruby("db=Kirei::App.raw_db_connection; abort unless db.pool.max_size==5 && db.opts[:pool_timeout].to_f==2; db[:schema_info].update(version:5)")
+        self.ruby(f"db=Kirei::App.raw_db_connection; abort unless db.pool.max_size==5 && db.opts[:pool_timeout].to_f==2; db[:schema_info].update(version:{EXPECTED_MIGRATION_VERSION - 1})")
         try:
             startup = self.compose(["run", "--rm", "--no-deps", "-e", "BOOT_CHECK_ONLY=1", "backend-web", "bin/web"], check=False)
             self.assertNotEqual(startup.returncode, 0)
             self.assertIn("Pending migrations", startup.stderr)
         finally:
-            self.ruby("Kirei::App.raw_db_connection[:schema_info].update(version:6)")
+            self.ruby(f"Kirei::App.raw_db_connection[:schema_info].update(version:{EXPECTED_MIGRATION_VERSION})")
         self.assertEqual(self.get("backend-web", "/readyz")[0], 200)
         self.evidence["pending_migrations_rejected_pool_5_timeout_2"] = True
 
