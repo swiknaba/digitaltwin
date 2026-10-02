@@ -23,7 +23,7 @@ module Services
       def call(workflow_id:, role: nil)
         query = Session.query.where(workflow_id: workflow_id, active: true)
         query = query.where(role: role) if role
-        sessions = Session.resolve(query.order(:id))
+        sessions = Session.resolve(query.order(:created_at, :id))
         return failure(Code::SessionMissing, "Required session missing") if sessions.empty?
 
         sessions.each do |session|

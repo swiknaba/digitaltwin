@@ -16,8 +16,8 @@ RSpec.describe Services::Commands::Parser do
   it "parses each recovery command with its typed captures" do
     expect(parse("@agent recover-start #{uuid} #{thread}")).to eq(dto::RecoverStart.new(request_id: uuid, thread_id: thread))
     expect(parse("@agent recover-session #{uuid} pane:1.a_b-c")).to eq(dto::RecoverSession.new(operation_id: uuid, pane_id: "pane:1.a_b-c"))
-    expect(parse("@agent recover-followup 42 delivered")).to eq(dto::RecoverFollowup.new(followup_id: 42, outcome: dto::FollowupOutcome::Delivered))
-    expect(parse("@agent recover-followup 7 discard")).to eq(dto::RecoverFollowup.new(followup_id: 7, outcome: dto::FollowupOutcome::Discard))
+    expect(parse("@agent recover-followup followup_abc123 delivered")).to eq(dto::RecoverFollowup.new(followup_id: "followup_abc123", outcome: dto::FollowupOutcome::Delivered))
+    expect(parse("@agent recover-followup followup_def456 discard")).to eq(dto::RecoverFollowup.new(followup_id: "followup_def456", outcome: dto::FollowupOutcome::Discard))
     expect(parse("@agent recover-master #{uuid}")).to eq(dto::RecoverMaster.new(request_id: uuid))
   end
 
@@ -47,7 +47,7 @@ RSpec.describe Services::Commands::Parser do
     expect(parse("@agent recover-master #{uuid} ")).to be_nil
     expect(parse("@agent recover-start #{uuid} #{thread} ")).to be_nil
     expect(parse("@agent recover-start #{uuid} #{"T" * 26}")).to be_nil
-    expect(parse("@agent recover-followup 4 maybe")).to be_nil
+    expect(parse("@agent recover-followup followup_4 maybe")).to be_nil
     expect(parse("@other approve w1 spec #{commit}")).to be_nil
     expect(parse("@agent approve w1 spec #{commit}", agent: "other")).to be_nil
     expect(parse("@worker startx")).to be_nil

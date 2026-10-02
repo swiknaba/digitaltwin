@@ -25,7 +25,7 @@ module Domains
         @inbox = T.let(Domains::Messaging::Inbox.new, Domains::Messaging::Inbox)
       end
 
-      sig { params(inbox_id: Integer).returns(String) }
+      sig { params(inbox_id: String).returns(String) }
       def ingest(inbox_id)
         d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id))
         controller = @sessions.bootstrap(configuration: @configuration)
@@ -114,7 +114,7 @@ module Domains
         end
       end
 
-      sig { params(request_id: String, inbox_id: Integer).void }
+      sig { params(request_id: String, inbox_id: String).void }
       def recover(request_id:, inbox_id:)
         r = @db[:master_requests][id: request_id] or raise ArgumentError, "Unknown Master request"
         original = T.must(@inbox.find(id: r[:inbox_id]))

@@ -82,7 +82,7 @@ module Services
         control(payload.inbox_id, workflow.id, action, expected_version)
       end
 
-      sig { params(inbox_id: Integer, workflow_id: String, action: Action, expected_version: Integer).returns(Outcome) }
+      sig { params(inbox_id: String, workflow_id: String, action: Action, expected_version: Integer).returns(Outcome) }
       private def control(inbox_id, workflow_id, action, expected_version)
         workflow = @catalog.find(id: workflow_id)
         return failure(Code::MissingWorkflow, "Missing workflow") unless workflow
@@ -94,7 +94,7 @@ module Services
       end
 
       # Runs under the workflow lock: checks, then evidence, then one transaction.
-      sig { params(inbox_id: Integer, workflow_id: String, action: Action, expected_version: Integer).returns(Outcome) }
+      sig { params(inbox_id: String, workflow_id: String, action: Action, expected_version: Integer).returns(Outcome) }
       private def locked_control(inbox_id, workflow_id, action, expected_version)
         workflow = @catalog.find(id: workflow_id)
         return failure(Code::MissingWorkflow, "Missing workflow") unless workflow

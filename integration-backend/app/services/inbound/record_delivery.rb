@@ -103,13 +103,13 @@ module Services
       sig { params(workflow: Workflow).returns(T::Boolean) }
       private def closed?(workflow) = workflow.phase.terminal?
 
-      sig { params(workflow: Workflow, inbox_id: Integer).void }
+      sig { params(workflow: Workflow, inbox_id: String).void }
       private def queue_message(workflow, inbox_id)
         @queued_messages.enqueue(workflow_id: workflow.id, inbox_id: inbox_id, workflow_version: workflow.version)
       end
 
       sig do
-        params(kind: Kind, delivery: Messaging::Dto::VerifiedDelivery, inbox_id: Integer,
+        params(kind: Kind, delivery: Messaging::Dto::VerifiedDelivery, inbox_id: String,
                workflow: T.nilable(Workflow)).returns(Outcome)
       end
       private def queue(kind, delivery, inbox_id, workflow: nil)

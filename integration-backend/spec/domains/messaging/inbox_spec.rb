@@ -16,7 +16,7 @@ RSpec.describe Domains::Messaging::Inbox do
   }
 
   def legacy_row(created_at: Time.now)
-    db[:inbox].insert(channel_id: "c" * 26, thread_id: "r" * 26, post_id: "p" * 26, post_revision: 7, event_kind: "posted",
+    db[:inbox].insert(id: "inbox_#{SecureRandom.hex(6)}", channel_id: "c" * 26, thread_id: "r" * 26, post_id: "p" * 26, post_revision: 7, event_kind: "posted",
                       user_id: "u" * 26, verified_delivery: Sequel.pg_jsonb(legacy_json), created_at: created_at)
   end
 
@@ -24,7 +24,7 @@ RSpec.describe Domains::Messaging::Inbox do
     record = inbox.find(id: legacy_row)
     expect(record&.verified_delivery).to eq(verified_delivery(body: "legacy", revision: 7))
     expect(record&.verified_delivery&.serialize).to eq(legacy_json)
-    expect(inbox.find(id: 404)).to be_nil
+    expect(inbox.find(id: "inbox_missing")).to be_nil
   end
 
   it "lists recent records newest first" do

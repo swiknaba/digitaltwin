@@ -24,7 +24,7 @@ module Domains
           end
 
           Entities::Approval.query.insert_conflict(target: %i[workflow_id kind target_commit]).insert(
-            workflow_id: workflow_id, kind: gate.serialize, target_commit: target_commit, user_id: user_id, channel_id: channel_id, post_id: post_id
+            id: Entities::Approval.generate_human_id, workflow_id: workflow_id, kind: gate.serialize, target_commit: target_commit, user_id: user_id, channel_id: channel_id, post_id: post_id
           )
           Kirei::Services::Result.new(result: T.must(find(workflow_id: workflow_id, gate: gate, commit: target_commit)))
         end

@@ -7,7 +7,7 @@ module Domains
     class Inbox
       extend T::Sig
 
-      sig { params(id: Integer).returns(T.nilable(Dto::InboxRecord)) }
+      sig { params(id: String).returns(T.nilable(Dto::InboxRecord)) }
       def find(id:)
         entry = Entities::InboxEntry.find_by(id: id)
         entry && record(entry)
@@ -16,13 +16,13 @@ module Domains
       # Newest first.
       sig { params(since: Time, limit: Integer).returns(T::Array[Dto::InboxRecord]) }
       def recent(since:, limit:)
-        query = Entities::InboxEntry.query.where(Sequel.expr(:created_at) > since).order(Sequel.desc(:id)).limit(limit)
+        query = Entities::InboxEntry.query.where(Sequel.expr(:created_at) > since).order(Sequel.desc(:created_at), Sequel.desc(:id)).limit(limit)
         Entities::InboxEntry.resolve(query).map { |entry| record(entry) }
       end
 
       # Takes a row lock inside the caller's transaction, which serializes
       # work bound to one inbox record.
-      sig { params(id: Integer).void }
+      sig { params(id: String).void }
       def lock(id:)
         Entities::InboxEntry.query.where(id: id).select(:id).for_update.all
       end

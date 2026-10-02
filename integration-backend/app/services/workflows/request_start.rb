@@ -30,7 +30,7 @@ module Services
         @jobs = jobs
       end
 
-      sig { params(inbox_id: Integer, project_id: String, title: String, existing_thread: T.nilable(String)).returns(Outcome) }
+      sig { params(inbox_id: String, project_id: String, title: String, existing_thread: T.nilable(String)).returns(Outcome) }
       def call(inbox_id:, project_id:, title:, existing_thread: nil)
         Kirei::Services::Runner.call(self.class.name.to_s) do
           project = @directory.find(id: project_id)
@@ -54,7 +54,7 @@ module Services
         end
       end
 
-      sig { params(inbox_id: Integer, project_id: String, parameters: Workflows::Dto::RequestParameters, delivery: Messaging::Dto::VerifiedDelivery).returns(Outcome) }
+      sig { params(inbox_id: String, project_id: String, parameters: Workflows::Dto::RequestParameters, delivery: Messaging::Dto::VerifiedDelivery).returns(Outcome) }
       private def record(inbox_id, project_id, parameters, delivery)
         # The digest input keeps today's JSON: [project_id, {title, existing_thread, roles}].
         digest = Digest::SHA256.hexdigest(JSON.generate([project_id, parameters.serialize]))

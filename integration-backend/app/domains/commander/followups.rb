@@ -27,7 +27,7 @@ module Domains
 
       # All future review/session transitions must use this same workflow mutex.
       # Keep the connection checked out across commits, never network in a DB tx.
-      sig { params(id: Integer, before_effect: T.proc.returns(T::Boolean)).returns(String) }
+      sig { params(id: String, before_effect: T.proc.returns(T::Boolean)).returns(String) }
       def deliver(id, before_effect: -> { true })
         row = @db[:followups][id: id] or raise ArgumentError, "Missing instruction"
         @db.synchronize do
@@ -66,7 +66,7 @@ module Domains
               return live_renewal ? "queued" : block(id, "Credential renewal requires reconciliation")
             end
 
-            pending = @db[:followups].where(workflow_id: w.id).where(Sequel[:followups][:id] < id).where(status: %w[queued sending uncertain]).count
+            pending = @db[:followups].where(workflow_id: w.id).where(earlier_than(id)).where(status: %w[queued sending uncertain]).count
             return "queued" unless pending.zero?
 
             live = @herdr.pane(session[:pane_id])
@@ -117,7 +117,7 @@ module Domains
         end
       end
 
-      sig { params(id: Integer, inbox_id: Integer, outcome: String).returns(String) }
+      sig { params(id: String, inbox_id: String, outcome: String).returns(String) }
       def reconcile(id:, inbox_id:, outcome:)
         raise ArgumentError, "Explicit outcome required" unless %w[delivered discard].include?(outcome)
 
@@ -178,16 +178,24 @@ module Domains
         end
       end
 
-      sig { params(id: Integer, reason: String).returns(String) }
+      # Ids are random, so delivery order follows created_at with id as tiebreaker.
+      sig { params(id: String).returns(Sequel::SQL::Expression) }
+      private def earlier_than(id)
+        created_at = @db[:followups].where(id: id).select(:created_at)
+        Sequel.|(Sequel[:followups][:created_at] < created_at,
+                 Sequel.&(Sequel[:followups][:created_at] =~ created_at, Sequel[:followups][:id] < id))
+      end
+
+      sig { params(id: String, reason: String).returns(String) }
       private def block(id, reason)
         @db[:followups].where(id: id).update(status: "blocked", reason: reason)
         "blocked"
       end
 
-      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Integer) }
+      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(String) }
       private def followup_id(job)
         value = Dto::FollowupJob.from_hash(job.payload, true).followup_id
-        raise ArgumentError, "Follow-up job is malformed" unless value.positive?
+        raise ArgumentError, "Follow-up job is malformed" if value.empty?
 
         value
       end

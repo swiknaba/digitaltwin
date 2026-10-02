@@ -8,7 +8,7 @@ module Domains
       class RecordedDelivery < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :inbox_id, T.nilable(Integer)
+        const :inbox_id, T.nilable(String)
         const :duplicate, T::Boolean
       end
     end

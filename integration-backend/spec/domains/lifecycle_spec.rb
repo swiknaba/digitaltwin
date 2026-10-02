@@ -34,7 +34,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   let(:dispatch) { Services::Workflows::DispatchPhasePrompt.new(source: source, herdr: herdr, evidence: evidence, latest_review: Services::Workflows::LatestReview.new(db), policy: policy) }
   before do
     @credential_root = Dir.mktmpdir
-    @inbox = db[:inbox].insert(channel_id: master_channel, thread_id: delivery.thread_id, post_id: delivery.post_id, post_revision: 1,
+    @inbox = db[:inbox].insert(id: "inbox_1", channel_id: master_channel, thread_id: delivery.thread_id, post_id: delivery.post_id, post_revision: 1,
                                event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
     db[:projects].insert(id: "project", channel_id: channel, slug: "owner/repo", remote_identity: "github.com/owner/repo", workspace: "/workspace/repos/owner/repo")
     allow(worktrees).to receive(:call) { |**args| Kirei::Services::Result.new(result: "/workspace/worktrees/#{args[:workflow_id]}") }
@@ -173,7 +173,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)).to eq(id)
     expect(db[:workflows].first[:phase]).to eq("spec_review")
     review_job(id)
-    db[:queued_messages].insert(workflow_id: "workflow", inbox_id: @inbox, workflow_version: 1)
+    db[:queued_messages].insert(id: "queued_message_1", workflow_id: "workflow", inbox_id: @inbox, workflow_version: 1)
     reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
     expect(db[:workflows].first[:phase]).to eq("spec_writing")
     expect(db[:jobs].where(kind: "review.release").count).to eq(1)
@@ -189,7 +189,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "approve")
     expect(db[:workflows].first[:phase]).to eq("spec_human_approval")
     expect { advance_approval("spec") }.to raise_error(ArgumentError)
-    db[:approvals].insert(workflow_id: "workflow", kind: "spec", target_commit: commit, user_id: delivery.actor.user_id, channel_id: master_channel, post_id: delivery.post_id)
+    db[:approvals].insert(id: "approval_1", workflow_id: "workflow", kind: "spec", target_commit: commit, user_id: delivery.actor.user_id, channel_id: master_channel, post_id: delivery.post_id)
     advance_approval("spec")
     expect(db[:workflows].first[:phase]).to eq("plan_writing")
     expect(db[:jobs].where(kind: "workflow.phase_prompt").count).to eq(1)
@@ -228,7 +228,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     workflow
     id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
     review_job(id)
-    db[:queued_messages].insert(workflow_id: "workflow", inbox_id: @inbox, workflow_version: 1)
+    db[:queued_messages].insert(id: "queued_message_1", workflow_id: "workflow", inbox_id: @inbox, workflow_version: 1)
     allow(routing).to receive(:route).and_raise(ArgumentError, "Revoked source")
     reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
     reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
@@ -281,8 +281,8 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
 
   it "releases later messages despite a deleted Mattermost source" do
     workflow
-    second = db[:inbox].insert(channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
-    [@inbox, second].each { |id| db[:queued_messages].insert(workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
+    second = db[:inbox].insert(id: "inbox_2", channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
+    [@inbox, second].each { |id| db[:queued_messages].insert(id: "queued_message_#{id}", workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
     allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Adapters::Mattermost::Errors::RequestFailed.new("Mattermost HTTP 404", status: 404))
     reviews.release("workflow")
     expect(db[:queued_messages].select_map(:inbox_id)).to eq([@inbox])
@@ -319,8 +319,8 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
   it "preserves queue order across transient source revalidation failures" do
     workflow
-    second = db[:inbox].insert(channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
-    [@inbox, second].each { |id| db[:queued_messages].insert(workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
+    second = db[:inbox].insert(id: "inbox_2", channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
+    [@inbox, second].each { |id| db[:queued_messages].insert(id: "queued_message_#{id}", workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
     allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Adapters::Mattermost::Errors::RequestFailed.new("Mattermost HTTP 500", status: 500))
     expect { reviews.release("workflow") }.to raise_error(Adapters::Mattermost::Errors::RequestFailed)
     expect(routing).not_to have_received(:route).with(inbox_id: second)
@@ -464,7 +464,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
       expect(db[:workflow_requests][id: id][:state]).to eq("bound")
     end
 
-    it "applies a router-produced workflow.pause job with an Integer inbox id" do
+    it "applies a router-produced workflow.pause job with a string inbox id" do
       workflow
       payload = Domains::Commander::Dto::InboxDispatchJob.new(inbox_id: @inbox, channel_id: channel, thread_id: "t" * 26, workflow_id: "workflow", expected_version: 0)
       Platform::Jobs::Store.new.enqueue(kind: kinds::WorkflowPause, payload: payload, dispatch_key: "inbox:#{@inbox}:workflow.pause")
@@ -473,7 +473,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
       expect(db[:workflows].first[:phase]).to eq("paused")
     end
 
-    it "applies a master.control job with an Integer inbox id and audits it" do
+    it "applies a master.control job with a string inbox id and audits it" do
       workflow
       payload = Domains::Commander::Dto::MasterControlJob.new(inbox_id: @inbox, workflow_id: "workflow", action: "pause", expected_version: 0)
       Platform::Jobs::Store.new.enqueue(kind: kinds::MasterControl, payload: payload, dispatch_key: "master:control:r:workflow:pause:0")

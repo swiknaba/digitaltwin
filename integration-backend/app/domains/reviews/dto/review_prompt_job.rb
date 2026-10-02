@@ -8,7 +8,7 @@ module Domains
       class ReviewPromptJob < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :review_id, Integer
+        const :review_id, String
       end
     end
   end

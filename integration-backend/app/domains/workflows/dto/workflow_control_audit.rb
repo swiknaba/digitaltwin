@@ -8,7 +8,7 @@ module Domains
       class WorkflowControlAudit < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :inbox_id, Integer
+        const :inbox_id, String
         const :workflow_id, String
         const :version, Integer
       end

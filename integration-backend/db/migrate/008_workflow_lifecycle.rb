@@ -9,7 +9,7 @@ Sequel.migration do
     end
     alter_table(:workflows) do
       add_column :paused_commit, String
-      add_foreign_key :source_inbox_id, :inbox
+      add_foreign_key :source_inbox_id, :inbox, type: String
       add_column :role_configurations, :jsonb, null: false, default: Sequel.pg_jsonb({})
     end
     alter_table(:reviews) do
@@ -18,7 +18,7 @@ Sequel.migration do
     end
     create_table(:workflow_requests) do
       String :id, primary_key: true
-      foreign_key :inbox_id, :inbox, null: false, unique: true
+      foreign_key :inbox_id, :inbox, type: String, null: false, unique: true
       foreign_key :project_id, :projects, type: String, null: false
       foreign_key :workflow_id, :workflows, type: String
       String :request_digest, null: false
@@ -41,7 +41,7 @@ Sequel.migration do
     end
     create_table(:master_requests) do
       String :id, primary_key: true
-      foreign_key :inbox_id, :inbox, null: false, unique: true
+      foreign_key :inbox_id, :inbox, type: String, null: false, unique: true
       foreign_key :session_id, :sessions, type: String, null: false
       String :credential_digest, null: false, unique: true
       DateTime :expires_at, null: false

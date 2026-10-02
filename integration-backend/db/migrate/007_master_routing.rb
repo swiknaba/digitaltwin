@@ -8,13 +8,13 @@ Sequel.migration do
       String :thread_id, null: false
       String :user_id, null: false
       foreign_key :workflow_id, :workflows, type: String, null: false
-      foreign_key :inbox_id, :inbox, null: false
+      foreign_key :inbox_id, :inbox, type: String, null: false
       DateTime :updated_at, null: false
       primary_key [:channel_id, :thread_id, :user_id]
     end
     create_table(:followups) do
-      primary_key :id
-      foreign_key :inbox_id, :inbox, null: false, unique: true
+      String :id, primary_key: true
+      foreign_key :inbox_id, :inbox, type: String, null: false, unique: true
       foreign_key :workflow_id, :workflows, type: String, null: false
       foreign_key :session_id, :sessions, type: String
       Integer :generation

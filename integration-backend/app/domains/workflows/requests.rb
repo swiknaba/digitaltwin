@@ -17,7 +17,7 @@ module Domains
 
       # Callers lock the inbox record first to serialize replays.
       sig do
-        params(inbox_id: Integer, project_id: String, digest: String, parameters: Dto::RequestParameters, thread_id: T.nilable(String)).returns(Outcome)
+        params(inbox_id: String, project_id: String, digest: String, parameters: Dto::RequestParameters, thread_id: T.nilable(String)).returns(Outcome)
       end
       def create(inbox_id:, project_id:, digest:, parameters:, thread_id:)
         existing = for_inbox(inbox_id: inbox_id)
@@ -37,7 +37,7 @@ module Domains
       sig { params(id: String).returns(T.nilable(Dto::RequestView)) }
       def find(id:) = Records.requests(Entities::WorkflowRequest.query.where(id: id)).first
 
-      sig { params(inbox_id: Integer).returns(T.nilable(Dto::RequestView)) }
+      sig { params(inbox_id: String).returns(T.nilable(Dto::RequestView)) }
       def for_inbox(inbox_id:) = Records.requests(Entities::WorkflowRequest.query.where(inbox_id: inbox_id)).first
 
       sig { params(id: String, state: Dto::RequestState, reason: T.nilable(String)).void }

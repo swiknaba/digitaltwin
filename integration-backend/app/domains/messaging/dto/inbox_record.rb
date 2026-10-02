@@ -8,7 +8,7 @@ module Domains
       class InboxRecord < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :id, Integer
+        const :id, String
         const :channel_id, String
         const :thread_id, String
         const :post_id, String

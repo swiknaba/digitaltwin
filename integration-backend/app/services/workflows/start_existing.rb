@@ -35,7 +35,7 @@ module Services
         end
       end
 
-      sig { params(inbox_id: Integer).returns(Outcome) }
+      sig { params(inbox_id: String).returns(Outcome) }
       private def start(inbox_id)
         verified = @source.call(inbox_id: inbox_id)
         return Kirei::Services::Result.new(errors: verified.errors) if verified.failed?

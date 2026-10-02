@@ -8,8 +8,8 @@ module Domains
       class FollowupRecoveryAudit < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :inbox_id, Integer
-        const :followup_id, Integer
+        const :inbox_id, String
+        const :followup_id, String
         const :workflow_id, String
         const :session_id, String
         const :generation, Integer

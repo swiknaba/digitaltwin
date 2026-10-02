@@ -25,7 +25,7 @@ module Domains
         include Kirei::Domain::Entity
 
         const :id, String
-        const :inbox_id, Integer
+        const :inbox_id, String
         const :project_id, String
         const :workflow_id, T.nilable(String)
         const :request_digest, String

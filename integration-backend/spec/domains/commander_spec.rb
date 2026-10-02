@@ -21,7 +21,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
                                                       post_revision: n, event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: root_post, body: body,
                                                       actor: Domains::Messaging::Dto::VerifiedActor.new(channel_id: channel_id, user_id: user, member: true, bot: bot))
     allow(resolver).to receive(:delivery).with(post_id: d.post_id, channel_id: channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted).and_return(d)
-    db[:inbox].insert(channel_id: channel_id, thread_id: thread_id, post_id: d.post_id, post_revision: n,
+    db[:inbox].insert(id: "inbox_#{SecureRandom.hex(6)}", channel_id: channel_id, thread_id: thread_id, post_id: d.post_id, post_revision: n,
                       event_kind: "posted", user_id: user, verified_delivery: Sequel.pg_jsonb(d.serialize))
   end
 
@@ -265,7 +265,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   it "records exact Master-chat approval only for the latest reviewed current revision" do
     workflow(1, phase: "spec_human_approval")
     commit = "a" * 40
-    db[:reviews].insert(workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: Sequel.pg_jsonb({ "cli" => "codex" }))
+    db[:reviews].insert(id: "review_1", workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: Sequel.pg_jsonb({ "cli" => "codex" }))
     approvals = Domains::Commander::Approvals.new(db, resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit })
     id = source(body: "@agent approve w1 spec #{commit}")
     args = { inbox_id: id, workflow_id: "w1", gate: "spec", commit: commit }

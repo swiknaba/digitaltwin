@@ -8,7 +8,7 @@ module Domains
 
       PHASES = T.let({ "spec" => "spec_writing", "plan" => "plan_writing", "implementation" => "implementation" }.freeze, T::Hash[String, String])
       Row = T.type_alias { T::Hash[Symbol, Object] }
-      Identifier = T.type_alias { T.any(String, Integer) }
+      Identifier = T.type_alias { String }
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Configuration = T.type_alias { T::Hash[String, Object] }
       Workflows = Domains::Workflows
@@ -70,7 +70,7 @@ module Domains
           raise ArgumentError, "Reviewer missing/diversity violated" if same_provider || same_family
 
           @db.transaction do
-            id = @db[:reviews].insert(workflow_id: w.id, gate: kind, round: round, target_commit: commit, base_commit: base,
+            id = @db[:reviews].insert(id: Platform::HumanId.call(prefix: "review"), workflow_id: w.id, gate: kind, round: round, target_commit: commit, base_commit: base,
                                       review_path: "docs/review.md", reviewer_configuration: Sequel.pg_jsonb(reviewer_configuration))
             ref = Workflows::Dto::ArtifactRef.new(commit: commit, path: path)
             Platform::Unwrap.call(@transitions.record_artifact(workflow_id: w.id, gate: gate, ref: ref, expected_version: w.version))
@@ -131,7 +131,7 @@ module Domains
             prompt_job = jobs.find_by_key(dispatch_key: "review:#{row_identifier!(record, :id)}")
             jobs.close_reconciled(id: prompt_job.id) if prompt_job
             if row_string!(record, :dispatch_state) != "delivered"
-              details = Dto::ReviewReceiptAudit.new(review_id: row_integer!(record, :id), target_commit: row_string!(record, :target_commit), review_commit: review_commit,
+              details = Dto::ReviewReceiptAudit.new(review_id: row_identifier!(record, :id), target_commit: row_string!(record, :target_commit), review_commit: review_commit,
                                                     session_id: row_string!(s, :id), generation: generation)
               Platform::Audit::Log.new.record(event_key: "review:receipt:#{row_identifier!(record, :id)}", action: "verified_review_prompt_reconciliation", details: details)
             end
@@ -288,7 +288,7 @@ module Domains
       sig { params(row: Row, key: Symbol).returns(Identifier) }
       private def row_identifier!(row, key)
         value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
-        raise ArgumentError, "Malformed durable review record" unless value.is_a?(String) || value.is_a?(Integer)
+        raise ArgumentError, "Malformed durable review record" unless value.is_a?(String)
 
         value
       end

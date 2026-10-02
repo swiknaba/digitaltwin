@@ -38,7 +38,7 @@ RSpec.describe Domains::Messaging::VerifyHumanSource do
   end
 
   it "fails MissingSource and DestinationMembershipRequired with the former messages" do
-    failure = error(service.call(inbox_id: @inbox_id + 1))
+    failure = error(service.call(inbox_id: "inbox_missing"))
     expect([failure&.code, failure&.detail]).to eq(["missing_source", "Missing verified source"])
 
     refetch(stored)

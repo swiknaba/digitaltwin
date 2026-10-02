@@ -13,7 +13,7 @@ module Domains
         const :channel_id, String
         const :thread_id, String
         const :worktree_root, String
-        const :source_inbox_id, Integer
+        const :source_inbox_id, String
         const :role_configurations, RoleAssignments
       end
     end

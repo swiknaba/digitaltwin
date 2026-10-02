@@ -8,9 +8,9 @@ module Domains
       class QueuedMessageView < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :id, Integer
+        const :id, String
         const :workflow_id, String
-        const :inbox_id, Integer
+        const :inbox_id, String
         const :workflow_version, Integer
       end
     end

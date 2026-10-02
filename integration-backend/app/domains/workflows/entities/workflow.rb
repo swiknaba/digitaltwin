@@ -50,7 +50,7 @@ module Domains
         const :archived_at, T.nilable(Time), default: nil
         const :created_at, Time, factory: -> { Time.now.utc }
         const :paused_commit, T.nilable(String), default: nil
-        const :source_inbox_id, T.nilable(Integer), default: nil
+        const :source_inbox_id, T.nilable(String), default: nil
         const :role_configurations, Dto::RoleAssignments
       end
     end

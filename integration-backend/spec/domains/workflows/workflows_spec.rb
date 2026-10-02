@@ -30,7 +30,7 @@ RSpec.describe "Workflows domain" do
       channel_id: channel, thread_id: thread_id, post_id: post_id, post_revision: 1, event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: true,
       body: "Build this project", actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "u" * 26, channel_id: channel, member: true, bot: false)
     )
-    id = db[:inbox].insert(channel_id: channel, thread_id: thread_id, post_id: post_id, post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id,
+    id = db[:inbox].insert(id: "inbox_#{SecureRandom.hex(6)}", channel_id: channel, thread_id: thread_id, post_id: post_id, post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id,
                            verified_delivery: Sequel.pg_jsonb(delivery.serialize))
     [id, delivery]
   end

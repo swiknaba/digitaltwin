@@ -9,7 +9,7 @@ module Domains
         include Kirei::Domain::ValueObject
 
         const :workflow_id, String
-        const :inbox_id, Integer
+        const :inbox_id, String
       end
     end
   end

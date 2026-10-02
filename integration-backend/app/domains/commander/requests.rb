@@ -33,10 +33,10 @@ module Domains
           integer_value(session, :generation) == latest_generation
       end
 
-      sig { params(request: RequestRow).returns(Integer) }
+      sig { params(request: RequestRow).returns(String) }
       private def inbox_id(request)
         value = request.fetch(:inbox_id)
-        raise ArgumentError, "Invalid request capability" unless value.is_a?(Integer)
+        raise ArgumentError, "Invalid request capability" unless value.is_a?(String)
 
         value
       end

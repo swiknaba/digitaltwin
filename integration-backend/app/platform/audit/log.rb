@@ -14,7 +14,7 @@ module Platform
                channel_id: T.nilable(String), post_id: T.nilable(String)).void
       end
       def record(event_key:, action:, details:, user_id: nil, channel_id: nil, post_id: nil)
-        Entities::Entry.query.insert(event_key: event_key, action: action, details: Sequel.pg_jsonb(details.serialize), user_id: user_id, channel_id: channel_id, post_id: post_id)
+        Entities::Entry.query.insert(id: Entities::Entry.generate_human_id, event_key: event_key, action: action, details: Sequel.pg_jsonb(details.serialize), user_id: user_id, channel_id: channel_id, post_id: post_id)
       end
 
       # Inserts unless the event key exists; returns whether it inserted.
@@ -24,7 +24,7 @@ module Platform
       end
       def record_once(event_key:, action:, details:, user_id: nil, channel_id: nil, post_id: nil)
         inserted = Entities::Entry.query.insert_conflict(target: :event_key)
-                                  .insert(event_key: event_key, action: action, details: Sequel.pg_jsonb(details.serialize), user_id: user_id, channel_id: channel_id, post_id: post_id)
+                                  .insert(id: Entities::Entry.generate_human_id, event_key: event_key, action: action, details: Sequel.pg_jsonb(details.serialize), user_id: user_id, channel_id: channel_id, post_id: post_id)
         !inserted.nil?
       end
 

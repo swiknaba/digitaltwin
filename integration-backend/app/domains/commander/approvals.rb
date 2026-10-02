@@ -28,7 +28,7 @@ module Domains
         @evidence = evidence
       end
 
-      sig { params(inbox_id: Integer, workflow_id: String, gate: Gate, commit: String).returns(Integer) }
+      sig { params(inbox_id: String, workflow_id: String, gate: Gate, commit: String).returns(String) }
       def record(inbox_id:, workflow_id:, gate:, commit:)
         raise ArgumentError, "Exact approval required" unless %w[spec plan].include?(gate) && commit.match?(/\A[0-9a-f]{40}\z/)
 

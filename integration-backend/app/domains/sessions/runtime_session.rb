@@ -53,6 +53,7 @@ module Domains
       const :state, String, default: "unknown"
       const :runtime_identity, T.nilable(Configuration), default: nil
       const :workspace_id, T.nilable(String), default: nil
+      const :created_at, Time
     end
   end
 end

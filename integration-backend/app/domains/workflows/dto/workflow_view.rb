@@ -23,7 +23,7 @@ module Domains
         const :archived_at, T.nilable(Time)
         const :created_at, Time
         const :paused_commit, T.nilable(String)
-        const :source_inbox_id, T.nilable(Integer)
+        const :source_inbox_id, T.nilable(String)
         const :role_configurations, RoleAssignments
 
         # The phase that governs work: a paused workflow keeps its saved phase.

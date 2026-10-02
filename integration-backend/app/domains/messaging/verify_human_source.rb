@@ -15,7 +15,7 @@ module Domains
         @inbox = inbox
       end
 
-      sig { params(inbox_id: Integer, destination: T.nilable(String)).returns(Kirei::Services::Result[Dto::VerifiedDelivery]) }
+      sig { params(inbox_id: String, destination: T.nilable(String)).returns(Kirei::Services::Result[Dto::VerifiedDelivery]) }
       def call(inbox_id:, destination: nil)
         Kirei::Services::Runner.call(self.class.name.to_s) do
           record = @inbox.find(id: inbox_id)

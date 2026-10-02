@@ -23,11 +23,11 @@ module Services
         row = if gate
                 reviews.where(workflow_id: workflow_id, gate: gate.serialize).order(Sequel.desc(:round)).first
               else
-                reviews.where(workflow_id: workflow_id, verdict: "changes_requested").order(Sequel.desc(:id)).first
+                reviews.where(workflow_id: workflow_id, verdict: "changes_requested").order(Sequel.desc(:created_at), Sequel.desc(:id)).first
               end
         return nil unless row
 
-        Dto::ReviewRecord.new(id: integer!(row[:id]), gate: text!(row[:gate]), round: integer!(row[:round]), target_commit: text!(row[:target_commit]),
+        Dto::ReviewRecord.new(id: text!(row[:id]), gate: text!(row[:gate]), round: integer!(row[:round]), target_commit: text!(row[:target_commit]),
                               review_commit: optional_text!(row[:review_commit]), review_path: text!(row[:review_path]), verdict: optional_text!(row[:verdict]))
       end
 

@@ -221,7 +221,7 @@ module Domains
         @db[:sessions].where(active: true).each { |s| queue_renewal(s) }
       end
 
-      sig { params(operation_id: String, inbox_id: Integer, pane_id: String).returns(String) }
+      sig { params(operation_id: String, inbox_id: String, pane_id: String).returns(String) }
       public def reconcile(operation_id:, inbox_id:, pane_id:)
         op = @db[:session_operations][id: operation_id] or raise ArgumentError, "Unknown session operation"
         s = @db[:sessions][id: op[:session_id]]
@@ -340,7 +340,7 @@ module Domains
         end
       end
 
-      sig { params(workflow: Workflow).returns(Integer) }
+      sig { params(workflow: Workflow).returns(String) }
       private def source_inbox_id(workflow)
         workflow.source_inbox_id or raise ArgumentError, "Missing verified source"
       end

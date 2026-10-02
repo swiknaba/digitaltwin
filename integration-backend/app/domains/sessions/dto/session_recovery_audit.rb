@@ -8,7 +8,7 @@ module Domains
       class SessionRecoveryAudit < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :inbox_id, Integer
+        const :inbox_id, String
         const :operation_id, String
         const :session_id, String
         const :generation, Integer

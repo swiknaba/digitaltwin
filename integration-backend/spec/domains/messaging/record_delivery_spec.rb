@@ -12,7 +12,7 @@ RSpec.describe Domains::Messaging::RecordDelivery do
   it "record_delivery dedups by channel/post/kind/revision" do
     first = service.call(delivery: verified_delivery)
     expect(first.result.duplicate).to be(false)
-    expect(first.result.inbox_id).to be_a(Integer)
+    expect(first.result.inbox_id).to be_a(String)
 
     replay = service.call(delivery: verified_delivery)
     expect(replay.result).to eq(Domains::Messaging::Dto::RecordedDelivery.new(inbox_id: nil, duplicate: true))

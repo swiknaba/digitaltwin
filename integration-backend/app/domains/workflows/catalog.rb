@@ -23,8 +23,8 @@ module Domains
       sig { returns(T::Array[Dto::WorkflowView]) }
       def active = Records.workflows(active_query.order(:created_at, :id))
 
-      sig { params(inbox_id: Integer).returns(T::Array[String]) }
-      def ids_for_source(inbox_id:) = Entities::Workflow.query.where(source_inbox_id: inbox_id).order(:id).select_map(:id)
+      sig { params(inbox_id: String).returns(T::Array[String]) }
+      def ids_for_source(inbox_id:) = Entities::Workflow.query.where(source_inbox_id: inbox_id).order(:created_at, :id).select_map(:id)
 
       sig { returns(Sequel::Dataset) }
       private def active_query = Entities::Workflow.query.where(archived_at: nil)

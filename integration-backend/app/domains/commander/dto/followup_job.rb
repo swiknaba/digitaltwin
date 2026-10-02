@@ -8,7 +8,7 @@ module Domains
       class FollowupJob < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :followup_id, Integer
+        const :followup_id, String
       end
     end
   end

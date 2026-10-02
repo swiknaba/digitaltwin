@@ -5,7 +5,7 @@
 #
 # Table name: approvals
 #
-#  id                  :integer             not null, primary key
+#  id                  :text                not null, primary key
 #  workflow_id         :text                not null
 #  kind                :text                not null
 #  target_commit       :text                not null
@@ -20,10 +20,11 @@ module Domains
     module Entities
       # `kind` holds the gate; the approval_kind constraint allows spec and plan.
       class Approval < T::Struct
+        extend T::Sig
         include Kirei::Model
         include Kirei::Domain::Entity
 
-        const :id, Integer
+        const :id, String
         const :workflow_id, String
         const :kind, Dto::Gate
         const :target_commit, String

@@ -5,7 +5,7 @@
 #
 # Table name: inbox
 #
-#  id                  :integer             not null, primary key
+#  id                  :text                not null, primary key
 #  channel_id          :text                not null
 #  post_id             :text                not null
 #  thread_id           :text                not null
@@ -27,7 +27,10 @@ module Domains
         sig { override.returns(String) }
         def self.table_name = "inbox"
 
-        const :id, Integer
+        sig { override.returns(String) }
+        def self.human_id_prefix = "inbox"
+
+        const :id, String
         const :channel_id, String
         const :post_id, String
         const :thread_id, String

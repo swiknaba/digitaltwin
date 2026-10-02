@@ -5,23 +5,26 @@
 #
 # Table name: queued_messages
 #
-#  id                  :integer             not null, primary key
+#  id                  :text                not null, primary key
 #  workflow_id         :text                not null
-#  inbox_id            :integer             not null
+#  inbox_id            :text                not null
 #  workflow_version    :integer             not null
+#  created_at          :timestamp without time zone, not null
 #
 
 module Domains
   module Workflows
     module Entities
       class QueuedMessage < T::Struct
+        extend T::Sig
         include Kirei::Model
         include Kirei::Domain::Entity
 
-        const :id, Integer
+        const :id, String
         const :workflow_id, String
-        const :inbox_id, Integer
+        const :inbox_id, String
         const :workflow_version, Integer
+        const :created_at, Time
       end
     end
   end

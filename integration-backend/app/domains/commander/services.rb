@@ -166,7 +166,7 @@ module Domains
         Decision.complete
       end
 
-      sig { params(inbox_id: Integer).returns(Domains::Messaging::Dto::VerifiedDelivery) }
+      sig { params(inbox_id: String).returns(Domains::Messaging::Dto::VerifiedDelivery) }
       private def human(inbox_id)
         Platform::Unwrap.call(@source.call(inbox_id: inbox_id))
       end

@@ -36,7 +36,7 @@ module Services
         @agent = agent_handle
       end
 
-      sig { params(request_id: String, inbox_id: Integer, thread_id: String).returns(Outcome) }
+      sig { params(request_id: String, inbox_id: String, thread_id: String).returns(Outcome) }
       def call(request_id:, inbox_id:, thread_id:)
         Kirei::Services::Runner.call(self.class.name.to_s) do
           next failure(Code::InvalidThread, "Invalid thread") unless thread_id.match?(/\A[a-z0-9]{26}\z/)
@@ -45,7 +45,7 @@ module Services
         end
       end
 
-      sig { params(id: String, inbox_id: Integer, thread_id: String).returns(Outcome) }
+      sig { params(id: String, inbox_id: String, thread_id: String).returns(Outcome) }
       private def reconcile(id, inbox_id, thread_id)
         request = @requests.find(id: id)
         return failure(Code::MissingRequest, "Unknown start request") unless request

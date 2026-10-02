@@ -11,7 +11,7 @@ RSpec.describe "Request-bound Master tools and stdio MCP" do
   let(:services) { double(source: source, request_start: double(call: Kirei::Services::Result.new(result: "provision-id"))) }
   let(:tools) { Domains::Commander::Tools.new(services: services, requests: requests) }
   before do
-    @inbox = db[:inbox].insert(channel_id: "master", thread_id: "root", post_id: "human-post", post_revision: 1, event_kind: "posted", user_id: "human", verified_delivery: Sequel.pg_jsonb({}))
+    @inbox = db[:inbox].insert(id: "inbox_1", channel_id: "master", thread_id: "root", post_id: "human-post", post_revision: 1, event_kind: "posted", user_id: "human", verified_delivery: Sequel.pg_jsonb({}))
     db[:sessions].insert(id: "controller", role: "controller", pane_id: "pane", alias: "master", generation: 1, credential_digest: "session-digest", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({}))
     db[:master_requests].insert(id: "request", inbox_id: @inbox, session_id: "controller", state: "active", credential_digest: Digest::SHA256.hexdigest("request-token"), expires_at: Time.now + 1800)
   end

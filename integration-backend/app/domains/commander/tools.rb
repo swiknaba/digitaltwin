@@ -25,7 +25,7 @@ module Domains
       sig { override.returns(T::Array[T::Hash[String, Object]]) }
       def definitions
         DEFINITIONS.map do |name, fields|
-          properties = fields.transform_values { |type| type == "array" ? { "type" => "array", "items" => { "type" => "integer" }, "maxItems" => 10 } : { "type" => type } }.merge("request_id" => { "type" => "string" })
+          properties = fields.transform_values { |type| type == "array" ? { "type" => "array", "items" => { "type" => "string" }, "maxItems" => 10 } : { "type" => type } }.merge("request_id" => { "type" => "string" })
           { "name" => name, "description" => "Verified request-bound #{name.tr("_", " ")}", "inputSchema" => { "type" => "object", "properties" => properties, "required" => properties.keys, "additionalProperties" => false } }
         end
       end
@@ -101,21 +101,21 @@ module Domains
         value
       end
 
-      sig { params(args: ToolArguments).returns(T::Array[Integer]) }
+      sig { params(args: ToolArguments).returns(T::Array[String]) }
       private def evidence_ids(args)
         value = args.fetch("evidence_inbox_ids") { raise ArgumentError, "Missing evidence IDs" }
         raise ArgumentError, "Invalid evidence IDs" unless value.is_a?(Array)
 
-        ids = value.select { |id| id.is_a?(Integer) && id.positive? }
+        ids = value.select { |id| id.is_a?(String) && !id.empty? }
         raise ArgumentError, "Invalid evidence IDs" unless ids.size == value.size && ids.size.between?(1, 10)
 
         ids
       end
 
-      sig { params(request: Requests::RequestRow).returns(Integer) }
+      sig { params(request: Requests::RequestRow).returns(String) }
       private def request_inbox_id(request)
         value = request.fetch(:inbox_id)
-        raise ArgumentError, "Invalid request capability" unless value.is_a?(Integer)
+        raise ArgumentError, "Invalid request capability" unless value.is_a?(String)
 
         value
       end

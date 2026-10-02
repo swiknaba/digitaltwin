@@ -28,7 +28,7 @@ module Domains
 
       # Only verified inbox identities enter this service. Selection is a human
       # clarification, not a model's authority to invent workflow/session IDs.
-      sig { params(inbox_id: Integer, selection: T.nilable(String), interpretation: T.nilable(Interpretation), clarify: T::Boolean).returns(Object) }
+      sig { params(inbox_id: String, selection: T.nilable(String), interpretation: T.nilable(Interpretation), clarify: T::Boolean).returns(Object) }
       def route(inbox_id:, selection: nil, interpretation: nil, clarify: true)
         source = @inbox.find(id: inbox_id) or raise ArgumentError, "Missing source"
         d = @resolver.delivery(post_id: source.post_id, channel_id: source.channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted)
@@ -97,7 +97,7 @@ module Domains
           Domains::Sessions::Lifecycle.schedule_renewal(@db, session) if session && session[:active] && session[:credential_expires_at] <= @now.call
           evidence = { "source_inbox_id" => inbox_id, "selection" => selection, "interpretation" => interpretation,
                        "direct_thread" => direct&.id, "recent_binding" => recent && binding[:inbox_id] }
-          id = @db[:followups].insert(inbox_id: inbox_id, workflow_id: w.id, session_id: session && session[:id],
+          id = @db[:followups].insert(id: Platform::HumanId.call(prefix: "followup"), inbox_id: inbox_id, workflow_id: w.id, session_id: session && session[:id],
                                       generation: session && session[:generation], evidence: Sequel.pg_jsonb(evidence),
                                       status: session ? "queued" : "blocked", reason: session ? nil : "Session reconciliation required")
           threads = [conversation_thread]
@@ -141,7 +141,7 @@ module Domains
       sig { params(workflows: T::Array[Workflow], id: BasicObject).returns(T.nilable(Workflow)) }
       private def find(workflows, id) = workflows.find { |workflow| workflow.id == id }
 
-      sig { params(d: Domains::Messaging::Dto::VerifiedDelivery, id: Integer, text: String, kind: String).returns(String) }
+      sig { params(d: Domains::Messaging::Dto::VerifiedDelivery, id: String, text: String, kind: String).returns(String) }
       private def acknowledge(d, id, text, kind)
         notify(channel_id: d.channel_id, thread_id: d.thread_id, body: text, key: "master:#{id}:#{kind}")
       end

@@ -5,7 +5,7 @@
 #
 # Table name: audit
 #
-#  id                  :integer             not null, primary key
+#  id                  :text                not null, primary key
 #  event_key           :text                not null
 #  action              :text                not null
 #  user_id             :text                null
@@ -26,7 +26,10 @@ module Platform
         sig { override.returns(String) }
         def self.table_name = "audit"
 
-        const :id, Integer
+        sig { override.returns(String) }
+        def self.human_id_prefix = "audit"
+
+        const :id, String
         const :event_key, String
         const :action, String
         const :user_id, T.nilable(String), default: nil

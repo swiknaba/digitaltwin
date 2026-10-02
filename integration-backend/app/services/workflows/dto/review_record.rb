@@ -9,7 +9,7 @@ module Services
       class ReviewRecord < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :id, Integer
+        const :id, String
         const :gate, String
         const :round, Integer
         const :target_commit, String

@@ -8,7 +8,7 @@ module Domains
       class ApprovalView < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :id, Integer
+        const :id, String
         const :workflow_id, String
         const :gate, Gate
         const :target_commit, String

@@ -8,7 +8,7 @@ module Services
       class RecoverFollowup < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :followup_id, Integer
+        const :followup_id, String
         const :outcome, FollowupOutcome
       end
     end

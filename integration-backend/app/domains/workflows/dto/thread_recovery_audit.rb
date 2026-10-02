@@ -8,7 +8,7 @@ module Domains
       class ThreadRecoveryAudit < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :inbox_id, Integer
+        const :inbox_id, String
         const :request_id, String
         const :thread_id, String
       end

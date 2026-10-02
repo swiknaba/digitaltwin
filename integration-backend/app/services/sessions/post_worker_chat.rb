@@ -70,7 +70,7 @@ module Services
         return failure(Code::StaleGeneration, "Stale session generation") unless latest == generation
 
         digest = Digest::SHA256.hexdigest(body)
-        db[:callbacks].insert_conflict(target: %i[session_id generation key]).insert(session_id: session.id, generation: generation, key: key, body_digest: digest)
+        db[:callbacks].insert_conflict(target: %i[session_id generation key]).insert(id: Platform::HumanId.call(prefix: "callback"), session_id: session.id, generation: generation, key: key, body_digest: digest)
         callback = row_from(db[:callbacks][session_id: session.id, generation: generation, key: key], "callback")
         return failure(Code::CallbackKeyReused, "Callback key reused with changed body") unless row_string(callback, :body_digest) == digest
 

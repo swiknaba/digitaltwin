@@ -23,8 +23,8 @@ module Services
         match = body.match(/\A@#{agent} recover-session ([0-9a-f-]+) ([a-zA-Z0-9_.:-]+)\z/)
         return Dto::RecoverSession.new(operation_id: capture(match, 1), pane_id: capture(match, 2)) if match
 
-        match = body.match(/\A@#{agent} recover-followup ([0-9]+) (delivered|discard)\z/)
-        return Dto::RecoverFollowup.new(followup_id: capture(match, 1).to_i, outcome: Dto::FollowupOutcome.deserialize(capture(match, 2))) if match
+        match = body.match(/\A@#{agent} recover-followup (followup_[A-Za-z0-9]+) (delivered|discard)\z/)
+        return Dto::RecoverFollowup.new(followup_id: capture(match, 1), outcome: Dto::FollowupOutcome.deserialize(capture(match, 2))) if match
 
         match = body.match(/\A@#{agent} recover-master ([0-9a-f-]+)\z/)
         return Dto::RecoverMaster.new(request_id: capture(match, 1)) if match

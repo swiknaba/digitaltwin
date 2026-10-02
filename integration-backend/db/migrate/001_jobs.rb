@@ -22,7 +22,7 @@ Sequel.migration do
       index [:status, :available_at]
     end
     create_table(:inbox) do
-      primary_key :id
+      String :id, primary_key: true
       String :channel_id, null: false
       String :post_id, null: false
       String :thread_id, null: false
@@ -51,7 +51,7 @@ Sequel.migration do
       constraint(:outbox_status, status: %w[pending delivered uncertain blocked])
     end
     create_table(:audit) do
-      primary_key :id
+      String :id, primary_key: true
       String :event_key, null: false, unique: true
       String :action, null: false
       String :user_id

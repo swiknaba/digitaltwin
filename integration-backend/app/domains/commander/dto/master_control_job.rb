@@ -8,7 +8,7 @@ module Domains
       class MasterControlJob < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :inbox_id, Integer
+        const :inbox_id, String
         const :workflow_id, String
         const :action, String
         const :expected_version, Integer
