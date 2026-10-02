@@ -2,7 +2,11 @@ require_relative "../spec_helper"
 require "stringio"
 RSpec.describe "Request-bound Master tools and stdio MCP" do
   let(:db) { Kirei::App.raw_db_connection }
-  let(:source) { double(human: true) }
+  let(:delivery) {
+    Domains::Messaging::Dto::VerifiedDelivery.new(channel_id: "master", thread_id: "root", post_id: "human-post", post_revision: 1, event_kind: Domains::Messaging::Dto::EventKind::Posted,
+                                                  root_post: true, body: "@agent help", actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "human", channel_id: "master", member: true, bot: false))
+  }
+  let(:source) { double(call: Kirei::Services::Result.new(result: delivery)) }
   let(:requests) { Domains::Commander::Requests.new(db, source: source) }
   let(:services) { double(source: source, provision: double(request: "provision-id")) }
   let(:tools) { Domains::Commander::Tools.new(db, services: services, requests: requests) }

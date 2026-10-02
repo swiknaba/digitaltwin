@@ -4,8 +4,9 @@ RSpec.describe Services::Outbound::DeliverOutbox do
   before do
     db[:outbox].delete; db[:jobs].delete
     @channel, @root, @bot = "c" * 26, "r" * 26, "b" * 26
-    @id = Domains::Mattermost::Outbox.new.enqueue(channel_id: @channel, thread_id: @root, bot: "worker", role: "writer",
-                                                  body: "[writer] question", key: "response")
+    message = Domains::Messaging::Dto::OutgoingMessage.new(channel_id: @channel, thread_id: @root, bot: Domains::Messaging::Dto::Bot::Worker,
+                                                           role: Domains::Messaging::Dto::SpeakerRole::Writer, body: "[writer] question", key: "response")
+    @id = Domains::Messaging::Outbox.new.enqueue(message: message).result
     @gets = { "/api/v4/users/me" => { "id" => @bot, "is_bot" => true }, "/api/v4/channels/#{@channel}" => { "id" => @channel },
               "/api/v4/channels/#{@channel}/members/#{@bot}" => { "channel_id" => @channel, "user_id" => @bot },
               "/api/v4/posts/#{@root}" => { "id" => @root, "channel_id" => @channel, "user_id" => "h" * 26, "root_id" => "", "message" => "root",
@@ -20,7 +21,10 @@ RSpec.describe Services::Outbound::DeliverOutbox do
       body.merge("id" => "p" * 26, "user_id" => bot, "create_at" => 2, "update_at" => 2, "delete_at" => 0)
     end
   end
-  def service = described_class.new(db, apis: { "worker" => Adapters::Mattermost::Api.new(client: @client) }, bot_ids: { "worker" => @bot })
+  def apis = { Domains::Messaging::Dto::Bot::Worker => Adapters::Mattermost::Api.new(client: @client) }
+  def bot_ids = { Domains::Messaging::Dto::Bot::Worker => @bot }
+  def service = described_class.new(apis: apis, bot_ids: bot_ids)
+  def reconcile = Services::Outbound::ReconcileOutbox.new(apis: apis, bot_ids: bot_ids)
 
   def run_delivery
     handler = service
@@ -69,9 +73,21 @@ RSpec.describe Services::Outbound::DeliverOutbox do
     since = [(row[:created_at].to_time.to_f * 1000).to_i - 1000, 1].max
     path = "/api/v4/channels/#{@channel}/posts?since=#{since}&collapsedThreads=false"
     @gets[path] = { "order" => ["p" * 26], "posts" => { "p" * 26 => body.merge("props" => body["props"].merge("unrelated" => "x"), "metadata" => {}) } }
-    expect(service.reconcile(outbox_id: @id)).to be(true)
+    expect(reconcile.call(outbox_id: @id).result).to eq(Domains::Messaging::Dto::OutboxStatus::Delivered)
     expect(db[:outbox][id: @id][:status]).to eq("delivered")
     expect(db[:jobs].first[:status]).to eq("complete")
     expect(calls).to eq(1)
+    failure = reconcile.call(outbox_id: @id).errors.first
+    expect([failure&.code, failure&.detail]).to eq(["not_uncertain", "Expected uncertain delivery"])
+  end
+
+  it "keeps an uncertain delivery uncertain without exactly one server match" do
+    allow(@client).to receive(:post).and_raise(IOError, "lost result")
+    run_delivery
+    since = [(db[:outbox][id: @id][:created_at].to_time.to_f * 1000).to_i - 1000, 1].max
+    @gets["/api/v4/channels/#{@channel}/posts?since=#{since}&collapsedThreads=false"] = { "order" => [], "posts" => {} }
+    expect(reconcile.call(outbox_id: @id).result).to eq(Domains::Messaging::Dto::OutboxStatus::Uncertain)
+    expect(db[:outbox][id: @id][:status]).to eq("uncertain")
+    expect(db[:jobs].first[:status]).to eq("uncertain")
   end
 end

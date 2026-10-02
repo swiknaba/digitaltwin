@@ -6,7 +6,7 @@ Startup.validate!
 exit if ENV["BOOT_CHECK_ONLY"] == "1"
 require "async"
 Async do
-  Services::Inbound::ChatListener.from_env(Kirei::App.raw_db_connection).call
+  Services::Inbound::ChatListener.from_env.call
 ensure
   Kirei::App.raw_db_connection.disconnect
 end.wait

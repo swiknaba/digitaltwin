@@ -6,20 +6,17 @@ raw_table_access:
 - app/domains/commander/requests.rb
 - app/domains/commander/routing.rb
 - app/domains/commander/services.rb
-- app/domains/commander/source.rb
 - app/domains/commander/tools.rb
-- app/domains/mattermost/router.rb
 - app/domains/projects/enroll.rb
 - app/domains/reviews/coordinator.rb
 - app/domains/sessions/lifecycle.rb
 - app/domains/workflows/coordinator.rb
 - app/domains/workflows/provision.rb
-- app/services/inbound/history_recovery.rb
-- app/services/outbound/deliver_outbox.rb
+- app/services/inbound/record_delivery.rb
+- app/services/sessions/post_worker_chat.rb
 broad_signatures:
 - app/domains/commander/requests.rb
 - app/domains/commander/routing.rb
-- app/domains/commander/source.rb
 - app/domains/commander/tools.rb
 - app/domains/reviews/coordinator.rb
 - app/domains/sessions/lifecycle.rb
@@ -28,10 +25,6 @@ broad_signatures:
 - app/domains/workflows/provision.rb
 - app/domains/workflows/workflow.rb
 private_entities:
-- app/adapters/mattermost/delivery_verifier.rb
-- app/domains/mattermost/router.rb
-- app/domains/mattermost/verified_delivery.rb
-- app/domains/mattermost/worker_chat.rb
 - app/domains/projects/enroll.rb
 raw_db_connection:
 - app/adapters/http/master.rb
@@ -41,17 +34,15 @@ advisory_locks:
 layer_dependencies:
 - app/adapters/http/callbacks.rb
 - app/adapters/http/master.rb
+- app/adapters/mattermost/api.rb
 - app/adapters/mattermost/delivery_verifier.rb
 - app/domains/commander/approvals.rb
 - app/domains/commander/followups.rb
 - app/domains/commander/master.rb
+- app/domains/commander/requests.rb
 - app/domains/commander/routing.rb
 - app/domains/commander/services.rb
-- app/domains/commander/source.rb
 - app/domains/commander/tools.rb
-- app/domains/mattermost/router.rb
-- app/domains/mattermost/verified_delivery.rb
-- app/domains/mattermost/worker_chat.rb
 - app/domains/projects/enroll.rb
 - app/domains/projects/workspace.rb
 - app/domains/reviews/coordinator.rb

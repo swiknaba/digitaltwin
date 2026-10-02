@@ -23,7 +23,8 @@ RSpec.describe "architecture boundaries" do
   ].freeze
 
   layer_namespaces = { "domains" => "Domains", "services" => "Services", "adapters" => "Adapters", "platform" => "Platform" }.freeze
-  reference_pattern = /\b(Domains|Services|Adapters|Platform)::(\w+)(?:::(\w+))?/
+  # The lookbehind skips gem namespaces such as Kirei::Services::Result.
+  reference_pattern = /(?<!::)\b(Domains|Services|Adapters|Platform)::(\w+)(?:::(\w+))?/
   raw_table_pattern = /\b(?:@?db|raw_db_connection)\[:|Sequel\.lit/
   broad_signature_pattern = /returns\(Object\)|T::Hash\[(?:Symbol|String), Object\]|T\.untyped|T\.unsafe/
   entity_pattern = /\b(Domains|Platform)::(\w+)::Entities/

@@ -141,8 +141,15 @@ module Domains
               jobs.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowPhasePrompt, payload: Domains::Workflows::Dto::PhasePromptJob.new(workflow_id: workflow_id, version: version + 1),
                            dispatch_key: "workflow:phase:#{workflow_id}:#{version + 1}")
             end
-            Domains::Mattermost::Outbox.new.enqueue(channel_id: row_string!(w, :channel_id), thread_id: row_optional_string(w, :thread_id), bot: "worker", role: "reviewer",
-                                                    body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.", key: "review:result:#{row_identifier!(record, :id)}")
+            message = Domains::Messaging::Dto::OutgoingMessage.new(
+              channel_id: row_string!(w, :channel_id),
+              thread_id: row_optional_string(w, :thread_id),
+              bot: Domains::Messaging::Dto::Bot::Worker,
+              role: Domains::Messaging::Dto::SpeakerRole::Reviewer,
+              body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.",
+              key: "review:result:#{row_identifier!(record, :id)}"
+            )
+            Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
           end
         end
         workflow_id

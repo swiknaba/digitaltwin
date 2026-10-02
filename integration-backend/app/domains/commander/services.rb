@@ -34,7 +34,7 @@ module Domains
       sig { returns(Domains::Workflows::Coordinator) }
       attr_reader :workflows
 
-      sig { returns(Source) }
+      sig { returns(Domains::Messaging::VerifyHumanSource) }
       attr_reader :source
 
       sig { params(db: Sequel::Database).returns(Services) }
@@ -43,18 +43,14 @@ module Domains
         listener = Adapters::Mattermost::Api.new(client: Adapters::Mattermost::Client.new(url: url, token_file: ENV.fetch("MATTERMOST_LISTENER_TOKEN_FILE")))
         resolver = Adapters::Mattermost::DeliveryVerifier.new(api: listener, local_bot_ids: ENV.fetch("MATTERMOST_LOCAL_BOT_IDS").split(","),
                                                               peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","))
-        membership = ->(channel, user) do
-          member = listener.member(channel_id: channel, user_id: user)
-          !member.nil? && member.channel_id == channel && member.user_id == user
-        end
         roles = ENV["ROLE_CONFIG_FILE"] ? JSON.parse(File.read(ENV.fetch("ROLE_CONFIG_FILE"))) : {}
         worker = Adapters::Mattermost::Api.new(client: Adapters::Mattermost::Client.new(url: url, token_file: ENV.fetch("MATTERMOST_WORKER_TOKEN_FILE")))
-        new(db, resolver: resolver, membership: membership, api: worker, bot_id: ENV.fetch("MATTERMOST_WORKER_BOT_ID"), roles: roles)
+        new(db, resolver: resolver, membership: listener, api: worker, bot_id: ENV.fetch("MATTERMOST_WORKER_BOT_ID"), roles: roles)
       end
 
       sig do
-        params(db: Sequel::Database, resolver: Source::DeliveryResolver,
-               membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
+        params(db: Sequel::Database, resolver: Domains::Messaging::DeliveryVerifier,
+               membership: Domains::Messaging::MembershipCheck,
                api: Adapters::Mattermost::Api, bot_id: String, roles: Roles,
                policy: Domains::Workflows::Policy, herdr: Adapters::Herdr::Client,
                evidence: Adapters::Git::Evidence, workspace: T.nilable(Domains::Projects::Workspace),
@@ -66,9 +62,11 @@ module Domains
         @db = db
         revision = Adapters::Git::Revision.new
         current_commit = ->(worktree) { revision.call(worktree_path: worktree.worktree_path, branch: worktree.branch) }
-        @source = T.let(Source.new(db, resolver: resolver, membership: membership), Source)
-        @approvals = T.let(Approvals.new(db, resolver: resolver, membership: membership, current_commit: current_commit, evidence: evidence), Approvals)
-        @routing = T.let(Routing.new(db, resolver: resolver, membership: membership, approvals: @approvals), Routing)
+        @source = T.let(Domains::Messaging::VerifyHumanSource.new(verifier: resolver, membership: membership), Domains::Messaging::VerifyHumanSource)
+        # Commander internals still take a membership proc until Task 9.
+        member = ->(channel_id, user_id) { membership.member?(channel_id: channel_id, user_id: user_id) }
+        @approvals = T.let(Approvals.new(db, resolver: resolver, membership: member, current_commit: current_commit, evidence: evidence), Approvals)
+        @routing = T.let(Routing.new(db, resolver: resolver, membership: member, approvals: @approvals), Routing)
         @sessions = T.let(
           Domains::Sessions::Lifecycle.new(db, herdr: herdr, source: @source, credential_root: credential_root,
                                                callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", "http://backend-web:3000"), policy: policy),
@@ -81,7 +79,7 @@ module Domains
         controller_role = roles["controller"]
         @master = T.let(controller_role && Master.new(db, sessions: @sessions, source: @source, herdr: herdr,
                                                           configuration: controller_role, credential_root: credential_root, policy: policy), T.nilable(Master))
-        @followups = T.let(Followups.new(db, herdr: herdr, resolver: resolver, membership: membership, policy: policy), Followups)
+        @followups = T.let(Followups.new(db, herdr: herdr, resolver: resolver, membership: member, policy: policy), Followups)
       end
 
       sig { returns(HandlerMap) }
@@ -132,7 +130,7 @@ module Domains
       sig { params(job: ClaimedJob).returns(Decision) }
       def route(job:)
         id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
-        command = parse(@source.human(id).body)
+        command = parse(human(id).body)
         case command
         when Commands::RecoverStart
           @provision.reconcile(id: command.request_id, inbox_id: id, thread_id: command.thread_id)
@@ -161,7 +159,7 @@ module Domains
         @routing.call(job: job)
         # Exact approvals advance only through the coordinator's independent
         # revision/gate validation. Normal contextual prompts keep their session.
-        approval = parse(@source.human(id).body)
+        approval = parse(human(id).body)
         @workflows.advance_approval(workflow_id: approval.workflow_id, gate: approval.gate.serialize) if approval.is_a?(Commands::Approve)
         Decision.complete
       end
@@ -170,7 +168,7 @@ module Domains
       def control_existing(job:)
         payload = Dto::InboxDispatchJob.from_hash(job.payload, true)
         inbox_id = payload.inbox_id
-        d = @source.human(inbox_id)
+        d = human(inbox_id)
         w = @db[:workflows][id: required(payload.workflow_id)]
         action = job.kind.serialize.delete_prefix("workflow.")
         raise ArgumentError, "Control source/workflow mismatch" unless w && d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch("WORKER_HANDLE", "worker")} #{action}"
@@ -183,7 +181,7 @@ module Domains
       def approve_existing(job:)
         payload = Dto::InboxDispatchJob.from_hash(job.payload, true)
         inbox_id = payload.inbox_id
-        d = @source.human(inbox_id)
+        d = human(inbox_id)
         w = @db[:workflows][id: required(payload.workflow_id)]
         raise ArgumentError, "Approval source/workflow mismatch" unless w && d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && w[:version] == required_integer(payload.expected_version)
 
@@ -197,7 +195,7 @@ module Domains
       sig { params(job: ClaimedJob).returns(Decision) }
       def start_existing(job:)
         id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
-        d = @source.human(id)
+        d = human(id)
         command = parse(d.body)
         start = command.is_a?(Commands::WorkerCommand) && command.action == Commands::WorkerAction::Start && command.single_space_separator
         raise ArgumentError, "Human root start required" unless d.root_post && start
@@ -207,6 +205,11 @@ module Domains
 
         @provision.request(inbox_id: id, project_id: project[:id], title: d.body, existing_thread: d.thread_id)
         Decision.complete
+      end
+
+      sig { params(inbox_id: Integer).returns(Domains::Messaging::Dto::VerifiedDelivery) }
+      private def human(inbox_id)
+        Platform::Unwrap.call(@source.call(inbox_id: inbox_id))
       end
 
       sig { params(body: String).returns(T.nilable(Commands::Command)) }

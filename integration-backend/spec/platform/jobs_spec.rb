@@ -9,7 +9,7 @@ RSpec.describe Platform::Jobs::Store do
   let(:kind) { Platform::Jobs::Dto::JobKind::MattermostPost }
 
   def enqueue(key = "one", outbox_id: "x")
-    store.enqueue(kind: kind, payload: Domains::Mattermost::Dto::OutboxPostJob.new(outbox_id: outbox_id), dispatch_key: key)
+    store.enqueue(kind: kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: outbox_id), dispatch_key: key)
   end
 
   it "enqueue is idempotent per dispatch key and rejects changed payload" do
@@ -18,7 +18,7 @@ RSpec.describe Platform::Jobs::Store do
     expect(db[:jobs].first[:payload].to_hash).to eq("outbox_id" => "x")
     expect { enqueue(outbox_id: "changed") }.to raise_error(Platform::Jobs::Errors::DispatchKeyReused, "Dispatch key reused with changed content")
     other_kind = Platform::Jobs::Dto::JobKind::ReviewRelease
-    expect { store.enqueue(kind: other_kind, payload: Domains::Mattermost::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one") }
+    expect { store.enqueue(kind: other_kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one") }
       .to raise_error(Platform::Jobs::Errors::DispatchKeyReused)
   end
 
@@ -135,8 +135,9 @@ RSpec.describe Platform::Jobs::Store do
     expect {
       db.transaction {
         enqueue
-        Domains::Mattermost::Outbox.new.enqueue(channel_id: "c", thread_id: "r", bot: "worker", role: "writer",
-                                                body: "hello", key: "response")
+        message = Domains::Messaging::Dto::OutgoingMessage.new(channel_id: "c", thread_id: "r", bot: Domains::Messaging::Dto::Bot::Worker,
+                                                               role: Domains::Messaging::Dto::SpeakerRole::Writer, body: "hello", key: "response")
+        Domains::Messaging::Outbox.new.enqueue(message: message)
         raise "abort"
       }
     }.to raise_error("abort")
@@ -145,10 +146,11 @@ RSpec.describe Platform::Jobs::Store do
   end
 
   it "deduplicates responses and rejects changed bodies" do
-    outbox = Domains::Mattermost::Outbox.new
-    args = { channel_id: "c", thread_id: "r", bot: "worker", role: "writer", body: "hello", key: "response" }
-    expect(outbox.enqueue(**args)).to eq(outbox.enqueue(**args))
-    expect { outbox.enqueue(**args.merge(body: "changed")) }.to raise_error(ArgumentError)
+    outbox = Domains::Messaging::Outbox.new
+    args = { channel_id: "c", thread_id: "r", bot: Domains::Messaging::Dto::Bot::Worker, role: Domains::Messaging::Dto::SpeakerRole::Writer, body: "hello", key: "response" }
+    message = ->(**changes) { Domains::Messaging::Dto::OutgoingMessage.new(**args.merge(changes)) }
+    expect(outbox.enqueue(message: message.call).result).to eq(outbox.enqueue(message: message.call).result)
+    expect(outbox.enqueue(message: message.call(body: "changed")).errors.first&.detail).to eq("Response key reused with changed content")
     expect(db[:jobs].count).to eq(1)
   end
 end
@@ -159,7 +161,7 @@ RSpec.describe Platform::Jobs::Worker do
   let(:kind) { Platform::Jobs::Dto::JobKind::MattermostPost }
 
   def tick_with(decision)
-    id = store.enqueue(kind: kind, payload: Domains::Mattermost::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one")
+    id = store.enqueue(kind: kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one")
     handler = Platform::Jobs::CallableHandler.new(->(_job) { decision })
     Async { expect(described_class.new(handlers: { kind => handler }).tick).to be(true) }.wait
     db[:jobs][id: id]
@@ -176,7 +178,7 @@ RSpec.describe Platform::Jobs::Worker do
   end
 
   it "completes a defer decision when the effect already began" do
-    id = store.enqueue(kind: kind, payload: Domains::Mattermost::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one")
+    id = store.enqueue(kind: kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one")
     handler = Platform::Jobs::CallableHandler.new(lambda do |job|
       job.lease.begin_effect
       Platform::Jobs::Dto::Decision.defer("too late")
@@ -186,7 +188,7 @@ RSpec.describe Platform::Jobs::Worker do
   end
 
   it "blocks jobs without a configured handler" do
-    id = store.enqueue(kind: kind, payload: Domains::Mattermost::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one")
+    id = store.enqueue(kind: kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "x"), dispatch_key: "one")
     Async { expect(described_class.new.tick).to be(true) }.wait
     expect(db[:jobs][id: id][:status]).to eq("blocked")
   end

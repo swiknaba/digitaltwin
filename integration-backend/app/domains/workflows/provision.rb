@@ -8,15 +8,11 @@ module Domains
 
       Role = T.type_alias { T::Hash[String, String] }
       Roles = T.type_alias { T::Hash[String, Role] }
-      # Inbox rows are PostgreSQL integer primary keys. String IDs are retained
-      # for callers that originate from a transport adapter and are validated by
-      # Commander::Source before becoming authority for a workflow action.
-      InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
         params(
           db: Sequel::Database,
-          source: Domains::Commander::Source,
+          source: Domains::Messaging::VerifyHumanSource,
           api: Adapters::Mattermost::Api,
           bot_id: String,
           workspace: Domains::Projects::Workspace,
@@ -36,10 +32,10 @@ module Domains
         @policy = policy
       end
 
-      sig { params(inbox_id: InboxId, project_id: String, title: String, existing_thread: T.nilable(String)).returns(String) }
+      sig { params(inbox_id: Integer, project_id: String, title: String, existing_thread: T.nilable(String)).returns(String) }
       def request(inbox_id:, project_id:, title:, existing_thread: nil)
         project = @db[:projects][id: project_id] or raise ArgumentError, "Unknown project"
-        d = @source.human(inbox_id, destination: project[:channel_id])
+        d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: project[:channel_id]))
         raise ArgumentError, "Invalid title" unless title.bytesize.between?(1, 1000)
         raise ArgumentError, "Existing thread must be verified human source" if existing_thread && (d.channel_id != project[:channel_id] || d.thread_id != existing_thread || !d.root_post)
 
@@ -49,7 +45,7 @@ module Domains
         parameters = { "title" => title, "existing_thread" => existing_thread, "roles" => @roles }
         digest = Digest::SHA256.hexdigest(JSON.generate([project_id, parameters]))
         @db.transaction do
-          @db[:inbox].where(id: inbox_id).for_update.first
+          Domains::Messaging::Inbox.new.lock(id: inbox_id)
           old = @db[:workflow_requests][inbox_id: inbox_id]
           if old
             raise ArgumentError, "Start source already bound" unless old[:request_digest] == digest
@@ -59,7 +55,15 @@ module Domains
           id = SecureRandom.uuid
           @db[:workflow_requests].insert(id: id, inbox_id: inbox_id, project_id: project_id, request_digest: digest, parameters: Sequel.pg_jsonb(parameters), thread_id: existing_thread)
           Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowProvision, payload: Dto::ProvisionJob.new(request_id: id), dispatch_key: "workflow:provision:#{id}")
-          Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Workflow request #{id} queued; project thread and sessions are not yet created.", key: "workflow:request:#{id}")
+          message = Domains::Messaging::Dto::OutgoingMessage.new(
+            channel_id: d.channel_id,
+            thread_id: d.thread_id,
+            bot: Domains::Messaging::Dto::Bot::Agent,
+            role: Domains::Messaging::Dto::SpeakerRole::Controller,
+            body: "Workflow request #{id} queued; project thread and sessions are not yet created.",
+            key: "workflow:request:#{id}"
+          )
+          Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
           id
         end
       end
@@ -72,7 +76,7 @@ module Domains
           return "queued" unless @policy.dispatch_allowed?
 
           project = @db[:projects][id: request[:project_id]]
-          delivery = @source.human(request[:inbox_id], destination: project[:channel_id])
+          delivery = Platform::Unwrap.call(@source.call(inbox_id: request[:inbox_id], destination: project[:channel_id]))
           thread = request[:thread_id]
           unless thread
             raise ArgumentError, "Unverified thread bot" unless thread_bot?(project[:channel_id])
@@ -124,10 +128,10 @@ module Domains
         Platform::Lock.new.call(key: "provision:#{id}") do
           request = @db[:workflow_requests][id: id] or raise ArgumentError, "Unknown start request"
           project = @db[:projects][id: request[:project_id]]
-          d = @source.human(inbox_id, destination: project[:channel_id])
-          original = @db[:inbox][id: request[:inbox_id]]
+          d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: project[:channel_id]))
+          original = T.must(Domains::Messaging::Inbox.new.find(id: request[:inbox_id]))
           command = "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-start #{id} #{thread_id}"
-          raise ArgumentError, "Exact original-human thread recovery required" unless d.actor.user_id == original[:user_id] && d.body == command
+          raise ArgumentError, "Exact original-human thread recovery required" unless d.actor.user_id == original.user_id && d.body == command
 
           key = "workflow:recovery:#{id}"
           audit = Platform::Audit::Log.new
@@ -155,7 +159,15 @@ module Domains
             jobs.close_reconciled(id: job.id) if job
             jobs.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowProvision, payload: Dto::ProvisionJob.new(request_id: id), dispatch_key: "workflow:provision:reconciled:#{id}:#{thread_id}")
             audit.record(event_key: key, action: "verified_thread_reconciliation", details: Dto::ThreadRecoveryAudit.new(inbox_id: inbox_id, request_id: id, thread_id: thread_id))
-            Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Start #{id} reconciled to verified thread #{thread_id}; continuation queued without recreating the thread.", key: key)
+            message = Domains::Messaging::Dto::OutgoingMessage.new(
+              channel_id: d.channel_id,
+              thread_id: d.thread_id,
+              bot: Domains::Messaging::Dto::Bot::Agent,
+              role: Domains::Messaging::Dto::SpeakerRole::Controller,
+              body: "Start #{id} reconciled to verified thread #{thread_id}; continuation queued without recreating the thread.",
+              key: key
+            )
+            Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
           end
           "queued"
         end
@@ -166,7 +178,7 @@ module Domains
           request: T::Hash[Symbol, Object],
           project: T::Hash[Symbol, Object],
           thread: String,
-          delivery: Domains::Mattermost::VerifiedDelivery
+          delivery: Domains::Messaging::Dto::VerifiedDelivery
         ).returns(T::Hash[Symbol, Object])
       end
       private def bind(request, project, thread, delivery)

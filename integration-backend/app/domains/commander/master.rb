@@ -10,7 +10,7 @@ module Domains
       SETTLED = T.let([Status::Idle, Status::Done].freeze, T::Array[Adapters::Herdr::Dto::AgentStatus])
 
       sig do
-        params(db: Sequel::Database, sessions: Domains::Sessions::Lifecycle, source: Source,
+        params(db: Sequel::Database, sessions: Domains::Sessions::Lifecycle, source: Domains::Messaging::VerifyHumanSource,
                herdr: Adapters::Herdr::Client, configuration: Domains::Sessions::Lifecycle::Configuration,
                credential_root: String, policy: Domains::Workflows::Policy).void
       end
@@ -22,14 +22,15 @@ module Domains
         @configuration = configuration
         @credentials = T.let(Adapters::Credentials::FileStore.new(root: credential_root), Adapters::Credentials::FileStore)
         @policy = policy
+        @inbox = T.let(Domains::Messaging::Inbox.new, Domains::Messaging::Inbox)
       end
 
-      sig { params(inbox_id: T.any(Integer, String)).returns(String) }
+      sig { params(inbox_id: Integer).returns(String) }
       def ingest(inbox_id)
-        d = @source.human(inbox_id)
+        d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id))
         controller = @sessions.bootstrap(configuration: @configuration)
         @db.transaction do
-          @db[:inbox].where(id: inbox_id).for_update.first
+          @inbox.lock(id: inbox_id)
           old = @db[:master_requests][inbox_id: inbox_id]
           return old[:id] if old
 
@@ -37,8 +38,15 @@ module Domains
           @credentials.write(name: "#{id}.request-token", token: token)
           @db[:master_requests].insert(id: id, inbox_id: inbox_id, session_id: controller, credential_digest: Digest::SHA256.hexdigest(token), expires_at: Time.now + 1800)
           Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterDispatch, payload: Dto::MasterDispatchJob.new(request_id: id), dispatch_key: "master:dispatch:#{id}")
-          Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller",
-                                                  body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: "start"]&.dig(:id)}.", key: "master:queued:#{id}")
+          message = Domains::Messaging::Dto::OutgoingMessage.new(
+            channel_id: d.channel_id,
+            thread_id: d.thread_id,
+            bot: Domains::Messaging::Dto::Bot::Agent,
+            role: Domains::Messaging::Dto::SpeakerRole::Controller,
+            body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: "start"]&.dig(:id)}.",
+            key: "master:queued:#{id}"
+          )
+          Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
           id
         end
       end
@@ -56,9 +64,16 @@ module Domains
           expired = @db[:master_requests].where(session_id: r[:session_id], state: "active").where(Sequel[:master_requests][:expires_at] <= Time.now).all
           expired.each do |old|
             @db[:master_requests].where(id: old[:id]).update(state: "uncertain", reason: "Expired; human reconciliation required")
-            old_source = @db[:inbox][id: old[:inbox_id]]
-            Domains::Mattermost::Outbox.new.enqueue(channel_id: old_source[:channel_id], thread_id: old_source[:thread_id], bot: "agent", role: "controller",
-                                                    body: "Master request #{old[:id]} expired without a completion receipt. Verify its outcome, then use @agent recover-master #{old[:id]} to continue the same session.", key: "master:expired:#{old[:id]}")
+            old_source = T.must(@inbox.find(id: old[:inbox_id]))
+            message = Domains::Messaging::Dto::OutgoingMessage.new(
+              channel_id: old_source.channel_id,
+              thread_id: old_source.thread_id,
+              bot: Domains::Messaging::Dto::Bot::Agent,
+              role: Domains::Messaging::Dto::SpeakerRole::Controller,
+              body: "Master request #{old[:id]} expired without a completion receipt. Verify its outcome, then use @agent recover-master #{old[:id]} to continue the same session.",
+              key: "master:expired:#{old[:id]}"
+            )
+            Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
           end
           uncertain = @db[:master_requests].where(session_id: r[:session_id], state: "uncertain").exclude(id: r[:id]).count
           return Platform::Jobs::Dto::Decision.block("Prior Master request requires human reconciliation") if uncertain.positive?
@@ -69,7 +84,7 @@ module Domains
 
           raise ArgumentError, "Master request/session expired" unless r[:expires_at] > Time.now && s[:credential_expires_at] > Time.now
 
-          d = @source.human(r[:inbox_id])
+          d = Platform::Unwrap.call(@source.call(inbox_id: r[:inbox_id]))
           live = @herdr.pane(s[:pane_id])
           same_conversation = s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity]
           if same_conversation && live.agent_status == Status::Working
@@ -99,12 +114,12 @@ module Domains
         end
       end
 
-      sig { params(request_id: String, inbox_id: T.any(Integer, String)).void }
+      sig { params(request_id: String, inbox_id: Integer).void }
       def recover(request_id:, inbox_id:)
         r = @db[:master_requests][id: request_id] or raise ArgumentError, "Unknown Master request"
-        original = @db[:inbox][id: r[:inbox_id]]
-        d = @source.human(inbox_id, destination: original[:channel_id])
-        raise ArgumentError, "Recovery requires the original human's exact request binding" unless d.actor.user_id == original[:user_id] && d.body == "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-master #{request_id}"
+        original = T.must(@inbox.find(id: r[:inbox_id]))
+        d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: original.channel_id))
+        raise ArgumentError, "Recovery requires the original human's exact request binding" unless d.actor.user_id == original.user_id && d.body == "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-master #{request_id}"
 
         Platform::Lock.new.call(key: "controller") do
           raise ArgumentError, "Request does not require recovery" unless @db[:master_requests][id: request_id][:state] == "uncertain"
@@ -139,15 +154,23 @@ module Domains
           @db.transaction do
             row = @db[:master_requests].where(id: r[:id]).for_update.first
             if row[:state] == "complete"
-              receipt = @db[:outbox][response_key: "master:reply:#{r[:id]}"]
-              raise ArgumentError, "Changed or recovered reply" unless receipt && receipt[:body] == text
+              receipt = Domains::Messaging::Outbox.new.item_by_key(key: "master:reply:#{r[:id]}")
+              raise ArgumentError, "Changed or recovered reply" unless receipt && receipt.body == text
 
               return "queued"
             end
             raise ArgumentError, "Request already completed" unless row[:state] == "active"
 
-            source = @db[:inbox][id: r[:inbox_id]]
-            Domains::Mattermost::Outbox.new.enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id], bot: "agent", role: "controller", body: text, key: "master:reply:#{r[:id]}")
+            source = T.must(@inbox.find(id: row[:inbox_id]))
+            message = Domains::Messaging::Dto::OutgoingMessage.new(
+              channel_id: source.channel_id,
+              thread_id: source.thread_id,
+              bot: Domains::Messaging::Dto::Bot::Agent,
+              role: Domains::Messaging::Dto::SpeakerRole::Controller,
+              body: text,
+              key: "master:reply:#{r[:id]}"
+            )
+            Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
             @db[:master_requests].where(id: r[:id]).update(state: "complete")
             "queued"
           end

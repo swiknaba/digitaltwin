@@ -37,10 +37,10 @@ module Adapters
         return unexpected_callback_fields_response unless allowed_keys?(values, %w[generation key text])
 
         callback = say_callback(values)
-        result = Domains::Mattermost::WorkerChat.new.post(
-          token: callback.token, generation: callback.generation, key: callback.key, body: callback.body
-        )
-        render_json({ "status" => result.status, "reason" => result.reason }, status: result.status == "accepted" ? 202 : 403)
+        result = Services::Sessions::PostWorkerChat.new.call(token: callback.token, generation: callback.generation, key: callback.key, body: callback.body)
+        return render_json({ "status" => "accepted", "reason" => "Queued in bound thread" }, status: 202) if result.success?
+
+        render_json({ "status" => "rejected", "reason" => result.errors.first&.detail.to_s }, status: 403)
       rescue Errors::MissingAuthorization
         unauthorized_response
       rescue ArgumentError, Sequel::Error

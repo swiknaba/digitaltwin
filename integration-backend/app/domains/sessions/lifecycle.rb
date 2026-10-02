@@ -18,7 +18,7 @@ module Domains
         params(
           db: Sequel::Database,
           herdr: Adapters::Herdr::Client,
-          source: Domains::Commander::Source,
+          source: Domains::Messaging::VerifyHumanSource,
           callback_url: String,
           credential_root: String,
           policy: Domains::Workflows::Policy
@@ -68,7 +68,7 @@ module Domains
         raise ArgumentError, "Workflow role required" unless %w[writer reviewer].include?(role)
 
         w = @db[:workflows][id: workflow_id] or raise ArgumentError, "Missing workflow"
-        @source.human(w[:source_inbox_id], destination: w[:channel_id])
+        Platform::Unwrap.call(@source.call(inbox_id: w[:source_inbox_id], destination: w[:channel_id]))
         @lock.call(key: workflow_id) do
           existing = @db[:sessions][workflow_id: workflow_id, role: role, active: true]
           if existing
@@ -91,8 +91,15 @@ module Domains
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
             Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionStart, payload: Dto::SessionOperationJob.new(operation_id: op), dispatch_key: "session:start:#{id}")
-            Domains::Mattermost::Outbox.new.enqueue(channel_id: w[:channel_id], thread_id: w[:thread_id], bot: "worker", role: role,
-                                                    body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.", key: "session:reserved:#{id}")
+            message = Domains::Messaging::Dto::OutgoingMessage.new(
+              channel_id: w[:channel_id],
+              thread_id: w[:thread_id],
+              bot: Domains::Messaging::Dto::Bot::Worker,
+              role: Domains::Messaging::Dto::SpeakerRole.deserialize(role),
+              body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.",
+              key: "session:reserved:#{id}"
+            )
+            Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
           end
           id
         end
@@ -108,7 +115,7 @@ module Domains
           return "queued" unless @policy.dispatch_allowed?
 
           w = @db[:workflows][id: session[:workflow_id]]
-          @source.human(w[:source_inbox_id], destination: w[:channel_id]) if w
+          Platform::Unwrap.call(@source.call(inbox_id: w[:source_inbox_id], destination: w[:channel_id])) if w
           if op[:kind] == "start"
             return "queued" if w && (w[:phase] == "paused" || w[:archived_at] || %w[closed cancelled].include?(w[:phase]))
           end
@@ -192,7 +199,7 @@ module Domains
           raise ArgumentError, "Session replaced" unless @db[:sessions].where(scope).max(:generation) == generation
 
           w = s[:workflow_id] && @db[:workflows][id: s[:workflow_id]]
-          @source.human(w[:source_inbox_id], destination: w[:channel_id]) if w
+          Platform::Unwrap.call(@source.call(inbox_id: w[:source_inbox_id], destination: w[:channel_id])) if w
           live = @herdr.pane(s[:pane_id])
           raise ArgumentError, "Session identity not proven" unless s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity] && RENEWABLE.include?(live.agent_status)
 
@@ -218,12 +225,12 @@ module Domains
         w = s[:workflow_id] && @db[:workflows][id: s[:workflow_id]]
         initial_request = !w && @db[:master_requests].where(session_id: s[:id]).order(:inbox_id).first
         original_id = w ? w[:source_inbox_id] : initial_request && initial_request[:inbox_id]
-        original = original_id && @db[:inbox][id: original_id]
+        original = original_id && Domains::Messaging::Inbox.new.find(id: original_id)
         raise ArgumentError, "Human source binding required" unless original
 
-        d = @source.human(inbox_id, destination: w ? w[:channel_id] : original[:channel_id])
+        d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: w ? w[:channel_id] : original.channel_id))
         command = "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-session #{operation_id} #{pane_id}"
-        raise ArgumentError, "Exact original-human session recovery required" unless d.actor.user_id == original[:user_id] && d.body == command
+        raise ArgumentError, "Exact original-human session recovery required" unless d.actor.user_id == original.user_id && d.body == command
 
         @lock.call(key: w ? w[:id] : "controller") do
           op = @db[:session_operations][id: operation_id]
@@ -273,7 +280,15 @@ module Domains
             jobs.close_reconciled(id: job.id) if job
             details = Dto::SessionRecoveryAudit.new(inbox_id: inbox_id, operation_id: operation_id, session_id: s[:id], generation: s[:generation], pane_id: pane_id)
             audit.record(event_key: key, action: "verified_session_reconciliation", details: details)
-            Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Session operation #{operation_id} reconciled against runtime evidence; no start or stop was repeated.", key: key)
+            message = Domains::Messaging::Dto::OutgoingMessage.new(
+              channel_id: d.channel_id,
+              thread_id: d.thread_id,
+              bot: Domains::Messaging::Dto::Bot::Agent,
+              role: Domains::Messaging::Dto::SpeakerRole::Controller,
+              body: "Session operation #{operation_id} reconciled against runtime evidence; no start or stop was repeated.",
+              key: key
+            )
+            Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
           end
           @credentials.delete(name: credential_name(s[:id])) if op[:kind] == "stop"
           "complete"

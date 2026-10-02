@@ -33,7 +33,9 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
       db[t].delete
     }
   end
-  def verify(post = reply, kind = "posted")
+  let(:kinds) { Domains::Messaging::Dto::EventKind }
+  let(:statuses) { Services::Inbound::Dto::IngestStatus }
+  def verify(post = reply, kind = Domains::Messaging::Dto::EventKind::Posted)
     resolver.delivery(post_id: post["id"], channel_id: post["channel_id"], event_kind: kind)
   end
   it "refetches post/root/channel/user/membership and derives ordinary thread routing" do
@@ -63,7 +65,7 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
   end
   it "rejects local bot loops even if REST says is_bot:false" do
     own = Adapters::Mattermost::DeliveryVerifier.new(api: api, local_bot_ids: [user_id])
-    expect { own.delivery(post_id: post_id, channel_id: channel, event_kind: "posted") }.to raise_error(ArgumentError)
+    expect { own.delivery(post_id: post_id, channel_id: channel, event_kind: kinds::Posted) }.to raise_error(ArgumentError)
   end
   it "keeps a failed membership fetch retryable with its HTTP status" do
     allow(client).to receive(:get).with("/api/v4/channels/#{channel}/members/#{user_id}")
@@ -78,20 +80,20 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
     expect { verify }.to raise_error(ArgumentError)
   end
   it "durably deduplicates inbox before dispatching and ignores unactivated ordinary replies" do
-    router = Domains::Mattermost::Router.new(db)
-    2.times { router.ingest(delivery: verify) }
+    router = Services::Inbound::RecordDelivery.new
+    2.times { router.call(delivery: verify) }
     expect(db[:inbox].count).to eq(1)
     expect(db[:jobs].count).to eq(0)
-    result = router.ingest(delivery: verify(root))
-    expect(result.status).to eq("blocked") # Task1 early slice not passed
+    result = router.call(delivery: verify(root)).result
+    expect(result.status).to eq(statuses::Blocked) # Task1 early slice not passed
     expect(db[:jobs].count).to eq(1)
     expect(db[:jobs].first[:kind]).to eq("workflow.start")
   end
   it "deduplicates WS/backfill overlap without relying on socket seq" do
-    router = Domains::Mattermost::Router.new(db)
+    router = Services::Inbound::RecordDelivery.new
     event = { "event" => "posted", "data" => { "post" => JSON.generate(root) },
               "broadcast" => { "channel_id" => channel }, "seq" => 10 }
-    2.times { router.ingest(delivery: resolver.event(event.merge("seq" => 20))) }
+    2.times { router.call(delivery: resolver.event(event.merge("seq" => 20))) }
     expect(db[:inbox].count).to eq(1)
     expect(db[:jobs].count).to eq(1)
   end
@@ -100,18 +102,18 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
                          workspace: "/tmp/fixture")
     db[:workflows].insert(id: "w", project_id: "p", channel_id: channel, thread_id: root_id, branch: "digitaltwin/w",
                           worktree_path: "/tmp/w", phase: "spec_review")
-    router = Domains::Mattermost::Router.new(db)
-    router.ingest(delivery: verify)
+    router = Services::Inbound::RecordDelivery.new
+    router.call(delivery: verify)
     expect(db[:queued_messages].count).to eq(1)
     expect(db[:outbox].count).to eq(1)
     expect(db[:jobs].exclude(kind: "mattermost.post").count).to eq(0)
     responses["/api/v4/users/#{user_id}"]["is_bot"] = true
     root["update_at"] = 3000
-    expect(router.ingest(delivery: verify(root)).status).to eq("rejected")
+    expect(router.call(delivery: verify(root)).result.status).to eq(statuses::Rejected)
   end
   it "records edits without starting new workflow effects" do
-    router = Domains::Mattermost::Router.new(db)
-    expect(router.ingest(delivery: verify(root, "post_edited")).status).to eq("accepted")
+    router = Services::Inbound::RecordDelivery.new
+    expect(router.call(delivery: verify(root, kinds::PostEdited)).result.status).to eq(statuses::Accepted)
     expect(db[:jobs].count).to eq(0)
   end
 end

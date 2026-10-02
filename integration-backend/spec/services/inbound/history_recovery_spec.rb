@@ -24,7 +24,7 @@ RSpec.describe Services::Inbound::HistoryRecovery do
     allow(@client).to receive(:get) { |path| fixture.request(path) }
     api = Adapters::Mattermost::Api.new(client: @client)
     @resolver = Adapters::Mattermost::DeliveryVerifier.new(api: api, local_bot_ids: [bot])
-    @service = Services::Inbound::HistoryRecovery.new(db, api: api, verifier: @resolver, router: Domains::Mattermost::Router.new(db))
+    @service = Services::Inbound::HistoryRecovery.new(api: api, verifier: @resolver, router: Services::Inbound::RecordDelivery.new)
     @fail_post = nil
   end
 

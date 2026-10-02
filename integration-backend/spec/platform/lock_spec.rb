@@ -29,7 +29,7 @@ RSpec.describe Platform::Transaction do
   it "commits the block result and rolls back on error" do
     db = Kirei::App.raw_db_connection
     log = Platform::Audit::Log.new
-    details = Domains::Mattermost::Dto::HistoryRejectedAudit.new(reason: "r")
+    details = Domains::Messaging::Dto::HistoryRejectedAudit.new(reason: "r")
     expect(described_class.new.call { log.record(event_key: "kept", action: "a", details: details); 1 }).to eq(1)
     expect { described_class.new.call { log.record(event_key: "dropped", action: "a", details: details); raise IOError } }.to raise_error(IOError)
     expect(db[:audit].select_map(:event_key)).to eq(["kept"])

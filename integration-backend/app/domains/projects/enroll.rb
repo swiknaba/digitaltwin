@@ -21,7 +21,7 @@ module Domains
 
       sig do
         params(
-          actor: Domains::Workflows::Entities::Actor,
+          actor: Domains::Messaging::Dto::VerifiedActor,
           channel_id: String,
           slug: String,
           choice: String

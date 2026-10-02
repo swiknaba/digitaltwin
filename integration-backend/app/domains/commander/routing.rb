@@ -9,7 +9,7 @@ module Domains
       TERMINAL = T.let(%w[closed cancelled].freeze, T::Array[String])
       Interpretation = T.type_alias { T::Hash[String, Object] }
       sig do
-        params(db: Sequel::Database, resolver: Source::DeliveryResolver,
+        params(db: Sequel::Database, resolver: Domains::Messaging::DeliveryVerifier,
                membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
                now: T.proc.returns(Time), approvals: T.nilable(Approvals), handle: String,
                master_channel_id: T.nilable(String)).void
@@ -22,15 +22,16 @@ module Domains
         @now = now
         @approvals = approvals
         @handle = handle
+        @inbox = T.let(Domains::Messaging::Inbox.new, Domains::Messaging::Inbox)
       end
 
       # Only verified inbox identities enter this service. Selection is a human
       # clarification, not a model's authority to invent workflow/session IDs.
-      sig { params(inbox_id: T.any(Integer, String), selection: T.nilable(String), interpretation: T.nilable(Interpretation), clarify: T::Boolean).returns(Object) }
+      sig { params(inbox_id: Integer, selection: T.nilable(String), interpretation: T.nilable(Interpretation), clarify: T::Boolean).returns(Object) }
       def route(inbox_id:, selection: nil, interpretation: nil, clarify: true)
-        source = @db[:inbox][id: inbox_id] or raise ArgumentError, "Missing source"
-        d = @resolver.delivery(post_id: source[:post_id], channel_id: source[:channel_id], event_kind: "posted")
-        raise ArgumentError, "Source changed" unless d.post_revision == source[:post_revision] && d.actor.user_id == source[:user_id] && d.body == source[:verified_delivery]["body"]
+        source = @inbox.find(id: inbox_id) or raise ArgumentError, "Missing source"
+        d = @resolver.delivery(post_id: source.post_id, channel_id: source.channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted)
+        raise ArgumentError, "Source changed" unless d.post_revision == source.post_revision && d.actor.user_id == source.user_id && d.body == source.verified_delivery.body
         raise ArgumentError, "Human member required" unless d.actor.member && !d.actor.bot
 
         interpreted = nil
@@ -40,13 +41,13 @@ module Domains
           raise ArgumentError, "Interpretation requires cited task evidence" unless target && ids.is_a?(Array) && !ids.empty? && ids.size <= 10
 
           grounded = ids.any? do |evidence_id|
-            evidence = @db[:inbox][id: evidence_id]
-            next false unless evidence && evidence[:created_at] > @now.call - 1800 && @membership.call(evidence[:channel_id], d.actor.user_id)
+            evidence = @inbox.find(id: evidence_id)
+            next false unless evidence && evidence.created_at > @now.call - 1800 && @membership.call(evidence.channel_id, d.actor.user_id)
 
-            verified = @resolver.delivery(post_id: evidence[:post_id], channel_id: evidence[:channel_id], event_kind: "posted")
-            next false unless verified.post_revision == evidence[:post_revision] && verified.actor.user_id == evidence[:user_id] && verified.body == evidence[:verified_delivery]["body"] && verified.actor.member && !verified.actor.bot
+            verified = @resolver.delivery(post_id: evidence.post_id, channel_id: evidence.channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted)
+            next false unless verified.post_revision == evidence.post_revision && verified.actor.user_id == evidence.user_id && verified.body == evidence.verified_delivery.body && verified.actor.member && !verified.actor.bot
 
-            direct_evidence = evidence[:channel_id] == target[:channel_id] && evidence[:thread_id] == target[:thread_id]
+            direct_evidence = evidence.channel_id == target[:channel_id] && evidence.thread_id == target[:thread_id]
             bound_evidence = @db[:conversation_bindings][inbox_id: evidence_id, workflow_id: target[:id]]
             direct_evidence || bound_evidence || target[:source_inbox_id] == evidence_id
           end
@@ -57,7 +58,7 @@ module Domains
         conversation_thread = d.thread_id
         allowed_channels = active.select_map(:channel_id).uniq.select { |channel| @membership.call(channel, d.actor.user_id) }
         @db.transaction do
-          @db[:inbox].where(id: inbox_id).for_update.first
+          @inbox.lock(id: inbox_id)
           existing = @db[:followups][inbox_id: inbox_id]
           return existing if existing
 
@@ -113,16 +114,15 @@ module Domains
       sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
       def call(job:)
         id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
-        body = @db[:inbox][id: id][:verified_delivery].fetch("body")
+        source = T.must(@inbox.find(id: id))
+        body = source.verified_delivery.body
         command = ::Services::Commands::Parser.new.call(body: body, agent_handle: @handle, worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
         if command.is_a?(::Services::Commands::Dto::Approve)
           raise ArgumentError, "Approval service unavailable" unless @approvals
 
           gate = command.gate.serialize
           @approvals.record(inbox_id: id, workflow_id: command.workflow_id, gate: gate, commit: command.commit)
-          source = @db[:inbox][id: id]
-          Domains::Mattermost::Outbox.new.enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id],
-                                                  bot: "agent", role: "controller", body: "#{gate} approval recorded for #{command.workflow_id} at #{command.commit}.", key: "master:#{id}:approval")
+          notify(channel_id: source.channel_id, thread_id: source.thread_id, body: "#{gate} approval recorded for #{command.workflow_id} at #{command.commit}.", key: "master:#{id}:approval")
           return Platform::Jobs::Dto::Decision.complete
         end
         selection = command.is_a?(::Services::Commands::Dto::Route) ? command.workflow_id : nil
@@ -133,10 +133,16 @@ module Domains
       sig { returns(Sequel::Dataset) }
       private def active = @db[:workflows].where(archived_at: nil).exclude(phase: TERMINAL)
 
-      sig { params(d: Domains::Mattermost::VerifiedDelivery, id: T.any(Integer, String), text: String, kind: String).returns(String) }
+      sig { params(d: Domains::Messaging::Dto::VerifiedDelivery, id: Integer, text: String, kind: String).returns(String) }
       private def acknowledge(d, id, text, kind)
-        Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id,
-                                                bot: "agent", role: "controller", body: text, key: "master:#{id}:#{kind}")
+        notify(channel_id: d.channel_id, thread_id: d.thread_id, body: text, key: "master:#{id}:#{kind}")
+      end
+
+      sig { params(channel_id: String, thread_id: T.nilable(String), body: String, key: String).returns(String) }
+      private def notify(channel_id:, thread_id:, body:, key:)
+        message = Domains::Messaging::Dto::OutgoingMessage.new(channel_id: channel_id, thread_id: thread_id, bot: Domains::Messaging::Dto::Bot::Agent,
+                                                               role: Domains::Messaging::Dto::SpeakerRole::Controller, body: body, key: key)
+        Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
       end
     end
   end

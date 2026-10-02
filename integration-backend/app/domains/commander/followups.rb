@@ -10,7 +10,7 @@ module Domains
       SETTLED = T.let([Status::Idle, Status::Done].freeze, T::Array[Adapters::Herdr::Dto::AgentStatus])
 
       sig do
-        params(db: Sequel::Database, herdr: Adapters::Herdr::Client, resolver: Source::DeliveryResolver,
+        params(db: Sequel::Database, herdr: Adapters::Herdr::Client, resolver: Domains::Messaging::DeliveryVerifier,
                membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
                policy: Domains::Workflows::Policy, handle: String).void
       end
@@ -21,6 +21,7 @@ module Domains
         @membership = membership
         @policy = policy
         @handle = handle
+        @inbox = T.let(Domains::Messaging::Inbox.new, Domains::Messaging::Inbox)
       end
 
       # All future review/session transitions must use this same workflow mutex.
@@ -43,10 +44,10 @@ module Domains
 
             return "queued" unless %w[spec_writing plan_writing implementation].include?(w[:phase])
 
-            source = @db[:inbox][id: row[:inbox_id]]
-            d = @resolver.delivery(post_id: source[:post_id], channel_id: source[:channel_id], event_kind: "posted")
-            valid_source = d.actor.member && !d.actor.bot && d.actor.user_id == source[:user_id] && d.post_revision == source[:post_revision]
-            valid_source &&= d.body == source[:verified_delivery].fetch("body") && @membership.call(w[:channel_id], d.actor.user_id)
+            source = T.must(@inbox.find(id: row[:inbox_id]))
+            d = @resolver.delivery(post_id: source.post_id, channel_id: source.channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted)
+            valid_source = d.actor.member && !d.actor.bot && d.actor.user_id == source.user_id && d.post_revision == source.post_revision
+            valid_source &&= d.body == source.verified_delivery.body && @membership.call(w[:channel_id], d.actor.user_id)
             return block(id, "Source or membership changed") unless valid_source
 
             session = @db[:sessions][id: row[:session_id], generation: row[:generation], workflow_id: w[:id], role: "writer"]
@@ -78,15 +79,21 @@ module Domains
             begin
               raise IOError, "Dispatch lease lost" unless before_effect.call
 
-              @herdr.prompt(pane_id: session[:pane_id], text: source[:verified_delivery].fetch("body").sub(/\A@#{Regexp.escape(@handle)} route [a-zA-Z0-9-]+\n/, ""))
+              @herdr.prompt(pane_id: session[:pane_id], text: source.verified_delivery.body.sub(/\A@#{Regexp.escape(@handle)} route [a-zA-Z0-9-]+\n/, ""))
               @db[:followups].where(id: id).update(status: "delivered", delivered_at: Time.now)
               "delivered"
             rescue StandardError
               @db.transaction do
                 @db[:followups].where(id: id).update(status: "uncertain", reason: "Socket effect requires reconciliation; do not resend")
-                Domains::Mattermost::Outbox.new.enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id], bot: "agent", role: "controller",
-                                                        body: "Instruction #{id} has an uncertain send result. Inspect this conversation, then use @#{@handle} recover-followup #{id} delivered|discard. No automatic resend.",
-                                                        key: "followup:uncertain:#{id}")
+                message = Domains::Messaging::Dto::OutgoingMessage.new(
+                  channel_id: source.channel_id,
+                  thread_id: source.thread_id,
+                  bot: Domains::Messaging::Dto::Bot::Agent,
+                  role: Domains::Messaging::Dto::SpeakerRole::Controller,
+                  body: "Instruction #{id} has an uncertain send result. Inspect this conversation, then use @#{@handle} recover-followup #{id} delivered|discard. No automatic resend.",
+                  key: "followup:uncertain:#{id}"
+                )
+                Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
               end
               "uncertain"
             end
@@ -113,12 +120,12 @@ module Domains
         raise ArgumentError, "Explicit outcome required" unless %w[delivered discard].include?(outcome)
 
         row = @db[:followups][id: id] or raise ArgumentError, "Missing instruction"
-        source = @db[:inbox][id: inbox_id] or raise ArgumentError, "Missing recovery source"
-        original = @db[:inbox][id: row[:inbox_id]]
-        d = @resolver.delivery(post_id: source[:post_id], channel_id: source[:channel_id], event_kind: "posted")
+        source = @inbox.find(id: inbox_id) or raise ArgumentError, "Missing recovery source"
+        original = T.must(@inbox.find(id: row[:inbox_id]))
+        d = @resolver.delivery(post_id: source.post_id, channel_id: source.channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted)
         command = "@#{@handle} recover-followup #{id} #{outcome}"
-        authority = d.actor.member && !d.actor.bot && d.actor.user_id == original[:user_id] && d.actor.user_id == source[:user_id]
-        authority &&= d.post_revision == source[:post_revision] && d.body == command && source[:verified_delivery]["body"] == command
+        authority = d.actor.member && !d.actor.bot && d.actor.user_id == original.user_id && d.actor.user_id == source.user_id
+        authority &&= d.post_revision == source.post_revision && d.body == command && source.verified_delivery.body == command
         raise ArgumentError, "Recovery requires the original human's exact instruction binding" unless authority
 
         w = @db[:workflows][id: row[:workflow_id]]
@@ -155,7 +162,15 @@ module Domains
             audit.record(event_key: receipt_key, action: "human_followup_reconciliation", details: details)
             @db[:followups].where(id: id).update(status: outcome == "delivered" ? "delivered" : "blocked", reason: "Human #{outcome} confirmation at inbox #{inbox_id}; no resend", delivered_at: outcome == "delivered" ? Time.now : nil)
             jobs.close_reconciled(id: job.id) if job
-            Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Instruction #{id}: human confirmed #{outcome}; no prompt was resent.", key: receipt_key)
+            message = Domains::Messaging::Dto::OutgoingMessage.new(
+              channel_id: d.channel_id,
+              thread_id: d.thread_id,
+              bot: Domains::Messaging::Dto::Bot::Agent,
+              role: Domains::Messaging::Dto::SpeakerRole::Controller,
+              body: "Instruction #{id}: human confirmed #{outcome}; no prompt was resent.",
+              key: receipt_key
+            )
+            Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))
           end
           outcome
         end

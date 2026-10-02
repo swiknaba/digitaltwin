@@ -43,21 +43,23 @@ module Domains
         end
         case name
         when "list_projects"
-          @db[:projects].all.select { |p| @services.source.human(request_inbox_id(r), destination: p[:channel_id]) rescue false }.map { |p| p.slice(:id, :slug, :channel_id) }
+          @db[:projects].all.select { |p| @services.source.call(inbox_id: request_inbox_id(r), destination: p[:channel_id]).success? rescue false }.map { |p| p.slice(:id, :slug, :channel_id) }
         when "list_workflows"
-          @db[:workflows].where(archived_at: nil).all.select { |w| @services.source.human(request_inbox_id(r), destination: w[:channel_id]) rescue false }.map { |w| w.slice(:id, :project_id, :channel_id, :thread_id, :phase, :version, :artifacts, :source_inbox_id) }
+          @db[:workflows].where(archived_at: nil).all.select { |w|
+            @services.source.call(inbox_id: request_inbox_id(r), destination: w[:channel_id]).success? rescue false
+          }.map { |w| w.slice(:id, :project_id, :channel_id, :thread_id, :phase, :version, :artifacts, :source_inbox_id) }
         when "read_context"
-          @db[:inbox].where(Sequel[:inbox][:created_at] > Time.now - 1800).order(Sequel.desc(:id)).limit(10).all.filter_map do |row|
+          Domains::Messaging::Inbox.new.recent(since: Time.now - 1800, limit: 10).filter_map do |record|
             begin
-              @services.source.human(request_inbox_id(r), destination: row[:channel_id])
-              d = @services.source.human(row[:id])
-              { "inbox_id" => row[:id], "channel_id" => d.channel_id, "thread_id" => d.thread_id, "text" => d.body }
+              Platform::Unwrap.call(@services.source.call(inbox_id: request_inbox_id(r), destination: record.channel_id))
+              d = Platform::Unwrap.call(@services.source.call(inbox_id: record.id))
+              { "inbox_id" => record.id, "channel_id" => d.channel_id, "thread_id" => d.thread_id, "text" => d.body }
             rescue ArgumentError
               nil
             end
           end
         when "start_workflow"
-          { "request_id" => @services.provision.request(inbox_id: request_inbox_id(r).to_s, project_id: required_string(args, "project_id"), title: required_string(args, "title")) }
+          { "request_id" => @services.provision.request(inbox_id: request_inbox_id(r), project_id: required_string(args, "project_id"), title: required_string(args, "title")) }
         when "send_prompt"
           # A model may propose a workflow based on real conversation evidence;
           # an unbound selection still needs a human clarification command.
@@ -66,11 +68,9 @@ module Domains
           raise ArgumentError, "Unsupported control" unless %w[pause resume finish cancel].include?(args["action"])
 
           w = @db[:workflows][id: args["workflow_id"]] or raise ArgumentError, "Missing workflow"
-          @services.source.human(request_inbox_id(r), destination: w[:channel_id])
-          raise ArgumentError, "Workflow version changed" unless w[:version] == args["expected_version"]
-
           inbox_id = request_inbox_id(r)
-          raise ArgumentError, "Invalid request capability" unless inbox_id.is_a?(Integer)
+          Platform::Unwrap.call(@services.source.call(inbox_id: inbox_id, destination: w[:channel_id]))
+          raise ArgumentError, "Workflow version changed" unless w[:version] == args["expected_version"]
 
           payload = Dto::MasterControlJob.new(inbox_id: inbox_id, workflow_id: w[:id], action: required_string(args, "action"), expected_version: required_integer(args, "expected_version"))
           Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterControl, payload: payload, dispatch_key: "master:control:#{r[:id]}:#{w[:id]}:#{args["action"]}:#{w[:version]}")
@@ -105,10 +105,10 @@ module Domains
         ids
       end
 
-      sig { params(request: Requests::RequestRow).returns(T.any(Integer, String)) }
+      sig { params(request: Requests::RequestRow).returns(Integer) }
       private def request_inbox_id(request)
         value = request.fetch(:inbox_id)
-        raise ArgumentError, "Invalid request capability" unless value.is_a?(Integer) || value.is_a?(String)
+        raise ArgumentError, "Invalid request capability" unless value.is_a?(Integer)
 
         value
       end

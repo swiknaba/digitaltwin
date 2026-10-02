@@ -11,26 +11,25 @@ module Services
       EventEnvelope = T.type_alias { Adapters::Mattermost::DeliveryVerifier::EventEnvelope }
       RequestFailed = Adapters::Mattermost::Errors::RequestFailed
 
-      sig { params(db: Sequel::Database).returns(ChatListener) }
-      def self.from_env(db)
+      sig { returns(ChatListener) }
+      def self.from_env
         client = Adapters::Mattermost::Client.new(url: ENV.fetch("MATTERMOST_URL"), token_file: ENV.fetch("MATTERMOST_LISTENER_TOKEN_FILE"))
         api = Adapters::Mattermost::Api.new(client: client)
         verifier = Adapters::Mattermost::DeliveryVerifier.new(api: api, local_bot_ids: ENV.fetch("MATTERMOST_LOCAL_BOT_IDS").split(","),
                                                               peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","))
-        new(db, client: client, api: api, verifier: verifier, channels: ENV.fetch("MATTERMOST_CHANNEL_IDS").split(","))
+        new(client: client, api: api, verifier: verifier, channels: ENV.fetch("MATTERMOST_CHANNEL_IDS").split(","))
       end
 
       sig do
-        params(db: Sequel::Database, client: Adapters::Mattermost::Client, api: Adapters::Mattermost::Api,
-               verifier: Adapters::Mattermost::DeliveryVerifier, channels: T::Array[String]).void
+        params(client: Adapters::Mattermost::Client, api: Adapters::Mattermost::Api,
+               verifier: Adapters::Mattermost::DeliveryVerifier, channels: T::Array[String], router: RecordDelivery).void
       end
-      def initialize(db, client:, api:, verifier:, channels:)
-        @db = T.let(db, Sequel::Database)
+      def initialize(client:, api:, verifier:, channels:, router: RecordDelivery.new)
         @client = T.let(client, Adapters::Mattermost::Client)
         @api = T.let(api, Adapters::Mattermost::Api)
         @verifier = T.let(verifier, Adapters::Mattermost::DeliveryVerifier)
         @channels = T.let(channels, T::Array[String])
-        @router = T.let(Domains::Mattermost::Router.new(db), Domains::Mattermost::Router)
+        @router = T.let(router, RecordDelivery)
         @channels.each { |channel_id| @verifier.identifier!(channel_id) }
       end
 
@@ -44,7 +43,7 @@ module Services
             endpoint = Async::HTTP::Endpoint.parse(websocket_url)
             Async::WebSocket::Client.connect(endpoint) do |socket|
               authenticate!(socket)
-              recovery = HistoryRecovery.new(@db, api: @api, verifier: @verifier, router: @router)
+              recovery = HistoryRecovery.new(api: @api, verifier: @verifier, router: @router)
               @channels.each { |channel_id| recovery.call(channel_id: channel_id) }
               delay = 1
               Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::ChatListener)
@@ -97,7 +96,7 @@ module Services
         delivery = @verifier.event(envelope)
         return unless @channels.include?(delivery.channel_id)
 
-        @router.ingest(delivery: delivery)
+        @router.call(delivery: delivery)
       rescue ArgumentError, RequestFailed
         warn "Rejected unverified Mattermost event; REST reconciliation remains required"
       end

@@ -7,6 +7,7 @@ module Adapters
     # transport failures raise Errors::RequestFailed. Unknown fields are ignored.
     class Api
       extend T::Sig
+      include Domains::Messaging::MembershipCheck
 
       MALFORMED = "Malformed server response"
       INVALID_REVISION = "Invalid post revision"
@@ -48,6 +49,12 @@ module Adapters
         member!(channel_id: channel_id, user_id: user_id)
       rescue Errors::RequestFailed
         nil
+      end
+
+      sig { override.params(channel_id: String, user_id: String).returns(T::Boolean) }
+      def member?(channel_id:, user_id:)
+        member = member(channel_id: channel_id, user_id: user_id)
+        !member.nil? && member.channel_id == channel_id && member.user_id == user_id
       end
 
       # Raises Errors::RequestFailed with the HTTP status, so callers can tell

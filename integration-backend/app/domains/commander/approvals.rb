@@ -12,7 +12,7 @@ module Domains
       sig do
         params(
           db: Sequel::Database,
-          resolver: Source::DeliveryResolver,
+          resolver: Domains::Messaging::DeliveryVerifier,
           membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
           current_commit: CurrentCommitSource,
           handle: String,
@@ -28,13 +28,13 @@ module Domains
         @evidence = evidence
       end
 
-      sig { params(inbox_id: T.any(Integer, String), workflow_id: String, gate: Gate, commit: String).returns(Integer) }
+      sig { params(inbox_id: Integer, workflow_id: String, gate: Gate, commit: String).returns(Integer) }
       def record(inbox_id:, workflow_id:, gate:, commit:)
         raise ArgumentError, "Exact approval required" unless %w[spec plan].include?(gate) && commit.match?(/\A[0-9a-f]{40}\z/)
 
-        source = @db[:inbox][id: inbox_id] or raise ArgumentError, "Missing source"
-        d = @resolver.delivery(post_id: source[:post_id], channel_id: source[:channel_id], event_kind: "posted")
-        raise ArgumentError, "Human source changed" unless d.actor.member && !d.actor.bot && d.actor.user_id == source[:user_id] && d.post_revision == source[:post_revision]
+        source = Domains::Messaging::Inbox.new.find(id: inbox_id) or raise ArgumentError, "Missing source"
+        d = @resolver.delivery(post_id: source.post_id, channel_id: source.channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted)
+        raise ArgumentError, "Human source changed" unless d.actor.member && !d.actor.bot && d.actor.user_id == source.user_id && d.post_revision == source.post_revision
 
         w = @db[:workflows][id: workflow_id] or raise ArgumentError, "Missing workflow"
         contextual = d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch("WORKER_HANDLE", "worker")} approve"

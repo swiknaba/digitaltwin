@@ -78,7 +78,7 @@ RSpec.describe "Async HTTP ownership and Worker execution (local transport fixtu
     db[:jobs].delete
     store = Platform::Jobs::Store.new
     kind = Platform::Jobs::Dto::JobKind::MattermostPost
-    id = store.enqueue(kind: kind, payload: Domains::Mattermost::Dto::OutboxPostJob.new(outbox_id: "effect"), dispatch_key: "effect")
+    id = store.enqueue(kind: kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "effect"), dispatch_key: "effect")
     calls = 0
     handler = Platform::Jobs::CallableHandler.new(lambda do |job|
       expect(db.in_transaction?).to be(false)

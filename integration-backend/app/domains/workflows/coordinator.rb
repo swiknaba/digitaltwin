@@ -9,7 +9,7 @@ module Domains
       sig do
         params(
           db: Sequel::Database,
-          source: Domains::Commander::Source,
+          source: Domains::Messaging::VerifyHumanSource,
           herdr: Adapters::Herdr::Client,
           evidence: Adapters::Git::Evidence,
           reviews: Domains::Reviews::Coordinator,
@@ -33,7 +33,7 @@ module Domains
         raise ArgumentError, "Unsupported workflow action" unless %w[pause resume finish cancel].include?(action)
 
         w = @db[:workflows][id: workflow_id] or raise ArgumentError, "Missing workflow"
-        @source.human(inbox_id, destination: w[:channel_id])
+        Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: w[:channel_id]))
         @lock.call(key: workflow_id) do
           w = @db[:workflows][id: workflow_id]
           raise ArgumentError, "Workflow version changed" unless w[:version] == expected_version && !w[:archived_at]
@@ -123,7 +123,7 @@ module Domains
           s = validate_sessions(w, "writer").first
           raise ArgumentError, "Writer session missing" unless s
 
-          d = @source.human(w[:source_inbox_id], destination: w[:channel_id])
+          d = Platform::Unwrap.call(@source.call(inbox_id: w[:source_inbox_id], destination: w[:channel_id]))
           gate = { "plan_writing" => "spec", "implementation" => "plan" }[w[:phase]]
           if gate
             record = @db[:reviews].where(workflow_id: w[:id], gate: gate).order(Sequel.desc(:round)).first

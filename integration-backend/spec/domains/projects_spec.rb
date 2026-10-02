@@ -66,7 +66,7 @@ RSpec.describe "Repository workspace and enrollment" do
     db[:projects].delete
     repository
     service = Domains::Projects::Enroll.new(db, workspace: @workspace)
-    actor = Domains::Workflows::Entities::Actor.new(user_id: "human", channel_id: "channel", member: true, bot: false)
+    actor = Domains::Messaging::Dto::VerifiedActor.new(user_id: "human", channel_id: "channel", member: true, bot: false)
     expect(service.call(actor: actor, channel_id: "channel", slug: "owner/repo",
                         choice: "stop").status).to eq("accepted")
     expect(db[:projects][channel_id: "channel"][:slug]).to eq("owner/repo")

@@ -1,8 +1,8 @@
 require_relative "../spec_helper"
 RSpec.describe "Workflow policy preparation" do
   let(:policy) { Domains::Workflows::Policy.new }
-  let(:human) { Domains::Workflows::Entities::Actor.new(user_id: "u", channel_id: "c", member: true, bot: false) }
-  let(:bot) { Domains::Workflows::Entities::Actor.new(user_id: "b", channel_id: "c", member: true, bot: true) }
+  let(:human) { Domains::Messaging::Dto::VerifiedActor.new(user_id: "u", channel_id: "c", member: true, bot: false) }
+  let(:bot) { Domains::Messaging::Dto::VerifiedActor.new(user_id: "b", channel_id: "c", member: true, bot: true) }
   it "requires both provider and family diversity" do
     role = ->(provider, family) { Domains::Workflows::Entities::RoleConfig.new(cli: "cli", provider: provider, model: "m", family: family) }
     expect(policy.diverse?(role.call("a", "x"), role.call("b", "y"))).to be(true)

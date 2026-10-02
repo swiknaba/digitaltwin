@@ -9,7 +9,7 @@ module Domains
       RequestRow = T.type_alias { T::Hash[Symbol, Object] }
       SessionRow = T.type_alias { T::Hash[Symbol, Object] }
 
-      sig { params(db: Sequel::Database, source: Source).void }
+      sig { params(db: Sequel::Database, source: Domains::Messaging::VerifyHumanSource).void }
       def initialize(db, source:)
         @db = db
         @source = source
@@ -22,7 +22,7 @@ module Domains
         latest = @db[:sessions].where(role: "controller").max(:generation)
         raise ArgumentError, "Request capability expired or inactive" unless r.is_a?(Hash) && s.is_a?(Hash) && valid_request?(r, s, latest)
 
-        @source.human(inbox_id(r))
+        Platform::Unwrap.call(@source.call(inbox_id: inbox_id(r)))
         r
       end
 
@@ -33,10 +33,10 @@ module Domains
           integer_value(session, :generation) == latest_generation
       end
 
-      sig { params(request: RequestRow).returns(T.any(Integer, String)) }
+      sig { params(request: RequestRow).returns(Integer) }
       private def inbox_id(request)
         value = request.fetch(:inbox_id)
-        raise ArgumentError, "Invalid request capability" unless value.is_a?(Integer) || value.is_a?(String)
+        raise ArgumentError, "Invalid request capability" unless value.is_a?(Integer)
 
         value
       end

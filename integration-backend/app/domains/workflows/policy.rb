@@ -14,7 +14,7 @@ module Domains
 
       sig do
         params(
-          actor: Entities::Actor,
+          actor: Domains::Messaging::Dto::VerifiedActor,
           channel_id: String,
           current_commit: String,
           reviewed_commit: String,

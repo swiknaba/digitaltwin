@@ -6,12 +6,12 @@ require_relative "../spec_helper"
 RSpec.describe Platform::Audit::Log do
   let(:db) { Kirei::App.raw_db_connection }
   let(:log) { described_class.new }
-  let(:details) { Domains::Mattermost::Dto::HistoryRejectedAudit.new(reason: "first") }
+  let(:details) { Domains::Messaging::Dto::HistoryRejectedAudit.new(reason: "first") }
 
   it "audit record is unique per event key" do
     log.record(event_key: "event", action: "history_rejected", details: details, channel_id: "c", post_id: "p")
     expect { log.record(event_key: "event", action: "history_rejected", details: details) }.to raise_error(Sequel::UniqueConstraintViolation)
-    expect(log.record_once(event_key: "event", action: "other", details: Domains::Mattermost::Dto::HistoryRejectedAudit.new(reason: "second"))).to be(false)
+    expect(log.record_once(event_key: "event", action: "other", details: Domains::Messaging::Dto::HistoryRejectedAudit.new(reason: "second"))).to be(false)
     expect(db[:audit].where(event_key: "event").count).to eq(1)
     row = db[:audit].first
     expect(row.values_at(:action, :channel_id, :post_id, :user_id)).to eq(["history_rejected", "c", "p", nil])
@@ -28,7 +28,7 @@ RSpec.describe Platform::Audit::Log do
     log.record(event_key: "event", action: "history_rejected", details: details)
     receipt = log.find(event_key: "event")
     expect(receipt.action).to eq("history_rejected")
-    expect(Domains::Mattermost::Dto::HistoryRejectedAudit.from_hash(receipt.details, true)).to eq(details)
-    expect { Domains::Mattermost::Dto::HistoryRejectedAudit.from_hash(receipt.details.merge("extra" => 1), true) }.to raise_error(RuntimeError)
+    expect(Domains::Messaging::Dto::HistoryRejectedAudit.from_hash(receipt.details, true)).to eq(details)
+    expect { Domains::Messaging::Dto::HistoryRejectedAudit.from_hash(receipt.details.merge("extra" => 1), true) }.to raise_error(RuntimeError)
   end
 end

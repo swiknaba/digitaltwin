@@ -11,10 +11,10 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     { "writer" => { "cli" => "codex", "provider" => "openai", "model" => "fixture-gpt", "family" => "gpt", "launch_args" => ["--model", "fixture-gpt"] },
       "reviewer" => { "cli" => "claude", "provider" => "anthropic", "model" => "fixture-claude", "family" => "claude", "launch_args" => ["--model", "fixture-claude"] } }
   }
-  let(:source) { double(human: delivery) }
+  let(:source) { double(call: Kirei::Services::Result.new(result: delivery)) }
   let(:delivery) {
-    Domains::Mattermost::VerifiedDelivery.new(channel_id: master_channel, thread_id: "r" * 26, post_id: "p" * 26, post_revision: 1,
-                                              event_kind: "posted", root_post: true, body: "Build this project", actor: Domains::Workflows::Entities::Actor.new(user_id: "u" * 26, channel_id: master_channel, member: true, bot: false))
+    Domains::Messaging::Dto::VerifiedDelivery.new(channel_id: master_channel, thread_id: "r" * 26, post_id: "p" * 26, post_revision: 1,
+                                                  event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: true, body: "Build this project", actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "u" * 26, channel_id: master_channel, member: true, bot: false))
   }
   let(:workspace) { double }
   let(:routing) { double(route: { id: 123 }) }
@@ -266,7 +266,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     db[:master_requests].where(id: request).update(state: "uncertain", expires_at: Time.now - 1)
     recovery = delivery.dup
     allow(recovery).to receive(:body).and_return("@agent recover-master #{request}")
-    allow(source).to receive(:human).and_return(recovery)
+    allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     master.recover(request_id: request, inbox_id: @inbox)
     expect(db[:master_requests][id: request][:state]).to eq("complete")
   end
@@ -289,7 +289,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     allow(client).to receive(:get).with("/api/v4/posts/#{thread_id}").and_return(root)
     recovery = delivery.dup
     allow(recovery).to receive(:body).and_return("@agent recover-start #{id} #{thread_id}")
-    allow(source).to receive(:human).and_return(recovery)
+    allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     2.times { expect(provision.reconcile(id: id, inbox_id: @inbox, thread_id: thread_id)).to eq("queued") }
     expect(provision.execute(id)).to eq("bound")
     expect(client).to have_received(:post).once
@@ -306,7 +306,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(sessions.execute(op[:id])).to eq("uncertain")
     recovery = delivery.dup
     allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} pane")
-    allow(source).to receive(:human).and_return(recovery)
+    allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     live = { "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
              "name" => "digitaltwin-#{sid}", "cwd" => "/workspace/worktrees/workflow", "agent" => "codex" }
     allow(herdr).to receive(:pane).and_return(herdr_pane(live.merge("name" => "different")))
@@ -326,7 +326,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(sessions.execute(op[:id])).to eq("uncertain")
     recovery = delivery.dup
     allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} writer")
-    allow(source).to receive(:human).and_return(recovery)
+    allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     allow(herdr).to receive(:panes).and_return([Adapters::Herdr::Dto::PaneSummary.new(pane_id: "writer")])
     expect { sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "writer") }.to raise_error(ArgumentError)
     allow(herdr).to receive(:panes).and_return([])
@@ -361,7 +361,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     db[:session_operations].where(id: op[:id]).update(state: "uncertain")
     recovery = delivery.dup
     allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} controller-pane")
-    allow(source).to receive(:human).and_return(recovery)
+    allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     live = { "agent_session" => { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
              "name" => controller[:alias], "cwd" => "/home/runtime", "agent" => "gemini" }
     allow(herdr).to receive(:pane).and_return(herdr_pane(live))
@@ -374,10 +374,10 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     let(:kinds) { Platform::Jobs::Dto::JobKind }
     let(:services) do
       Domains::Commander::Services.allocate.tap do |services|
-        worker_source = double(human: Domains::Mattermost::VerifiedDelivery.new(
-          channel_id: channel, thread_id: "t" * 26, post_id: "q" * 26, post_revision: 1, event_kind: "posted", root_post: false, body: "@worker pause",
-          actor: Domains::Workflows::Entities::Actor.new(user_id: "u" * 26, channel_id: channel, member: true, bot: false)
-        ))
+        worker_source = double(call: Kirei::Services::Result.new(result: Domains::Messaging::Dto::VerifiedDelivery.new(
+          channel_id: channel, thread_id: "t" * 26, post_id: "q" * 26, post_revision: 1, event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: false, body: "@worker pause",
+          actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "u" * 26, channel_id: channel, member: true, bot: false)
+        )))
         services.instance_variable_set(:@db, db)
         services.instance_variable_set(:@source, worker_source)
         services.instance_variable_set(:@workflows, workflows)

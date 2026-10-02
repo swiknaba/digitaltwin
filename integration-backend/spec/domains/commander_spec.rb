@@ -17,10 +17,10 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   let(:sender) { Domains::Commander::Followups.new(db, herdr: herdr, resolver: resolver, membership: membership, policy: policy) }
 
   def source(n = 1, channel_id: channel, thread_id: thread, bot: false, root_post: false, body: "Please also cover that case")
-    d = Domains::Mattermost::VerifiedDelivery.new(channel_id: channel_id, thread_id: thread_id, post_id: n.to_s.rjust(26, "p"),
-                                                  post_revision: n, event_kind: "posted", root_post: root_post, body: body,
-                                                  actor: Domains::Workflows::Entities::Actor.new(channel_id: channel_id, user_id: user, member: true, bot: bot))
-    allow(resolver).to receive(:delivery).with(post_id: d.post_id, channel_id: channel_id, event_kind: "posted").and_return(d)
+    d = Domains::Messaging::Dto::VerifiedDelivery.new(channel_id: channel_id, thread_id: thread_id, post_id: n.to_s.rjust(26, "p"),
+                                                      post_revision: n, event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: root_post, body: body,
+                                                      actor: Domains::Messaging::Dto::VerifiedActor.new(channel_id: channel_id, user_id: user, member: true, bot: bot))
+    allow(resolver).to receive(:delivery).with(post_id: d.post_id, channel_id: channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted).and_return(d)
     db[:inbox].insert(channel_id: channel_id, thread_id: thread_id, post_id: d.post_id, post_revision: n,
                       event_kind: "posted", user_id: user, verified_delivery: Sequel.pg_jsonb(d.serialize))
   end
@@ -257,9 +257,9 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   end
   it "accepts ordinary verified human messages in the configured Master channel" do
     id = source
-    d = resolver.delivery(post_id: db[:inbox][id: id][:post_id], channel_id: channel, event_kind: "posted")
+    d = resolver.delivery(post_id: db[:inbox][id: id][:post_id], channel_id: channel, event_kind: Domains::Messaging::Dto::EventKind::Posted)
     db[:inbox].delete
-    Domains::Mattermost::Router.new(db, master_channel_id: channel).ingest(delivery: d)
+    Services::Inbound::RecordDelivery.new(master_channel_id: channel).call(delivery: d)
     expect(db[:jobs].first[:kind]).to eq("master.prompt")
   end
   it "records exact Master-chat approval only for the latest reviewed current revision" do
@@ -364,7 +364,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:followups].where(id: row[:id]).update(status: "uncertain")
     recovery = source(2, body: "@agent recover-followup #{row[:id]} discard")
     services = Domains::Commander::Services.allocate
-    services.instance_variable_set(:@source, Domains::Commander::Source.new(db, resolver: resolver, membership: membership))
+    services.instance_variable_set(:@source, Domains::Messaging::VerifyHumanSource.new(verifier: resolver, membership: double(member?: true)))
     services.instance_variable_set(:@followups, sender)
     inbox = db[:inbox][id: recovery]
     Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterPrompt, dispatch_key: "inbox:#{recovery}:master.prompt",
