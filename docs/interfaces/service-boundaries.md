@@ -91,7 +91,7 @@ session creation authority. Kirei re-fetches the source human and destination me
 or recorded binding. Conflicts ask for clarification. `workflow_control` queues the exact
 source/workflow/version for worker validation; approval still requires exact human Git binding.
 
-`digitaltwin artifact-ready` and `review-ready` POST signed generation/commit callbacks.
+`digitaltwin artifact-ready` and `review-ready` POST session-capability generation/commit callbacks.
 HTTP only authenticates and queues `review.callback`; the socket/worktree-owning worker checks
 actual settled state and Git evidence. Review transitions enqueue `review.release` transactionally.
 Deleted/revoked sources remain audited for reconciliation; transient server failures retain queue order for retry. Session renewal verifies the same conversation and file digest;

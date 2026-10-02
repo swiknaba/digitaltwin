@@ -106,18 +106,17 @@ docker build --platform linux/amd64 --target with-callback \
   -t digitaltwin-runtime-with-callback:local agent-runtime
 ```
 
-The named context must contain `digitaltwin` from `integration-backend/bin/digitaltwin`.
-The build copies it to `/usr/local/bin/digitaltwin`; it uses only Ruby stdlib, no
-Bundler/app/DB dependency. The current required client SHA256 is in `tools.lock.yml` and enforced by the image
-build. Backend source was stable but uncommitted at handoff; record its committed
-revision during integration. The local callback HTTP fixture passes. Do not copy a backend worktree or secret directory as that context.
+The named context contains exactly the four backend-owned files in `contracts/kirei-clients.json`:
+`digitaltwin`, `digitaltwin-mcp`, `mcp.rb`, and `http_tools.rb`. Source revision and SHA256 hashes
+are pinned; staging and image build both verify them. They use Ruby stdlib and no app/DB bundle.
+Run `scripts/prepare-callback-context` from the repository root before a combined build.
+Never copy a backend worktree or secret directory as the build context.
 
-Agreed `digitaltwin say` boundary: URL `DIGITALTWIN_CALLBACK_URL`, token **file**
-`DIGITALTWIN_SESSION_TOKEN_FILE`, generation `DIGITALTWIN_SESSION_GENERATION`, JSON
-`{generation, key, text}` to `/internal/callbacks/say`. Kirei derives destination,
-role and bot identity from its session mapping. Agents receive no Mattermost bot
-credentials. MCP/artifact-ready/review-ready packaging waits for backend artifacts
-and their live gates; Runtime does not implement another client or callback schema.
+`digitaltwin` accepts say/artifact-ready/review-ready/master-reply. Session token-file/generation
+capabilities authenticate callbacks; the separate current-request token file authenticates Master tools
+and replies. `digitaltwin-mcp` bridges stdio to private Kirei HTTP with typed schemas and verified human
+request binding. Agents receive no Mattermost bot credentials. Packaging is implemented; actual selected
+Gemini MCP and CLI lifecycle/settled evidence remain open, and backend dispatch stays disabled.
 
 ## Explicit provisioning and private terminal access
 

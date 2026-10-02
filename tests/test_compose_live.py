@@ -15,7 +15,7 @@ import uuid
 ROOT = Path(__file__).resolve().parent.parent
 ENV = {k: v for k, v in os.environ.items() if not k.startswith(("COMPOSE_", "DOCKER_")) and k not in
        {"POSTGRES_PASSWORD", "KIREI_DB_PASSWORD", "MATTERMOST_DB_PASSWORD", "BACKEND_PORT"}}
-CALLBACK_SHA = "cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054"
+CALLBACK_SHA = json.loads((ROOT / "agent-runtime/contracts/kirei-clients.json").read_text())["files"]["digitaltwin"]["sha256"]
 
 
 @unittest.skipUnless(os.getenv("DIGITALTWIN_RUN_COMPOSE_TESTS") == "1", "explicit disposable Compose opt-in required")

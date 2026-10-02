@@ -51,11 +51,9 @@ runtime:
   health: /opt/runtime/bin/runtime-health
   callback_target: with-callback
   callback_context: kirei-clients
-callback_client:
+callback_clients:
   owner: integration-backend
-  source: integration-backend/bin/digitaltwin
-  artifact_sha256: cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054
-  source_revision: 81d5d5c714c73890efccff172103f65171ecde20
-  validated_in_revision: 53c69b7d537b906a06303461c658f62b990f23d9
-  packaged_path: /usr/local/bin/digitaltwin
-  test_kind: disposable_HTTP_fixture_not_live_backend_delivery
+  manifest: contracts/kirei-clients.json
+  source_revision: 68823ec0288270453ec502b5772c4d776d9d227f
+  packaged_directory: /usr/local/bin
+  validation: isolated_callback_stdio_fixtures_only_live_gates_open

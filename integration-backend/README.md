@@ -64,7 +64,7 @@ JSON bodies are bounded at 64 KiB and normalized to StringIO for Kirei's parser.
 The listener and Mattermost delivery handler require `CHAT_VALIDATION_MODE=1` for disposable validation.
 That mode does not enable agent sessions, reviews, approvals, Master MCP, or production workflows.
 
-Migrations `001`–`007` provide jobs/inbox/outbox/audit, projects, and preparatory sessions/workflows/reviews/confirmations storage.
+Migrations `001`–`008` provide jobs/inbox/outbox/audit, projects, and preparatory sessions/workflows/reviews/confirmations storage.
 `Domains::Workflows::Entities` owns the typed shared contracts.
 `Policy` contains pure approval/diversity/settled-state checks; it is not an enabled workflow coordinator.
 Enrollment and Git worktree services validate explicit channel mappings, remote identities, branches, and real paths.
@@ -99,44 +99,36 @@ Worker/listener each own their Async reactor. HTTP calls own and close their cli
 Unknown external effects become `uncertain`; they require positive reconciliation evidence or human direction.
 The outbox never assumes exactly-once network delivery.
 
-## Standalone Runtime callback
+## Standalone Runtime clients and Master routing
 
-Package only `bin/digitaltwin` at `/usr/local/bin/digitaltwin`; it needs Ruby >=3.1 standard libraries and no bundle/database.
-Version 1 accepts `digitaltwin say --text TEXT --key KEY`.
-Read `DIGITALTWIN_SESSION_TOKEN_FILE`, `DIGITALTWIN_SESSION_GENERATION`, and `DIGITALTWIN_CALLBACK_URL` from the session environment.
-The server accepts only generation/key/text and derives destination, role, and bot identity from persisted session state.
-Changed-key content, wrong credentials, stale generations, expired sessions, and archived workflows fail closed.
-Tokens are read from mounted/session files. This implementation does not create live session credentials.
-Artifact/review callbacks and MCP remain unavailable pending Task 1 evidence.
+`bin/digitaltwin` supports say, artifact-ready, review-ready and master-reply using Ruby stdlib.
+`bin/mcp` plus the two standalone bridge modules provide request-bound stdio tools over private HTTP.
+Runtime stages only the checksum-manifest files; no app bundle, database or provider credentials.
+Callbacks use session Bearer capabilities and generation; Master tools/replies use a separate short-lived
+request capability. HTTP queues artifact/review callbacks and controls for worker Git/socket checks.
 
-## Master routing increment
+Master-chat requests use configured trusted role profiles and recent accessible task evidence.
+Typed tools list projects/workflows/context, start workflows, route follow-ups and queue exact-version
+controls. Ambiguity requires clarification; explicit `@agent route WORKFLOW_ID` plus newline/instruction
+remains available. Requests serialize on one Controller conversation; expired/uncertain requests require
+exact same-human `@agent recover-master REQUEST_ID`. Replies deduplicate and cannot change on replay.
 
-`MASTER_CHANNEL_ID` makes ordinary verified human messages in that explicitly monitored
-channel enter `master.prompt`. With disposable `CHAT_VALIDATION_MODE=1`, the worker now
-handles Master prompts and active project `workflow.prompt` jobs through the same routing
-service. This needs the listener token file and configured local/peer bot IDs as well as
-outbox bot credentials. Source and destination membership are rechecked.
+Thread provisioning verifies bot/channel/root identity before binding isolated worktrees and role sessions.
+The captured Herdr adapter maps workspace.create, agent.start/get/prompt and pane.close. Missing/replaced
+identities and uncertain effects block. No blind restart or resend occurs. Credential files are runtime-only,
+mode0600, with identity/source/digest-verified renewal against the same conversation.
 
-Routing uses verified project thread identity or a same-human conversation binding younger
-than 30 minutes. It asks for clarification if evidence conflicts or no binding exists.
-Explicit clarification accepts `@agent route WORKFLOW_ID` followed by a newline and the
-instruction. That control line is removed before a session prompt. No keyword inference,
-new session or project thread is created. Selected Master interpretation/MCP is still open.
+Review-ready freezes exact clean commits, validates diverse Reviewer identity and append-only review
+changes, and durably queues release/corrective prompts. Pause/resume retains revision/version binding;
+finish requires delivered work and archives only after confirmed role stops. Exact human Master-chat
+approval advances through independent review/current-tree checks; changed approved artifacts fail closed.
 
-Follow-ups retain source inbox, target workflow, session generation, evidence and delivery
-state. Acknowledgments say queued. `agent.get`/`agent.prompt` implement the captured Herdr
-wire contract; live dispatch remains disabled by `Policy`, including validation mode.
-The adapter never calls start/resume and never replaces a stale conversation.
-Every future review/session transition must acquire the same workflow advisory mutex
-(`hashtextextended(workflow_id, 0)`) used by follow-up sends and approvals. Database
-transactions do not contain network calls. Interrupted `sending` and `uncertain` records
-need positive reconciliation evidence; never reset them for an automatic retry.
-Blocked send jobs and review-release scheduling remain coordinator work behind Task 1.
-
-An exact `@agent approve WORKFLOW_ID spec|plan FULL_COMMIT` can record human approval
-from Master chat only at the matching human-approval phase, for the latest approving
-review and a clean matching Git worktree. The source post cannot approve another workflow.
-Recording approval does not advance or bypass the workflow coordinator's remaining gates.
+`ROLE_CONFIG_FILE` supplies trusted controller/writer/reviewer cli/provider/model/family/launch_args.
+Operator overlays must provide existing verified bot/token references to the appropriate processes.
+Only the worker mounts Git workspaces and the Herdr socket. No environment switch enables dispatch.
+All positive lifecycle tests inject fixture policy; real `Policy#dispatch_allowed?` remains false.
+New project enrollment, uncertain-effect reconciliation, verified PR delivery/done transition and broader
+operational/destructive MCP tools remain separate implementation and acceptance work.
 
 ## Checks and remaining gates
 

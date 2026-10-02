@@ -419,7 +419,7 @@ These sources validate names and compatibility considerations; Task 1 still sele
    CLI prompt/settled evidence pass.
 7. Add migration 008 for workflow requests, role lifecycle receipts and request-bound Master
    capabilities. Provision verified bot roots, isolated worktrees and trusted role profiles.
-8. Queue signed artifact/review callbacks for the worker. Freeze exact targets, require
+8. Queue authenticated artifact/review callbacks for the worker. Freeze exact targets, require
    append-only review evidence and diverse roles, and durably release corrective follow-ups.
 9. Implement typed stdio MCP over private HTTP: project/workflow/context reads, workflow
    starts, evidence-grounded follow-ups and version-bound controls. Master reply receipts
