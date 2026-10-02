@@ -80,9 +80,9 @@ module Domains
             rescue StandardError
               @db.transaction do
                 @db[:followups].where(id: id).update(status: "uncertain", reason: "Socket effect requires reconciliation; do not resend")
-                Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id], bot: "agent", role: "controller",
-                                                             body: "Instruction #{id} has an uncertain send result. Inspect this conversation, then use @#{@handle} recover-followup #{id} delivered|discard. No automatic resend.",
-                                                             key: "followup:uncertain:#{id}")
+                Domains::Mattermost::Outbox.new.enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id], bot: "agent", role: "controller",
+                                                        body: "Instruction #{id} has an uncertain send result. Inspect this conversation, then use @#{@handle} recover-followup #{id} delivered|discard. No automatic resend.",
+                                                        key: "followup:uncertain:#{id}")
               end
               "uncertain"
             end
@@ -92,7 +92,7 @@ module Domains
         end
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, store: Domains::Jobs::Store).void }
       def call(job, store)
         lease_token = job.lease_token
         raise ArgumentError, "Follow-up job has no lease" unless lease_token
@@ -148,7 +148,7 @@ module Domains
             @db[:audit].insert(event_key: receipt_key, action: "human_followup_reconciliation", details: Sequel.pg_jsonb(details))
             @db[:followups].where(id: id).update(status: outcome == "delivered" ? "delivered" : "blocked", reason: "Human #{outcome} confirmation at inbox #{inbox_id}; no resend", delivered_at: outcome == "delivered" ? Time.now : nil)
             @db[:jobs].where(dispatch_key: "followup:#{id}").update(status: "complete", lease_token: nil, lease_expires_at: nil)
-            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Instruction #{id}: human confirmed #{outcome}; no prompt was resent.", key: receipt_key)
+            Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Instruction #{id}: human confirmed #{outcome}; no prompt was resent.", key: receipt_key)
           end
           outcome
         end
@@ -160,7 +160,7 @@ module Domains
         "blocked"
       end
 
-      sig { params(job: Domains::Jobs::Store::Job).returns(Integer) }
+      sig { params(job: Domains::Jobs::Job).returns(Integer) }
       private def followup_id(job)
         value = job.payload.fetch("followup_id") { raise ArgumentError, "Follow-up job is malformed" }
         raise ArgumentError, "Follow-up job is malformed" unless value.is_a?(Integer) && value.positive?

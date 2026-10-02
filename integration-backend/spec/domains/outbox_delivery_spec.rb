@@ -4,8 +4,8 @@ RSpec.describe "Mattermost outbox delivery (synthetic transport)" do
   before do
     db[:outbox].delete; db[:jobs].delete
     @channel, @root, @bot = "c" * 26, "r" * 26, "b" * 26
-    @id = Domains::Mattermost::Outbox.new(db).enqueue(channel_id: @channel, thread_id: @root, bot: "worker", role: "writer",
-                                                      body: "[writer] question", key: "response")
+    @id = Domains::Mattermost::Outbox.new.enqueue(channel_id: @channel, thread_id: @root, bot: "worker", role: "writer",
+                                                  body: "[writer] question", key: "response")
     @gets = { "/api/v4/users/me" => { "id" => @bot, "is_bot" => true }, "/api/v4/channels/#{@channel}" => { "id" => @channel },
               "/api/v4/channels/#{@channel}/members/#{@bot}" => { "channel_id" => @channel, "user_id" => @bot }, "/api/v4/posts/#{@root}" => { "id" => @root, "channel_id" => @channel, "root_id" => "", "delete_at" => 0 } }
     @calls = []
@@ -20,7 +20,7 @@ RSpec.describe "Mattermost outbox delivery (synthetic transport)" do
   end
   def run_delivery
     handler = Domains::Mattermost::Delivery.new(db, clients: { "worker" => @client }, bot_ids: { "worker" => @bot })
-    Async { Domains::Jobs::Worker.new(db, handlers: { "mattermost.post" => handler.method(:call) }).tick }.wait
+    Async { Domains::Jobs::Worker.new(handlers: { "mattermost.post" => handler.method(:call) }).tick }.wait
   end
   it "verifies destination/identity before posting with thread and stable reconciliation key" do
     run_delivery

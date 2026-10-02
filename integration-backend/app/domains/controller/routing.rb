@@ -105,12 +105,12 @@ module Domains
                                                                   workflow_id: w[:id], inbox_id: inbox_id, updated_at: @now.call)
           end
           acknowledge(d, inbox_id, session ? "Instruction #{id} queued for the existing project session; delivery is pending." : "Instruction #{id} recorded; session reconciliation is required before delivery.", "queued")
-          Domains::Jobs::Store.new(@db).enqueue(kind: "session.followup", payload: { "followup_id" => id }, key: "followup:#{id}") if session
+          Domains::Jobs::Store.new.enqueue(kind: "session.followup", payload: { "followup_id" => id }, key: "followup:#{id}") if session
           @db[:followups][id: id]
         end
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, _store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
       def call(job, _store)
         id = inbox_id(job)
         body = @db[:inbox][id: id][:verified_delivery].fetch("body")
@@ -120,8 +120,8 @@ module Domains
 
           @approvals.record(inbox_id: id, workflow_id: approval[1], gate: approval[2], commit: approval[3])
           source = @db[:inbox][id: id]
-          Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id],
-                                                       bot: "agent", role: "controller", body: "#{approval[2]} approval recorded for #{approval[1]} at #{approval[3]}.", key: "master:#{id}:approval")
+          Domains::Mattermost::Outbox.new.enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id],
+                                                  bot: "agent", role: "controller", body: "#{approval[2]} approval recorded for #{approval[1]} at #{approval[3]}.", key: "master:#{id}:approval")
           return
         end
         selection = body[/\A@#{Regexp.escape(@handle)} route ([a-zA-Z0-9-]+)\n.+/m, 1]
@@ -133,11 +133,11 @@ module Domains
 
       sig { params(d: Domains::Mattermost::VerifiedDelivery, id: T.any(Integer, String), text: String, kind: String).returns(String) }
       private def acknowledge(d, id, text, kind)
-        Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id,
-                                                     bot: "agent", role: "controller", body: text, key: "master:#{id}:#{kind}")
+        Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id,
+                                                bot: "agent", role: "controller", body: text, key: "master:#{id}:#{kind}")
       end
 
-      sig { params(job: Domains::Jobs::Store::Job).returns(T.any(Integer, String)) }
+      sig { params(job: Domains::Jobs::Job).returns(T.any(Integer, String)) }
       private def inbox_id(job)
         value = job.payload.fetch("inbox_id") { raise ArgumentError, "Routing job is malformed" }
         raise ArgumentError, "Routing job is malformed" unless value.is_a?(Integer) || value.is_a?(String)

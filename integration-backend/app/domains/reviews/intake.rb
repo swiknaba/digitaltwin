@@ -12,18 +12,6 @@ module Domains
 
       CallbackPayload = T.type_alias { T::Hash[String, Object] }
 
-      class Session < T::Struct
-        const :id, String
-        const :workflow_id, String
-        const :generation, Integer
-        const :credential_expires_at, Time
-      end
-
-      sig { params(db: Sequel::Database).void }
-      def initialize(db)
-        @db = db
-      end
-
       sig do
         params(token: String, generation: Integer, action: String, commit: String, kind: T.nilable(String), verdict: T.nilable(String)).returns(String)
       end
@@ -34,7 +22,7 @@ module Domains
         session = active_session(token: token, generation: generation, role: role)
         payload = callback_payload(session_id: session.id, generation: generation, action: action, commit: commit, kind: kind, verdict: verdict)
         key = "review:callback:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
-        Domains::Jobs::Store.new(@db).enqueue(kind: "review.callback", payload: payload, key: key)
+        Domains::Jobs::Store.new.enqueue(kind: "review.callback", payload: payload, key: key)
         "queued"
       end
 
@@ -54,11 +42,14 @@ module Domains
         raise ArgumentError, "Invalid verdict" if action == "review" && !%w[approve changes_requested].include?(verdict)
       end
 
-      sig { params(token: String, generation: Integer, role: String).returns(Session) }
+      sig { params(token: String, generation: Integer, role: String).returns(Domains::Sessions::RuntimeSession) }
       def active_session(token:, generation:, role:)
-        row = @db[:sessions][credential_digest: Digest::SHA256.hexdigest(token), generation: generation, role: role, active: true]
-        session = session_from(row)
-        latest = @db[:sessions].where(workflow_id: session.workflow_id, role: role).max(:generation)
+        session = Domains::Sessions::RuntimeSession.find_by(
+          credential_digest: Digest::SHA256.hexdigest(token), generation: generation, role: role, active: true
+        )
+        raise ArgumentError, "Invalid session" unless session
+
+        latest = Domains::Sessions::RuntimeSession.query.where(workflow_id: session.workflow_id, role: role).max(:generation)
         raise ArgumentError, "Invalid session" unless latest == generation && session.credential_expires_at > Time.now
 
         session
@@ -77,37 +68,6 @@ module Domains
           payload["verdict"] = verdict
         end
         payload
-      end
-
-      sig { params(row: Object).returns(Session) }
-      def session_from(row)
-        raise ArgumentError, "Invalid session" unless row.is_a?(Hash)
-
-        Session.new(id: string!(row, :id), workflow_id: string!(row, :workflow_id), generation: integer!(row, :generation), credential_expires_at: time!(row, :credential_expires_at))
-      end
-
-      sig { params(row: T::Hash[Object, Object], key: Symbol).returns(String) }
-      def string!(row, key)
-        value = row.fetch(key) { raise ArgumentError, "Invalid session" }
-        raise ArgumentError, "Invalid session" unless value.is_a?(String)
-
-        value
-      end
-
-      sig { params(row: T::Hash[Object, Object], key: Symbol).returns(Integer) }
-      def integer!(row, key)
-        value = row.fetch(key) { raise ArgumentError, "Invalid session" }
-        raise ArgumentError, "Invalid session" unless value.is_a?(Integer)
-
-        value
-      end
-
-      sig { params(row: T::Hash[Object, Object], key: Symbol).returns(Time) }
-      def time!(row, key)
-        value = row.fetch(key) { raise ArgumentError, "Invalid session" }
-        raise ArgumentError, "Invalid session" unless value.is_a?(Time)
-
-        value
       end
     end
   end

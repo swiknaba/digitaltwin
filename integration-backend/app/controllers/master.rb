@@ -9,16 +9,6 @@ module Controllers
     Params = T.type_alias { T::Hash[String, Object] }
     ToolArguments = T.type_alias { T::Hash[String, Object] }
 
-    class ToolRequest < T::Struct
-      const :name, String
-      const :arguments, ToolArguments
-    end
-
-    class ReplyRequest < T::Struct
-      const :request_id, String
-      const :text, String
-    end
-
     sig { returns(Response) }
     def manifest
       render_json({ "tools" => manifest_definitions }, status: 200)
@@ -69,14 +59,14 @@ module Controllers
       end
     end
 
-    sig { params(values: Params).returns(ToolRequest) }
+    sig { params(values: Params).returns(Requests::ToolRequest) }
     def tool_request(values)
-      ToolRequest.new(name: string(values, "name"), arguments: arguments(values.fetch("arguments")))
+      Requests::ToolRequest.new(name: string(values, "name"), arguments: arguments(values.fetch("arguments")))
     end
 
-    sig { params(values: Params).returns(ReplyRequest) }
+    sig { params(values: Params).returns(Requests::ReplyRequest) }
     def reply_request(values)
-      ReplyRequest.new(request_id: string(values, "request_id"), text: string(values, "text"))
+      Requests::ReplyRequest.new(request_id: string(values, "request_id"), text: string(values, "text"))
     end
 
     sig { params(values: Params, expected: T::Array[String]).returns(T::Boolean) }

@@ -12,13 +12,13 @@ module Domains
 
         interface!
 
-        sig { abstract.params(job: Store::Job, store: Store).returns(Object) }
+        sig { abstract.params(job: Job, store: Store).returns(Object) }
         def call(job, store); end
       end
 
-      sig { params(db: Sequel::Database, handlers: T::Hash[String, Handler]).void }
-      def initialize(db, handlers: {})
-        @store = T.let(Store.new(db), Store)
+      sig { params(handlers: T::Hash[String, Handler]).void }
+      def initialize(handlers: {})
+        @store = T.let(Store.new, Store)
         @handlers = T.let(handlers, T::Hash[String, Handler])
         @worker_id = T.let("#{Process.pid}:#{SecureRandom.uuid}", String)
       end
@@ -34,7 +34,7 @@ module Domains
 
       sig { returns(T::Boolean) }
       def tick
-        job = T.let(nil, T.nilable(Store::Job))
+        job = T.let(nil, T.nilable(Job))
         heartbeat = T.let(nil, T.nilable(Async::Task))
         job = @store.claim(worker_id: @worker_id)
         return false unless job

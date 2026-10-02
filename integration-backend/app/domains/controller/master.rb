@@ -35,14 +35,14 @@ module Domains
           FileUtils.mkdir_p(@root, mode: 0700)
           File.open(File.join(@root, "#{id}.request-token"), File::WRONLY | File::CREAT | File::EXCL, 0600) { |file| file.write(token) }
           @db[:master_requests].insert(id: id, inbox_id: inbox_id, session_id: controller, credential_digest: Digest::SHA256.hexdigest(token), expires_at: Time.now + 1800)
-          Domains::Jobs::Store.new(@db).enqueue(kind: "master.dispatch", payload: { "request_id" => id }, key: "master:dispatch:#{id}")
-          Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller",
-                                                       body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: "start"]&.dig(:id)}.", key: "master:queued:#{id}")
+          Domains::Jobs::Store.new.enqueue(kind: "master.dispatch", payload: { "request_id" => id }, key: "master:dispatch:#{id}")
+          Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller",
+                                                  body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: "start"]&.dig(:id)}.", key: "master:queued:#{id}")
           id
         end
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, store: Domains::Jobs::Store).void }
       def call(job, store)
         lease_token = job.lease_token
         raise ArgumentError, "Master job has no lease" unless lease_token
@@ -61,8 +61,8 @@ module Domains
           expired.each do |old|
             @db[:master_requests].where(id: old[:id]).update(state: "uncertain", reason: "Expired; human reconciliation required")
             old_source = @db[:inbox][id: old[:inbox_id]]
-            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: old_source[:channel_id], thread_id: old_source[:thread_id], bot: "agent", role: "controller",
-                                                         body: "Master request #{old[:id]} expired without a completion receipt. Verify its outcome, then use @agent recover-master #{old[:id]} to continue the same session.", key: "master:expired:#{old[:id]}")
+            Domains::Mattermost::Outbox.new.enqueue(channel_id: old_source[:channel_id], thread_id: old_source[:thread_id], bot: "agent", role: "controller",
+                                                    body: "Master request #{old[:id]} expired without a completion receipt. Verify its outcome, then use @agent recover-master #{old[:id]} to continue the same session.", key: "master:expired:#{old[:id]}")
           end
           uncertain = @db[:master_requests].where(session_id: r[:session_id], state: "uncertain").exclude(id: r[:id]).count
           if uncertain.positive?
@@ -149,7 +149,7 @@ module Domains
             raise ArgumentError, "Request already completed" unless row[:state] == "active"
 
             source = @db[:inbox][id: r[:inbox_id]]
-            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id], bot: "agent", role: "controller", body: text, key: "master:reply:#{r[:id]}")
+            Domains::Mattermost::Outbox.new.enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id], bot: "agent", role: "controller", body: text, key: "master:reply:#{r[:id]}")
             @db[:master_requests].where(id: r[:id]).update(state: "complete")
             "queued"
           end
@@ -158,7 +158,7 @@ module Domains
 
       private
 
-      sig { params(job: Domains::Jobs::Store::Job).returns(String) }
+      sig { params(job: Domains::Jobs::Job).returns(String) }
       def request_id(job)
         value = job.payload.fetch("request_id") { raise ArgumentError, "Master job is malformed" }
         raise ArgumentError, "Master job is malformed" unless value.is_a?(String) && value.match?(/\A[0-9a-f-]+\z/)

@@ -59,7 +59,7 @@ module Domains
                                   configuration: Sequel.pg_jsonb(configuration), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
-            Domains::Jobs::Store.new(@db).enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
+            Domains::Jobs::Store.new.enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
           end
           id
         end
@@ -92,9 +92,9 @@ module Domains
                                   configuration: Sequel.pg_jsonb(configuration), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
-            Domains::Jobs::Store.new(@db).enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
-            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: w[:channel_id], thread_id: w[:thread_id], bot: "worker", role: role,
-                                                         body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.", key: "session:reserved:#{id}")
+            Domains::Jobs::Store.new.enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
+            Domains::Mattermost::Outbox.new.enqueue(channel_id: w[:channel_id], thread_id: w[:thread_id], bot: "worker", role: role,
+                                                    body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.", key: "session:reserved:#{id}")
           end
           id
         end
@@ -161,7 +161,7 @@ module Domains
         if workflow && row_string(op, :kind) == "start" && row_string(session, :role) == "writer"
           workflow_id = row_string(workflow, :id)
           version = row_integer(workflow, :version)
-          Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version }, key: "workflow:phase:#{workflow_id}:#{version}")
+          Domains::Jobs::Store.new.enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version }, key: "workflow:phase:#{workflow_id}:#{version}")
         elsif workflow && row_string(op, :kind) == "stop" && %w[closed cancelled].include?(row_string(workflow, :phase)) && @db[:sessions].where(workflow_id: row_string(workflow, :id), active: true).empty?
           @db[:workflows].where(id: row_string(workflow, :id)).update(archived_at: Time.now)
         end
@@ -173,12 +173,12 @@ module Domains
       class << self
         extend T::Sig
 
-        sig { params(db: Sequel::Database, session: Row).returns(String) }
-        def schedule_renewal(db, session)
+        sig { params(_db: Sequel::Database, session: Row).returns(String) }
+        def schedule_renewal(_db, session)
           id = row_string(session, :id)
           expires_at = row_time(session, :credential_expires_at)
           key = "session:renew:#{id}:#{expires_at.to_i}"
-          Domains::Jobs::Store.new(db).enqueue(kind: "session.renew", payload: { "session_id" => id, "generation" => row_integer(session, :generation) }, key: key, available_at: [Time.now, expires_at - 300].max)
+          Domains::Jobs::Store.new.enqueue(kind: "session.renew", payload: { "session_id" => id, "generation" => row_integer(session, :generation) }, key: key, available_at: [Time.now, expires_at - 300].max)
         end
       end
 
@@ -281,7 +281,7 @@ module Domains
             complete_operation(op, s, w && @db[:workflows][id: w[:id]])
             @db[:jobs].where(id: job[:id]).update(status: "complete", lease_token: nil, lease_expires_at: nil) if job
             @db[:audit].insert(event_key: key, action: "verified_session_reconciliation", details: Sequel.pg_jsonb({ "inbox_id" => inbox_id, "operation_id" => operation_id, "session_id" => s[:id], "generation" => s[:generation], "pane_id" => pane_id }))
-            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Session operation #{operation_id} reconciled against runtime evidence; no start or stop was repeated.", key: key)
+            Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Session operation #{operation_id} reconciled against runtime evidence; no start or stop was repeated.", key: key)
           end
           FileUtils.rm_f(credential_path(s[:id])) if op[:kind] == "stop"
           "complete"
@@ -297,7 +297,7 @@ module Domains
 
               op = SecureRandom.uuid
               @db[:session_operations].insert(id: op, session_id: s[:id], kind: "stop")
-              Domains::Jobs::Store.new(@db).enqueue(kind: "session.stop", payload: { "operation_id" => op }, key: "session:stop:#{s[:id]}")
+              Domains::Jobs::Store.new.enqueue(kind: "session.stop", payload: { "operation_id" => op }, key: "session:stop:#{s[:id]}")
             end
           end
         end

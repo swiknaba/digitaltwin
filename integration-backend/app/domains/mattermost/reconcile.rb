@@ -9,15 +9,7 @@ module Domains
     class Reconcile
       extend T::Sig
 
-      class RecoveryRequired < Client::Error; end
-
       HistoryPost = T.type_alias { VerifiedDelivery::TransportResponse }
-
-      class HistoryPage < T::Struct
-        const :posts, T::Hash[String, HistoryPost]
-        const :order, T::Array[String]
-      end
-
       # History reconciliation only needs authenticated, validated GET responses.
       # Keep that boundary explicit so callers cannot smuggle an arbitrary object
       # through the reconciliation path.

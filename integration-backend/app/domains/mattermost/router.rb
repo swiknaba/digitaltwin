@@ -7,7 +7,6 @@ module Domains
     class Router
       extend T::Sig
 
-      WorkflowRow = T.type_alias { T::Hash[Symbol, Object] }
       InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
@@ -42,8 +41,8 @@ module Domains
             queue("workflow.start", delivery, inbox_id)
           elsif workflow && dispatch_suppressed?(workflow) && command.nil?
             queue_message(workflow, inbox_id)
-            Outbox.new(@db).enqueue(channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: "worker", role: "writer",
-                                    body: "Message queued; delivery waits for review or pause completion.", key: "queued:#{inbox_id}")
+            Outbox.new.enqueue(channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: "worker", role: "writer",
+                               body: "Message queued; delivery waits for review or pause completion.", key: "queued:#{inbox_id}")
             result("accepted", "Queued under dispatch suppression")
           elsif workflow && !delivery.actor.bot && !closed?(workflow)
             queue(command ? "workflow.#{command}" : "workflow.prompt", delivery, inbox_id, workflow: workflow)
@@ -74,18 +73,9 @@ module Domains
         nil
       end
 
-      sig { params(delivery: VerifiedDelivery).returns(T.nilable(WorkflowRow)) }
+      sig { params(delivery: VerifiedDelivery).returns(T.nilable(Domains::Workflows::Workflow)) }
       def workflow_for(delivery)
-        row = @db[:workflows][channel_id: delivery.channel_id, thread_id: delivery.thread_id, archived_at: nil]
-        return nil unless row.is_a?(Hash)
-
-        workflow = T.let({}, WorkflowRow)
-        row.each do |key, value|
-          raise IOError, "Malformed workflow record" unless key.is_a?(Symbol)
-
-          workflow[key] = value
-        end
-        workflow
+        Domains::Workflows::Workflow.find_by(channel_id: delivery.channel_id, thread_id: delivery.thread_id, archived_at: nil)
       end
 
       sig { params(body: String).returns(T.nilable(String)) }
@@ -99,54 +89,37 @@ module Domains
           delivery.actor.member && !delivery.actor.bot
       end
 
-      sig { params(workflow: T.nilable(WorkflowRow)).returns(T::Boolean) }
+      sig { params(workflow: T.nilable(Domains::Workflows::Workflow)).returns(T::Boolean) }
       def dispatch_suppressed?(workflow)
         return false unless workflow
 
-        phase = workflow_string(workflow, :phase)
+        phase = workflow.phase
         phase == "paused" || phase.end_with?("_review")
       end
 
-      sig { params(workflow: WorkflowRow).returns(T::Boolean) }
+      sig { params(workflow: Domains::Workflows::Workflow).returns(T::Boolean) }
       def closed?(workflow)
-        %w[closed cancelled].include?(workflow_string(workflow, :phase))
+        %w[closed cancelled].include?(workflow.phase)
       end
 
-      sig { params(workflow: WorkflowRow, inbox_id: InboxId).void }
+      sig { params(workflow: Domains::Workflows::Workflow, inbox_id: InboxId).void }
       def queue_message(workflow, inbox_id)
-        @db[:queued_messages].insert(workflow_id: workflow_string(workflow, :id), inbox_id: inbox_id,
-                                     workflow_version: workflow_integer(workflow, :version))
+        @db[:queued_messages].insert(workflow_id: workflow.id, inbox_id: inbox_id, workflow_version: workflow.version)
       end
 
       sig do
         params(kind: String, delivery: VerifiedDelivery, inbox_id: InboxId,
-               workflow: T.nilable(WorkflowRow)).returns(Domains::Workflows::Entities::Outcome)
+               workflow: T.nilable(Domains::Workflows::Workflow)).returns(Domains::Workflows::Entities::Outcome)
       end
       def queue(kind, delivery, inbox_id, workflow: nil)
         payload = T.let({ "inbox_id" => inbox_id, "channel_id" => delivery.channel_id, "thread_id" => delivery.thread_id },
-                        Domains::Jobs::Store::Payload)
+                        Domains::Jobs::Job::Payload)
         if workflow
-          payload["workflow_id"] = workflow_string(workflow, :id)
-          payload["expected_version"] = workflow_integer(workflow, :version)
+          payload["workflow_id"] = workflow.id
+          payload["expected_version"] = workflow.version
         end
-        Domains::Jobs::Store.new(@db).enqueue(kind: kind, payload: payload, key: "inbox:#{inbox_id}:#{kind}")
+        Domains::Jobs::Store.new.enqueue(kind: kind, payload: payload, key: "inbox:#{inbox_id}:#{kind}")
         result("blocked", "Recorded durably; live Task 1 workflow dispatch is gated")
-      end
-
-      sig { params(workflow: WorkflowRow, key: Symbol).returns(String) }
-      def workflow_string(workflow, key)
-        value = workflow.fetch(key) { raise IOError, "Malformed workflow record" }
-        raise IOError, "Malformed workflow record" unless value.is_a?(String)
-
-        value
-      end
-
-      sig { params(workflow: WorkflowRow, key: Symbol).returns(Integer) }
-      def workflow_integer(workflow, key)
-        value = workflow.fetch(key) { raise IOError, "Malformed workflow record" }
-        raise IOError, "Malformed workflow record" unless value.is_a?(Integer)
-
-        value
       end
 
       sig { params(status: String, reason: String).returns(Domains::Workflows::Entities::Outcome) }

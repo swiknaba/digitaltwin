@@ -9,7 +9,7 @@ RSpec.describe "Session-bound Worker callbacks" do
                           worktree_path: "/workspace/worktrees/fixture")
     db[:sessions].insert(id: "s", workflow_id: "w", role: "writer", generation: 1, pane_id: "pane", alias: "alias",
                          configuration: Sequel.pg_jsonb({}), credential_digest: Digest::SHA256.hexdigest("fixture-token"), credential_expires_at: Time.now + 60)
-    @service = Domains::Mattermost::WorkerChat.new(db)
+    @service = Domains::Mattermost::WorkerChat.new
   end
   it "derives thread/bot/role and deduplicates retries" do
     2.times {

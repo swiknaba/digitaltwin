@@ -9,7 +9,7 @@ module Domains
       HandlerMap = T.type_alias { T::Hash[String, Object] }
       Roles = T.type_alias { Domains::Workflows::Provision::Roles }
       LegacyJob = T.type_alias { T::Hash[Symbol, Object] }
-      RoutedJob = T.type_alias { T.any(Domains::Jobs::Store::Job, LegacyJob) }
+      RoutedJob = T.type_alias { T.any(Domains::Jobs::Job, LegacyJob) }
 
       sig { returns(T.nilable(Master)) }
       attr_reader :master
@@ -94,7 +94,7 @@ module Domains
         values
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, _store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
       def review_callback(job, _store)
         p = job.payload
         if p["action"] == "artifact"
@@ -104,14 +104,14 @@ module Domains
         end
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, _store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
       def master_control(job, _store)
         payload = job.payload
         @workflows.control(inbox_id: payload_string(payload, "inbox_id"), workflow_id: payload_string(payload, "workflow_id"),
                            action: payload_string(payload, "action"), expected_version: payload_integer(payload, "expected_version"))
       end
 
-      # The worker always provides Store::Job. A legacy hash is accepted only
+      # The worker always provides Jobs::Job. A legacy hash is accepted only
       # at this controller edge so existing in-process callers can use the
       # recovery commands while they migrate to the durable job entity.
       sig { params(job: RoutedJob, store: T.nilable(Domains::Jobs::Store)).void }
@@ -144,7 +144,7 @@ module Domains
           @master.ingest(id)
           return
         end
-        raise ArgumentError, "Controller job must be durable" unless job.is_a?(Domains::Jobs::Store::Job) && store
+        raise ArgumentError, "Controller job must be durable" unless job.is_a?(Domains::Jobs::Job) && store
 
         @routing.call(job, store)
         # Exact approvals advance only through the coordinator's independent
@@ -154,7 +154,7 @@ module Domains
         @workflows.advance_approval(workflow_id: capture(match, 1), gate: capture(match, 2)) if match
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, _store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
       def control_existing(job, _store)
         payload = job.payload
         inbox_id = payload_string(payload, "inbox_id")
@@ -167,7 +167,7 @@ module Domains
         @workflows.control(inbox_id: inbox_id, workflow_id: w[:id], action: action, expected_version: payload_integer(payload, "expected_version"))
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, _store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
       def approve_existing(job, _store)
         payload = job.payload
         inbox_id = payload_string(payload, "inbox_id")
@@ -181,7 +181,7 @@ module Domains
         @workflows.advance_approval(workflow_id: w[:id], gate: gate)
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, _store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
       def start_existing(job, _store)
         id = inbox_id(job)
         d = @source.human(id)
@@ -203,14 +203,14 @@ module Domains
         value
       end
 
-      sig { params(job: RoutedJob).returns(Domains::Jobs::Store::Payload) }
+      sig { params(job: RoutedJob).returns(Domains::Jobs::Job::Payload) }
       def job_payload(job)
-        return job.payload if job.is_a?(Domains::Jobs::Store::Job)
+        return job.payload if job.is_a?(Domains::Jobs::Job)
 
         value = job.fetch(:payload) { raise ArgumentError, "Controller job is malformed" }
         raise ArgumentError, "Controller job is malformed" unless value.is_a?(Hash)
 
-        payload = T.let({}, Domains::Jobs::Store::Payload)
+        payload = T.let({}, Domains::Jobs::Job::Payload)
         value.each do |key, item|
           raise ArgumentError, "Controller job is malformed" unless key.is_a?(String)
 
@@ -234,7 +234,7 @@ module Domains
         value
       end
 
-      sig { params(payload: Domains::Jobs::Store::Payload, key: String).returns(String) }
+      sig { params(payload: Domains::Jobs::Job::Payload, key: String).returns(String) }
       def payload_string(payload, key)
         value = payload.fetch(key) { raise ArgumentError, "Controller job is malformed" }
         raise ArgumentError, "Controller job is malformed" unless value.is_a?(String)
@@ -242,7 +242,7 @@ module Domains
         value
       end
 
-      sig { params(payload: Domains::Jobs::Store::Payload, key: String).returns(Integer) }
+      sig { params(payload: Domains::Jobs::Job::Payload, key: String).returns(Integer) }
       def payload_integer(payload, key)
         value = payload.fetch(key) { raise ArgumentError, "Controller job is malformed" }
         raise ArgumentError, "Controller job is malformed" unless value.is_a?(Integer)

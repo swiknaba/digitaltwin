@@ -8,32 +8,6 @@ module Controllers
     Response = T.type_alias { Kirei::Routing::RackResponseType }
     Params = T.type_alias { T::Hash[String, Object] }
 
-    class ArtifactCallback < T::Struct
-      const :token, String
-      const :generation, Integer
-      const :kind, String
-      const :commit, String
-    end
-
-    class ReviewCallback < T::Struct
-      const :token, String
-      const :generation, Integer
-      const :verdict, String
-      const :commit, String
-    end
-
-    class SayCallback < T::Struct
-      const :token, String
-      const :generation, Integer
-      const :key, String
-      const :body, String
-    end
-
-    # A missing header is tracked separately so the interactive `say` endpoint
-    # can return HTTP 401. The legacy artifact/review callback endpoints remain
-    # opaque and map both absent and invalid capabilities to rejection.
-    class MissingAuthorization < StandardError; end
-
     sig { returns(Response) }
     def artifact_ready
       values = request_params
@@ -42,7 +16,7 @@ module Controllers
       callback = artifact_callback(values)
       intake.enqueue(token: callback.token, generation: callback.generation, action: "artifact", kind: callback.kind, commit: callback.commit)
       accepted_response
-    rescue MissingAuthorization, ArgumentError, Sequel::Error
+    rescue Errors::MissingAuthorization, ArgumentError, Sequel::Error
       rejected_response("Artifact callback rejected")
     end
 
@@ -54,7 +28,7 @@ module Controllers
       callback = review_callback(values)
       intake.enqueue(token: callback.token, generation: callback.generation, action: "review", commit: callback.commit, verdict: callback.verdict)
       accepted_response
-    rescue MissingAuthorization, ArgumentError, Sequel::Error
+    rescue Errors::MissingAuthorization, ArgumentError, Sequel::Error
       rejected_response("Review callback rejected")
     end
 
@@ -64,11 +38,11 @@ module Controllers
       return unexpected_callback_fields_response unless allowed_keys?(values, %w[generation key text])
 
       callback = say_callback(values)
-      result = Domains::Mattermost::WorkerChat.new(Kirei::App.raw_db_connection).post(
+      result = Domains::Mattermost::WorkerChat.new.post(
         token: callback.token, generation: callback.generation, key: callback.key, body: callback.body
       )
       render_json({ "status" => result.status, "reason" => result.reason }, status: result.status == "accepted" ? 202 : 403)
-    rescue MissingAuthorization
+    rescue Errors::MissingAuthorization
       unauthorized_response
     rescue ArgumentError, Sequel::Error
       render_json({ "status" => "rejected", "reason" => "Invalid callback" }, status: 403)
@@ -78,22 +52,22 @@ module Controllers
 
     sig { returns(Domains::Reviews::Intake) }
     def intake
-      Domains::Reviews::Intake.new(Kirei::App.raw_db_connection)
+      Domains::Reviews::Intake.new
     end
 
-    sig { params(values: Params).returns(ArtifactCallback) }
+    sig { params(values: Params).returns(Requests::ArtifactCallback) }
     def artifact_callback(values)
-      ArtifactCallback.new(token: callback_token, generation: integer(values, "generation"), kind: string(values, "kind"), commit: string(values, "commit"))
+      Requests::ArtifactCallback.new(token: callback_token, generation: integer(values, "generation"), kind: string(values, "kind"), commit: string(values, "commit"))
     end
 
-    sig { params(values: Params).returns(ReviewCallback) }
+    sig { params(values: Params).returns(Requests::ReviewCallback) }
     def review_callback(values)
-      ReviewCallback.new(token: callback_token, generation: integer(values, "generation"), verdict: string(values, "verdict"), commit: string(values, "commit"))
+      Requests::ReviewCallback.new(token: callback_token, generation: integer(values, "generation"), verdict: string(values, "verdict"), commit: string(values, "commit"))
     end
 
-    sig { params(values: Params).returns(SayCallback) }
+    sig { params(values: Params).returns(Requests::SayCallback) }
     def say_callback(values)
-      SayCallback.new(token: callback_token, generation: integer(values, "generation"), key: string(values, "key"), body: string(values, "text"))
+      Requests::SayCallback.new(token: callback_token, generation: integer(values, "generation"), key: string(values, "key"), body: string(values, "text"))
     end
 
     sig { params(values: Params, expected: T::Array[String]).returns(T::Boolean) }
@@ -134,7 +108,7 @@ module Controllers
     sig { returns(String) }
     def callback_token
       value = request.env["HTTP_AUTHORIZATION"]
-      raise MissingAuthorization, "Session authorization required" unless value.is_a?(String) && value.start_with?("Bearer ")
+      raise Errors::MissingAuthorization, "Session authorization required" unless value.is_a?(String) && value.start_with?("Bearer ")
 
       value.delete_prefix("Bearer ")
     end

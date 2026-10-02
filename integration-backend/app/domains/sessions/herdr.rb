@@ -16,12 +16,6 @@ module Domains
       JsonValue = T.type_alias { Object }
       JsonObject = T.type_alias { T::Hash[String, JsonValue] }
 
-      class Response < T::Struct
-        const :id, String
-        const :result_type, String
-        const :payload, JsonObject
-      end
-
       sig { params(socket_path: String).void }
       def initialize(socket_path: "/run/herdr/herdr.sock")
         @path = socket_path

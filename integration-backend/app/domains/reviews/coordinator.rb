@@ -9,7 +9,7 @@ module Domains
 
       PHASES = T.let({ "spec" => "spec_writing", "plan" => "plan_writing", "implementation" => "implementation" }.freeze, T::Hash[String, String])
       Row = T.type_alias { T::Hash[Symbol, Object] }
-      Payload = T.type_alias { Domains::Jobs::Store::Payload }
+      Payload = T.type_alias { Domains::Jobs::Job::Payload }
       Identifier = T.type_alias { T.any(String, Integer) }
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Configuration = T.type_alias { T::Hash[String, Object] }
@@ -73,7 +73,7 @@ module Domains
             changes = row_string!(w, :phase) == "paused" ? { saved_phase: "#{kind}_review", paused_commit: commit } : { phase: "#{kind}_review" }
             version = row_integer!(w, :version)
             @db[:workflows].where(id: row_string!(w, :id), version: version).update(**changes, artifacts: Sequel.pg_jsonb(refs), version: version + 1)
-            Domains::Jobs::Store.new(@db).enqueue(kind: "review.prompt", payload: { "review_id" => id }, key: "review:#{id}")
+            Domains::Jobs::Store.new.enqueue(kind: "review.prompt", payload: { "review_id" => id }, key: "review:#{id}")
             id
           end
         end
@@ -132,10 +132,10 @@ module Domains
                                                                                        blocker: phase == "blocked" ? "Three review rounds requested changes" : nil)
             queue_release(workflow_id, version + 1)
             if verdict == "changes_requested" && phase != "blocked"
-              Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version + 1 }, key: "workflow:phase:#{workflow_id}:#{version + 1}")
+              Domains::Jobs::Store.new.enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version + 1 }, key: "workflow:phase:#{workflow_id}:#{version + 1}")
             end
-            Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: row_string!(w, :channel_id), thread_id: row_optional_string(w, :thread_id), bot: "worker", role: "reviewer",
-                                                         body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.", key: "review:result:#{row_identifier!(record, :id)}")
+            Domains::Mattermost::Outbox.new.enqueue(channel_id: row_string!(w, :channel_id), thread_id: row_optional_string(w, :thread_id), bot: "worker", role: "reviewer",
+                                                    body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.", key: "review:result:#{row_identifier!(record, :id)}")
           end
         end
         workflow_id
@@ -143,10 +143,10 @@ module Domains
 
       sig { params(workflow_id: String, version: Integer).returns(String) }
       def queue_release(workflow_id, version)
-        Domains::Jobs::Store.new(@db).enqueue(kind: "review.release", payload: { "workflow_id" => workflow_id }, key: "review:release:#{workflow_id}:#{version}")
+        Domains::Jobs::Store.new.enqueue(kind: "review.release", payload: { "workflow_id" => workflow_id }, key: "review:release:#{workflow_id}:#{version}")
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, _store: Domains::Jobs::Store).returns(T.nilable(String)) }
+      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).returns(T.nilable(String)) }
       def release_job(job, _store)
         release(payload_string!(job.payload, "workflow_id"))
       end
@@ -177,7 +177,7 @@ module Domains
         raise transient if transient
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, store: Domains::Jobs::Store).void }
       def call(job, store)
         record = row!(@db[:reviews][id: payload_identifier!(job.payload, "review_id")])
         @lock.call(row_string!(record, :workflow_id)) do
@@ -415,7 +415,7 @@ module Domains
         value
       end
 
-      sig { params(job: Domains::Jobs::Store::Job).returns(String) }
+      sig { params(job: Domains::Jobs::Job).returns(String) }
       def lease_token!(job)
         token = job.lease_token
         raise ArgumentError, "Review job lease is missing" unless token
