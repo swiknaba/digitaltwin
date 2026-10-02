@@ -1,6 +1,28 @@
 # typed: strict
 # frozen_string_literal: true
 
+# == Schema Info
+#
+# Table name: workflows
+#
+#  id                  :text                not null, primary key
+#  project_id          :text                not null
+#  channel_id          :text                not null
+#  thread_id           :text                not null
+#  branch              :text                not null
+#  worktree_path       :text                not null
+#  phase               :text                not null
+#  saved_phase         :text                null
+#  version             :integer             not null
+#  artifacts           :jsonb               not null
+#  blocker             :text                null
+#  archived_at         :timestamp without time zone, null
+#  created_at          :timestamp without time zone, not null
+#  paused_commit       :text                null
+#  source_inbox_id     :integer             null
+#  role_configurations :jsonb               not null
+#
+
 module Domains
   module Workflows
     class Workflow < T::Struct
