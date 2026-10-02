@@ -1,13 +1,36 @@
+# typed: strict
 # frozen_string_literal: true
 
 module Domains
   module Workflows
     class Coordinator
+      extend T::Sig
+
+      Job = T.type_alias { T::Hash[Symbol, Object] }
+
+      sig do
+        params(
+          db: Sequel::Database,
+          source: Domains::Controller::Source,
+          herdr: Domains::Sessions::Herdr,
+          evidence: Domains::Reviews::GitEvidence,
+          reviews: Domains::Reviews::Coordinator,
+          sessions: Domains::Sessions::Lifecycle,
+          policy: Policy
+        ).void
+      end
       def initialize(db, source:, herdr:, evidence:, reviews:, sessions:, policy: Policy.new)
-        @db, @source, @herdr, @evidence, @reviews, @sessions, @policy = db, source, herdr, evidence, reviews, sessions, policy
-        @lock = Lock.new(db)
+        @db = db
+        @source = source
+        @herdr = herdr
+        @evidence = evidence
+        @reviews = reviews
+        @sessions = sessions
+        @policy = policy
+        @lock = T.let(Lock.new(db), Lock)
       end
 
+      sig { params(inbox_id: String, workflow_id: String, action: String, expected_version: Integer).returns(String) }
       def control(inbox_id:, workflow_id:, action:, expected_version:)
         raise ArgumentError, "Unsupported workflow action" unless %w[pause resume finish cancel].include?(action)
 
@@ -17,30 +40,31 @@ module Domains
           w = @db[:workflows][id: workflow_id]
           raise ArgumentError, "Workflow version changed" unless w[:version] == expected_version && !w[:archived_at]
 
-          changes = case action
-                    when "pause"
-                      raise ArgumentError, "Cannot pause this phase" if %w[paused closed cancelled blocked].include?(w[:phase])
+          changes = T.let({}, T::Hash[Symbol, Object])
+          case action
+          when "pause"
+            raise ArgumentError, "Cannot pause this phase" if %w[paused closed cancelled blocked].include?(w[:phase])
 
-                      { phase: "paused", saved_phase: w[:phase], paused_commit: @evidence.head(w) }
-                    when "resume"
-                      raise ArgumentError, "Not paused" unless w[:phase] == "paused" && w[:saved_phase] && w[:saved_phase] != "blocked"
+            changes = { phase: "paused", saved_phase: w[:phase], paused_commit: @evidence.head(w) }
+          when "resume"
+            raise ArgumentError, "Not paused" unless w[:phase] == "paused" && w[:saved_phase] && w[:saved_phase] != "blocked"
 
-                      live_role = w[:saved_phase].end_with?("_review") ? "reviewer" : "writer"
-                      validate_sessions(w, live_role)
-                      raise ArgumentError, "Paused revision changed without verified callback" unless @evidence.current(w) == w[:paused_commit]
+            live_role = w[:saved_phase].end_with?("_review") ? "reviewer" : "writer"
+            validate_sessions(w, live_role)
+            raise ArgumentError, "Paused revision changed without verified callback" unless @evidence.current(w) == w[:paused_commit]
 
-                      { phase: w[:saved_phase], saved_phase: nil, paused_commit: nil }
-                    when "finish"
-                      raise ArgumentError, "Only delivered workflow may finish" unless w[:phase] == "done"
+            changes = { phase: w[:saved_phase], saved_phase: nil, paused_commit: nil }
+          when "finish"
+            raise ArgumentError, "Only delivered workflow may finish" unless w[:phase] == "done"
 
-                      validate_sessions(w)
-                      { phase: "closed" }
-                    when "cancel"
-                      raise ArgumentError, "Already closed" if %w[closed cancelled].include?(w[:phase])
+            validate_sessions(w)
+            changes = { phase: "closed" }
+          when "cancel"
+            raise ArgumentError, "Already closed" if %w[closed cancelled].include?(w[:phase])
 
-                      validate_sessions(w)
-                      { phase: "cancelled" }
-                    end
+            validate_sessions(w)
+            changes = { phase: "cancelled" }
+          end
           @db.transaction do
             @db[:workflows].where(id: workflow_id, version: expected_version).update(**changes, version: expected_version + 1)
             if action == "resume" && %w[spec_writing plan_writing implementation].include?(changes[:phase])
@@ -56,6 +80,7 @@ module Domains
         action
       end
 
+      sig { params(workflow_id: String, gate: String).void }
       def advance_approval(workflow_id:, gate:)
         @lock.call(workflow_id) do
           w = @db[:workflows][id: workflow_id]
@@ -79,28 +104,34 @@ module Domains
         end
       end
 
+      sig { params(job: Job, store: Domains::Jobs::Store).void }
       def call(job, store)
-        w = @db[:workflows][id: job[:payload].fetch("workflow_id")]
+        payload = job_payload(job)
+        job_id = job_string(job, :id)
+        lease_token = job_string(job, :lease_token)
+        w = @db[:workflows][id: payload.fetch("workflow_id")]
         @lock.call(w[:id]) do
           w = @db[:workflows][id: w[:id]]
           unless @policy.dispatch_allowed?
-            store.block(id: job[:id], lease_token: job[:lease_token], reason: "Live Writer dispatch evidence required")
+            store.block(id: job_id, lease_token: lease_token, reason: "Live Writer dispatch evidence required")
             return
           end
           if w[:phase] == "paused"
-            store.defer(id: job[:id], lease_token: job[:lease_token], reason: "Paused")
+            store.defer(id: job_id, lease_token: lease_token, reason: "Paused")
             return
           end
-          return unless job[:payload]["version"] == w[:version]
+          return unless payload["version"] == w[:version]
           raise ArgumentError, "Phase changed" unless %w[spec_writing plan_writing implementation].include?(w[:phase])
 
           current_writer = @db[:sessions][workflow_id: w[:id], role: "writer", active: true]
           live = current_writer && @herdr.get(current_writer[:pane_id])
           if live && live["agent_status"] == "working" && live["agent_session"] == current_writer[:runtime_identity]
-            store.defer(id: job[:id], lease_token: job[:lease_token], reason: "Writer busy")
+            store.defer(id: job_id, lease_token: lease_token, reason: "Writer busy")
             return
           end
           s = validate_sessions(w, "writer").first
+          raise ArgumentError, "Writer session missing" unless s
+
           d = @source.human(w[:source_inbox_id], destination: w[:channel_id])
           gate = { "plan_writing" => "spec", "implementation" => "plan" }[w[:phase]]
           if gate
@@ -109,7 +140,7 @@ module Domains
 
             validate_prior_approvals(w, gate == "plan" ? %w[spec plan] : %w[spec])
           end
-          raise IOError, "Dispatch lease lost" unless store.begin_effect(id: job[:id], lease_token: job[:lease_token])
+          raise IOError, "Dispatch lease lost" unless store.begin_effect(id: job_id, lease_token: lease_token)
 
           latest_review = @db[:reviews].where(workflow_id: w[:id], verdict: "changes_requested").order(Sequel.desc(:id)).first
           feedback = latest_review ? "Read corrective feedback in #{latest_review[:review_path]} at #{latest_review[:review_commit]} for target #{latest_review[:target_commit]}. " : ""
@@ -119,16 +150,24 @@ module Domains
                               "Report exact clean commits via artifact-ready. " \
                               "Stop changes during review. " \
                               "Do not create independent sessions."
-          @herdr.prompt(s[:pane_id], prompt)
+          @herdr.prompt(row_string(s, :pane_id), prompt)
         end
       end
 
+      sig { params(id: String, version: Integer).void }
       def queue_phase(id, version)
         Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => id, "version" => version }, key: "workflow:phase:#{id}:#{version}")
       end
-      private def validate_prior_approvals(w, gates)
+
+      private
+
+      sig { params(w: Domains::Reviews::GitEvidence::Workflow, gates: T::Array[String]).void }
+      def validate_prior_approvals(w, gates)
         gates.each do |gate|
-          ref = w[:artifacts][gate]
+          artifacts = w.fetch(:artifacts)
+          raise ArgumentError, "Invalid workflow artifacts" unless artifacts.is_a?(Hash)
+
+          ref = artifacts[gate]
           approval = ref && @db[:approvals][workflow_id: w[:id], kind: gate, target_commit: ref["commit"]]
           raise ArgumentError, "Required exact artifact approval missing" unless approval
 
@@ -136,7 +175,8 @@ module Domains
         end
       end
 
-      private def validate_sessions(w, role = nil)
+      sig { params(w: T::Hash[Symbol, Object], role: T.nilable(String)).returns(T::Array[T::Hash[Symbol, Object]]) }
+      def validate_sessions(w, role = nil)
         rows = @db[:sessions].where(workflow_id: w[:id], active: true)
         rows = rows.where(role: role) if role
         rows = rows.all
@@ -147,6 +187,30 @@ module Domains
           raise ArgumentError, "Session uncertain or replaced" unless s[:runtime_identity] && live["agent_session"] == s[:runtime_identity] && %w[idle done].include?(live["agent_status"]) && s[:credential_expires_at] > Time.now
         end
         rows
+      end
+
+      sig { params(job: Job).returns(T::Hash[String, Object]) }
+      def job_payload(job)
+        payload = job.fetch(:payload)
+        raise ArgumentError, "Invalid workflow job" unless payload.is_a?(Hash) && payload.keys.all? { |key| key.is_a?(String) }
+
+        payload
+      end
+
+      sig { params(job: Job, key: Symbol).returns(String) }
+      def job_string(job, key)
+        value = job.fetch(key)
+        raise ArgumentError, "Invalid workflow job" unless value.is_a?(String)
+
+        value
+      end
+
+      sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(String) }
+      def row_string(row, key)
+        value = row.fetch(key)
+        raise ArgumentError, "Invalid workflow row" unless value.is_a?(String)
+
+        value
       end
     end
   end
