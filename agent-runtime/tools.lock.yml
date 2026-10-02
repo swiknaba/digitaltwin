@@ -25,6 +25,11 @@ ruby:
   version: "3.4.9"
   purpose: standalone_backend_callback_client_requires_at_least_3_1
   note: Kirei_application_Ruby_4_0_7_is_owned_by_backend_image
+  sorbet_runtime:
+    version: "0.6.13517"
+    url: https://rubygems.org/downloads/sorbet-runtime-0.6.13517.gem
+    sha256: a36469f5b45c3493721ff62fb1ff27186b7c228fe70894464f680056c66e8cf8
+    purpose: executes strict standalone callback MCP sources
 packages:
   distro_lock: apk-packages.lock
   npm_lock: package-lock.json

@@ -4,6 +4,13 @@ ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
 COPY apk-packages.lock /opt/runtime/apk-packages.lock
 RUN xargs apk add --no-cache < /opt/runtime/apk-packages.lock
+# Callback MCP sources are strict Sorbet Ruby and run standalone in this image.
+# Download the exact runtime gem, verify it before installation, then install
+# locally so the build never trusts an unverified registry response.
+RUN curl -fsSL https://rubygems.org/downloads/sorbet-runtime-0.6.13517.gem -o /tmp/sorbet-runtime.gem \
+ && echo 'a36469f5b45c3493721ff62fb1ff27186b7c228fe70894464f680056c66e8cf8  /tmp/sorbet-runtime.gem' | sha256sum -c - \
+ && gem install --local --no-document /tmp/sorbet-runtime.gem \
+ && rm /tmp/sorbet-runtime.gem
 WORKDIR /opt/runtime
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
