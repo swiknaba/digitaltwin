@@ -15,7 +15,7 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[Domains::Workflows::Dto::WorkflowView] }
 
       sig do
-        params(source: Domains::Messaging::VerifyHumanSource, approvals: Domains::Commander::Approvals, advance: AdvanceApproval,
+        params(source: Domains::Messaging::VerifyHumanSource, approvals: Master::RecordApproval, advance: AdvanceApproval,
                catalog: Domains::Workflows::Catalog).void
       end
       def initialize(source:, approvals:, advance:, catalog: Domains::Workflows::Catalog.new)
@@ -57,7 +57,9 @@ module Services
         ref = workflow.artifacts.fetch(gate)
         return failure(Code::InvalidArtifact, "Invalid workflow artifact") unless ref
 
-        @approvals.record(inbox_id: payload.inbox_id, workflow_id: workflow.id, gate: gate.serialize, commit: ref.commit)
+        recorded = @approvals.call(inbox_id: payload.inbox_id, workflow_id: workflow.id, gate: gate, commit: ref.commit)
+        return Kirei::Services::Result.new(errors: recorded.errors) if recorded.failed?
+
         @advance.call(workflow_id: workflow.id, gate: gate)
       end
 

@@ -1,4 +1,24 @@
 require_relative "../spec_helper"
+
+# Adapts RouteFollowup results to the row-shaped values these examples assert
+# on: a failure raises its detail, a clarification is { status: "clarification" }.
+RouteRows = Struct.new(:service) do
+  def route(inbox_id:, selection: nil, interpretation: nil)
+    typed = interpretation && Domains::Commander::Dto::RoutingInterpretation.new(workflow_id: interpretation.fetch("workflow_id"),
+                                                                                 evidence_inbox_ids: interpretation.fetch("evidence_inbox_ids"))
+    result = service.call(inbox_id: inbox_id, selection: selection, interpretation: typed)
+    raise ArgumentError, result.errors.first.detail if result.failed?
+
+    followup = result.result.followup
+    followup ? followup.serialize.transform_keys(&:to_sym) : { status: "clarification" }
+  end
+end
+
+# A lease whose effect may always begin, as for a direct delivery call.
+class OpenLease < Platform::Jobs::Lease
+  def begin_effect(now: Time.now) = now.is_a?(Time)
+end
+
 RSpec.describe "Master contextual routing (isolated fixtures)" do
   let(:db) { Kirei::App.raw_db_connection }
   let(:channel) { "m" * 26 }
@@ -6,15 +26,37 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   let(:user) { "u" * 26 }
   let(:deliveries) { {} }
   let(:resolver) { double(delivery: nil) }
-  let(:membership) { ->(_channel, _user) { true } }
-  let(:routing) { Domains::Commander::Routing.new(db, resolver: resolver, membership: membership) }
+  let(:membership) { double(member?: true) }
+  let(:routing) { router }
   let(:ready) {
     { "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false, "name" => "writer1", "cwd" => "/tmp/w1", "agent" => "codex",
       "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation1" } }
   }
   let(:herdr) { double(pane: herdr_pane(ready), prompt: nil) }
   let(:policy) { double(dispatch_allowed?: true) }
-  let(:sender) { Domains::Commander::Followups.new(db, herdr: herdr, resolver: resolver, membership: membership, policy: policy) }
+  let(:sender) { Services::Master::DeliverFollowup.new(herdr: herdr, resolver: resolver, membership: membership, policy: policy) }
+  let(:reconciler) { Services::Master::ReconcileFollowup.new(herdr: herdr, resolver: resolver, membership: membership) }
+
+  def router(membership: self.membership, master_channel_id: nil)
+    RouteRows.new(Services::Master::RouteFollowup.new(resolver: resolver, membership: membership, master_channel_id: master_channel_id))
+  end
+
+  # Runs one delivery attempt as the session.followup handler and returns
+  # the follow-up's resulting status.
+  def deliver(id, service = sender)
+    lease = OpenLease.new(store: Platform::Jobs::Store.new, job_id: "direct", token: "direct")
+    job = Platform::Jobs::Dto::ClaimedJob.new(id: "direct", kind: Platform::Jobs::Dto::JobKind::SessionFollowup, payload: { "followup_id" => id },
+                                              attempts: 0, lease: lease)
+    service.call(job: job)
+    db[:followups][id: id][:status]
+  end
+
+  def reconcile(id:, inbox_id:, outcome:)
+    result = reconciler.call(id: id, inbox_id: inbox_id, outcome: Services::Commands::Dto::FollowupOutcome.deserialize(outcome))
+    raise ArgumentError, result.errors.first.detail if result.failed?
+
+    result.result.serialize
+  end
 
   def source(n = 1, channel_id: channel, thread_id: thread, bot: false, root_post: false, body: "Please also cover that case")
     d = Domains::Messaging::Dto::VerifiedDelivery.new(channel_id: channel_id, thread_id: thread_id, post_id: n.to_s.rjust(26, "p"),
@@ -51,7 +93,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   end
   it "retains Master context across distinct top-level posts while acknowledging each source thread" do
     workflow; workflow(2)
-    master = Domains::Commander::Routing.new(db, resolver: resolver, membership: membership, master_channel_id: channel)
+    master = router(master_channel_id: channel)
     first_thread = "1".rjust(26, "p")
     second_thread = "2".rjust(26, "p")
     first = source(thread_id: first_thread, root_post: true, body: "@agent route w1\nPlease cover that case")
@@ -94,7 +136,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   it "rejects bot authority and destination membership loss" do
     workflow
     expect { routing.route(inbox_id: source(bot: true), selection: "w1") }.to raise_error(ArgumentError)
-    service = Domains::Commander::Routing.new(db, resolver: resolver, membership: ->(*) { false })
+    service = router(membership: double(member?: false))
     expect { service.route(inbox_id: source(2, body: "@agent route w1\nPlease also cover that case"), selection: "w1") }.to raise_error(ArgumentError)
   end
   it "blocks inactive sessions without replacement" do
@@ -116,7 +158,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     workflow(1, phase: "done")
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     expect(row[:workflow_id]).to eq("w1")
-    expect(sender.deliver(row[:id])).to eq("queued")
+    expect(deliver(row[:id])).to eq("queued")
     expect(db[:sessions].count).to eq(1)
     expect(herdr).not_to have_received(:prompt)
   end
@@ -124,12 +166,12 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     workflow(1, phase: "implementation_review")
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     before = db[:workflows].first
-    expect(sender.deliver(row[:id])).to eq("queued")
+    expect(deliver(row[:id])).to eq("queued")
     expect(db[:workflows].first).to eq(before)
     expect(herdr).not_to have_received(:prompt)
     db[:workflows].update(phase: "implementation", version: 1)
-    expect(sender.deliver(row[:id])).to eq("delivered")
-    expect(sender.deliver(row[:id])).to eq("delivered")
+    expect(deliver(row[:id])).to eq("delivered")
+    expect(deliver(row[:id])).to eq("delivered")
     expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
   end
   it "strips the route header of a human workflow id before prompting the Writer" do
@@ -139,7 +181,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:sessions].insert(id: "s1", workflow_id: id, role: "writer", generation: 1, pane_id: "pane1", alias: "writer1",
                          credential_digest: "digest1", credential_expires_at: Time.now + 3600, configuration: session_configuration, runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation1" }))
     row = routing.route(inbox_id: source(body: "@agent route #{id}\nPlease also cover that case"), selection: id)
-    expect(sender.deliver(row[:id])).to eq("delivered")
+    expect(deliver(row[:id])).to eq("delivered")
     expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
   end
   it "delivers a busy-session follow-up through worker ticks after the writer becomes idle" do
@@ -187,8 +229,8 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   it "keeps production dispatch gated" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
-    gated = Domains::Commander::Followups.new(db, herdr: herdr, resolver: resolver, membership: membership)
-    expect(gated.deliver(row[:id])).to eq("queued")
+    gated = Services::Master::DeliverFollowup.new(herdr: herdr, resolver: resolver, membership: membership)
+    expect(deliver(row[:id], gated)).to eq("queued")
     expect(herdr).not_to have_received(:pane)
   end
   it "does not resend an uncertain effect or overtake it" do
@@ -196,19 +238,19 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     one = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     two = routing.route(inbox_id: source(2))
     allow(herdr).to receive(:prompt).and_raise(IOError)
-    expect(sender.deliver(one[:id])).to eq("uncertain")
-    expect(sender.deliver(one[:id])).to eq("uncertain")
-    expect(sender.deliver(two[:id])).to eq("queued")
+    expect(deliver(one[:id])).to eq("uncertain")
+    expect(deliver(one[:id])).to eq("uncertain")
+    expect(deliver(two[:id])).to eq("queued")
     expect(herdr).to have_received(:prompt).once
   end
   it "rechecks generation and unknown live state" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     db[:sessions].update(generation: 2)
-    expect(sender.deliver(row[:id])).to eq("blocked")
+    expect(deliver(row[:id])).to eq("blocked")
     row = routing.route(inbox_id: source(2))
     allow(herdr).to receive(:pane).and_return(herdr_pane("agent_status" => "unknown"))
-    expect(sender.deliver(row[:id])).to eq("blocked")
+    expect(deliver(row[:id])).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end
   it "serializes concurrent inbox routing and concurrent sends without duplicate effects" do
@@ -222,7 +264,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     row = db[:followups].first
     allow(herdr).to receive(:prompt) { Async::Task.current.sleep(0.05) }
     Async do |task|
-      tasks = 2.times.map { task.async { sender.deliver(row[:id]) } }
+      tasks = 2.times.map { task.async { deliver(row[:id]) } }
       tasks.each(&:wait)
     end.wait
     expect(herdr).to have_received(:prompt).once
@@ -233,14 +275,14 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     allow(herdr).to receive(:pane).and_return(herdr_pane("agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
                                                          "name" => "another-session", "cwd" => "/tmp/w1", "agent" => "codex"))
-    expect(sender.deliver(row[:id])).to eq("blocked")
+    expect(deliver(row[:id])).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end
   it "rejects a replacement conversation even when its pane alias directory and CLI are unchanged" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     allow(herdr).to receive(:pane).and_return(herdr_pane(ready.merge("agent_session" => ready.fetch("agent_session").merge("value" => "replacement"))))
-    expect(sender.deliver(row[:id])).to eq("blocked")
+    expect(deliver(row[:id])).to eq("blocked")
     expect(db[:followups][id: row[:id]][:status]).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end
@@ -248,9 +290,9 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     allow(herdr).to receive(:pane).and_return(herdr_pane(ready.merge("agent_status" => "working")))
-    expect(sender.deliver(row[:id])).to eq("queued")
-    denied = Domains::Commander::Followups.new(db, herdr: herdr, resolver: resolver, membership: ->(*) { false }, policy: policy)
-    expect(denied.deliver(row[:id])).to eq("blocked")
+    expect(deliver(row[:id])).to eq("queued")
+    denied = Services::Master::DeliverFollowup.new(herdr: herdr, resolver: resolver, membership: double(member?: false), policy: policy)
+    expect(deliver(row[:id], denied)).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end
   it "rejects a changed authenticated source before routing" do
@@ -276,7 +318,15 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     workflow(1, phase: "spec_human_approval")
     commit = "a" * 40
     db[:reviews].insert(id: "review_1", workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: session_configuration)
-    approvals = Domains::Commander::Approvals.new(db, resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit })
+    service = Services::Master::RecordApproval.new(resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit })
+    approvals = Struct.new(:service) do
+      def record(gate:, **args)
+        result = service.call(gate: Domains::Workflows::Dto::Gate.deserialize(gate), **args)
+        raise ArgumentError, result.errors.first.detail if result.failed?
+
+        result.result
+      end
+    end.new(service)
     id = source(body: "@agent approve w1 spec #{commit}")
     args = { inbox_id: id, workflow_id: "w1", gate: "spec", commit: commit }
     approvals.record(**args)
@@ -297,7 +347,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
 
   it "preserves parallel Master reply bindings when another root changes current context" do
     workflow; workflow(2)
-    master = Domains::Commander::Routing.new(db, resolver: resolver, membership: membership, master_channel_id: channel)
+    master = router(master_channel_id: channel)
     master.route(inbox_id: source(root_post: true, thread_id: "master-a", body: "@agent route w1\nFirst task"), selection: "w1")
     master.route(inbox_id: source(2, root_post: true, thread_id: "master-b", body: "@agent route w2\nSecond task"), selection: "w2")
     expect(master.route(inbox_id: source(3, thread_id: "master-a"))[:workflow_id]).to eq("w1")
@@ -309,14 +359,14 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:session_operations].insert(id: "start", session_id: "s1", kind: "start")
     row = routing.route(inbox_id: source(body: "@agent route w1\nStartup instruction"), selection: "w1")
     expect(row.values_at(:status, :session_id, :generation)).to eq(["queued", "s1", 1])
-    expect(sender.deliver(row[:id])).to eq("queued")
+    expect(deliver(row[:id])).to eq("queued")
     db[:session_operations].where(id: "start").update(state: "uncertain")
-    expect(sender.deliver(row[:id])).to eq("queued")
+    expect(deliver(row[:id])).to eq("queued")
     expect(db[:followups][id: row[:id]][:status]).to eq("queued")
     expect(herdr).not_to have_received(:prompt)
     db[:sessions].where(id: "s1").update(active: true)
     db[:session_operations].where(id: "start").update(state: "complete")
-    expect(sender.deliver(row[:id])).to eq("delivered")
+    expect(deliver(row[:id])).to eq("delivered")
     expect(db[:sessions].count).to eq(1)
   end
 
@@ -325,26 +375,26 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:sessions].where(id: "s1").update(credential_expires_at: Time.now - 1)
     row = routing.route(inbox_id: source(body: "@agent route w1\nRenewal instruction"), selection: "w1")
     expect(row.values_at(:status, :session_id)).to eq(["queued", "s1"])
-    expect(sender.deliver(row[:id])).to eq("queued")
+    expect(deliver(row[:id])).to eq("queued")
     expect(db[:jobs].where(kind: "session.renew").count).to eq(1)
     db[:sessions].where(id: "s1").update(credential_expires_at: Time.now + 3600)
-    expect(sender.deliver(row[:id])).to eq("delivered")
+    expect(deliver(row[:id])).to eq("delivered")
   end
 
   it "requires exact human outcome reconciliation before advancing past an uncertain send" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nFirst instruction"), selection: "w1")
     allow(herdr).to receive(:prompt).and_raise(IOError)
-    expect(sender.deliver(row[:id])).to eq("uncertain")
+    expect(deliver(row[:id])).to eq("uncertain")
     later = routing.route(inbox_id: source(2, body: "Second instruction"))
-    expect(sender.deliver(later[:id])).to eq("queued")
+    expect(deliver(later[:id])).to eq("queued")
     recovery = source(3, body: "@agent recover-followup #{row[:id]} discard")
-    expect(sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "discard")).to eq("discard")
-    expect(sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "discard")).to eq("discard")
+    expect(reconcile(id: row[:id], inbox_id: recovery, outcome: "discard")).to eq("discard")
+    expect(reconcile(id: row[:id], inbox_id: recovery, outcome: "discard")).to eq("discard")
     expect(db[:followups][id: row[:id]][:status]).to eq("blocked")
     expect(db[:audit].where(action: "human_followup_reconciliation").count).to eq(1)
     allow(herdr).to receive(:prompt)
-    expect(sender.deliver(later[:id])).to eq("delivered")
+    expect(deliver(later[:id])).to eq("delivered")
     expect(herdr).to have_received(:prompt).with(pane_id: "pane1", text: "First instruction").once
     expect(herdr).to have_received(:prompt).with(pane_id: "pane1", text: "Second instruction").once
   end
@@ -354,19 +404,19 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     row = routing.route(inbox_id: source(body: "@agent route w1\nInstruction"), selection: "w1")
     db[:followups].where(id: row[:id]).update(status: "uncertain")
     bot = source(2, bot: true, body: "@agent recover-followup #{row[:id]} delivered")
-    expect { sender.reconcile(id: row[:id], inbox_id: bot, outcome: "delivered") }.to raise_error(ArgumentError)
+    expect { reconcile(id: row[:id], inbox_id: bot, outcome: "delivered") }.to raise_error(ArgumentError)
     recovery = source(3, body: "@agent recover-followup #{row[:id]} delivered")
     job = db[:jobs][dispatch_key: "followup:#{row[:id]}"]
     db[:jobs].where(id: job[:id]).update(status: "running", lease_expires_at: Time.now + 30)
-    expect { sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered") }.to raise_error(ArgumentError)
+    expect { reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered") }.to raise_error(ArgumentError)
     db[:jobs].where(id: job[:id]).update(status: "uncertain")
     allow(herdr).to receive(:pane).and_return(herdr_pane(ready.merge("agent_session" => { "value" => "replacement" })))
-    expect { sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered") }.to raise_error(ArgumentError)
+    expect { reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered") }.to raise_error(ArgumentError)
     allow(herdr).to receive(:pane).and_return(herdr_pane(ready))
-    expect(sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered")).to eq("delivered")
+    expect(reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered")).to eq("delivered")
     expect(herdr).not_to have_received(:prompt)
     other = source(4, body: "@agent recover-followup #{row[:id]} discard")
-    expect { sender.reconcile(id: row[:id], inbox_id: other, outcome: "discard") }.to raise_error(ArgumentError)
+    expect { reconcile(id: row[:id], inbox_id: other, outcome: "discard") }.to raise_error(ArgumentError)
   end
   it "routes an exact recovery command in Master chat before model interpretation" do
     workflow
@@ -375,7 +425,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     recovery = source(2, body: "@agent recover-followup #{row[:id]} discard")
     services = Domains::Commander::Services.allocate
     services.instance_variable_set(:@source, Domains::Messaging::VerifyHumanSource.new(verifier: resolver, membership: double(member?: true)))
-    services.instance_variable_set(:@followups, sender)
+    services.instance_variable_set(:@reconcile_followup, reconciler)
     inbox = db[:inbox][id: recovery]
     Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterPrompt, dispatch_key: "inbox:#{recovery}:master.prompt",
                                       payload: Domains::Commander::Dto::InboxDispatchJob.new(inbox_id: recovery, channel_id: inbox[:channel_id], thread_id: inbox[:thread_id]))

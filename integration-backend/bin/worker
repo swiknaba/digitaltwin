@@ -6,14 +6,13 @@ Startup.validate!
 exit if ENV["BOOT_CHECK_ONLY"] == "1"
 require "async"
 Async do
-  db = Kirei::App.raw_db_connection
   handlers = {}
   if ENV["CHAT_VALIDATION_MODE"] == "1"
     delivery = Services::Outbound::DeliverOutbox.from_env
     handlers[Platform::Jobs::Dto::JobKind::MattermostPost] = delivery
-    services = Domains::Commander::Services.from_env(db)
+    services = Domains::Commander::Services.from_env
     handlers.merge!(services.handlers)
-    services.sessions.renew_due
+    Domains::Sessions::Renewals.new.schedule_active
   end
   Platform::Jobs::Worker.new(handlers: handlers).run
 ensure

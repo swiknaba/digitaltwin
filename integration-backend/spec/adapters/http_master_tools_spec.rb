@@ -12,7 +12,7 @@ RSpec.describe "POST /internal/master/tools wire format" do
   let(:workflow_channel) { "c" * 26 }
   let(:deliveries) { {} }
   let(:resolver) { double }
-  let(:membership) { ->(_channel, _user) { true } }
+  let(:membership) { double(member?: true) }
 
   # Verifies only stored deliveries; hidden and raising channels fail.
   let(:source) do
@@ -57,9 +57,10 @@ RSpec.describe "POST /internal/master/tools wire format" do
   end
 
   def stub_master_tools
-    routing = Domains::Commander::Routing.new(db, resolver: resolver, membership: membership)
-    services = double(source: source, routing: routing, request_start: double(call: Kirei::Services::Result.new(result: "workflow_request_1")))
-    allow(Domains::Commander::Services).to receive(:from_env).and_return(services)
+    route = Services::Master::RouteFollowup.new(resolver: resolver, membership: membership)
+    tools = Services::Master::Tools.new(source: source, authorize: Services::Master::AuthorizeRequest.new(source: source), route: route,
+                                        request_start: double(call: Kirei::Services::Result.new(result: "workflow_request_1")))
+    allow(Domains::Commander::Services).to receive(:from_env).and_return(double(tools: tools))
   end
 
   def tool(name, arguments = {}, token = "request-token")
@@ -68,6 +69,15 @@ RSpec.describe "POST /internal/master/tools wire format" do
     env.merge!("REQUEST_PATH" => "/internal/master/tools", "HTTP_HOST" => "localhost", "REMOTE_ADDR" => "127.0.0.1", "HTTP_AUTHORIZATION" => "Bearer #{token}")
     status, _headers, chunks = app.call(env)
     [status, chunks.join]
+  end
+
+  it "keeps the manifest body" do
+    env = Rack::MockRequest.env_for("http://localhost/internal/master/manifest", method: "GET")
+    env.merge!("REQUEST_PATH" => "/internal/master/manifest", "HTTP_HOST" => "localhost", "REMOTE_ADDR" => "127.0.0.1")
+    status, _headers, chunks = app.call(env)
+    # SHA-256 of the pre-refactor manifest. Evidence items keep the manifest's "integer" type.
+    expect([status, Digest::SHA256.hexdigest(chunks.join)]).to eq([200, "c8018620f83ad4f7d6320930f471f7def23e8ec3b5500d78190cad7b23f04a60"])
+    expect(chunks.join).to include('"evidence_inbox_ids":{"type":"array","items":{"type":"integer"},"maxItems":10}')
   end
 
   it "keeps the list_projects body" do

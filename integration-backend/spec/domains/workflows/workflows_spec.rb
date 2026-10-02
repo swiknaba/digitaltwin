@@ -160,9 +160,9 @@ RSpec.describe "Workflows domain" do
       Dir.mktmpdir do |dir|
         # from_env parses the file this way; its other ENV inputs are clients and paths.
         file = Domains::Workflows::Records.role_file_from_json(JSON.generate("controller" => controller))
-        services = Domains::Commander::Services.new(db, resolver: double, membership: double, api: double, bot_id: "b" * 26, roles: file,
-                                                        worktrees: double, credential_root: dir)
-        expect(services.master).not_to be_nil
+        services = Domains::Commander::Services.new(resolver: double, membership: double, api: double, bot_id: "b" * 26, roles: file,
+                                                    worktrees: double, credential_root: dir)
+        expect(services.reply).not_to be_nil
         id, delivery = inbox("p" * 26)
         allow_any_instance_of(Domains::Messaging::VerifyHumanSource).to receive(:call).and_return(Kirei::Services::Result.new(result: delivery))
         result = services.request_start.call(inbox_id: id, project_id: "project", title: "Work")

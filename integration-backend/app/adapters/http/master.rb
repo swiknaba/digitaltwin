@@ -19,11 +19,14 @@ module Adapters
         return unexpected_fields_response unless exact_keys?(values, %w[arguments name])
 
         request_value = tool_request(values)
-        db = Kirei::App.raw_db_connection
-        services = Domains::Commander::Services.from_env(db)
-        requests = Domains::Commander::Requests.new(db, source: services.source)
-        value = Domains::Commander::Tools.new(services: services, requests: requests).call(request_value.name, request_value.arguments, token: bearer)
-        render_json({ "result" => value }, status: 200)
+        services = Domains::Commander::Services.from_env
+        token = bearer
+        # An unknown tool name raises KeyError, outside the rejected response.
+        name = Services::Master::Dto::ToolName.deserialize(request_value.name)
+        result = services.tools.call(name: name, arguments: tool_arguments(request_value.arguments), token: token)
+        return rejected_response if result.failed?
+
+        render_json({ "result" => ToolJson.call(result.result) }, status: 200)
       rescue ArgumentError, Sequel::Error, Adapters::Mattermost::Errors::RequestFailed
         rejected_response
       end
@@ -34,11 +37,12 @@ module Adapters
         return unexpected_fields_response unless exact_keys?(values, %w[request_id text])
 
         request_value = reply_request(values)
-        services = Domains::Commander::Services.from_env(Kirei::App.raw_db_connection)
-        master = services.master
-        raise ArgumentError, "Master not configured" unless master
+        reply = Domains::Commander::Services.from_env.reply
+        raise ArgumentError, "Master not configured" unless reply
 
-        master.reply(request_id: request_value.request_id, token: bearer, text: request_value.text)
+        result = reply.call(request_id: request_value.request_id, token: bearer, text: request_value.text)
+        return rejected_response if result.failed?
+
         render_json({ "status" => "queued" }, status: 202)
       rescue ArgumentError, Sequel::Error, Adapters::Mattermost::Errors::RequestFailed
         rejected_response
@@ -46,13 +50,15 @@ module Adapters
 
       sig { returns(T::Array[T::Hash[String, Object]]) }
       private def manifest_definitions
-        Domains::Commander::Tools::DEFINITIONS.map do |name, fields|
+        Services::Master::Dto::ToolName.values.map do |name|
           properties = T.let({}, T::Hash[String, Object])
-          fields.each do |field, type|
-            properties[field] = type == "array" ? { "type" => "array", "items" => { "type" => "integer" }, "maxItems" => 10 } : { "type" => type }
+          name.fields.each do |field|
+            type = field.json_type
+            properties[field.serialize] = type == "array" ? { "type" => "array", "items" => { "type" => "integer" }, "maxItems" => 10 } : { "type" => type }
           end
           properties["request_id"] = { "type" => "string" }
-          { "name" => name, "description" => "Verified request-bound #{name.tr("_", " ")}", "inputSchema" => { "type" => "object", "properties" => properties, "required" => properties.keys, "additionalProperties" => false } }
+          tool = name.serialize
+          { "name" => tool, "description" => "Verified request-bound #{tool.tr("_", " ")}", "inputSchema" => { "type" => "object", "properties" => properties, "required" => properties.keys, "additionalProperties" => false } }
         end
       end
 
@@ -65,6 +71,23 @@ module Adapters
       private def reply_request(values)
         Dto::ReplyRequest.new(request_id: string(values, "request_id"), text: string(values, "text"))
       end
+
+      # A value of the wrong JSON type becomes nil, so Tools rejects it in its
+      # own check order.
+      sig { params(values: ToolArguments).returns(Services::Master::Dto::ToolArguments) }
+      private def tool_arguments(values)
+        evidence = values["evidence_inbox_ids"]
+        version = values["expected_version"]
+        Services::Master::Dto::ToolArguments.new(
+          fields: values.keys, request_id: string_or_nil(values["request_id"]), project_id: string_or_nil(values["project_id"]),
+          title: string_or_nil(values["title"]), workflow_id: string_or_nil(values["workflow_id"]), action: string_or_nil(values["action"]),
+          expected_version: version.is_a?(Integer) ? version : nil,
+          evidence_inbox_ids: evidence.is_a?(Array) ? evidence.map { |item| string_or_nil(item) } : nil
+        )
+      end
+
+      sig { params(value: Object).returns(T.nilable(String)) }
+      private def string_or_nil(value) = value.is_a?(String) ? value : nil
 
       sig { params(values: Params, expected: T::Array[String]).returns(T::Boolean) }
       private def exact_keys?(values, expected)

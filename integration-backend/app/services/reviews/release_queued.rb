@@ -15,15 +15,14 @@ module Services
       Decision = Platform::Jobs::Dto::Decision
       RequestFailed = Adapters::Mattermost::Errors::RequestFailed
 
-      # `db` reads raw `followups` until Task 9 adds the commander model.
       sig do
-        params(db: Sequel::Database, routing: Domains::Commander::Routing, catalog: Domains::Workflows::Catalog,
+        params(route: Master::RouteFollowup, followups: Domains::Commander::Followups, catalog: Domains::Workflows::Catalog,
                queued_messages: Domains::Workflows::QueuedMessages, jobs: Platform::Jobs::Store, audit: Platform::Audit::Log).void
       end
-      def initialize(db, routing:, catalog: Domains::Workflows::Catalog.new, queued_messages: Domains::Workflows::QueuedMessages.new,
-                     jobs: Platform::Jobs::Store.new, audit: Platform::Audit::Log.new)
-        @db = db
-        @routing = routing
+      def initialize(route:, followups: Domains::Commander::Followups.new, catalog: Domains::Workflows::Catalog.new,
+                     queued_messages: Domains::Workflows::QueuedMessages.new, jobs: Platform::Jobs::Store.new, audit: Platform::Audit::Log.new)
+        @route = route
+        @followups = followups
         @catalog = catalog
         @queued_messages = queued_messages
         @jobs = jobs
@@ -46,30 +45,35 @@ module Services
         transient = T.let(nil, T.nilable(RequestFailed))
         @queued_messages.pending(workflow_id: workflow_id).each do |row|
           begin
-            result = @routing.route(inbox_id: row.inbox_id)
-            @queued_messages.remove(id: row.id) if route_dispatched?(result)
+            result = @route.call(inbox_id: row.inbox_id)
+            @queued_messages.remove(id: row.id) if result.success? && route_dispatched?(result.result)
+            reject(workflow_id, row) if result.failed?
           rescue ArgumentError, RequestFailed => error
             if error.is_a?(RequestFailed) && ![403, 404].include?(error.status)
               transient = error
               break
             end
-            # Retain invalid sources for reconciliation; one revoked message
-            # must not prevent other verified instructions from being released.
-            @audit.record_once(event_key: "release:invalid:#{row.id}", action: "release_source_rejected",
-                               details: Domains::Reviews::Dto::ReleaseRejectedAudit.new(workflow_id: workflow_id, inbox_id: row.inbox_id))
+            reject(workflow_id, row)
           end
         end
-        @db[:followups].where(workflow_id: workflow_id, status: "queued").each do |row|
-          job = @jobs.find_by_key(dispatch_key: "followup:#{row[:id]}")
+        @followups.queued_ids(workflow_id: workflow_id).each do |id|
+          job = @jobs.find_by_key(dispatch_key: "followup:#{id}")
           @jobs.requeue_blocked(id: job.id) if job
         end
         raise transient if transient
       end
 
-      sig { params(result: Object).returns(T::Boolean) }
-      private def route_dispatched?(result)
-        result.is_a?(Hash) && (result.key?(:id) || result.key?("id"))
+      # Retain invalid sources for reconciliation; one revoked message must
+      # not prevent other verified instructions from being released.
+      sig { params(workflow_id: String, row: Domains::Workflows::Dto::QueuedMessageView).void }
+      private def reject(workflow_id, row)
+        @audit.record_once(event_key: "release:invalid:#{row.id}", action: "release_source_rejected",
+                           details: Domains::Reviews::Dto::ReleaseRejectedAudit.new(workflow_id: workflow_id, inbox_id: row.inbox_id))
       end
+
+      # A clarification leaves the message queued.
+      sig { params(outcome: Master::Dto::RouteOutcome).returns(T::Boolean) }
+      private def route_dispatched?(outcome) = !outcome.followup.nil?
     end
   end
 end

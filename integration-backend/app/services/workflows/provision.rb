@@ -17,15 +17,14 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[State] }
 
       sig do
-        params(db: Sequel::Database, source: Domains::Messaging::VerifyHumanSource, api: Adapters::Mattermost::Api, bot_id: String,
+        params(source: Domains::Messaging::VerifyHumanSource, api: Adapters::Mattermost::Api, bot_id: String,
                worktrees: Projects::PrepareWorktree, reserve_session: Sessions::ReserveSession, policy: Domains::Workflows::Policy,
-               directory: Domains::Projects::Directory, requests: Domains::Workflows::Requests, worktree_root: String, master_channel_id: T.nilable(String)).void
+               directory: Domains::Projects::Directory, requests: Domains::Workflows::Requests, bindings: Domains::Commander::Bindings, worktree_root: String,
+               master_channel_id: T.nilable(String)).void
       end
-      def initialize(db, source:, api:, bot_id:, worktrees:, reserve_session:, policy: Domains::Workflows::Policy.new, directory: Domains::Projects::Directory.new,
-                     requests: Domains::Workflows::Requests.new, worktree_root: ENV.fetch("WORKTREE_ROOT", "/workspace/worktrees"),
+      def initialize(source:, api:, bot_id:, worktrees:, reserve_session:, policy: Domains::Workflows::Policy.new, directory: Domains::Projects::Directory.new,
+                     requests: Domains::Workflows::Requests.new, bindings: Domains::Commander::Bindings.new, worktree_root: ENV.fetch("WORKTREE_ROOT", "/workspace/worktrees"),
                      master_channel_id: ENV["MASTER_CHANNEL_ID"])
-        # conversation_bindings stays a raw table until Task 9.
-        @db = db
         @source = source
         @api = api
         @bot = bot_id
@@ -35,6 +34,7 @@ module Services
         @policy = policy
         @directory = directory
         @requests = requests
+        @bindings = bindings
         @worktree_root = worktree_root
         @master_channel = master_channel_id
       end
@@ -131,11 +131,8 @@ module Services
       private def bind_conversations(workflow, request, delivery)
         threads = [delivery.thread_id]
         threads << "master" if delivery.root_post && delivery.channel_id == @master_channel
-        threads.each do |context_thread|
-          values = { workflow_id: workflow.id, inbox_id: request.inbox_id, updated_at: Time.now }
-          @db[:conversation_bindings].insert_conflict(target: %i[channel_id thread_id user_id], update: values)
-                                     .insert(**values, channel_id: delivery.channel_id, thread_id: context_thread, user_id: delivery.actor.user_id)
-        end
+        @bindings.bind(channel_id: delivery.channel_id, thread_ids: threads, user_id: delivery.actor.user_id, workflow_id: workflow.id,
+                       inbox_id: request.inbox_id, at: Time.now)
       end
 
       sig { params(state: State).returns(Outcome) }

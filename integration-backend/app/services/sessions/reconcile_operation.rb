@@ -23,15 +23,14 @@ module Services
       Evidence = T.type_alias { Kirei::Services::Result[Adapters::Herdr::Dto::Pane] }
 
       sig do
-        params(db: Sequel::Database, herdr: Adapters::Herdr::Client, source: Messaging::VerifyHumanSource, credentials: Adapters::Credentials::FileStore,
-               registry: Sessions::Registry, operations: Sessions::Operations, catalog: Domains::Workflows::Catalog, complete: CompleteOperation,
+        params(herdr: Adapters::Herdr::Client, source: Messaging::VerifyHumanSource, credentials: Adapters::Credentials::FileStore,
+               master_requests: Domains::Commander::MasterRequests, registry: Sessions::Registry, operations: Sessions::Operations, catalog: Domains::Workflows::Catalog, complete: CompleteOperation,
                inbox: Messaging::Inbox, outbox: Messaging::Outbox, audit: Platform::Audit::Log, jobs: Platform::Jobs::Store, lock: Platform::Lock, handle: String).void
       end
-      def initialize(db, herdr:, source:, credentials:, registry: Sessions::Registry.new, operations: Sessions::Operations.new, catalog: Domains::Workflows::Catalog.new,
+      def initialize(herdr:, source:, credentials:, master_requests: Domains::Commander::MasterRequests.new, registry: Sessions::Registry.new, operations: Sessions::Operations.new, catalog: Domains::Workflows::Catalog.new,
                      complete: CompleteOperation.new, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, audit: Platform::Audit::Log.new,
                      jobs: Platform::Jobs::Store.new, lock: Platform::Lock.new, handle: ENV.fetch("AGENT_HANDLE", "agent"))
-        # master_requests stays a raw table until Task 9.
-        @db = db
+        @master_requests = master_requests
         @herdr = herdr
         @source = source
         @credentials = credentials
@@ -183,8 +182,7 @@ module Services
         original_id = if workflow
                         workflow.source_inbox_id
                       else
-                        value = @db[:master_requests].where(session_id: session.id).order(:inbox_id).get(:inbox_id)
-                        value.is_a?(String) ? value : nil
+                        @master_requests.first_for_session(session_id: session.id)&.inbox_id
                       end
         original_id && @inbox.find(id: original_id)
       end
