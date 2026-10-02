@@ -102,6 +102,7 @@ class Kirei::Config < ::T::Struct
   prop :db_connect_sqls, T::Array[::String], default: T.unsafe(nil)
   prop :db_strict_type_resolving, T.nilable(T::Boolean), default: T.unsafe(nil)
   prop :allowed_origins, T::Array[::String], default: T.unsafe(nil)
+  prop :max_request_body_bytes, T.nilable(::Integer), default: T.unsafe(nil)
 end
 
 # pkg:gem/kirei#lib/kirei/config.rb:8
@@ -690,15 +691,15 @@ module Kirei::Routing; end
 
 # pkg:gem/kirei#lib/kirei/routing/base.rb:7
 class Kirei::Routing::Base
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:13
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:16
   sig { params(params: T::Hash[::String, T.untyped]).void }
   def initialize(params: T.unsafe(nil)); end
 
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:277
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:288
   sig { params(headers: T::Hash[::String, ::String], env: T::Hash[::String, T.untyped]).void }
   def add_cors_headers(headers, env); end
 
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:25
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:28
   sig do
     params(
       env: T::Hash[::String, T.untyped]
@@ -706,18 +707,18 @@ class Kirei::Routing::Base
   end
   def call(env); end
 
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:260
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:271
   sig { returns(T::Hash[::String, ::String]) }
   def default_headers; end
 
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:19
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:22
   sig { returns(T::Hash[::String, T.untyped]) }
   def params; end
 
   # * "status": defaults to 200
   # * "headers": Kirei adds some default headers for security, but the user can override them
   #
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:180
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:191
   sig do
     params(
       body: ::String,
@@ -730,7 +731,7 @@ class Kirei::Routing::Base
   # Renders a JSON:API-compliant error response.
   # Wraps an array of JsonApiError structs into { "errors": [...] }.
   #
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:234
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:245
   sig do
     params(
       errors: T::Array[::Kirei::Errors::JsonApiError],
@@ -747,7 +748,7 @@ class Kirei::Routing::Base
   #     then Oj.dump if the result is not already a String
   #   - Anything else: raises ArgumentError
   #
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:203
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:214
   sig do
     params(
       data: T.untyped,
@@ -761,7 +762,7 @@ class Kirei::Routing::Base
   # On success, delegates to render_json with the result's value.
   # On failure, delegates to render_error with the result's errors.
   #
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:251
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:262
   sig do
     params(
       result: Kirei::Services::Result[T.untyped],
@@ -774,7 +775,7 @@ class Kirei::Routing::Base
 
   private
 
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:303
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:314
   sig do
     params(
       controller: T.class_of(Kirei::Controller),
@@ -783,14 +784,53 @@ class Kirei::Routing::Base
   end
   def collect_hooks(controller, hooks_type); end
 
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:22
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:382
+  sig { params(raw: ::String).returns(T::Hash[::String, T.untyped]) }
+  def parse_json_object(raw); end
+
+  # Body parsing by Content-Type:
+  #   - multipart/form-data: form fields plus uploaded files wrapped in Rack::Multipart::UploadedFile
+  #   - application/json: JSON object
+  #   - anything else: JSON first, URL-encoded form data as fallback
+  #
+  # `rack.input` is only required to respond to `read`; Puma passes an IO or
+  # StringIO, Falcon passes a Protocol::Rack::Input.
+  #
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:342
+  sig { params(env: T::Hash[::String, T.untyped]).returns(T::Hash[::String, T.untyped]) }
+  def parse_request_body(env); end
+
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:365
+  sig { params(body: T.untyped).returns(::String) }
+  def read_bounded_body(body); end
+
+  # `PATH_INFO` is the Rack-specified key. `REQUEST_PATH` is a Puma
+  # extension that Falcon does not set.
+  #
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:173
+  sig { params(env: T::Hash[::String, T.untyped]).returns(::String) }
+  def request_path(env); end
+
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:25
   sig { returns(::Kirei::Routing::Router) }
   def router; end
 
-  # pkg:gem/kirei#lib/kirei/routing/base.rb:291
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:302
   sig { params(hooks: T.nilable(T::Set[T.proc.void])).void }
   def run_hooks(hooks); end
+
+  # Rack's multipart parser yields a Hash (symbol keys) per uploaded file; wrap it in a typed object.
+  #
+  # pkg:gem/kirei#lib/kirei/routing/base.rb:395
+  sig { params(params: T::Hash[::String, T.untyped]).returns(T::Hash[::String, T.untyped]) }
+  def wrap_uploaded_files(params); end
 end
+
+# Oj raises EncodingError for malformed input in the modes Kirei uses, and
+# Oj::ParseError for other parse failures.
+#
+# pkg:gem/kirei#lib/kirei/routing/base.rb:13
+Kirei::Routing::Base::JSON_PARSE_ERRORS = T.let(T.unsafe(nil), Array)
 
 # pkg:gem/kirei#lib/kirei/routing/base.rb:10
 Kirei::Routing::Base::NOT_FOUND = T.let(T.unsafe(nil), Array)
@@ -831,6 +871,24 @@ class Kirei::Routing::Request < ::T::Struct
   def subdomain; end
 end
 
+# Raised while reading a request body when the request itself is at fault.
+# `Base#call` renders it as a JSON:API error with the given status.
+#
+# pkg:gem/kirei#lib/kirei/routing/request_rejected.rb:8
+class Kirei::Routing::RequestRejected < ::StandardError
+  # pkg:gem/kirei#lib/kirei/routing/request_rejected.rb:18
+  sig { params(status: ::Integer, code: ::String, detail: ::String).void }
+  def initialize(status:, code:, detail:); end
+
+  # pkg:gem/kirei#lib/kirei/routing/request_rejected.rb:15
+  sig { returns(::String) }
+  def code; end
+
+  # pkg:gem/kirei#lib/kirei/routing/request_rejected.rb:12
+  sig { returns(::Integer) }
+  def status; end
+end
+
 # pkg:gem/kirei#lib/kirei/routing/route.rb:6
 class Kirei::Routing::Route < ::T::Struct
   const :verb, ::Kirei::Routing::Verb
@@ -864,32 +922,36 @@ class Kirei::Routing::Router
   include ::Singleton
   extend ::Singleton::SingletonClassMethods
 
-  # pkg:gem/kirei#lib/kirei/routing/router.rb:38
+  # pkg:gem/kirei#lib/kirei/routing/router.rb:48
   sig { void }
   def initialize; end
 
-  # pkg:gem/kirei#lib/kirei/routing/router.rb:35
+  # The router is a process-wide singleton, but a request env must be
+  # scoped to the request. `Thread.current[]` is fiber-local, so this is
+  # safe for both thread-based (Puma) and fiber-based (Falcon) servers.
+  #
+  # pkg:gem/kirei#lib/kirei/routing/router.rb:38
   sig { returns(T.nilable(T::Hash[::String, T.untyped])) }
   def current_env; end
 
-  # pkg:gem/kirei#lib/kirei/routing/router.rb:35
-  sig { params(current_env: T.nilable(T::Hash[::String, T.untyped])).returns(T.nilable(T::Hash[::String, T.untyped])) }
-  def current_env=(current_env); end
+  # pkg:gem/kirei#lib/kirei/routing/router.rb:43
+  sig { params(env: T.nilable(T::Hash[::String, T.untyped])).returns(T.nilable(T::Hash[::String, T.untyped])) }
+  def current_env=(env); end
 
-  # pkg:gem/kirei#lib/kirei/routing/router.rb:47
+  # pkg:gem/kirei#lib/kirei/routing/router.rb:57
   sig { returns(T::Array[::Kirei::Routing::Route]) }
   def dynamic_routes; end
 
   # Looks up a static route by exact verb + path match. O(1).
   #
-  # pkg:gem/kirei#lib/kirei/routing/router.rb:56
+  # pkg:gem/kirei#lib/kirei/routing/router.rb:66
   sig { params(verb: ::Kirei::Routing::Verb, path: ::String).returns(T.nilable(::Kirei::Routing::Route)) }
   def get(verb, path); end
 
   # Resolves a request to a route and extracted path parameters.
   # Tries static O(1) lookup first, then falls back to dynamic segment matching.
   #
-  # pkg:gem/kirei#lib/kirei/routing/router.rb:69
+  # pkg:gem/kirei#lib/kirei/routing/router.rb:79
   sig do
     params(
       verb: ::Kirei::Routing::Verb,
@@ -898,7 +960,7 @@ class Kirei::Routing::Router
   end
   def resolve(verb, path); end
 
-  # pkg:gem/kirei#lib/kirei/routing/router.rb:44
+  # pkg:gem/kirei#lib/kirei/routing/router.rb:54
   sig { returns(T::Hash[::String, ::Kirei::Routing::Route]) }
   def routes; end
 
@@ -907,7 +969,7 @@ class Kirei::Routing::Router
   # Matches a request path against registered dynamic routes.
   # Returns [Route, extracted_params] or nil.
   #
-  # pkg:gem/kirei#lib/kirei/routing/router.rb:108
+  # pkg:gem/kirei#lib/kirei/routing/router.rb:118
   sig do
     params(
       verb: ::Kirei::Routing::Verb,
@@ -919,11 +981,11 @@ class Kirei::Routing::Router
   class << self
     # must be added manually => we don't want to magically add routes for the user
     #
-    # pkg:gem/kirei#lib/kirei/routing/router.rb:90
+    # pkg:gem/kirei#lib/kirei/routing/router.rb:100
     sig { void }
     def add_health_routes!; end
 
-    # pkg:gem/kirei#lib/kirei/routing/router.rb:77
+    # pkg:gem/kirei#lib/kirei/routing/router.rb:87
     sig { params(routes: T::Array[::Kirei::Routing::Route]).void }
     def add_routes(routes); end
 
