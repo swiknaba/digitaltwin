@@ -8,11 +8,12 @@ module Domains
 
       UUID_PATTERN = T.let(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/, Regexp)
 
-      sig { params(root: String, worktrees_root: String).void }
+      sig { params(root: String, worktrees_root: String, git: Adapters::Git::Worktrees).void }
       def initialize(root: ENV.fetch("WORKSPACE_ROOT", "/workspace/repos"),
-                     worktrees_root: ENV.fetch("WORKTREE_ROOT", "/workspace/worktrees"))
+                     worktrees_root: ENV.fetch("WORKTREE_ROOT", "/workspace/worktrees"), git: Adapters::Git::Worktrees.new)
         @root = T.let(File.realpath(root), String)
         @trees = T.let(File.realpath(worktrees_root), String)
+        @git = git
       end
 
       sig { params(slug: String).returns(String) }
@@ -20,9 +21,9 @@ module Domains
         RepositoryIdentity.slug!(slug)
         path = contained!(@root, File.join(@root, slug))
         raise ArgumentError, "Repository missing: choose clone/create_private/stop" unless File.directory?(path)
-        raise ArgumentError, "Expected repository root" unless File.realpath(git_top_level(path)) == path
+        raise ArgumentError, "Expected repository root" unless File.realpath(@git.top_level(repo: path)) == path
 
-        RepositoryIdentity.remote!(git_remote(path), slug)
+        RepositoryIdentity.remote!(@git.remote(repo: path), slug)
         path
       end
 
@@ -39,15 +40,15 @@ module Domains
 
         path = contained!(@trees, File.join(@trees, workflow_id))
         repo = resolve(slug: slug)
-        git_worktree_add(repo, branch, path) unless File.exist?(path)
-        raise ArgumentError, "Worktree branch mismatch" unless git_branch(path) == branch
+        @git.add(repo: repo, branch: branch, path: path) unless File.exist?(path)
+        raise ArgumentError, "Worktree branch mismatch" unless @git.branch(repo: path) == branch
 
-        common = git_common_dir(path)
-        expected = git_common_dir(repo)
+        common = @git.common_dir(repo: path)
+        expected = @git.common_dir(repo: repo)
         raise ArgumentError, "Worktree repository mismatch" unless File.realpath(common) == File.realpath(expected)
-        raise ArgumentError, "Worktree root mismatch" unless File.realpath(git_top_level(path)) == path
+        raise ArgumentError, "Worktree root mismatch" unless File.realpath(@git.top_level(repo: path)) == path
 
-        RepositoryIdentity.remote!(git_remote(path), slug)
+        RepositoryIdentity.remote!(@git.remote(repo: path), slug)
         path
       end
 
@@ -71,42 +72,6 @@ module Domains
           ancestor = File.dirname(ancestor)
         end
         expanded
-      end
-      sig { params(repo: String).returns(String) }
-      def git_top_level(repo)
-        output, status = Open3.capture2e("git", "-C", repo, "rev-parse", "--show-toplevel")
-        checked_output(output, status)
-      end
-
-      sig { params(repo: String).returns(String) }
-      def git_remote(repo)
-        output, status = Open3.capture2e("git", "-C", repo, "remote", "get-url", "origin")
-        checked_output(output, status)
-      end
-
-      sig { params(repo: String, branch: String, path: String).void }
-      def git_worktree_add(repo, branch, path)
-        output, status = Open3.capture2e("git", "-C", repo, "worktree", "add", "-b", branch, path, "HEAD")
-        checked_output(output, status)
-      end
-
-      sig { params(repo: String).returns(String) }
-      def git_branch(repo)
-        output, status = Open3.capture2e("git", "-C", repo, "branch", "--show-current")
-        checked_output(output, status)
-      end
-
-      sig { params(repo: String).returns(String) }
-      def git_common_dir(repo)
-        output, status = Open3.capture2e("git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
-        checked_output(output, status)
-      end
-
-      sig { params(output: String, status: Process::Status).returns(String) }
-      def checked_output(output, status)
-        raise ArgumentError, "Git validation failed" unless status.success?
-
-        output.strip
       end
     end
   end

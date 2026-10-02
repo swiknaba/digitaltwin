@@ -8,10 +8,11 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   let(:resolver) { double(delivery: nil) }
   let(:membership) { ->(_channel, _user) { true } }
   let(:routing) { Domains::Commander::Routing.new(db, resolver: resolver, membership: membership) }
-  let(:herdr) {
-    double(get: { "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false, "name" => "writer1", "cwd" => "/tmp/w1", "agent" => "codex", "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation1" } },
-           prompt: {})
+  let(:ready) {
+    { "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false, "name" => "writer1", "cwd" => "/tmp/w1", "agent" => "codex",
+      "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation1" } }
   }
+  let(:herdr) { double(pane: herdr_pane(ready), prompt: nil) }
   let(:policy) { double(dispatch_allowed?: true) }
   let(:sender) { Domains::Commander::Followups.new(db, herdr: herdr, resolver: resolver, membership: membership, policy: policy) }
 
@@ -129,14 +130,13 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:workflows].update(phase: "implementation", version: 1)
     expect(sender.deliver(row[:id])).to eq("delivered")
     expect(sender.deliver(row[:id])).to eq("delivered")
-    expect(herdr).to have_received(:prompt).once.with("pane1", "Please also cover that case")
+    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
   end
   it "delivers a busy-session follow-up through worker ticks after the writer becomes idle" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     db[:jobs].where(kind: "mattermost.post").update(status: "complete")
-    ready = herdr.get("pane1")
-    allow(herdr).to receive(:get).and_return(ready.merge("agent_status" => "working"))
+    allow(herdr).to receive(:pane).and_return(herdr_pane(ready.merge("agent_status" => "working")))
     worker = Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::SessionFollowup => Platform::Jobs::CallableHandler.new(->(job) { sender.call(job: job) }) })
     Async { expect(worker.tick).to eq(true) }.wait
     job = db[:jobs][kind: "session.followup"]
@@ -146,12 +146,12 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     expect(job[:available_at]).to be > Time.now
     expect(db[:followups][id: row[:id]][:status]).to eq("queued")
     expect(herdr).not_to have_received(:prompt)
-    allow(herdr).to receive(:get).and_return(ready)
+    allow(herdr).to receive(:pane).and_return(herdr_pane(ready))
     db[:jobs].where(id: job[:id]).update(available_at: Time.now - 1)
     Async { expect(worker.tick).to eq(true) }.wait
     expect(db[:jobs][id: job[:id]][:status]).to eq("complete")
     expect(db[:followups][id: row[:id]][:status]).to eq("delivered")
-    expect(herdr).to have_received(:prompt).once.with("pane1", "Please also cover that case")
+    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
     Async { expect(worker.tick).to eq(false) }.wait
   end
   it "keeps a review-locked worker job retryable and delivers after writing resumes" do
@@ -165,21 +165,21 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     expect(job[:status]).to eq("pending")
     expect(job[:effect_started_at]).to be_nil
     expect(db[:workflows][id: "w1"]).to eq(before)
-    expect(herdr).not_to have_received(:get)
+    expect(herdr).not_to have_received(:pane)
     expect(herdr).not_to have_received(:prompt)
     db[:workflows].where(id: "w1").update(phase: "implementation", version: 1)
     db[:jobs].where(id: job[:id]).update(available_at: Time.now - 1)
     Async { expect(worker.tick).to eq(true) }.wait
     expect(db[:jobs][id: job[:id]][:status]).to eq("complete")
     expect(db[:followups][id: row[:id]][:status]).to eq("delivered")
-    expect(herdr).to have_received(:prompt).once.with("pane1", "Please also cover that case")
+    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
   end
   it "keeps production dispatch gated" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     gated = Domains::Commander::Followups.new(db, herdr: herdr, resolver: resolver, membership: membership)
     expect(gated.deliver(row[:id])).to eq("queued")
-    expect(herdr).not_to have_received(:get)
+    expect(herdr).not_to have_received(:pane)
   end
   it "does not resend an uncertain effect or overtake it" do
     workflow
@@ -197,7 +197,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:sessions].update(generation: 2)
     expect(sender.deliver(row[:id])).to eq("blocked")
     row = routing.route(inbox_id: source(2))
-    allow(herdr).to receive(:get).and_return({ "agent_status" => "unknown" })
+    allow(herdr).to receive(:pane).and_return(herdr_pane("agent_status" => "unknown"))
     expect(sender.deliver(row[:id])).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end
@@ -210,7 +210,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     end.wait
     expect(db[:followups].count).to eq(1)
     row = db[:followups].first
-    allow(herdr).to receive(:prompt) { Async::Task.current.sleep(0.05); {} }
+    allow(herdr).to receive(:prompt) { Async::Task.current.sleep(0.05) }
     Async do |task|
       tasks = 2.times.map { task.async { sender.deliver(row[:id]) } }
       tasks.each(&:wait)
@@ -221,16 +221,15 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   it "does not send to a substituted live pane conversation" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
-    allow(herdr).to receive(:get).and_return({ "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
-                                               "name" => "another-session", "cwd" => "/tmp/w1", "agent" => "codex" })
+    allow(herdr).to receive(:pane).and_return(herdr_pane("agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
+                                                         "name" => "another-session", "cwd" => "/tmp/w1", "agent" => "codex"))
     expect(sender.deliver(row[:id])).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end
   it "rejects a replacement conversation even when its pane alias directory and CLI are unchanged" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
-    live = herdr.get("pane1")
-    allow(herdr).to receive(:get).and_return(live.merge("agent_session" => live.fetch("agent_session").merge("value" => "replacement")))
+    allow(herdr).to receive(:pane).and_return(herdr_pane(ready.merge("agent_session" => ready.fetch("agent_session").merge("value" => "replacement"))))
     expect(sender.deliver(row[:id])).to eq("blocked")
     expect(db[:followups][id: row[:id]][:status]).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
@@ -238,7 +237,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
   it "keeps a busy session queued and rechecks membership before delivery" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
-    allow(herdr).to receive(:get).and_return(herdr.get("pane1").merge("agent_status" => "working"))
+    allow(herdr).to receive(:pane).and_return(herdr_pane(ready.merge("agent_status" => "working")))
     expect(sender.deliver(row[:id])).to eq("queued")
     denied = Domains::Commander::Followups.new(db, herdr: herdr, resolver: resolver, membership: ->(*) { false }, policy: policy)
     expect(denied.deliver(row[:id])).to eq("blocked")
@@ -267,7 +266,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     workflow(1, phase: "spec_human_approval")
     commit = "a" * 40
     db[:reviews].insert(workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: Sequel.pg_jsonb({ "cli" => "codex" }))
-    approvals = Domains::Commander::Approvals.new(db, resolver: resolver, membership: membership, current_commit: ->(_) { commit })
+    approvals = Domains::Commander::Approvals.new(db, resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit })
     id = source(body: "@agent approve w1 spec #{commit}")
     args = { inbox_id: id, workflow_id: "w1", gate: "spec", commit: commit }
     approvals.record(**args)
@@ -334,10 +333,10 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     expect(sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "discard")).to eq("discard")
     expect(db[:followups][id: row[:id]][:status]).to eq("blocked")
     expect(db[:audit].where(action: "human_followup_reconciliation").count).to eq(1)
-    allow(herdr).to receive(:prompt).and_return({})
+    allow(herdr).to receive(:prompt)
     expect(sender.deliver(later[:id])).to eq("delivered")
-    expect(herdr).to have_received(:prompt).with("pane1", "First instruction").once
-    expect(herdr).to have_received(:prompt).with("pane1", "Second instruction").once
+    expect(herdr).to have_received(:prompt).with(pane_id: "pane1", text: "First instruction").once
+    expect(herdr).to have_received(:prompt).with(pane_id: "pane1", text: "Second instruction").once
   end
 
   it "rejects bot, changed outcome, live send leases and replaced conversation recovery" do
@@ -351,10 +350,9 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:jobs].where(id: job[:id]).update(status: "running", lease_expires_at: Time.now + 30)
     expect { sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered") }.to raise_error(ArgumentError)
     db[:jobs].where(id: job[:id]).update(status: "uncertain")
-    ready = herdr.get("pane1")
-    allow(herdr).to receive(:get).and_return(ready.merge("agent_session" => { "value" => "replacement" }))
+    allow(herdr).to receive(:pane).and_return(herdr_pane(ready.merge("agent_session" => { "value" => "replacement" })))
     expect { sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered") }.to raise_error(ArgumentError)
-    allow(herdr).to receive(:get).and_return(ready)
+    allow(herdr).to receive(:pane).and_return(herdr_pane(ready))
     expect(sender.reconcile(id: row[:id], inbox_id: recovery, outcome: "delivered")).to eq("delivered")
     expect(herdr).not_to have_received(:prompt)
     other = source(4, body: "@agent recover-followup #{row[:id]} discard")

@@ -10,8 +10,8 @@ module Domains
         params(
           db: Sequel::Database,
           source: Domains::Commander::Source,
-          herdr: Domains::Sessions::Herdr,
-          evidence: Domains::Reviews::GitEvidence,
+          herdr: Adapters::Herdr::Client,
+          evidence: Adapters::Git::Evidence,
           reviews: Domains::Reviews::Coordinator,
           sessions: Domains::Sessions::Lifecycle,
           policy: Policy
@@ -43,13 +43,13 @@ module Domains
           when "pause"
             raise ArgumentError, "Cannot pause this phase" if %w[paused closed cancelled blocked].include?(w[:phase])
 
-            changes = { phase: "paused", saved_phase: w[:phase], paused_commit: @evidence.head(w) }
+            changes = { phase: "paused", saved_phase: w[:phase], paused_commit: @evidence.head(worktree: worktree(w)) }
           when "resume"
             raise ArgumentError, "Not paused" unless w[:phase] == "paused" && w[:saved_phase] && w[:saved_phase] != "blocked"
 
             live_role = w[:saved_phase].end_with?("_review") ? "reviewer" : "writer"
             validate_sessions(w, live_role)
-            raise ArgumentError, "Paused revision changed without verified callback" unless @evidence.current(w) == w[:paused_commit]
+            raise ArgumentError, "Paused revision changed without verified callback" unless @evidence.current(worktree: worktree(w)) == w[:paused_commit]
 
             changes = { phase: w[:saved_phase], saved_phase: nil, paused_commit: nil }
           when "finish"
@@ -91,7 +91,8 @@ module Domains
           record = @db[:reviews].where(workflow_id: workflow_id, gate: gate).order(Sequel.desc(:round)).first
           raise ArgumentError, "Approving review missing" unless record && record[:verdict] == "approve" && record[:target_commit] == ref["commit"]
 
-          @evidence.approval(w, record)
+          @evidence.approval(worktree: worktree(w), binding: artifact_binding(w[:artifacts], gate), target_commit: record[:target_commit],
+                             review_commit: record[:review_commit], review_path: record[:review_path])
           validate_prior_approvals(w, gate == "plan" ? %w[spec plan] : %w[spec])
           phase = gate == "spec" ? "plan_writing" : "implementation"
           @db.transaction do
@@ -114,8 +115,8 @@ module Domains
           raise ArgumentError, "Phase changed" unless %w[spec_writing plan_writing implementation].include?(w[:phase])
 
           current_writer = @db[:sessions][workflow_id: w[:id], role: "writer", active: true]
-          live = current_writer && @herdr.get(current_writer[:pane_id])
-          if live && live["agent_status"] == "working" && live["agent_session"] == current_writer[:runtime_identity]
+          live = current_writer && @herdr.pane(current_writer[:pane_id])
+          if live && live.agent_status == Adapters::Herdr::Dto::AgentStatus::Working && live.agent_session&.serialize == current_writer[:runtime_identity]
             return Platform::Jobs::Dto::Decision.defer("Writer busy")
           end
 
@@ -140,7 +141,7 @@ module Domains
                               "Report exact clean commits via artifact-ready. " \
                               "Stop changes during review. " \
                               "Do not create independent sessions."
-          @herdr.prompt(row_string(s, :pane_id), prompt)
+          @herdr.prompt(pane_id: row_string(s, :pane_id), text: prompt)
           Platform::Jobs::Dto::Decision.complete
         end
       end
@@ -153,7 +154,7 @@ module Domains
 
       private
 
-      sig { params(w: Domains::Reviews::GitEvidence::Workflow, gates: T::Array[String]).void }
+      sig { params(w: T::Hash[Symbol, Object], gates: T::Array[String]).void }
       def validate_prior_approvals(w, gates)
         gates.each do |gate|
           commit = artifact_commit!(w.fetch(:artifacts), gate)
@@ -161,7 +162,7 @@ module Domains
           approval = @db[:approvals][workflow_id: w[:id], kind: gate, target_commit: commit]
           raise ArgumentError, "Required exact artifact approval missing" unless approval
 
-          @evidence.approved_artifact(w, approval)
+          @evidence.approved_artifact(worktree: worktree(w), binding: artifact_binding(w[:artifacts], gate), target_commit: commit)
         end
       end
 
@@ -187,10 +188,28 @@ module Domains
         raise ArgumentError, "Required session missing" if rows.empty?
 
         rows.each do |s|
-          live = @herdr.get(s[:pane_id])
-          raise ArgumentError, "Session uncertain or replaced" unless s[:runtime_identity] && live["agent_session"] == s[:runtime_identity] && %w[idle done].include?(live["agent_status"]) && s[:credential_expires_at] > Time.now
+          live = @herdr.pane(s[:pane_id])
+          settled = [Adapters::Herdr::Dto::AgentStatus::Idle, Adapters::Herdr::Dto::AgentStatus::Done].include?(live.agent_status)
+          raise ArgumentError, "Session uncertain or replaced" unless s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity] && settled && s[:credential_expires_at] > Time.now
         end
         rows
+      end
+
+      sig { params(w: T::Hash[Symbol, Object]).returns(Adapters::Git::Dto::WorktreeRef) }
+      def worktree(w)
+        Adapters::Git::Dto::WorktreeRef.new(worktree_path: row_string(w, :worktree_path), branch: row_string(w, :branch))
+      end
+
+      sig { params(artifacts: BasicObject, gate: String).returns(T.nilable(Adapters::Git::Dto::ArtifactBinding)) }
+      def artifact_binding(artifacts, gate)
+        # Sequel returns JSONB columns as a Delegator, which is not an Object.
+        refs = Sequel::Postgres::JSONBHash === artifacts ? artifacts.to_hash : Hash.try_convert(artifacts)
+        ref = refs && Hash.try_convert(refs[gate])
+        return nil unless ref
+
+        commit = ref["commit"]
+        path = ref["path"]
+        Adapters::Git::Dto::ArtifactBinding.new(commit: commit.is_a?(String) ? commit : nil, path: path.is_a?(String) ? path : nil)
       end
 
       sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(String) }

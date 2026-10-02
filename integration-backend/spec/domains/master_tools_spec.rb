@@ -37,7 +37,7 @@ RSpec.describe "Request-bound Master tools and stdio MCP" do
       File.write(token_path, "request-token")
       input = StringIO.new("invalid\n" + JSON.generate(jsonrpc: "2.0", id: 1, method: "initialize") + "\n" + JSON.generate(jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_projects", arguments: { request_id: "request" } }) + "\n")
       output = StringIO.new
-      Domains::Commander::Mcp.new(tools: tools, token_file: token_path).serve(input: input, output: output)
+      Adapters::Mcp::Server.new(tools: tools, token_file: token_path).serve(input: input, output: output)
       rows = output.string.lines.map { |line| JSON.parse(line) }
       expect(rows[0].dig("error", "code")).to eq(-32700)
       expect(rows[1].dig("result", "serverInfo", "name")).to eq("digitaltwin")

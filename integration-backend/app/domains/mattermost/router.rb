@@ -78,9 +78,11 @@ module Domains
 
       sig { params(body: String).returns(T.nilable(String)) }
       def command_for(body)
-        body[/\A@#{Regexp.escape(@worker)}\s+(start|approve|pause|resume|finish|cancel)\b/, 1]
+        command = ::Services::Commands::Parser.new.call(body: body, agent_handle: @agent, worker_handle: @worker)
+        command.action.serialize if command.is_a?(::Services::Commands::Dto::WorkerCommand)
       end
 
+      # A mention anywhere in the body, not a command, so it stays out of the parser.
       sig { params(delivery: VerifiedDelivery).returns(T::Boolean) }
       def master_prompt?(delivery)
         (delivery.channel_id == @master_channel || delivery.body.match?(/(?:\A|\s)@#{Regexp.escape(@agent)}\b/)) &&

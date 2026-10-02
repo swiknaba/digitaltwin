@@ -6,8 +6,11 @@ module Domains
     class Followups
       extend T::Sig
 
+      Status = Adapters::Herdr::Dto::AgentStatus
+      SETTLED = T.let([Status::Idle, Status::Done].freeze, T::Array[Adapters::Herdr::Dto::AgentStatus])
+
       sig do
-        params(db: Sequel::Database, herdr: Domains::Sessions::Herdr, resolver: Source::DeliveryResolver,
+        params(db: Sequel::Database, herdr: Adapters::Herdr::Client, resolver: Source::DeliveryResolver,
                membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
                policy: Domains::Workflows::Policy, handle: String).void
       end
@@ -63,18 +66,19 @@ module Domains
             pending = @db[:followups].where(workflow_id: w[:id]).where(Sequel[:followups][:id] < id).where(status: %w[queued sending uncertain]).count
             return "queued" unless pending.zero?
 
-            live = @herdr.get(session[:pane_id])
-            return "queued" if live["agent_status"] == "working" && session[:runtime_identity] && live["agent_session"] == session[:runtime_identity]
+            live = @herdr.pane(session[:pane_id])
+            same_conversation = session[:runtime_identity] && live.agent_session&.serialize == session[:runtime_identity]
+            return "queued" if live.agent_status == Status::Working && same_conversation
 
-            ready = %w[idle done].include?(live["agent_status"]) && live["interactive_ready"] == true && live["launch_pending"] == false
-            identity = session[:runtime_identity] && live["agent_session"] == session[:runtime_identity] && live["name"] == session[:alias] && live["cwd"] == w[:worktree_path] && live["agent"] == session[:configuration]["cli"]
+            ready = SETTLED.include?(live.agent_status) && live.interactive_ready == true && live.launch_pending == false
+            identity = same_conversation && live.name == session[:alias] && live.cwd == w[:worktree_path] && live.agent == session[:configuration]["cli"]
             return block(id, "Session not ready") unless ready && identity
 
             @db[:followups].where(id: id, status: "queued").update(status: "sending")
             begin
               raise IOError, "Dispatch lease lost" unless before_effect.call
 
-              @herdr.prompt(session[:pane_id], source[:verified_delivery].fetch("body").sub(/\A@#{Regexp.escape(@handle)} route [a-zA-Z0-9-]+\n/, ""))
+              @herdr.prompt(pane_id: session[:pane_id], text: source[:verified_delivery].fetch("body").sub(/\A@#{Regexp.escape(@handle)} route [a-zA-Z0-9-]+\n/, ""))
               @db[:followups].where(id: id).update(status: "delivered", delivered_at: Time.now)
               "delivered"
             rescue StandardError
@@ -140,10 +144,10 @@ module Domains
 
           s = @db[:sessions][id: row[:session_id], workflow_id: w[:id], generation: row[:generation], role: "writer", active: true]
           latest = @db[:sessions].where(workflow_id: w[:id], role: "writer").max(:generation)
-          live = s && @herdr.get(s[:pane_id])
-          settled = s && latest == row[:generation] && s[:runtime_identity] && live["agent_session"] == s[:runtime_identity]
-          settled &&= %w[idle done].include?(live["agent_status"]) && live["name"] == s[:alias]
-          settled &&= live["cwd"] == w[:worktree_path] && live["agent"] == s[:configuration]["cli"]
+          live = s && @herdr.pane(s[:pane_id])
+          settled = live && latest == row[:generation] && s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity]
+          settled &&= SETTLED.include?(live.agent_status) && live.name == s[:alias]
+          settled &&= live.cwd == w[:worktree_path] && live.agent == s[:configuration]["cli"]
           raise ArgumentError, "Same conversation must be positively settled" unless settled
 
           @db.transaction do

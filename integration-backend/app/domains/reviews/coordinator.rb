@@ -11,10 +11,12 @@ module Domains
       Identifier = T.type_alias { T.any(String, Integer) }
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Configuration = T.type_alias { T::Hash[String, Object] }
+      ArtifactRef = T.type_alias { T::Hash[String, T.nilable(String)] }
+      ArtifactRefs = T.type_alias { T::Hash[String, ArtifactRef] }
 
       sig do
-        params(db: Sequel::Database, herdr: Domains::Sessions::Herdr,
-               evidence: GitEvidence, routing: Domains::Commander::Routing,
+        params(db: Sequel::Database, herdr: Adapters::Herdr::Client,
+               evidence: Adapters::Git::Evidence, routing: Domains::Commander::Routing,
                policy: Domains::Workflows::Policy).void
       end
       def initialize(db, herdr:, evidence:, routing:, policy: Domains::Workflows::Policy.new)
@@ -49,11 +51,11 @@ module Domains
 
           settled!(s)
           path = kind == "implementation" ? nil : "docs/#{kind}.md"
-          @evidence.artifact(evidence_workflow!(w), commit, path)
+          @evidence.artifact(worktree: worktree!(w), commit: commit, path: path)
           round = (@db[:reviews].where(workflow_id: row_string!(w, :id), gate: kind).max(:round) || 0) + 1
           raise ArgumentError, "Review rounds exhausted" if round > 3
 
-          base = kind == "implementation" ? @evidence.base(evidence_workflow!(w), commit) : nil
+          base = kind == "implementation" ? @evidence.base(worktree: worktree!(w), commit: commit) : nil
           reviewer_row = @db[:sessions][workflow_id: row_string!(w, :id), role: "reviewer", active: true]
           reviewer = reviewer_row && row!(reviewer_row)
           raise ArgumentError, "Reviewer missing/diversity violated" unless reviewer
@@ -111,7 +113,8 @@ module Domains
             raise ArgumentError, "Review prompt lease still live" if job.status == Platform::Jobs::Dto::JobStatus::Running && lease_expires_at && lease_expires_at > Time.now
           end
           settled!(s)
-          @evidence.review(evidence_workflow!(w), evidence_record!(record), review_commit, verdict, review_configuration!(configuration!(s)))
+          @evidence.review(worktree: worktree!(w), target_commit: review_evidence!(record, :target_commit), review_path: review_evidence!(record, :review_path),
+                           review_commit: review_commit, verdict: verdict, reviewer: reviewer_identity!(configuration!(s)))
           phase = if verdict == "approve"
                     kind == "implementation" ? "pr_ready" : "#{kind}_human_approval"
                   elsif row_integer!(record, :round) >= 3
@@ -161,14 +164,14 @@ module Domains
         w = row!(@db[:workflows][id: workflow_id])
         return unless PHASES.value?(row_string!(w, :phase))
 
-        transient = T.let(nil, T.nilable(Domains::Mattermost::Client::Error))
+        transient = T.let(nil, T.nilable(Adapters::Mattermost::Errors::RequestFailed))
         jobs = Platform::Jobs::Store.new
         @db[:queued_messages].where(workflow_id: workflow_id).order(:id).each do |row|
           begin
             result = @routing.route(inbox_id: row[:inbox_id])
             @db[:queued_messages].where(id: row[:id]).delete if route_dispatched?(result)
-          rescue ArgumentError, Domains::Mattermost::Client::Error => error
-            if error.is_a?(Domains::Mattermost::Client::Error) && ![403, 404].include?(error.status)
+          rescue ArgumentError, Adapters::Mattermost::Errors::RequestFailed => error
+            if error.is_a?(Adapters::Mattermost::Errors::RequestFailed) && ![403, 404].include?(error.status)
               transient = error
               break
             end
@@ -199,12 +202,12 @@ module Domains
 
           raise ArgumentError, "Review phase changed" unless w[:phase] == "#{record[:gate]}_review"
 
-          @evidence.artifact(evidence_workflow!(w), row_string!(record, :target_commit), artifact_path!(w, row_string!(record, :gate)))
+          @evidence.artifact(worktree: worktree!(w), commit: row_string!(record, :target_commit), path: artifact_path!(w, row_string!(record, :gate)))
           s = row!(@db[:sessions][workflow_id: row_string!(w, :id), role: "reviewer", active: true])
           raise ArgumentError, "Reviewer configuration changed" unless configuration!(s) == configuration!(record, :reviewer_configuration)
 
-          live = @herdr.get(row_string!(s, :pane_id))
-          if live["agent_status"] == "working" && live["agent_session"] == row_json_object!(s, :runtime_identity)
+          live = @herdr.pane(row_string!(s, :pane_id))
+          if live.agent_status == Adapters::Herdr::Dto::AgentStatus::Working && live.agent_session&.serialize == row_json_object!(s, :runtime_identity)
             return Platform::Jobs::Dto::Decision.defer("Reviewer busy")
           end
 
@@ -216,7 +219,7 @@ module Domains
             prompt = "Review #{record[:gate]} target #{record[:target_commit]}, base #{record[:base_commit]}. " \
                      "Change only #{record[:review_path]}; append Target, Provider, Model, Family, Verdict and Reviewed-at (UTC ISO8601) fields. " \
                      "Report the exact review commit via review-ready. Do not change the artifact or start sessions."
-            @herdr.prompt(row_string!(s, :pane_id), prompt)
+            @herdr.prompt(pane_id: row_string!(s, :pane_id), text: prompt)
             @db[:reviews].where(id: record[:id]).update(dispatch_state: "delivered")
           rescue StandardError
             @db[:reviews].where(id: record[:id]).update(dispatch_state: "uncertain")
@@ -248,9 +251,10 @@ module Domains
       end
       sig { params(session: Row).void }
       def settled!(session)
-        live = @herdr.get(row_string!(session, :pane_id))
+        live = @herdr.pane(row_string!(session, :pane_id))
         runtime_identity = row_json_object!(session, :runtime_identity)
-        raise ArgumentError, "Session not settled or replaced" unless live["agent_session"] == runtime_identity && %w[idle done].include?(live["agent_status"])
+        settled = [Adapters::Herdr::Dto::AgentStatus::Idle, Adapters::Herdr::Dto::AgentStatus::Done].include?(live.agent_status)
+        raise ArgumentError, "Session not settled or replaced" unless live.agent_session&.serialize == runtime_identity && settled
       end
 
       sig { params(row: Object).returns(Row) }
@@ -334,27 +338,26 @@ module Domains
         row_string!(workflow, row_string!(workflow, :phase) == "paused" ? :saved_phase : :phase)
       end
 
-      sig { params(workflow: Row).returns(GitEvidence::Workflow) }
-      def evidence_workflow!(workflow)
-        { worktree_path: row_string!(workflow, :worktree_path), artifacts: artifact_refs!(workflow) }
+      sig { params(workflow: Row).returns(Adapters::Git::Dto::WorktreeRef) }
+      def worktree!(workflow)
+        Adapters::Git::Dto::WorktreeRef.new(worktree_path: row_string!(workflow, :worktree_path), branch: row_string!(workflow, :branch))
       end
 
-      sig { params(record: Row).returns(GitEvidence::ReviewRecord) }
-      def evidence_record!(record)
-        values = T.let({}, GitEvidence::ReviewRecord)
-        %i[target_commit review_path review_commit gate].each do |key|
-          values[key] = row_optional_string(record, key)
-        end
-        values
+      sig { params(record: Row, key: Symbol).returns(String) }
+      def review_evidence!(record, key)
+        value = row_optional_string(record, key)
+        raise ArgumentError, "Invalid review evidence" unless value
+
+        value
       end
 
-      sig { params(workflow: Row).returns(GitEvidence::ArtifactRefs) }
+      sig { params(workflow: Row).returns(ArtifactRefs) }
       def artifact_refs!(workflow)
         raw = workflow.fetch(:artifacts) { raise ArgumentError, "Malformed workflow record" }
         artifact_refs = Hash.try_convert(raw)
         raise ArgumentError, "Malformed workflow record" unless artifact_refs
 
-        refs = T.let({}, GitEvidence::ArtifactRefs)
+        refs = T.let({}, ArtifactRefs)
         artifact_refs.each do |kind, raw_ref|
           ref = Hash.try_convert(raw_ref)
           raise ArgumentError, "Malformed workflow record" unless kind.is_a?(String) && ref
@@ -392,16 +395,18 @@ module Domains
         value
       end
 
-      sig { params(configuration: Configuration).returns(GitEvidence::Configuration) }
-      def review_configuration!(configuration)
-        required = T.let({}, GitEvidence::Configuration)
-        %w[provider model family].each do |key|
-          value = configuration.fetch(key) { raise ArgumentError, "Malformed durable review record" }
-          raise ArgumentError, "Malformed durable review record" unless value.is_a?(String)
+      sig { params(configuration: Configuration).returns(Adapters::Git::Dto::ReviewerIdentity) }
+      def reviewer_identity!(configuration)
+        Adapters::Git::Dto::ReviewerIdentity.new(provider: reviewer_field!(configuration, "provider"), model: reviewer_field!(configuration, "model"),
+                                                 family: reviewer_field!(configuration, "family"))
+      end
 
-          required[key] = value
-        end
-        required
+      sig { params(configuration: Configuration, key: String).returns(String) }
+      def reviewer_field!(configuration, key)
+        value = configuration.fetch(key) { raise ArgumentError, "Malformed durable review record" }
+        raise ArgumentError, "Malformed durable review record" unless value.is_a?(String)
+
+        value
       end
 
       sig { params(result: Object).returns(T::Boolean) }

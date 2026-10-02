@@ -17,7 +17,7 @@ module Domains
         params(
           db: Sequel::Database,
           source: Domains::Commander::Source,
-          client: Domains::Mattermost::Client,
+          api: Adapters::Mattermost::Api,
           bot_id: String,
           workspace: Domains::Projects::Workspace,
           sessions: Domains::Sessions::Lifecycle,
@@ -25,10 +25,10 @@ module Domains
           policy: Policy
         ).void
       end
-      def initialize(db, source:, client:, bot_id:, workspace:, sessions:, roles:, policy: Policy.new)
+      def initialize(db, source:, api:, bot_id:, workspace:, sessions:, roles:, policy: Policy.new)
         @db = db
         @source = source
-        @client = client
+        @api = api
         @bot = bot_id
         @workspace = workspace
         @sessions = sessions
@@ -75,23 +75,21 @@ module Domains
           delivery = @source.human(request[:inbox_id], destination: project[:channel_id])
           thread = request[:thread_id]
           unless thread
-            me = @client.get("/api/v4/users/me")
-            member = @client.get("/api/v4/channels/#{project[:channel_id]}/members/#{@bot}")
-            raise ArgumentError, "Unverified thread bot" unless me["id"] == @bot && me["is_bot"] == true && member["channel_id"] == project[:channel_id] && member["user_id"] == @bot
+            raise ArgumentError, "Unverified thread bot" unless thread_bot?(project[:channel_id])
 
             @db[:workflow_requests].where(id: id).update(state: "sending")
             begin
               raise IOError, "Dispatch lease lost" unless before_effect.call
 
-              payload = { "channel_id" => project[:channel_id], "root_id" => "", "message" => request[:parameters].fetch("title"), "props" => { "digitaltwin_workflow_request" => id } }
-              post = @client.post("/api/v4/posts", payload)
-              post_id = client_identifier(post, "id")
-              valid = post_id.match?(/\A[a-z0-9]{26}\z/) && post["channel_id"] == project[:channel_id]
-              valid &&= post["root_id"].to_s.empty? && post["user_id"] == @bot && post["message"] == request[:parameters]["title"]
-              valid &&= client_properties(post)["digitaltwin_workflow_request"] == id
+              title = request[:parameters].fetch("title")
+              post = @api.create_post(Adapters::Mattermost::Dto::NewPost.new(channel_id: project[:channel_id], root_id: "", message: title,
+                                                                             props: { "digitaltwin_workflow_request" => id }))
+              valid = post.id.match?(/\A[a-z0-9]{26}\z/) && post.channel_id == project[:channel_id]
+              valid &&= post.root_id.to_s.empty? && post.user_id == @bot && post.message == title
+              valid &&= post.props["digitaltwin_workflow_request"] == id
               raise IOError, "Unverified created thread" unless valid
 
-              thread = post_id
+              thread = post.id
               @db[:workflow_requests].where(id: id).update(thread_id: thread, state: "queued")
             rescue StandardError
               @db[:workflow_requests].where(id: id).update(state: "uncertain", reason: "Thread creation requires reconciliation; do not repeat")
@@ -146,12 +144,10 @@ module Domains
           lease_expires_at = job&.lease_expires_at
           raise ArgumentError, "Creation lease still live" if job&.status == Platform::Jobs::Dto::JobStatus::Running && lease_expires_at && lease_expires_at > Time.now
 
-          me = @client.get("/api/v4/users/me")
-          member = @client.get("/api/v4/channels/#{project[:channel_id]}/members/#{@bot}")
-          post = @client.get("/api/v4/posts/#{thread_id}")
-          valid = me["id"] == @bot && me["is_bot"] == true && member["channel_id"] == project[:channel_id] && member["user_id"] == @bot
-          valid &&= post["id"] == thread_id && post["channel_id"] == project[:channel_id] && post["root_id"].to_s.empty? && post["delete_at"] == 0
-          valid &&= post["user_id"] == @bot && post["message"] == request[:parameters]["title"] && client_properties(post)["digitaltwin_workflow_request"] == id
+          valid = thread_bot?(project[:channel_id])
+          post = @api.post(thread_id)
+          valid &&= post.id == thread_id && post.channel_id == project[:channel_id] && post.root_id.to_s.empty? && post.delete_at.zero?
+          valid &&= post.user_id == @bot && post.message == request[:parameters]["title"] && post.props["digitaltwin_workflow_request"] == id
           raise ArgumentError, "Unproved created thread" unless valid
 
           @db.transaction do
@@ -198,20 +194,11 @@ module Domains
         end
       end
 
-      sig { params(response: Domains::Mattermost::Client::JsonObject, key: String).returns(String) }
-      def client_identifier(response, key)
-        value = response.fetch(key)
-        raise ArgumentError, "Malformed Mattermost response" unless value.is_a?(String)
-
-        value
-      end
-
-      sig { params(response: Domains::Mattermost::Client::JsonObject).returns(T::Hash[String, Object]) }
-      def client_properties(response)
-        value = response.fetch("props", {})
-        raise ArgumentError, "Malformed Mattermost response" unless value.is_a?(Hash) && value.keys.all? { |key| key.is_a?(String) }
-
-        value
+      sig { params(channel_id: String).returns(T::Boolean) }
+      def thread_bot?(channel_id)
+        me = @api.me
+        member = @api.member(channel_id: channel_id, user_id: @bot)
+        me.id == @bot && me.bot && !member.nil? && member.channel_id == channel_id && member.user_id == @bot
       end
 
       sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(String) }

@@ -20,9 +20,11 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   let(:routing) { double(route: { id: 123 }) }
   let(:evidence) { double(artifact: true, review: true, approval: true, approved_artifact: true, head: commit, current: commit, base: "f" * 40) }
   let(:herdr) { double }
+  # Synthetic Mattermost transport at the Client boundary.
   let(:client) { double }
+  let(:api) { Adapters::Mattermost::Api.new(client: client) }
   let(:sessions) { Domains::Sessions::Lifecycle.new(db, herdr: herdr, source: source, credential_root: @credential_root, callback_url: "http://fixture.invalid", policy: policy) }
-  let(:provision) { Domains::Workflows::Provision.new(db, source: source, client: client, bot_id: bot, workspace: workspace, sessions: sessions, roles: roles, policy: policy) }
+  let(:provision) { Domains::Workflows::Provision.new(db, source: source, api: api, bot_id: bot, workspace: workspace, sessions: sessions, roles: roles, policy: policy) }
   let(:reviews) { Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: routing, policy: policy) }
   let(:workflows) { Domains::Workflows::Coordinator.new(db, source: source, herdr: herdr, evidence: evidence, reviews: reviews, sessions: sessions, policy: policy) }
   before do
@@ -35,14 +37,14 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
       path.end_with?("/users/me") ? { "id" => bot, "is_bot" => true } : { "channel_id" => channel, "user_id" => bot }
     end
     allow(client).to receive(:post) do |_path, payload|
-      payload.merge("id" => "t" * 26, "user_id" => bot)
+      payload.merge("id" => "t" * 26, "user_id" => bot, "create_at" => 1, "update_at" => 1, "delete_at" => 0)
     end
-    allow(herdr).to receive(:get) do |pane|
+    allow(herdr).to receive(:pane) do |pane|
       s = db[:sessions][pane_id: pane]
-      { "agent_session" => s[:runtime_identity], "agent_status" => "idle", "pane_id" => pane, "name" => s[:alias], "cwd" => "/workspace/worktrees/workflow", "agent" => s[:configuration]["cli"], "interactive_ready" => true, "launch_pending" => false }
+      herdr_pane("agent_session" => s[:runtime_identity]&.to_hash, "agent_status" => "idle", "pane_id" => pane, "name" => s[:alias], "cwd" => "/workspace/worktrees/workflow", "agent" => s[:configuration]["cli"], "interactive_ready" => true, "launch_pending" => false)
     end
-    allow(herdr).to receive(:prompt).and_return({})
-    allow(herdr).to receive(:close).and_return({})
+    allow(herdr).to receive(:prompt)
+    allow(herdr).to receive(:close)
   end
   after { FileUtils.remove_entry(@credential_root) }
 
@@ -86,7 +88,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
   it "keeps real dispatch gated despite durable starts" do
     id = provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")
-    gated = Domains::Workflows::Provision.new(db, source: source, client: client, bot_id: bot, workspace: workspace, sessions: sessions, roles: roles)
+    gated = Domains::Workflows::Provision.new(db, source: source, api: api, bot_id: bot, workspace: workspace, sessions: sessions, roles: roles)
     expect(gated.execute(id)).to eq("queued")
     expect(client).not_to have_received(:post)
   end
@@ -94,27 +96,29 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     workflow(active_sessions: false)
     id = sessions.reserve(workflow_id: "workflow", role: "writer")
     expect(sessions.reserve(workflow_id: "workflow", role: "writer")).to eq(id)
-    allow(herdr).to receive(:workspace).and_return({ "workspace" => { "workspace_id" => "runtime-workspace" }, "root_pane" => { "pane_id" => "pane" } })
+    allow(herdr).to receive(:create_workspace).and_return(herdr_workspace(workspace_id: "runtime-workspace", pane_id: "pane"))
     identity = { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "actual-conversation" }
-    allow(herdr).to receive(:start).and_return({ "agent_session" => identity, "agent_status" => "idle" })
+    allow(herdr).to receive(:start).and_return(herdr_pane("agent_session" => identity, "agent_status" => "idle"))
     op = db[:session_operations][session_id: id]
     expect(sessions.execute(op[:id])).to eq("complete")
     expect(sessions.execute(op[:id])).to eq("complete")
     expect(db[:sessions][id: id][:runtime_identity]).to eq(identity)
-    expect(herdr).to have_received(:start).once.with("pane", "digitaltwin-#{id}", roles["writer"])
-    expect(herdr).to have_received(:workspace).with(hash_including(env: hash_including("DIGITALTWIN_SESSION_GENERATION" => "1")))
+    launch = Adapters::Herdr::Dto::LaunchSpec.new(cli: "codex", launch_args: ["--model", "fixture-gpt"])
+    expect(herdr).to have_received(:start).once.with(pane_id: "pane", name: "digitaltwin-#{id}", launch: launch)
+    expect(herdr).to have_received(:create_workspace).with(hash_including(env: hash_including("DIGITALTWIN_SESSION_GENERATION" => "1",
+                                                                                              "DIGITALTWIN_SESSION_TOKEN_FILE" => File.join(@credential_root, "#{id}.token"))))
     expect(File.stat(File.join(@credential_root, "#{id}.token")).mode & 0777).to eq(0600)
     expect { sessions.reserve(workflow_id: "workflow", role: "controller") }.to raise_error(ArgumentError)
   end
   it "does not repeat an uncertain session start or create another conversation" do
     workflow(active_sessions: false)
     id = sessions.reserve(workflow_id: "workflow", role: "writer")
-    allow(herdr).to receive(:workspace).and_raise(IOError)
+    allow(herdr).to receive(:create_workspace).and_raise(IOError)
     op = db[:session_operations][session_id: id]
     expect(sessions.execute(op[:id])).to eq("uncertain")
     expect(sessions.reserve(workflow_id: "workflow", role: "writer")).to eq(id)
     expect(sessions.execute(op[:id])).to eq("uncertain")
-    expect(herdr).to have_received(:workspace).once
+    expect(herdr).to have_received(:create_workspace).once
   end
   it "freezes review, dispatches one reviewer prompt, and releases changes to the same writer" do
     workflow
@@ -145,7 +149,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
   it "rejects unknown Writer state, wrong callback role/generation and nondiverse reviewer" do
     workflow
-    allow(herdr).to receive(:get).and_return({ "agent_status" => "unknown" })
+    allow(herdr).to receive(:pane).and_return(herdr_pane("agent_status" => "unknown"))
     expect { reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
     expect { reviews.ready(token: "reviewer-token", generation: 1, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
     expect { reviews.ready(token: "writer-token", generation: 2, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
@@ -198,7 +202,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(db[:sessions][id: "writer"][:credential_expires_at]).to be > Time.now
     expect(db[:sessions].count).to eq(2)
     expect(db[:jobs].where(kind: "session.renew").first[:available_at]).to be > Time.now + 3000
-    allow(herdr).to receive(:get).and_return({ "agent_session" => { "value" => "replacement" }, "agent_status" => "idle" })
+    allow(herdr).to receive(:pane).and_return(herdr_pane("agent_session" => { "value" => "replacement" }, "agent_status" => "idle"))
     expect { sessions.renew(session_id: "writer", generation: 1) }.to raise_error(ArgumentError)
   end
 
@@ -208,7 +212,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     2.times { expect(intake.enqueue(token: "writer-token", generation: 1, action: "artifact", kind: "spec", commit: commit)).to eq("queued") }
     expect(db[:jobs].where(kind: "review.callback").count).to eq(1)
     expect(db[:reviews].count).to eq(0)
-    expect(herdr).not_to have_received(:get)
+    expect(herdr).not_to have_received(:pane)
     expect { intake.enqueue(token: "reviewer-token", generation: 1, action: "artifact", kind: "spec", commit: commit) }.to raise_error(ArgumentError)
   end
   it "rolls back terminal transition when durable session cleanup cannot be queued" do
@@ -232,7 +236,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     workflow
     second = db[:inbox].insert(channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
     [@inbox, second].each { |id| db[:queued_messages].insert(workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
-    allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Domains::Mattermost::Client::Error.new("Mattermost HTTP 404", status: 404))
+    allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Adapters::Mattermost::Errors::RequestFailed.new("Mattermost HTTP 404", status: 404))
     reviews.release("workflow")
     expect(db[:queued_messages].select_map(:inbox_id)).to eq([@inbox])
     expect(routing).to have_received(:route).with(inbox_id: second)
@@ -246,12 +250,12 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     master = Domains::Commander::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
     request = master.ingest(@inbox)
     dispatch = Platform::Jobs::Dto::JobKind::MasterDispatch
-    allow(herdr).to receive(:get).and_return({ "agent_session" => identity, "agent_status" => "working" })
+    allow(herdr).to receive(:pane).and_return(herdr_pane("agent_session" => identity, "agent_status" => "working"))
     tick_job(dispatch) { |job| master.call(job: job) }
     job = db[:jobs][kind: dispatch.serialize]
     expect(job.values_at(:status, :attempts)).to eq(["pending", 0])
     db[:jobs].where(id: job[:id]).update(available_at: Time.now - 1)
-    allow(herdr).to receive(:get).and_return({ "agent_session" => identity, "agent_status" => "idle" })
+    allow(herdr).to receive(:pane).and_return(herdr_pane("agent_session" => identity, "agent_status" => "idle"))
     tick_job(dispatch) { |claimed| master.call(job: claimed) }
     expect(db[:jobs][id: job[:id]][:status]).to eq("complete")
     expect(db[:master_requests][id: request][:state]).to eq("active")
@@ -270,8 +274,8 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     workflow
     second = db[:inbox].insert(channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
     [@inbox, second].each { |id| db[:queued_messages].insert(workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
-    allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Domains::Mattermost::Client::Error.new("Mattermost HTTP 500", status: 500))
-    expect { reviews.release("workflow") }.to raise_error(Domains::Mattermost::Client::Error)
+    allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Adapters::Mattermost::Errors::RequestFailed.new("Mattermost HTTP 500", status: 500))
+    expect { reviews.release("workflow") }.to raise_error(Adapters::Mattermost::Errors::RequestFailed)
     expect(routing).not_to have_received(:route).with(inbox_id: second)
     expect(db[:queued_messages].count).to eq(2)
   end
@@ -280,7 +284,8 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     id = provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")
     expect(provision.execute(id)).to eq("uncertain")
     thread_id = "t" * 26
-    root = { "id" => thread_id, "channel_id" => channel, "root_id" => "", "delete_at" => 0, "user_id" => bot, "message" => "Project work", "props" => { "digitaltwin_workflow_request" => id } }
+    root = { "id" => thread_id, "channel_id" => channel, "root_id" => "", "create_at" => 1, "update_at" => 1, "delete_at" => 0, "user_id" => bot, "message" => "Project work",
+             "props" => { "digitaltwin_workflow_request" => id } }
     allow(client).to receive(:get).with("/api/v4/posts/#{thread_id}").and_return(root)
     recovery = delivery.dup
     allow(recovery).to receive(:body).and_return("@agent recover-start #{id} #{thread_id}")
@@ -295,7 +300,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   it "reconciles a started role against its exact alias cwd CLI and conversation without restarting" do
     workflow(active_sessions: false)
     sid = sessions.reserve(workflow_id: "workflow", role: "writer")
-    allow(herdr).to receive(:workspace).and_return({ "workspace" => { "workspace_id" => "runtime" }, "root_pane" => { "pane_id" => "pane" } })
+    allow(herdr).to receive(:create_workspace).and_return(herdr_workspace(workspace_id: "runtime", pane_id: "pane"))
     allow(herdr).to receive(:start).and_raise(IOError)
     op = db[:session_operations][session_id: sid]
     expect(sessions.execute(op[:id])).to eq("uncertain")
@@ -304,9 +309,9 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     allow(source).to receive(:human).and_return(recovery)
     live = { "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
              "name" => "digitaltwin-#{sid}", "cwd" => "/workspace/worktrees/workflow", "agent" => "codex" }
-    allow(herdr).to receive(:get).and_return(live.merge("name" => "different"))
+    allow(herdr).to receive(:pane).and_return(herdr_pane(live.merge("name" => "different")))
     expect { sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "pane") }.to raise_error(ArgumentError)
-    allow(herdr).to receive(:get).and_return(live)
+    allow(herdr).to receive(:pane).and_return(herdr_pane(live))
     2.times { expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "pane")).to eq("complete") }
     expect(sessions.execute(op[:id])).to eq("complete")
     expect(herdr).to have_received(:start).once
@@ -322,13 +327,13 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     recovery = delivery.dup
     allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} writer")
     allow(source).to receive(:human).and_return(recovery)
-    allow(herdr).to receive(:panes).and_return([{ "pane_id" => "writer" }])
+    allow(herdr).to receive(:panes).and_return([Adapters::Herdr::Dto::PaneSummary.new(pane_id: "writer")])
     expect { sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "writer") }.to raise_error(ArgumentError)
     allow(herdr).to receive(:panes).and_return([])
     expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "writer")).to eq("complete")
     expect(db[:sessions][id: "writer"][:active]).to eq(false)
     expect(db[:workflows].first[:archived_at]).to be_nil
-    allow(herdr).to receive(:close).and_return({})
+    allow(herdr).to receive(:close)
     reviewer = db[:session_operations][session_id: "reviewer", kind: "stop"]
     expect(sessions.execute(reviewer[:id])).to eq("complete")
     expect(db[:workflows].first[:archived_at]).not_to be_nil
@@ -359,7 +364,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     allow(source).to receive(:human).and_return(recovery)
     live = { "agent_session" => { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
              "name" => controller[:alias], "cwd" => "/home/runtime", "agent" => "gemini" }
-    allow(herdr).to receive(:get).and_return(live)
+    allow(herdr).to receive(:pane).and_return(herdr_pane(live))
     expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "controller-pane")).to eq("complete")
     expect(db[:sessions][id: controller[:id]][:active]).to eq(true)
     expect(db[:workflows].count).to eq(0)
@@ -386,14 +391,14 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
       workflows.queue_phase("workflow", 0)
       tick_job(kinds::WorkflowPhasePrompt) { |job| workflows.call(job: job) }
       expect(job_status(kinds::WorkflowPhasePrompt)).to eq("complete")
-      expect(herdr).to have_received(:prompt).once.with("writer", a_string_including("Current phase: spec_writing"))
+      expect(herdr).to have_received(:prompt).once.with(pane_id: "writer", text: a_string_including("Current phase: spec_writing"))
     end
 
     it "starts a reserved session from a claimed session.start job" do
       workflow(active_sessions: false)
       id = sessions.reserve(workflow_id: "workflow", role: "writer")
-      allow(herdr).to receive(:workspace).and_return({ "workspace" => { "workspace_id" => "runtime-workspace" }, "root_pane" => { "pane_id" => "pane" } })
-      allow(herdr).to receive(:start).and_return({ "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "c" }, "agent_status" => "idle" })
+      allow(herdr).to receive(:create_workspace).and_return(herdr_workspace(workspace_id: "runtime-workspace", pane_id: "pane"))
+      allow(herdr).to receive(:start).and_return(herdr_pane("agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "c" }, "agent_status" => "idle"))
       tick_job(kinds::SessionStart) { |job| sessions.call(job: job) }
       expect(job_status(kinds::SessionStart)).to eq("complete")
       expect(db[:sessions][id: id][:active]).to be(true)

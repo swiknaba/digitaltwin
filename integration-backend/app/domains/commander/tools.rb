@@ -5,7 +5,7 @@ module Domains
   module Commander
     class Tools
       extend T::Sig
-      include Mcp::ToolGateway
+      include Adapters::Mcp::Server::ToolGateway
 
       FieldDefinitions = T.type_alias { T::Hash[String, T::Hash[String, String]] }
       ToolArguments = T.type_alias { T::Hash[String, Object] }

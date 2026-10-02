@@ -6,9 +6,12 @@ module Domains
     class Master
       extend T::Sig
 
+      Status = Adapters::Herdr::Dto::AgentStatus
+      SETTLED = T.let([Status::Idle, Status::Done].freeze, T::Array[Adapters::Herdr::Dto::AgentStatus])
+
       sig do
         params(db: Sequel::Database, sessions: Domains::Sessions::Lifecycle, source: Source,
-               herdr: Domains::Sessions::Herdr, configuration: Domains::Sessions::Lifecycle::Configuration,
+               herdr: Adapters::Herdr::Client, configuration: Domains::Sessions::Lifecycle::Configuration,
                credential_root: String, policy: Domains::Workflows::Policy).void
       end
       def initialize(db, sessions:, source:, herdr:, configuration:, credential_root: "/run/herdr/session-credentials", policy: Domains::Workflows::Policy.new)
@@ -17,7 +20,7 @@ module Domains
         @source = source
         @herdr = herdr
         @configuration = configuration
-        @root = credential_root
+        @credentials = T.let(Adapters::Credentials::FileStore.new(root: credential_root), Adapters::Credentials::FileStore)
         @policy = policy
       end
 
@@ -31,8 +34,7 @@ module Domains
           return old[:id] if old
 
           id, token = SecureRandom.uuid, SecureRandom.hex(32)
-          FileUtils.mkdir_p(@root, mode: 0700)
-          File.open(File.join(@root, "#{id}.request-token"), File::WRONLY | File::CREAT | File::EXCL, 0600) { |file| file.write(token) }
+          @credentials.write(name: "#{id}.request-token", token: token)
           @db[:master_requests].insert(id: id, inbox_id: inbox_id, session_id: controller, credential_digest: Digest::SHA256.hexdigest(token), expires_at: Time.now + 1800)
           Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterDispatch, payload: Dto::MasterDispatchJob.new(request_id: id), dispatch_key: "master:dispatch:#{id}")
           Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller",
@@ -68,17 +70,21 @@ module Domains
           raise ArgumentError, "Master request/session expired" unless r[:expires_at] > Time.now && s[:credential_expires_at] > Time.now
 
           d = @source.human(r[:inbox_id])
-          live = @herdr.get(s[:pane_id])
-          if s[:runtime_identity] && live["agent_session"] == s[:runtime_identity] && live["agent_status"] == "working"
+          live = @herdr.pane(s[:pane_id])
+          same_conversation = s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity]
+          if same_conversation && live.agent_status == Status::Working
             return Platform::Jobs::Dto::Decision.defer("Master finishing current turn")
           end
-          raise ArgumentError, "Master conversation replaced or uncertain" unless s[:runtime_identity] && live["agent_session"] == s[:runtime_identity] && %w[idle done].include?(live["agent_status"])
+          raise ArgumentError, "Master conversation replaced or uncertain" unless same_conversation && SETTLED.include?(live.agent_status)
 
-          token = File.read(File.join(@root, "#{r[:id]}.request-token"))
+          token = @credentials.read(name: "#{r[:id]}.request-token")
           raise ArgumentError, "Request credential changed" unless Digest::SHA256.hexdigest(token) == r[:credential_digest]
 
-          path = File.join(@root, "#{s[:id]}.request-token")
-          File.open(path, File::WRONLY | File::CREAT | File::TRUNC, 0600) { |file| file.write(token) }
+          # The session-scoped file is the Controller's current request
+          # capability; replace it for each dispatched request.
+          session_token = "#{s[:id]}.request-token"
+          @credentials.delete(name: session_token)
+          @credentials.write(name: session_token, token: token)
           @db[:master_requests].where(id: r[:id]).update(state: "uncertain")
           raise IOError, "Dispatch lease lost" unless job.lease.begin_effect
 
@@ -87,7 +93,7 @@ module Domains
                    "Reuse the matching existing conversation; ask a concise clarification for multiple plausible matches. " \
                    "Do not invent new sessions for follow-ups. " \
                    "Report completion with master-reply for this exact request."
-          @herdr.prompt(s[:pane_id], prompt)
+          @herdr.prompt(pane_id: s[:pane_id], text: prompt)
           @db[:master_requests].where(id: r[:id]).update(state: "active")
           Platform::Jobs::Dto::Decision.complete
         end
@@ -110,8 +116,8 @@ module Domains
           raise ArgumentError, "Session effect still uncertain" if @db[:session_operations].where(session_id: sids, state: %w[sending uncertain]).count.positive?
 
           s = @db[:sessions][id: r[:session_id], active: true]
-          live = s && @herdr.get(s[:pane_id])
-          raise ArgumentError, "Master session not positively settled" unless live && s[:runtime_identity] && live["agent_session"] == s[:runtime_identity] && %w[idle done].include?(live["agent_status"])
+          live = s && @herdr.pane(s[:pane_id])
+          raise ArgumentError, "Master session not positively settled" unless live && s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity] && SETTLED.include?(live.agent_status)
 
           jobs = Platform::Jobs::Store.new
           @db.transaction do

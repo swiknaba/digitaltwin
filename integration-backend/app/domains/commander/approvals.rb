@@ -6,20 +6,8 @@ module Domains
     class Approvals
       extend T::Sig
 
-      module CurrentCommit
-        extend T::Helpers
-        extend T::Sig
-
-        interface!
-
-        sig { abstract.params(workflow: GitRevision::Workflow).returns(String) }
-        def call(workflow); end
-      end
-
       Gate = T.type_alias { String }
-      CurrentCommitSource = T.type_alias do
-        T.any(CurrentCommit, T.proc.params(workflow: GitRevision::Workflow).returns(String))
-      end
+      CurrentCommitSource = T.type_alias { T.proc.params(worktree: Adapters::Git::Dto::WorktreeRef).returns(String) }
 
       sig do
         params(
@@ -28,7 +16,7 @@ module Domains
           membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
           current_commit: CurrentCommitSource,
           handle: String,
-          evidence: T.nilable(Domains::Reviews::GitEvidence)
+          evidence: T.nilable(Adapters::Git::Evidence)
         ).void
       end
       def initialize(db, resolver:, membership:, current_commit:, handle: ENV.fetch("AGENT_HANDLE", "agent"), evidence: nil)
@@ -59,13 +47,14 @@ module Domains
           raise ArgumentError, "Workflow busy" unless locked
 
           begin
-            current = current_commit(w)
+            current = @current_commit.call(worktree(w[:worktree_path], w[:branch]))
             @db.transaction do
               w = @db[:workflows].where(id: workflow_id).for_update.first
               review = @db[:reviews].where(workflow_id: workflow_id, gate: gate).order(Sequel.desc(:round)).first
               raise ArgumentError, "Approval binding is stale" unless !w[:archived_at] && w[:phase] == "#{gate}_human_approval" && review && review[:verdict] == "approve" && review[:target_commit] == commit && current == (review[:review_commit] || commit)
 
-              @evidence.approval(w, review) if @evidence
+              @evidence&.approval(worktree: worktree(w[:worktree_path], w[:branch]), binding: artifact_binding(w[:artifacts], gate), target_commit: commit,
+                                  review_commit: review[:review_commit], review_path: review[:review_path])
 
               old = @db[:approvals][post_id: d.post_id]
               if old
@@ -86,12 +75,23 @@ module Domains
 
       private
 
-      # Tests and embedding callers have historically provided a callable
-      # revision verifier. Keep that narrow seam while production uses the
-      # explicit CurrentCommit interface implemented by GitRevision.
-      sig { params(workflow: GitRevision::Workflow).returns(String) }
-      def current_commit(workflow)
-        @current_commit.call(workflow)
+      sig { params(worktree_path: Object, branch: Object).returns(Adapters::Git::Dto::WorktreeRef) }
+      def worktree(worktree_path, branch)
+        raise ArgumentError, "Invalid workflow evidence" unless worktree_path.is_a?(String) && branch.is_a?(String)
+
+        Adapters::Git::Dto::WorktreeRef.new(worktree_path: worktree_path, branch: branch)
+      end
+
+      sig { params(artifacts: BasicObject, gate: String).returns(T.nilable(Adapters::Git::Dto::ArtifactBinding)) }
+      def artifact_binding(artifacts, gate)
+        # Sequel returns JSONB columns as a Delegator, which is not an Object.
+        refs = Sequel::Postgres::JSONBHash === artifacts ? artifacts.to_hash : Hash.try_convert(artifacts)
+        ref = refs && Hash.try_convert(refs[gate])
+        return nil unless ref
+
+        commit = ref["commit"]
+        path = ref["path"]
+        Adapters::Git::Dto::ArtifactBinding.new(commit: commit.is_a?(String) ? commit : nil, path: path.is_a?(String) ? path : nil)
       end
     end
   end

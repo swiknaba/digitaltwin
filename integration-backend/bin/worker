@@ -9,7 +9,7 @@ Async do
   db = Kirei::App.raw_db_connection
   handlers = {}
   if ENV["CHAT_VALIDATION_MODE"] == "1"
-    delivery = Domains::Mattermost::Delivery.from_env(db)
+    delivery = Services::Outbound::DeliverOutbox.from_env(db)
     handlers[Platform::Jobs::Dto::JobKind::MattermostPost] = Platform::Jobs::CallableHandler.new(->(job) { delivery.call(job: job) })
     services = Domains::Commander::Services.from_env(db)
     handlers.merge!(services.handlers)

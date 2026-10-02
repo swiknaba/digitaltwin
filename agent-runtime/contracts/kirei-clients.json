@@ -12,11 +12,11 @@
       "sha256": "299ae88f157590937b0e524b5e7fd559ca802be20f2912a6438cd1c1417eb87d"
     },
     "mcp.rb": {
-      "source": "integration-backend/app/domains/commander/mcp.rb",
+      "source": "integration-backend/app/adapters/mcp/server.rb",
       "sha256": "0249584c095ad0c394471b95fdd35aaad53d242f5841ca36fb8bebe24ac7a77d"
     },
     "http_tools.rb": {
-      "source": "integration-backend/app/domains/commander/http_tools.rb",
+      "source": "integration-backend/app/adapters/mcp/http_tools.rb",
       "sha256": "db8d4fcdd7e3f7556df6bcc633a3f08725f1c0ed3a9c7c838bfe10d848ed87f1"
     }
   }

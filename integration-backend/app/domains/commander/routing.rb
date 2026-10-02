@@ -114,17 +114,18 @@ module Domains
       def call(job:)
         id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
         body = @db[:inbox][id: id][:verified_delivery].fetch("body")
-        approval = body.match(/\A@#{Regexp.escape(@handle)} approve ([a-zA-Z0-9-]+) (spec|plan) ([0-9a-f]{40})\z/)
-        if approval
+        command = ::Services::Commands::Parser.new.call(body: body, agent_handle: @handle, worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
+        if command.is_a?(::Services::Commands::Dto::Approve)
           raise ArgumentError, "Approval service unavailable" unless @approvals
 
-          @approvals.record(inbox_id: id, workflow_id: approval[1], gate: approval[2], commit: approval[3])
+          gate = command.gate.serialize
+          @approvals.record(inbox_id: id, workflow_id: command.workflow_id, gate: gate, commit: command.commit)
           source = @db[:inbox][id: id]
           Domains::Mattermost::Outbox.new.enqueue(channel_id: source[:channel_id], thread_id: source[:thread_id],
-                                                  bot: "agent", role: "controller", body: "#{approval[2]} approval recorded for #{approval[1]} at #{approval[3]}.", key: "master:#{id}:approval")
+                                                  bot: "agent", role: "controller", body: "#{gate} approval recorded for #{command.workflow_id} at #{command.commit}.", key: "master:#{id}:approval")
           return Platform::Jobs::Dto::Decision.complete
         end
-        selection = body[/\A@#{Regexp.escape(@handle)} route ([a-zA-Z0-9-]+)\n.+/m, 1]
+        selection = command.is_a?(::Services::Commands::Dto::Route) ? command.workflow_id : nil
         route(inbox_id: id, selection: selection)
         Platform::Jobs::Dto::Decision.complete
       end

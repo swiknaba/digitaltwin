@@ -11,6 +11,7 @@ module Domains
       ClaimedJob = Platform::Jobs::Dto::ClaimedJob
       HandlerMap = T.type_alias { T::Hash[Platform::Jobs::Dto::JobKind, Platform::Jobs::Handler] }
       Roles = T.type_alias { Domains::Workflows::Provision::Roles }
+      Commands = ::Services::Commands::Dto
 
       sig { returns(T.nilable(Master)) }
       attr_reader :master
@@ -38,33 +39,35 @@ module Domains
 
       sig { params(db: Sequel::Database).returns(Services) }
       def self.from_env(db)
-        client = Domains::Mattermost::Client.new(url: ENV.fetch("MATTERMOST_URL"), token_file: ENV.fetch("MATTERMOST_LISTENER_TOKEN_FILE"))
-        resolver = Domains::Mattermost::ActorResolver.new(client, local_bot_ids: ENV.fetch("MATTERMOST_LOCAL_BOT_IDS").split(","), peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","))
+        url = ENV.fetch("MATTERMOST_URL")
+        listener = Adapters::Mattermost::Api.new(client: Adapters::Mattermost::Client.new(url: url, token_file: ENV.fetch("MATTERMOST_LISTENER_TOKEN_FILE")))
+        resolver = Adapters::Mattermost::DeliveryVerifier.new(api: listener, local_bot_ids: ENV.fetch("MATTERMOST_LOCAL_BOT_IDS").split(","),
+                                                              peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","))
         membership = ->(channel, user) do
-          member = client.get("/api/v4/channels/#{channel}/members/#{user}")
-          member["channel_id"] == channel && member["user_id"] == user
-        rescue Domains::Mattermost::Client::Error
-          false
+          member = listener.member(channel_id: channel, user_id: user)
+          !member.nil? && member.channel_id == channel && member.user_id == user
         end
         roles = ENV["ROLE_CONFIG_FILE"] ? JSON.parse(File.read(ENV.fetch("ROLE_CONFIG_FILE"))) : {}
-        worker = Domains::Mattermost::Client.new(url: ENV.fetch("MATTERMOST_URL"), token_file: ENV.fetch("MATTERMOST_WORKER_TOKEN_FILE"))
-        new(db, resolver: resolver, membership: membership, client: worker, bot_id: ENV.fetch("MATTERMOST_WORKER_BOT_ID"), roles: roles)
+        worker = Adapters::Mattermost::Api.new(client: Adapters::Mattermost::Client.new(url: url, token_file: ENV.fetch("MATTERMOST_WORKER_TOKEN_FILE")))
+        new(db, resolver: resolver, membership: membership, api: worker, bot_id: ENV.fetch("MATTERMOST_WORKER_BOT_ID"), roles: roles)
       end
 
       sig do
         params(db: Sequel::Database, resolver: Source::DeliveryResolver,
                membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),
-               client: Domains::Mattermost::Client, bot_id: String, roles: Roles,
-               policy: Domains::Workflows::Policy, herdr: Domains::Sessions::Herdr,
-               evidence: Domains::Reviews::GitEvidence, workspace: T.nilable(Domains::Projects::Workspace),
+               api: Adapters::Mattermost::Api, bot_id: String, roles: Roles,
+               policy: Domains::Workflows::Policy, herdr: Adapters::Herdr::Client,
+               evidence: Adapters::Git::Evidence, workspace: T.nilable(Domains::Projects::Workspace),
                credential_root: String).void
       end
-      def initialize(db, resolver:, membership:, client:, bot_id:, roles:, policy: Domains::Workflows::Policy.new,
-                     herdr: Domains::Sessions::Herdr.new, evidence: Domains::Reviews::GitEvidence.new,
+      def initialize(db, resolver:, membership:, api:, bot_id:, roles:, policy: Domains::Workflows::Policy.new,
+                     herdr: Adapters::Herdr::Client.new, evidence: Adapters::Git::Evidence.new,
                      workspace: nil, credential_root: "/run/herdr/session-credentials")
         @db = db
+        revision = Adapters::Git::Revision.new
+        current_commit = ->(worktree) { revision.call(worktree_path: worktree.worktree_path, branch: worktree.branch) }
         @source = T.let(Source.new(db, resolver: resolver, membership: membership), Source)
-        @approvals = T.let(Approvals.new(db, resolver: resolver, membership: membership, current_commit: Domains::Commander::GitRevision.new, evidence: evidence), Approvals)
+        @approvals = T.let(Approvals.new(db, resolver: resolver, membership: membership, current_commit: current_commit, evidence: evidence), Approvals)
         @routing = T.let(Routing.new(db, resolver: resolver, membership: membership, approvals: @approvals), Routing)
         @sessions = T.let(
           Domains::Sessions::Lifecycle.new(db, herdr: herdr, source: @source, credential_root: credential_root,
@@ -73,7 +76,7 @@ module Domains
         )
         @reviews = T.let(Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: @routing, policy: policy), Domains::Reviews::Coordinator)
         @workflows = T.let(Domains::Workflows::Coordinator.new(db, source: @source, herdr: herdr, evidence: evidence, reviews: @reviews, sessions: @sessions, policy: policy), Domains::Workflows::Coordinator)
-        @provision = T.let(Domains::Workflows::Provision.new(db, source: @source, client: client, bot_id: bot_id,
+        @provision = T.let(Domains::Workflows::Provision.new(db, source: @source, api: api, bot_id: bot_id,
                                                                  workspace: workspace || Domains::Projects::Workspace.new, sessions: @sessions, roles: roles, policy: policy), Domains::Workflows::Provision)
         controller_role = roles["controller"]
         @master = T.let(controller_role && Master.new(db, sessions: @sessions, source: @source, herdr: herdr,
@@ -129,39 +132,37 @@ module Domains
       sig { params(job: ClaimedJob).returns(Decision) }
       def route(job:)
         id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
-        source = @source.human(id)
-        start_recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-start ([0-9a-f-]+) ([a-z0-9]{26})\z/)
-        if start_recovery
-          @provision.reconcile(id: capture(start_recovery, 1), inbox_id: id, thread_id: capture(start_recovery, 2))
+        command = parse(@source.human(id).body)
+        case command
+        when Commands::RecoverStart
+          @provision.reconcile(id: command.request_id, inbox_id: id, thread_id: command.thread_id)
           return Decision.complete
-        end
-        session_recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-session ([0-9a-f-]+) ([a-zA-Z0-9_.:-]+)\z/)
-        if session_recovery
-          @sessions.reconcile(operation_id: capture(session_recovery, 1), inbox_id: id, pane_id: capture(session_recovery, 2))
+        when Commands::RecoverSession
+          @sessions.reconcile(operation_id: command.operation_id, inbox_id: id, pane_id: command.pane_id)
           return Decision.complete
-        end
-        followup_recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-followup ([0-9]+) (delivered|discard)\z/)
-        if followup_recovery
-          @followups.reconcile(id: capture(followup_recovery, 1).to_i, inbox_id: id, outcome: capture(followup_recovery, 2))
+        when Commands::RecoverFollowup
+          @followups.reconcile(id: command.followup_id, inbox_id: id, outcome: command.outcome.serialize)
           return Decision.complete
-        end
-        recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-master ([0-9a-f-]+)\z/)
-        if recovery
+        when Commands::RecoverMaster
           raise ArgumentError, "Master not configured" unless @master
 
-          @master.recover(request_id: capture(recovery, 1), inbox_id: id)
+          @master.recover(request_id: command.request_id, inbox_id: id)
           return Decision.complete
-        end
-        if @master && !source.body.match?(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} (approve|route)\b/)
-          @master.ingest(id)
-          return Decision.complete
+        when Commands::Approve, Commands::Route, Commands::MalformedDirective
+          nil
+        when Commands::WorkerCommand, NilClass
+          if @master
+            @master.ingest(id)
+            return Decision.complete
+          end
+        else
+          T.absurd(command)
         end
         @routing.call(job: job)
         # Exact approvals advance only through the coordinator's independent
         # revision/gate validation. Normal contextual prompts keep their session.
-        source = @source.human(id)
-        match = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} approve ([a-zA-Z0-9-]+) (spec|plan) ([0-9a-f]{40})\z/)
-        @workflows.advance_approval(workflow_id: capture(match, 1), gate: capture(match, 2)) if match
+        approval = parse(@source.human(id).body)
+        @workflows.advance_approval(workflow_id: approval.workflow_id, gate: approval.gate.serialize) if approval.is_a?(Commands::Approve)
         Decision.complete
       end
 
@@ -197,7 +198,9 @@ module Domains
       def start_existing(job:)
         id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
         d = @source.human(id)
-        raise ArgumentError, "Human root start required" unless d.root_post && d.body.match?(/\A@#{Regexp.escape(ENV.fetch("WORKER_HANDLE", "worker"))} start\b/)
+        command = parse(d.body)
+        start = command.is_a?(Commands::WorkerCommand) && command.action == Commands::WorkerAction::Start && command.single_space_separator
+        raise ArgumentError, "Human root start required" unless d.root_post && start
 
         project = @db[:projects][channel_id: d.channel_id]
         raise ArgumentError, "Use verified project mapping through Master" unless project
@@ -208,12 +211,9 @@ module Domains
 
       private
 
-      sig { params(match: T.nilable(MatchData), index: Integer).returns(String) }
-      def capture(match, index)
-        value = match&.[](index)
-        raise ArgumentError, "Invalid controller command" unless value.is_a?(String)
-
-        value
+      sig { params(body: String).returns(T.nilable(Commands::Command)) }
+      def parse(body)
+        ::Services::Commands::Parser.new.call(body: body, agent_handle: ENV.fetch("AGENT_HANDLE", "agent"), worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
       end
 
       sig { params(value: T.nilable(String)).returns(String) }

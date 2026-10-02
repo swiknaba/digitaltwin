@@ -25,6 +25,11 @@ RSpec.describe "architecture boundaries" do
   raw_table_pattern = /\b(?:@?db|raw_db_connection)\[:|Sequel\.lit/
   broad_signature_pattern = /returns\(Object\)|T::Hash\[(?:Symbol|String), Object\]|T\.untyped|T\.unsafe/
   entity_pattern = /\b(Domains|Platform)::(\w+)::Entities/
+  raw_connection_pattern = /raw_db_connection/
+  advisory_lock_pattern = /pg_(try_)?advisory/
+  # Kirei has no advisory-lock or cross-model transaction API (Ruling 5).
+  raw_connection_owners = ["app/platform/lock.rb", "app/platform/transaction.rb"].freeze
+  advisory_lock_owners = ["app/platform/lock.rb"].freeze
 
   camelize = ->(name) { name.split("_").map(&:capitalize).join }
   snake = ->(name) { name.gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase }
@@ -75,6 +80,10 @@ RSpec.describe "architecture boundaries" do
             line.match?(raw_table_pattern)
           when "broad_signatures"
             line.match?(broad_signature_pattern) && boundary_files.none? { |glob| File.fnmatch?(glob, path) }
+          when "raw_db_connection"
+            line.match?(raw_connection_pattern) && !raw_connection_owners.include?(path)
+          when "advisory_locks"
+            line.match?(advisory_lock_pattern) && !advisory_lock_owners.include?(path)
           when "private_entities"
             line.scan(entity_pattern).any? { |layer, name| !path.start_with?("app/#{layer.downcase}/#{snake.call(name)}/") }
           when "layer_dependencies"
@@ -101,6 +110,8 @@ RSpec.describe "architecture boundaries" do
     "forbids raw table access" => "raw_table_access",
     "forbids broad signatures" => "broad_signatures",
     "keeps entities private" => "private_entities",
+    "keeps the raw database connection inside Platform::Lock and Platform::Transaction" => "raw_db_connection",
+    "keeps advisory locks inside Platform::Lock" => "advisory_locks",
     "enforces layer dependencies" => "layer_dependencies"
   }.each do |description, rule|
     it description do

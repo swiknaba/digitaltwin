@@ -10,10 +10,10 @@ module Domains
         params(
           db: Sequel::Database,
           workspace: Workspace,
-          git_repos: Domains::GitRepos::Client
+          git_repos: Adapters::Git::Repositories
         ).void
       end
-      def initialize(db, workspace:, git_repos: Domains::GitRepos::Client.new)
+      def initialize(db, workspace:, git_repos: Adapters::Git::Repositories.new)
         @db = db
         @workspace = workspace
         @git_repos = git_repos

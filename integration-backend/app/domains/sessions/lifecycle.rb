@@ -6,6 +6,10 @@ module Domains
     class Lifecycle
       extend T::Sig
 
+      Status = Adapters::Herdr::Dto::AgentStatus
+      SETTLED = T.let([Status::Idle, Status::Done].freeze, T::Array[Adapters::Herdr::Dto::AgentStatus])
+      RENEWABLE = T.let([Status::Idle, Status::Working, Status::Done].freeze, T::Array[Adapters::Herdr::Dto::AgentStatus])
+
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Row = T.type_alias { T::Hash[Symbol, Object] }
       Configuration = T.type_alias { T::Hash[String, Object] }
@@ -13,7 +17,7 @@ module Domains
       sig do
         params(
           db: Sequel::Database,
-          herdr: Domains::Sessions::Herdr,
+          herdr: Adapters::Herdr::Client,
           source: Domains::Commander::Source,
           callback_url: String,
           credential_root: String,
@@ -24,7 +28,7 @@ module Domains
         @db = db
         @herdr = herdr
         @source = source
-        @root = credential_root
+        @credentials = T.let(Adapters::Credentials::FileStore.new(root: credential_root), Adapters::Credentials::FileStore)
         @url = callback_url
         @policy = policy
         @lock = T.let(Platform::Lock.new, Platform::Lock)
@@ -46,7 +50,7 @@ module Domains
 
           validate_configuration!(configuration)
           id, token = SecureRandom.uuid, SecureRandom.hex(32)
-          write_credential(id, token)
+          @credentials.write(name: credential_name(id), token: token)
           @db.transaction do
             generation = (@db[:sessions].where(role: "controller").max(:generation) || 0) + 1
             @db[:sessions].insert(id: id, role: "controller", generation: generation, pane_id: "pending:#{id}", alias: "digitaltwin-#{id}",
@@ -79,7 +83,7 @@ module Domains
           validate_configuration!(configuration)
           id = SecureRandom.uuid
           token = SecureRandom.hex(32)
-          write_credential(id, token)
+          @credentials.write(name: credential_name(id), token: token)
           @db.transaction do
             generation = (@db[:sessions].where(workflow_id: workflow_id, role: role).max(:generation) || 0) + 1
             @db[:sessions].insert(id: id, workflow_id: workflow_id, role: role, generation: generation, pane_id: "pending:#{id}", alias: "digitaltwin-#{id}",
@@ -113,30 +117,28 @@ module Domains
             raise IOError, "Dispatch lease lost" unless before_effect.call
 
             if op[:kind] == "start"
-              env = { "DIGITALTWIN_SESSION_TOKEN_FILE" => credential_path(session[:id]), "DIGITALTWIN_SESSION_GENERATION" => session[:generation].to_s, "DIGITALTWIN_CALLBACK_URL" => @url,
-                      "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE" => File.join(@root, "#{session[:id]}.request-token") }
-              created = @herdr.workspace(cwd: w ? w[:worktree_path] : nil, label: session[:alias], env: env)
-              pane = object_string(object(created.fetch("root_pane")), "pane_id")
-              workspace_id = object_string(object(created.fetch("workspace")), "workspace_id")
-              @db[:sessions].where(id: session[:id]).update(pane_id: pane, workspace_id: workspace_id)
-              live = @herdr.start(pane, session[:alias], session[:configuration])
-              identity = live["agent_session"]
-              raise IOError, "Unproved conversation identity" unless identity.is_a?(Hash) && %w[source agent kind value].all? { |key| identity[key].is_a?(String) && !identity[key].empty? }
+              env = { "DIGITALTWIN_SESSION_TOKEN_FILE" => @credentials.path(name: credential_name(session[:id])), "DIGITALTWIN_SESSION_GENERATION" => session[:generation].to_s, "DIGITALTWIN_CALLBACK_URL" => @url,
+                      "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE" => @credentials.path(name: "#{session[:id]}.request-token") }
+              created = @herdr.create_workspace(cwd: w ? w[:worktree_path] : nil, label: session[:alias], env: env)
+              @db[:sessions].where(id: session[:id]).update(pane_id: created.root_pane_id, workspace_id: created.workspace_id)
+              live = @herdr.start(pane_id: created.root_pane_id, name: session[:alias], launch: launch_spec(session[:configuration]))
+              identity = live.agent_session
+              raise IOError, "Unproved conversation identity" unless identity && proven_identity?(identity)
 
               @db.transaction do
-                @db[:sessions].where(id: session[:id]).update(active: true, runtime_identity: Sequel.pg_jsonb(identity), state: live.fetch("agent_status"), last_verified_at: Time.now)
+                @db[:sessions].where(id: session[:id]).update(active: true, runtime_identity: Sequel.pg_jsonb(identity.serialize), state: live.agent_status.serialize, last_verified_at: Time.now)
                 complete_operation(op, session, w)
               end
             else
-              live = @herdr.get(session[:pane_id])
-              raise IOError, "Uncertain or replaced session" unless live["agent_session"] == session[:runtime_identity] && %w[idle done].include?(live["agent_status"])
+              live = @herdr.pane(session[:pane_id])
+              raise IOError, "Uncertain or replaced session" unless live.agent_session&.serialize == session[:runtime_identity] && SETTLED.include?(live.agent_status)
 
-              @herdr.close(session[:pane_id])
+              @herdr.close(pane_id: session[:pane_id])
               @db.transaction do
                 @db[:sessions].where(id: session[:id]).update(active: false, state: "done")
                 complete_operation(op, session, w)
               end
-              FileUtils.rm_f(credential_path(session[:id]))
+              @credentials.delete(name: credential_name(session[:id]))
             end
             "complete"
           rescue StandardError
@@ -199,10 +201,10 @@ module Domains
 
           w = s[:workflow_id] && @db[:workflows][id: s[:workflow_id]]
           @source.human(w[:source_inbox_id], destination: w[:channel_id]) if w
-          live = @herdr.get(s[:pane_id])
-          raise ArgumentError, "Session identity not proven" unless s[:runtime_identity] && live["agent_session"] == s[:runtime_identity] && %w[idle working done].include?(live["agent_status"])
+          live = @herdr.pane(s[:pane_id])
+          raise ArgumentError, "Session identity not proven" unless s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity] && RENEWABLE.include?(live.agent_status)
 
-          token = File.read(credential_path(s[:id]))
+          token = @credentials.read(name: credential_name(s[:id]))
           raise ArgumentError, "Credential changed" unless Digest::SHA256.hexdigest(token) == s[:credential_digest]
 
           @db.transaction do
@@ -255,20 +257,21 @@ module Domains
           changes = if op[:kind] == "start"
                       raise ArgumentError, "Workflow closed" if w && (w[:archived_at] || %w[closed cancelled].include?(w[:phase]))
 
-                      live = @herdr.get(pane_id)
-                      identity = live["agent_session"]
-                      valid = identity.is_a?(Hash) && %w[source agent kind value].all? { |field| identity[field].is_a?(String) && !identity[field].empty? }
-                      valid &&= live["name"] == s[:alias] && live["cwd"] == (w ? w[:worktree_path] : "/home/runtime") && live["agent"] == s[:configuration]["cli"] && identity["agent"] == s[:configuration]["cli"]
-                      valid &&= %w[idle done].include?(live["agent_status"]) && live["interactive_ready"] == true && live["launch_pending"] == false
+                      live = @herdr.pane(pane_id)
+                      identity = live.agent_session
+                      raise ArgumentError, "Unproved exact role conversation" unless identity && proven_identity?(identity)
+
+                      valid = live.name == s[:alias] && live.cwd == (w ? w[:worktree_path] : "/home/runtime") && live.agent == s[:configuration]["cli"] && identity.agent == s[:configuration]["cli"]
+                      valid &&= SETTLED.include?(live.agent_status) && live.interactive_ready == true && live.launch_pending == false
                       raise ArgumentError, "Unproved exact role conversation" unless valid
 
-                      token = File.read(credential_path(s[:id]))
+                      token = @credentials.read(name: credential_name(s[:id]))
                       raise ArgumentError, "Credential changed" unless Digest::SHA256.hexdigest(token) == s[:credential_digest]
 
-                      { pane_id: pane_id, active: true, runtime_identity: Sequel.pg_jsonb(identity), state: live["agent_status"], credential_expires_at: Time.now + 3600, last_verified_at: Time.now }
+                      { pane_id: pane_id, active: true, runtime_identity: Sequel.pg_jsonb(identity.serialize), state: live.agent_status.serialize, credential_expires_at: Time.now + 3600, last_verified_at: Time.now }
                     else
                       raise ArgumentError, "Stop pane mismatch" unless s[:pane_id] == pane_id
-                      raise ArgumentError, "Recorded pane still exists" if @herdr.panes.any? { |pane| pane["pane_id"] == pane_id }
+                      raise ArgumentError, "Recorded pane still exists" if @herdr.panes.any? { |pane| pane.pane_id == pane_id }
 
                       { active: false, state: "done" }
                     end
@@ -280,7 +283,7 @@ module Domains
             audit.record(event_key: key, action: "verified_session_reconciliation", details: details)
             Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Session operation #{operation_id} reconciled against runtime evidence; no start or stop was repeated.", key: key)
           end
-          FileUtils.rm_f(credential_path(s[:id])) if op[:kind] == "stop"
+          @credentials.delete(name: credential_name(s[:id])) if op[:kind] == "stop"
           "complete"
         end
       end
@@ -330,14 +333,25 @@ module Domains
         end
       end
       sig { params(id: String).returns(String) }
-      def credential_path(id) = File.join(@root, "#{id}.token")
+      def credential_name(id) = "#{id}.token"
 
-      sig { params(id: String, token: String).void }
-      def write_credential(id, token)
-        FileUtils.mkdir_p(@root, mode: 0700)
-        raise ArgumentError, "Credential root symlink" if File.symlink?(@root)
+      sig { params(identity: Adapters::Herdr::Dto::AgentSession).returns(T::Boolean) }
+      def proven_identity?(identity)
+        [identity.source, identity.agent, identity.kind, identity.value].none?(&:empty?)
+      end
 
-        File.open(credential_path(id), File::WRONLY | File::CREAT | File::EXCL, 0600) { |file| file.write(token) }
+      # Sequel returns the JSONB configuration as a Delegator, which is not an
+      # Object. validate_configuration! already checked it at reservation.
+      sig { params(value: BasicObject).returns(Adapters::Herdr::Dto::LaunchSpec) }
+      def launch_spec(value)
+        configuration = Sequel::Postgres::JSONBHash === value ? value.to_hash : Hash.try_convert(value)
+        raise IOError, "Invalid Herdr configuration" unless configuration
+
+        cli = configuration["cli"]
+        args = configuration["launch_args"]
+        raise IOError, "Invalid Herdr configuration" unless cli.is_a?(String) && args.is_a?(Array) && args.all? { |argument| argument.is_a?(String) }
+
+        Adapters::Herdr::Dto::LaunchSpec.new(cli: cli, launch_args: args)
       end
 
       class << self
@@ -373,27 +387,6 @@ module Domains
 
       sig { params(row: Row, key: Symbol).returns(Integer) }
       def row_integer(row, key) = self.class.row_integer(row, key)
-
-      sig { params(value: Object).returns(T::Hash[String, Object]) }
-      def object(value)
-        raise ArgumentError, "Malformed JSON object" unless value.is_a?(Hash)
-
-        typed = T.let({}, T::Hash[String, Object])
-        value.each do |key, item|
-          raise ArgumentError, "Malformed JSON object" unless key.is_a?(String)
-
-          typed[key] = item
-        end
-        typed
-      end
-
-      sig { params(object: T::Hash[String, Object], key: String).returns(String) }
-      def object_string(object, key)
-        value = object.fetch(key) { raise ArgumentError, "Malformed JSON object" }
-        raise ArgumentError, "Malformed JSON object" unless value.is_a?(String)
-
-        value
-      end
     end
   end
 end
