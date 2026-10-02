@@ -59,7 +59,7 @@ module Domains
                                   configuration: Sequel.pg_jsonb(configuration), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
-            Domains::Jobs::Store.new(@db).enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
+            Domains::Jobs::Store.new.enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
           end
           id
         end
@@ -92,7 +92,7 @@ module Domains
                                   configuration: Sequel.pg_jsonb(configuration), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
-            Domains::Jobs::Store.new(@db).enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
+            Domains::Jobs::Store.new.enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
             Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: w[:channel_id], thread_id: w[:thread_id], bot: "worker", role: role,
                                                          body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.", key: "session:reserved:#{id}")
           end
@@ -161,7 +161,7 @@ module Domains
         if workflow && row_string(op, :kind) == "start" && row_string(session, :role) == "writer"
           workflow_id = row_string(workflow, :id)
           version = row_integer(workflow, :version)
-          Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version }, key: "workflow:phase:#{workflow_id}:#{version}")
+          Domains::Jobs::Store.new.enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version }, key: "workflow:phase:#{workflow_id}:#{version}")
         elsif workflow && row_string(op, :kind) == "stop" && %w[closed cancelled].include?(row_string(workflow, :phase)) && @db[:sessions].where(workflow_id: row_string(workflow, :id), active: true).empty?
           @db[:workflows].where(id: row_string(workflow, :id)).update(archived_at: Time.now)
         end
@@ -178,7 +178,7 @@ module Domains
           id = row_string(session, :id)
           expires_at = row_time(session, :credential_expires_at)
           key = "session:renew:#{id}:#{expires_at.to_i}"
-          Domains::Jobs::Store.new(db).enqueue(kind: "session.renew", payload: { "session_id" => id, "generation" => row_integer(session, :generation) }, key: key, available_at: [Time.now, expires_at - 300].max)
+          Domains::Jobs::Store.new.enqueue(kind: "session.renew", payload: { "session_id" => id, "generation" => row_integer(session, :generation) }, key: key, available_at: [Time.now, expires_at - 300].max)
         end
       end
 
@@ -297,7 +297,7 @@ module Domains
 
               op = SecureRandom.uuid
               @db[:session_operations].insert(id: op, session_id: s[:id], kind: "stop")
-              Domains::Jobs::Store.new(@db).enqueue(kind: "session.stop", payload: { "operation_id" => op }, key: "session:stop:#{s[:id]}")
+              Domains::Jobs::Store.new.enqueue(kind: "session.stop", payload: { "operation_id" => op }, key: "session:stop:#{s[:id]}")
             end
           end
         end

@@ -105,12 +105,12 @@ module Domains
                                                                   workflow_id: w[:id], inbox_id: inbox_id, updated_at: @now.call)
           end
           acknowledge(d, inbox_id, session ? "Instruction #{id} queued for the existing project session; delivery is pending." : "Instruction #{id} recorded; session reconciliation is required before delivery.", "queued")
-          Domains::Jobs::Store.new(@db).enqueue(kind: "session.followup", payload: { "followup_id" => id }, key: "followup:#{id}") if session
+          Domains::Jobs::Store.new.enqueue(kind: "session.followup", payload: { "followup_id" => id }, key: "followup:#{id}") if session
           @db[:followups][id: id]
         end
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, _store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
       def call(job, _store)
         id = inbox_id(job)
         body = @db[:inbox][id: id][:verified_delivery].fetch("body")
@@ -137,7 +137,7 @@ module Domains
                                                      bot: "agent", role: "controller", body: text, key: "master:#{id}:#{kind}")
       end
 
-      sig { params(job: Domains::Jobs::Store::Job).returns(T.any(Integer, String)) }
+      sig { params(job: Domains::Jobs::Job).returns(T.any(Integer, String)) }
       private def inbox_id(job)
         value = job.payload.fetch("inbox_id") { raise ArgumentError, "Routing job is malformed" }
         raise ArgumentError, "Routing job is malformed" unless value.is_a?(Integer) || value.is_a?(String)

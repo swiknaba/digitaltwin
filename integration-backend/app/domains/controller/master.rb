@@ -35,14 +35,14 @@ module Domains
           FileUtils.mkdir_p(@root, mode: 0700)
           File.open(File.join(@root, "#{id}.request-token"), File::WRONLY | File::CREAT | File::EXCL, 0600) { |file| file.write(token) }
           @db[:master_requests].insert(id: id, inbox_id: inbox_id, session_id: controller, credential_digest: Digest::SHA256.hexdigest(token), expires_at: Time.now + 1800)
-          Domains::Jobs::Store.new(@db).enqueue(kind: "master.dispatch", payload: { "request_id" => id }, key: "master:dispatch:#{id}")
+          Domains::Jobs::Store.new.enqueue(kind: "master.dispatch", payload: { "request_id" => id }, key: "master:dispatch:#{id}")
           Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller",
                                                        body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: "start"]&.dig(:id)}.", key: "master:queued:#{id}")
           id
         end
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, store: Domains::Jobs::Store).void }
       def call(job, store)
         lease_token = job.lease_token
         raise ArgumentError, "Master job has no lease" unless lease_token
@@ -158,7 +158,7 @@ module Domains
 
       private
 
-      sig { params(job: Domains::Jobs::Store::Job).returns(String) }
+      sig { params(job: Domains::Jobs::Job).returns(String) }
       def request_id(job)
         value = job.payload.fetch("request_id") { raise ArgumentError, "Master job is malformed" }
         raise ArgumentError, "Master job is malformed" unless value.is_a?(String) && value.match?(/\A[0-9a-f-]+\z/)

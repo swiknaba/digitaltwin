@@ -20,7 +20,7 @@ RSpec.describe "Mattermost outbox delivery (synthetic transport)" do
   end
   def run_delivery
     handler = Domains::Mattermost::Delivery.new(db, clients: { "worker" => @client }, bot_ids: { "worker" => @bot })
-    Async { Domains::Jobs::Worker.new(db, handlers: { "mattermost.post" => handler.method(:call) }).tick }.wait
+    Async { Domains::Jobs::Worker.new(handlers: { "mattermost.post" => handler.method(:call) }).tick }.wait
   end
   it "verifies destination/identity before posting with thread and stable reconciliation key" do
     run_delivery

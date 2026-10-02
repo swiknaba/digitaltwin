@@ -34,7 +34,7 @@ module Domains
         session = active_session(token: token, generation: generation, role: role)
         payload = callback_payload(session_id: session.id, generation: generation, action: action, commit: commit, kind: kind, verdict: verdict)
         key = "review:callback:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
-        Domains::Jobs::Store.new(@db).enqueue(kind: "review.callback", payload: payload, key: key)
+        Domains::Jobs::Store.new.enqueue(kind: "review.callback", payload: payload, key: key)
         "queued"
       end
 

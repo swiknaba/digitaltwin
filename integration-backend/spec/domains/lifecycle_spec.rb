@@ -59,11 +59,11 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
 
   def review_job(id)
-    store = Domains::Jobs::Store.new(db)
+    store = Domains::Jobs::Store.new
     db[:jobs].exclude(kind: "review.prompt").update(available_at: Time.now + 3600)
     job = store.claim(worker_id: "fixture")
     reviews.call(job, store)
-    store.complete(id: job[:id], lease_token: job[:lease_token])
+    store.complete(id: job.id, lease_token: T.must(job.lease_token))
     expect(db[:reviews][id: id][:dispatch_state]).to eq("delivered")
   end
 
@@ -250,16 +250,16 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     master = Domains::Controller::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
     request = master.ingest(@inbox)
     db[:jobs].exclude(kind: "master.dispatch").update(available_at: Time.now + 3600)
-    store = Domains::Jobs::Store.new(db)
+    store = Domains::Jobs::Store.new
     job = store.claim(worker_id: "fixture")
     allow(herdr).to receive(:get).and_return({ "agent_session" => identity, "agent_status" => "working" })
     master.call(job, store)
-    expect(db[:jobs][id: job[:id]].values_at(:status, :attempts)).to eq(["pending", 0])
-    db[:jobs].where(id: job[:id]).update(available_at: Time.now - 1)
+    expect(db[:jobs][id: job.id].values_at(:status, :attempts)).to eq(["pending", 0])
+    db[:jobs].where(id: job.id).update(available_at: Time.now - 1)
     allow(herdr).to receive(:get).and_return({ "agent_session" => identity, "agent_status" => "idle" })
     job = store.claim(worker_id: "fixture")
     master.call(job, store)
-    store.complete(id: job[:id], lease_token: job[:lease_token])
+    store.complete(id: job.id, lease_token: T.must(job.lease_token))
     expect(db[:master_requests][id: request][:state]).to eq("active")
     token = File.read(File.join(@credential_root, "#{request}.request-token"))
     2.times { master.reply(request_id: request, token: token, text: "Instruction queued") }

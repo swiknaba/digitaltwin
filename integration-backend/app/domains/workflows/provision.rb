@@ -60,7 +60,7 @@ module Domains
           end
           id = SecureRandom.uuid
           @db[:workflow_requests].insert(id: id, inbox_id: inbox_id, project_id: project_id, request_digest: digest, parameters: Sequel.pg_jsonb(parameters), thread_id: existing_thread)
-          Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.provision", payload: { "request_id" => id }, key: "workflow:provision:#{id}")
+          Domains::Jobs::Store.new.enqueue(kind: "workflow.provision", payload: { "request_id" => id }, key: "workflow:provision:#{id}")
           Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Workflow request #{id} queued; project thread and sessions are not yet created.", key: "workflow:request:#{id}")
           id
         end
@@ -156,7 +156,7 @@ module Domains
           @db.transaction do
             @db[:workflow_requests].where(id: id).update(thread_id: thread_id, state: "queued", reason: nil)
             @db[:jobs].where(id: job[:id]).update(status: "complete", lease_token: nil, lease_expires_at: nil) if job
-            Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.provision", payload: { "request_id" => id }, key: "workflow:provision:reconciled:#{id}:#{thread_id}")
+            Domains::Jobs::Store.new.enqueue(kind: "workflow.provision", payload: { "request_id" => id }, key: "workflow:provision:reconciled:#{id}:#{thread_id}")
             @db[:audit].insert(event_key: key, action: "verified_thread_reconciliation", details: Sequel.pg_jsonb({ "inbox_id" => inbox_id, "request_id" => id, "thread_id" => thread_id }))
             Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Start #{id} reconciled to verified thread #{thread_id}; continuation queued without recreating the thread.", key: key)
           end

@@ -70,7 +70,7 @@ module Domains
           raise ArgumentError, "Workflow version changed" unless w[:version] == args["expected_version"]
 
           payload = { "inbox_id" => r[:inbox_id], "workflow_id" => w[:id], "action" => args["action"], "expected_version" => args["expected_version"] }
-          Domains::Jobs::Store.new(@db).enqueue(kind: "master.control", payload: payload, key: "master:control:#{r[:id]}:#{w[:id]}:#{args["action"]}:#{w[:version]}")
+          Domains::Jobs::Store.new.enqueue(kind: "master.control", payload: payload, key: "master:control:#{r[:id]}:#{w[:id]}:#{args["action"]}:#{w[:version]}")
           { "status" => "queued" }
         end
       end

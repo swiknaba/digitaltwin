@@ -42,7 +42,7 @@ module Domains
           raise ArgumentError, "Response key reused with changed content" unless same_message?(row, message)
 
           id = row_string(row, :id)
-          Domains::Jobs::Store.new(@db).enqueue(kind: "mattermost.post", payload: { "outbox_id" => id }, key: "outbox:#{id}")
+          Domains::Jobs::Store.new.enqueue(kind: "mattermost.post", payload: { "outbox_id" => id }, key: "outbox:#{id}")
           id
         end
       end

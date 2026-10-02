@@ -124,12 +124,12 @@ module Domains
       end
       def queue(kind, delivery, inbox_id, workflow: nil)
         payload = T.let({ "inbox_id" => inbox_id, "channel_id" => delivery.channel_id, "thread_id" => delivery.thread_id },
-                        Domains::Jobs::Store::Payload)
+                        Domains::Jobs::Job::Payload)
         if workflow
           payload["workflow_id"] = workflow_string(workflow, :id)
           payload["expected_version"] = workflow_integer(workflow, :version)
         end
-        Domains::Jobs::Store.new(@db).enqueue(kind: kind, payload: payload, key: "inbox:#{inbox_id}:#{kind}")
+        Domains::Jobs::Store.new.enqueue(kind: kind, payload: payload, key: "inbox:#{inbox_id}:#{kind}")
         result("blocked", "Recorded durably; live Task 1 workflow dispatch is gated")
       end
 

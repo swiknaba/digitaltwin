@@ -159,7 +159,7 @@ module Domains
 
       sig { params(id: String, version: Integer).void }
       def queue_phase(id, version)
-        Domains::Jobs::Store.new(@db).enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => id, "version" => version }, key: "workflow:phase:#{id}:#{version}")
+        Domains::Jobs::Store.new.enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => id, "version" => version }, key: "workflow:phase:#{id}:#{version}")
       end
 
       private

@@ -119,7 +119,7 @@ module Domains
         @bot_ids = T.let(bot_ids, T::Hash[String, String])
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, jobs: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, jobs: Domains::Jobs::Store).void }
       def call(job, jobs)
         row = outbox_item(@db[:outbox][id: job_payload(job).fetch("outbox_id")])
         raise ArgumentError, "Unknown outbox item" unless row
@@ -339,7 +339,7 @@ module Domains
         value.match?(/\A[a-z0-9]{26}\z/)
       end
 
-      sig { params(job: Domains::Jobs::Store::Job).returns(T::Hash[String, String]) }
+      sig { params(job: Domains::Jobs::Job).returns(T::Hash[String, String]) }
       def job_payload(job)
         value = job.payload
         payload = T.let({}, T::Hash[String, String])
@@ -351,7 +351,7 @@ module Domains
         payload
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, key: Symbol).returns(String) }
+      sig { params(job: Domains::Jobs::Job, key: Symbol).returns(String) }
       def job_string(job, key)
         return job.id if key == :id
 

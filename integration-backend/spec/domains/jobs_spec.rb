@@ -1,7 +1,7 @@
 require_relative "../spec_helper"
 RSpec.describe "Durable jobs and outbox" do
   let(:db) { Kirei::App.raw_db_connection }
-  let(:store) { Domains::Jobs::Store.new(db) }
+  let(:store) { Domains::Jobs::Store.new }
   before { %i[audit outbox inbox jobs].each { |table| db[table].delete } }
   def enqueue(key = "one") = store.enqueue(kind: "test", payload: { "x" => 1 }, key: key)
   it "returns one durable job for a unique dispatch key" do
@@ -22,16 +22,16 @@ RSpec.describe "Durable jobs and outbox" do
     now = Time.now
     a = store.claim(worker_id: "a", now: now)
     b = store.claim(worker_id: "b", now: now + 31)
-    expect(b[:id]).to eq(id)
-    expect(store.complete(id: id, lease_token: a[:lease_token])).to be(false)
-    expect(store.complete(id: id, lease_token: b[:lease_token])).to be(true)
+    expect(b.id).to eq(id)
+    expect(store.complete(id: id, lease_token: T.must(a.lease_token))).to be(false)
+    expect(store.complete(id: id, lease_token: T.must(b.lease_token))).to be(true)
   end
   it "blocks on the fifth failure" do
     id = enqueue
     now = Time.now
     5.times do |i|
       job = store.claim(worker_id: "a", now: now + (i * 100))
-      store.retry(id: id, lease_token: job[:lease_token], error: "fixture", now: now + (i * 100))
+      store.retry(id: id, lease_token: T.must(job.lease_token), error: "fixture", now: now + (i * 100))
     end
     expect(db[:jobs][id: id][:status]).to eq("blocked")
   end
@@ -39,15 +39,15 @@ RSpec.describe "Durable jobs and outbox" do
     enqueue
     now = Time.now
     job = store.claim(worker_id: "a", now: now)
-    expect(store.begin_effect(id: job[:id], lease_token: job[:lease_token])).to be(true)
+    expect(store.begin_effect(id: job.id, lease_token: T.must(job.lease_token))).to be(true)
     expect(store.claim(worker_id: "b", now: now + 31)).to be_nil
-    expect(db[:jobs][id: job[:id]][:status]).to eq("uncertain")
+    expect(db[:jobs][id: job.id][:status]).to eq("uncertain")
   end
   it "heartbeats only the current lease" do
     enqueue
     job = store.claim(worker_id: "a", now: Time.now)
-    expect(store.heartbeat(id: job[:id], lease_token: "wrong")).to be(false)
-    expect(store.heartbeat(id: job[:id], lease_token: job[:lease_token])).to be(true)
+    expect(store.heartbeat(id: job.id, lease_token: "wrong")).to be(false)
+    expect(store.heartbeat(id: job.id, lease_token: T.must(job.lease_token))).to be(true)
   end
   it "rolls back state and outbox together" do
     expect {

@@ -92,7 +92,7 @@ module Domains
         end
       end
 
-      sig { params(job: Domains::Jobs::Store::Job, store: Domains::Jobs::Store).void }
+      sig { params(job: Domains::Jobs::Job, store: Domains::Jobs::Store).void }
       def call(job, store)
         lease_token = job.lease_token
         raise ArgumentError, "Follow-up job has no lease" unless lease_token
@@ -160,7 +160,7 @@ module Domains
         "blocked"
       end
 
-      sig { params(job: Domains::Jobs::Store::Job).returns(Integer) }
+      sig { params(job: Domains::Jobs::Job).returns(Integer) }
       private def followup_id(job)
         value = job.payload.fetch("followup_id") { raise ArgumentError, "Follow-up job is malformed" }
         raise ArgumentError, "Follow-up job is malformed" unless value.is_a?(Integer) && value.positive?

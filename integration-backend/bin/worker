@@ -15,7 +15,7 @@ Async do
     handlers.merge!(services.handlers)
     services.sessions.renew_due
   end
-  Domains::Jobs::Worker.new(db, handlers: handlers).run
+  Domains::Jobs::Worker.new(handlers: handlers).run
 ensure
   Kirei::App.raw_db_connection.disconnect
 end.wait
