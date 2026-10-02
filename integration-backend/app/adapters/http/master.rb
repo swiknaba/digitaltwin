@@ -26,7 +26,7 @@ module Adapters
         return rejected_response if result.failed?
 
         render_json({ "result" => ToolJson.call(result.result) }, status: 200)
-      rescue ArgumentError, Sequel::Error, Adapters::Mattermost::Errors::RequestFailed
+      rescue ArgumentError, Sequel::Error
         rejected_response
       end
 
@@ -43,7 +43,7 @@ module Adapters
         return rejected_response if result.failed?
 
         render_json({ "status" => "queued" }, status: 202)
-      rescue ArgumentError, Sequel::Error, Adapters::Mattermost::Errors::RequestFailed
+      rescue ArgumentError, Sequel::Error
         rejected_response
       end
 

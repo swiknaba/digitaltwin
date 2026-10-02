@@ -1,3 +1,2 @@
 ---
-layer_dependencies:
-- app/adapters/http/master.rb
+layer_dependencies: []

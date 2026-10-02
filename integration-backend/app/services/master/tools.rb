@@ -57,6 +57,8 @@ module Services
           next failure(Code::InvalidArguments, "Invalid evidence IDs") if arguments.fields.include?(Field::EvidenceInboxIds.serialize) && !evidence_ids(arguments)
 
           respond(name, arguments, authorized.result)
+        rescue Adapters::Mattermost::Errors::RequestFailed => error
+          failure(Code::ChatRequestFailed, error.message)
         end
       end
 

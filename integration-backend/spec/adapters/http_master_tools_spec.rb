@@ -122,4 +122,24 @@ RSpec.describe "POST /internal/master/tools wire format" do
     expect(tool("list_projects", {}, "worker-token")).to eq([403, '{"error":"Request rejected"}'])
     expect(tool("workflow_control", "workflow_id" => "w1", "action" => "pause", "expected_version" => "2")).to eq([403, '{"error":"Request rejected"}'])
   end
+
+  it "keeps the rejected body when a tool's chat request fails" do
+    failing = double
+    allow(failing).to receive(:call).and_raise(Adapters::Mattermost::Errors::RequestFailed.new("Mattermost HTTP 500", status: 500))
+    tools = Services::Master::Tools.new(source: source, authorize: Services::Master::AuthorizeRequest.new(source: source), route: double, request_start: failing)
+    allow(Services::Composition).to receive(:instance).and_return(double(tools: tools))
+    expect(tool("start_workflow", "project_id" => "p1", "title" => "task")).to eq([403, '{"error":"Request rejected"}'])
+  end
+
+  it "keeps the rejected body when the reply's source verification fails" do
+    failing = double
+    allow(failing).to receive(:call).and_raise(Adapters::Mattermost::Errors::RequestFailed.new("Mattermost HTTP 500", status: 500))
+    reply = Services::Master::Reply.new(authorize: Services::Master::AuthorizeRequest.new(source: failing))
+    allow(Services::Composition).to receive(:instance).and_return(double(reply: reply))
+    body = JSON.generate("request_id" => "request", "text" => "done")
+    env = Rack::MockRequest.env_for("http://localhost/internal/master/reply", method: "POST", input: body, "CONTENT_TYPE" => "application/json")
+    env.merge!("REQUEST_PATH" => "/internal/master/reply", "HTTP_HOST" => "localhost", "REMOTE_ADDR" => "127.0.0.1", "HTTP_AUTHORIZATION" => "Bearer request-token")
+    status, _headers, chunks = app.call(env)
+    expect([status, chunks.join]).to eq([403, '{"error":"Request rejected"}'])
+  end
 end

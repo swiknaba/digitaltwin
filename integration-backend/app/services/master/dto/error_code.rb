@@ -31,6 +31,7 @@ module Services
           LeaseLive = new("lease_live")
           ApprovalRejected = new("approval_rejected")
           ApprovalStale = new("approval_stale")
+          ChatRequestFailed = new("chat_request_failed")
         end
       end
     end

@@ -40,6 +40,8 @@ module Services
           @lock.call(key: "controller") { @transaction.call { reply(id, text) } }
         rescue Platform::Lock::Busy => error
           failure(Code::Busy, error.message)
+        rescue Adapters::Mattermost::Errors::RequestFailed => error
+          failure(Code::ChatRequestFailed, error.message)
         end
       end
 
