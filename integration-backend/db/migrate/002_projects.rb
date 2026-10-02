@@ -6,7 +6,7 @@ Sequel.migration do
       String :slug, null: false, unique: true
       String :remote_identity, null: false, unique: true
       String :workspace, null: false, unique: true
-      DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
     end
   end
 end

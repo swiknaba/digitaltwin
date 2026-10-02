@@ -8,5 +8,5 @@ bundle exec rspec --exclude-pattern 'spec/integration/{db_tasks,clean_migration}
 bundle exec rspec spec/integration/db_tasks_spec.rb
 # A fresh subprocess must execute the actual application migrations from zero.
 bundle exec rspec spec/integration/clean_migration_spec.rb
-bundle exec rubocop --only Layout,Lint,Security
-bin/typecheck-contracts
+bundle exec rubocop
+bundle exec srb tc

@@ -16,7 +16,7 @@ module Domains
       def definitions
         DEFINITIONS.map do |name, fields|
           properties = fields.transform_values { |type| type == "array" ? { "type" => "array", "items" => { "type" => "integer" }, "maxItems" => 10 } : { "type" => type } }.merge("request_id" => { "type" => "string" })
-          { "name" => name, "description" => "Verified request-bound #{name.tr('_', ' ')}", "inputSchema" => { "type" => "object", "properties" => properties, "required" => properties.keys, "additionalProperties" => false } }
+          { "name" => name, "description" => "Verified request-bound #{name.tr("_", " ")}", "inputSchema" => { "type" => "object", "properties" => properties, "required" => properties.keys, "additionalProperties" => false } }
         end
       end
 
@@ -59,7 +59,7 @@ module Domains
           raise ArgumentError, "Workflow version changed" unless w[:version] == args["expected_version"]
 
           payload = { "inbox_id" => r[:inbox_id], "workflow_id" => w[:id], "action" => args["action"], "expected_version" => args["expected_version"] }
-          Domains::Jobs::Store.new(@db).enqueue(kind: "master.control", payload: payload, key: "master:control:#{r[:id]}:#{w[:id]}:#{args['action']}:#{w[:version]}")
+          Domains::Jobs::Store.new(@db).enqueue(kind: "master.control", payload: payload, key: "master:control:#{r[:id]}:#{w[:id]}:#{args["action"]}:#{w[:version]}")
           { "status" => "queued" }
         end
       end

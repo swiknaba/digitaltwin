@@ -23,7 +23,7 @@ Sequel.migration do
       String :state, null: false, default: "queued"
       String :thread_id
       String :reason
-      DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       constraint(:workflow_request_state, state: %w[queued sending uncertain bound blocked])
     end
     create_table(:session_operations) do

@@ -18,7 +18,7 @@ Sequel.migration do
       String :status, null: false, default: "queued"
       String :reason
       column :evidence, :jsonb, null: false
-      DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       DateTime :delivered_at
       constraint(:followup_status, status: %w[queued sending delivered uncertain blocked])
     end

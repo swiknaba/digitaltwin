@@ -134,10 +134,9 @@ operational/destructive MCP tools remain separate implementation and acceptance 
 
 `bin/check` requires disposable databases named `digitaltwin_backend_test` and `digitaltwin_migration_test`.
 Set `DATABASE_URL` and `MIGRATION_TEST_DATABASE_URL`, then run it from this folder.
-It runs PostgreSQL/domain/Rack/actual-Falcon/local-HTTP fixtures, isolated migration-helper tests, Layout/Lint/Security cops, and shared-contract static typing.
-The Docker `dependencies` target includes check tools; its Alpine compatibility layer supports the static checker.
-Whole-project `bundle exec spoom srb tc` remains failing on missing dependency RBIs and generated framework signatures.
-A shared-contract typecheck does not establish whole-project type coverage.
+It runs PostgreSQL/domain/Rack/actual-Falcon/local-HTTP fixtures, isolated migration-helper tests, the complete configured RuboCop suite, and whole-project Sorbet.
+Generated Tapioca dependency RBIs are committed under `sorbet/rbi/gems` and are refreshed in the pinned Debian `typecheck` Docker target; that target is check-only because Tapioca's Ruby 4 helper requires glibc. The production runtime remains the pinned Alpine image and its dependencies remain musl-linked.
+Run `docker build --target typecheck -t digitaltwin-backend-typecheck integration-backend` from the repository root to reproduce the full static checks, then run `docker run --rm -v "$PWD/integration-backend:/app" -w /app digitaltwin-backend-typecheck bundle exec tapioca gems` before committing dependency changes.
 
 Mattermost fixtures are synthetic shapes audited against release `11.11.1`, commit `3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9`.
 They are not authenticated server captures. REST may omit human `is_bot:false`; only refetched, identity-checked users use that default.

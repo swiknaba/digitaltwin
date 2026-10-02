@@ -15,7 +15,7 @@ Sequel.migration do
       column :artifacts, :jsonb, null: false, default: Sequel.pg_jsonb({})
       String :blocker
       DateTime :archived_at
-      DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       index [:channel_id, :thread_id], unique: true, where: { archived_at: nil }
     end
     alter_table(:sessions) { add_foreign_key [:workflow_id], :workflows }
@@ -28,7 +28,7 @@ Sequel.migration do
       String :user_id, null: false
       String :channel_id, null: false
       String :post_id, null: false
-      DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       unique [:workflow_id, :kind, :target_commit]
       unique :post_id
     end

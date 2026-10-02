@@ -105,7 +105,7 @@ module Domains
         d = @source.human(payload.fetch("inbox_id"))
         w = @db[:workflows][id: payload.fetch("workflow_id")]
         action = job[:kind].delete_prefix("workflow.")
-        raise ArgumentError, "Control source/workflow mismatch" unless w && d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch('WORKER_HANDLE', 'worker')} #{action}"
+        raise ArgumentError, "Control source/workflow mismatch" unless w && d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch("WORKER_HANDLE", "worker")} #{action}"
 
         @workflows.control(inbox_id: payload["inbox_id"], workflow_id: w[:id], action: action, expected_version: payload.fetch("expected_version"))
       end

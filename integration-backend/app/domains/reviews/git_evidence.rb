@@ -43,8 +43,8 @@ module Domains
         raise ArgumentError, "Approval artifact binding changed" unless ref && ref["commit"] == approval[:target_commit] && ref["path"]
 
         path!(ref["path"])
-        expected = git(workflow, "rev-parse", "#{approval[:target_commit]}:#{ref['path']}")
-        actual = git(workflow, "rev-parse", "#{current}:#{ref['path']}")
+        expected = git(workflow, "rev-parse", "#{approval[:target_commit]}:#{ref["path"]}")
+        actual = git(workflow, "rev-parse", "#{current}:#{ref["path"]}")
         raise ArgumentError, "Previously approved artifact changed" unless expected == actual
 
         true
@@ -58,7 +58,7 @@ module Domains
         raise ArgumentError, "Artifact binding missing" unless ref && ref["commit"] == record[:target_commit] && ref["path"]
 
         path!(ref["path"])
-        git(workflow, "cat-file", "-e", "#{record[:target_commit]}:#{ref['path']}")
+        git(workflow, "cat-file", "-e", "#{record[:target_commit]}:#{ref["path"]}")
         if record[:review_commit]
           files = git(workflow, "diff", "--name-only", record[:target_commit], current).lines.map(&:strip)
           raise ArgumentError, "Reviewed artifact changed" unless files == [record[:review_path]]

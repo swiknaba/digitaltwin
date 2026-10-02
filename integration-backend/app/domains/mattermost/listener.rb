@@ -25,7 +25,7 @@ module Domains
         delay = 1
         loop do
           begin
-            endpoint = Async::HTTP::Endpoint.parse("#{@client.url.sub(/^http/, 'ws')}/api/v4/websocket")
+            endpoint = Async::HTTP::Endpoint.parse("#{@client.url.sub(/^http/, "ws")}/api/v4/websocket")
             Async::WebSocket::Client.connect(endpoint) do |socket|
               socket.write(JSON.generate({ seq: 1, action: "authentication_challenge",
                                            data: { token: @client.token } }))

@@ -18,7 +18,7 @@ RSpec.describe "Release-source history reconciliation (synthetic transport)" do
       @responses["/api/v4/users/#{id}"] = { "id" => id, "is_bot" => id == bot }
       @responses["/api/v4/channels/#{channel}/members/#{id}"] = { "channel_id" => channel, "user_id" => id }
     end
-    @posts.each { |p| @responses["/api/v4/posts/#{p['id']}"] = p }
+    @posts.each { |p| @responses["/api/v4/posts/#{p["id"]}"] = p }
     fixture = self
     @client = Object.new
     @client.define_singleton_method(:get) do |path|
@@ -55,7 +55,7 @@ RSpec.describe "Release-source history reconciliation (synthetic transport)" do
 
   it "retries transient fetch failure without advancing past an unprocessed item" do
     db[:chat_checkpoints].insert(channel_id: channel, post_revision: 1500)
-    @fail_post = "/api/v4/posts/#{'e' * 26}"
+    @fail_post = "/api/v4/posts/#{"e" * 26}"
     expect { @service.channel(channel) }.to raise_error(Domains::Mattermost::Client::Error)
     expect(db[:chat_checkpoints][channel_id: channel][:post_revision]).to eq(1500)
     expect(db[:inbox].count).to eq(1)
@@ -81,11 +81,11 @@ RSpec.describe "Release-source history reconciliation (synthetic transport)" do
   it "uses the covered history revision across a later refetch edit and reconnect" do
     @filter_since = true
     db[:chat_checkpoints].insert(channel_id: channel, post_revision: 1500)
-    @responses["/api/v4/posts/#{'d' * 26}"] = post("d", human, 2000).merge("update_at" => 10000)
+    @responses["/api/v4/posts/#{"d" * 26}"] = post("d", human, 2000).merge("update_at" => 10000)
     expect(@service.channel(channel)).to eq(3000)
     expect(db[:inbox].where(post_id: "d" * 26).first[:post_revision]).to eq(10000)
-    @posts = [post("f", human, 5000), @responses["/api/v4/posts/#{'d' * 26}"]]
-    @responses["/api/v4/posts/#{'f' * 26}"] = @posts.first
+    @posts = [post("f", human, 5000), @responses["/api/v4/posts/#{"d" * 26}"]]
+    @responses["/api/v4/posts/#{"f" * 26}"] = @posts.first
     expect(@service.channel(channel)).to eq(10000)
     expect(db[:inbox].where(post_id: "f" * 26).count).to eq(1)
     expect(@service.channel(channel)).to eq(10000)

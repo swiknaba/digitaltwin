@@ -22,7 +22,7 @@ module Domains
           @db[:master_requests].insert(id: id, inbox_id: inbox_id, session_id: controller, credential_digest: Digest::SHA256.hexdigest(token), expires_at: Time.now + 1800)
           Domains::Jobs::Store.new(@db).enqueue(kind: "master.dispatch", payload: { "request_id" => id }, key: "master:dispatch:#{id}")
           Domains::Mattermost::Outbox.new(@db).enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller",
-                                                       body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: 'start']&.dig(:id)}.", key: "master:queued:#{id}")
+                                                       body: "Request #{id} queued for Master; delivery pending. Session #{controller}, start operation #{@db[:session_operations][session_id: controller, kind: "start"]&.dig(:id)}.", key: "master:queued:#{id}")
           id
         end
       end
@@ -88,7 +88,7 @@ module Domains
         r = @db[:master_requests][id: request_id] or raise ArgumentError, "Unknown Master request"
         original = @db[:inbox][id: r[:inbox_id]]
         d = @source.human(inbox_id, destination: original[:channel_id])
-        raise ArgumentError, "Recovery requires the original human's exact request binding" unless d.actor.user_id == original[:user_id] && d.body == "@#{ENV.fetch('AGENT_HANDLE', 'agent')} recover-master #{request_id}"
+        raise ArgumentError, "Recovery requires the original human's exact request binding" unless d.actor.user_id == original[:user_id] && d.body == "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-master #{request_id}"
 
         Domains::Workflows::Lock.new(@db).call("controller") do
           raise ArgumentError, "Request does not require recovery" unless @db[:master_requests][id: request_id][:state] == "uncertain"

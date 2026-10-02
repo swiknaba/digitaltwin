@@ -6,5 +6,5 @@ Startup.validate!
 exit if ENV["BOOT_CHECK_ONLY"] == "1"
 # Parent checks schema then disconnects; each Falcon child creates its own pool.
 Kirei::App.raw_db_connection.disconnect
-exec("bundle", "exec", "falcon", "serve", "--bind", "http://0.0.0.0:#{Integer(ENV.fetch('PORT', '3000'))}",
+exec("bundle", "exec", "falcon", "serve", "--bind", "http://0.0.0.0:#{Integer(ENV.fetch("PORT", "3000"))}",
      "--count", ENV.fetch("WEB_PROCESSES", "1"), "--config", File.expand_path("../config.ru", __dir__))

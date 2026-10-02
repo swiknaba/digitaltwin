@@ -4,7 +4,7 @@
 #
 #   CREATE DATABASE digitaltwin_${environment};
 
-require 'zeitwerk/inflector'
+require "zeitwerk/inflector"
 require_relative "../../app"
 
 namespace :db do
@@ -191,7 +191,7 @@ namespace :db do
       namespace_parts.pop
       namespace_parts.map! { |part| APP_LOADER.inflector.camelize(part, full_path) }
 
-      constant_name = "#{namespace_parts.join('::')}::#{klass_constant_name}"
+      constant_name = "#{namespace_parts.join("::")}::#{klass_constant_name}"
 
       model_klass = Object.const_get(constant_name)
       next unless model_klass.respond_to?(:table_name)
@@ -237,8 +237,8 @@ def format_schema_comments(table_name, schema)
     type = "#{info[:db_type]}(#{info[:max_length]})" if info[:max_length]
     type ||= info[:db_type]
     type = "#{type}, " if type.size >= 20 # e.g. "timestamp without time zone" exceeds 20 characters
-    null = info[:allow_null] ? 'null' : 'not null'
-    primary_key = info[:primary_key] ? ', primary key' : ''
+    null = info[:allow_null] ? "null" : "not null"
+    primary_key = info[:primary_key] ? ", primary key" : ""
     lines << "#  #{name.to_s.ljust(20)}:#{type.to_s.ljust(20)}#{null}#{primary_key}"
   end
   lines.join("\n") + "\n#"

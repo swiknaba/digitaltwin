@@ -183,7 +183,7 @@ module Domains
         raise ArgumentError, "Human source binding required" unless original
 
         d = @source.human(inbox_id, destination: w ? w[:channel_id] : original[:channel_id])
-        command = "@#{ENV.fetch('AGENT_HANDLE', 'agent')} recover-session #{operation_id} #{pane_id}"
+        command = "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-session #{operation_id} #{pane_id}"
         raise ArgumentError, "Exact original-human session recovery required" unless d.actor.user_id == original[:user_id] && d.body == command
 
         @lock.call(w ? w[:id] : "controller") do

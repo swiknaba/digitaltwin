@@ -91,7 +91,7 @@ module Domains
           project = @db[:projects][id: request[:project_id]]
           d = @source.human(inbox_id, destination: project[:channel_id])
           original = @db[:inbox][id: request[:inbox_id]]
-          command = "@#{ENV.fetch('AGENT_HANDLE', 'agent')} recover-start #{id} #{thread_id}"
+          command = "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-start #{id} #{thread_id}"
           raise ArgumentError, "Exact original-human thread recovery required" unless d.actor.user_id == original[:user_id] && d.body == command
 
           key = "workflow:recovery:#{id}"

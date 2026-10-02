@@ -16,7 +16,7 @@ module Domains
         raise ArgumentError, "Human source changed" unless d.actor.member && !d.actor.bot && d.actor.user_id == source[:user_id] && d.post_revision == source[:post_revision]
 
         w = @db[:workflows][id: workflow_id] or raise ArgumentError, "Missing workflow"
-        contextual = d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch('WORKER_HANDLE', 'worker')} approve"
+        contextual = d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch("WORKER_HANDLE", "worker")} approve"
         exact = d.body == "@#{@handle} approve #{workflow_id} #{gate} #{commit}"
         raise ArgumentError, "Approval requires exact or verified thread binding" unless exact || contextual
         raise ArgumentError, "Destination membership required" unless @membership.call(w[:channel_id], d.actor.user_id)
