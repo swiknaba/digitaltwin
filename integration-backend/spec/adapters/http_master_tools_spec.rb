@@ -75,9 +75,9 @@ RSpec.describe "POST /internal/master/tools wire format" do
     env = Rack::MockRequest.env_for("http://localhost/internal/master/manifest", method: "GET")
     env.merge!("REQUEST_PATH" => "/internal/master/manifest", "HTTP_HOST" => "localhost", "REMOTE_ADDR" => "127.0.0.1")
     status, _headers, chunks = app.call(env)
-    # SHA-256 of the pre-refactor manifest. Evidence items keep the manifest's "integer" type.
-    expect([status, Digest::SHA256.hexdigest(chunks.join)]).to eq([200, "c8018620f83ad4f7d6320930f471f7def23e8ec3b5500d78190cad7b23f04a60"])
-    expect(chunks.join).to include('"evidence_inbox_ids":{"type":"array","items":{"type":"integer"},"maxItems":10}')
+    # SHA-256 of the pre-refactor manifest with Ruling 31 applied: evidence items are strings.
+    expect([status, Digest::SHA256.hexdigest(chunks.join)]).to eq([200, "7e7744e0fa9b0bdfdd5803f657474c6a8e3bfae08c0b7b78710c22c9c5775632"])
+    expect(chunks.join).to include('"evidence_inbox_ids":{"type":"array","items":{"type":"string"},"maxItems":10}')
   end
 
   it "keeps the list_projects body" do

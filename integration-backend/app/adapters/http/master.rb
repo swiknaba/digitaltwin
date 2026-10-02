@@ -53,7 +53,7 @@ module Adapters
           properties = T.let({}, T::Hash[String, Object])
           name.fields.each do |field|
             type = field.json_type
-            properties[field.serialize] = type == "array" ? { "type" => "array", "items" => { "type" => "integer" }, "maxItems" => 10 } : { "type" => type }
+            properties[field.serialize] = type == "array" ? { "type" => "array", "items" => { "type" => "string" }, "maxItems" => 10 } : { "type" => type }
           end
           properties["request_id"] = { "type" => "string" }
           tool = name.serialize
