@@ -12,6 +12,8 @@ RSpec.describe "architecture boundaries" do
   # Exempt from the broad-signature rule only: these files translate raw JSON.
   boundary_files = [
     "app/adapters/mattermost/client.rb",
+    "app/adapters/mattermost/api.rb",
+    "app/adapters/mattermost/delivery_verifier.rb",
     "app/adapters/herdr/client.rb",
     "app/adapters/http/*",
     "app/adapters/mcp/*",

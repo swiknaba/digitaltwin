@@ -91,7 +91,7 @@ module Domains
           record = @db[:reviews].where(workflow_id: workflow_id, gate: gate).order(Sequel.desc(:round)).first
           raise ArgumentError, "Approving review missing" unless record && record[:verdict] == "approve" && record[:target_commit] == ref["commit"]
 
-          @evidence.approval(worktree: worktree(w), binding: artifact_binding(w[:artifacts], gate), target_commit: record[:target_commit],
+          @evidence.approval(worktree: worktree(w), binding: Domains::Workflows::Dto::ArtifactBinding.from_artifacts(artifacts: w[:artifacts], gate: gate), target_commit: record[:target_commit],
                              review_commit: record[:review_commit], review_path: record[:review_path])
           validate_prior_approvals(w, gate == "plan" ? %w[spec plan] : %w[spec])
           phase = gate == "spec" ? "plan_writing" : "implementation"
@@ -160,7 +160,7 @@ module Domains
           approval = @db[:approvals][workflow_id: w[:id], kind: gate, target_commit: commit]
           raise ArgumentError, "Required exact artifact approval missing" unless approval
 
-          @evidence.approved_artifact(worktree: worktree(w), binding: artifact_binding(w[:artifacts], gate), target_commit: commit)
+          @evidence.approved_artifact(worktree: worktree(w), binding: Domains::Workflows::Dto::ArtifactBinding.from_artifacts(artifacts: w[:artifacts], gate: gate), target_commit: commit)
         end
       end
 
@@ -196,18 +196,6 @@ module Domains
       sig { params(w: T::Hash[Symbol, Object]).returns(Adapters::Git::Dto::WorktreeRef) }
       private def worktree(w)
         Adapters::Git::Dto::WorktreeRef.new(worktree_path: row_string(w, :worktree_path), branch: row_string(w, :branch))
-      end
-
-      sig { params(artifacts: BasicObject, gate: String).returns(T.nilable(Adapters::Git::Dto::ArtifactBinding)) }
-      private def artifact_binding(artifacts, gate)
-        # Sequel returns JSONB columns as a Delegator, which is not an Object.
-        refs = Sequel::Postgres::JSONBHash === artifacts ? artifacts.to_hash : Hash.try_convert(artifacts)
-        ref = refs && Hash.try_convert(refs[gate])
-        return nil unless ref
-
-        commit = ref["commit"]
-        path = ref["path"]
-        Adapters::Git::Dto::ArtifactBinding.new(commit: commit.is_a?(String) ? commit : nil, path: path.is_a?(String) ? path : nil)
       end
 
       sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(String) }

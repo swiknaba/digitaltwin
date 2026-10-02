@@ -53,7 +53,7 @@ module Domains
               review = @db[:reviews].where(workflow_id: workflow_id, gate: gate).order(Sequel.desc(:round)).first
               raise ArgumentError, "Approval binding is stale" unless !w[:archived_at] && w[:phase] == "#{gate}_human_approval" && review && review[:verdict] == "approve" && review[:target_commit] == commit && current == (review[:review_commit] || commit)
 
-              @evidence&.approval(worktree: worktree(w[:worktree_path], w[:branch]), binding: artifact_binding(w[:artifacts], gate), target_commit: commit,
+              @evidence&.approval(worktree: worktree(w[:worktree_path], w[:branch]), binding: Domains::Workflows::Dto::ArtifactBinding.from_artifacts(artifacts: w[:artifacts], gate: gate), target_commit: commit,
                                   review_commit: review[:review_commit], review_path: review[:review_path])
 
               old = @db[:approvals][post_id: d.post_id]
@@ -78,18 +78,6 @@ module Domains
         raise ArgumentError, "Invalid workflow evidence" unless worktree_path.is_a?(String) && branch.is_a?(String)
 
         Adapters::Git::Dto::WorktreeRef.new(worktree_path: worktree_path, branch: branch)
-      end
-
-      sig { params(artifacts: BasicObject, gate: String).returns(T.nilable(Adapters::Git::Dto::ArtifactBinding)) }
-      private def artifact_binding(artifacts, gate)
-        # Sequel returns JSONB columns as a Delegator, which is not an Object.
-        refs = Sequel::Postgres::JSONBHash === artifacts ? artifacts.to_hash : Hash.try_convert(artifacts)
-        ref = refs && Hash.try_convert(refs[gate])
-        return nil unless ref
-
-        commit = ref["commit"]
-        path = ref["path"]
-        Adapters::Git::Dto::ArtifactBinding.new(commit: commit.is_a?(String) ? commit : nil, path: path.is_a?(String) ? path : nil)
       end
     end
   end

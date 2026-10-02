@@ -13,7 +13,7 @@ RSpec.describe Adapters::Git::Evidence do
       run.call("-c", "commit.gpgsign=false", "commit", "-qm", "spec")
       target = run.call("rev-parse", "HEAD")
       worktree = Adapters::Git::Dto::WorktreeRef.new(worktree_path: path, branch: "workflow")
-      binding = Adapters::Git::Dto::ArtifactBinding.new(commit: target, path: "docs/spec.md")
+      binding = Domains::Workflows::Dto::ArtifactBinding.new(commit: target, path: "docs/spec.md")
       evidence = described_class.new(revision: Adapters::Git::Revision.new(root: root))
       reviewer = Adapters::Git::Dto::ReviewerIdentity.new(provider: "fixture", model: "fixture", family: "fixture")
       review = ->(commit) { evidence.review(worktree: worktree, target_commit: target, review_path: "docs/review.md", review_commit: commit, verdict: "approve", reviewer: reviewer) }
