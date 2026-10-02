@@ -4,7 +4,7 @@
 module Domains
   module Workflows
     module Dto
-      # The parsed ROLE_CONFIG_FILE. Workflows persist the whole object, so an
+      # Workflow role configurations. Workflows persist the whole object, so an
       # optional controller entry stays in `role_configurations` as today.
       class RoleAssignments < T::Struct
         include Kirei::Domain::ValueObject

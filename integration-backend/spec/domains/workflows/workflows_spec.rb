@@ -130,7 +130,7 @@ RSpec.describe "Workflows domain" do
 
     it "persists role_configurations as the full role file, including the controller entry" do
       file = roles.merge("controller" => controller)
-      assignments = Domains::Workflows::Records.role_assignments_from_json(JSON.generate(file))
+      assignments = T.must(Domains::Workflows::Records.role_file_from_json(JSON.generate(file)).assignments)
       expect(assignments.controller&.cli).to eq("gemini")
       id, = inbox("p" * 26)
       parameters = dto::RequestParameters.new(title: "Project work", existing_thread: nil, roles: assignments)
@@ -146,9 +146,29 @@ RSpec.describe "Workflows domain" do
     end
 
     it "parses ROLE_CONFIG_FILE strictly" do
-      expect { Domains::Workflows::Records.role_assignments_from_json("{") }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
-      expect { Domains::Workflows::Records.role_assignments_from_json(JSON.generate(roles.except("reviewer"))) }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
-      expect(Domains::Workflows::Records.role_assignments_from_json(JSON.generate(roles)).serialize).to eq(roles)
+      parse = ->(json) { Domains::Workflows::Records.role_file_from_json(json) }
+      expect { parse.call("{") }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
+      expect { parse.call(JSON.generate(roles.merge("observer" => controller))) }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
+      expect { parse.call(JSON.generate("controller" => controller.except("model"))) }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
+      expect(parse.call(JSON.generate(roles)).serialize).to eq(roles)
+      expect(parse.call(JSON.generate(roles.except("reviewer"))).assignments).to be_nil
+      controller_only = parse.call(JSON.generate("controller" => controller))
+      expect([controller_only.assignments, controller_only.controller&.cli]).to eq([nil, "gemini"])
+    end
+
+    it "boots with a controller-only role file and fails a start with RolesMissing" do
+      Dir.mktmpdir do |dir|
+        # from_env parses the file this way; its other ENV inputs are clients and paths.
+        file = Domains::Workflows::Records.role_file_from_json(JSON.generate("controller" => controller))
+        services = Domains::Commander::Services.new(db, resolver: double, membership: double, api: double, bot_id: "b" * 26, roles: file,
+                                                        worktrees: double, credential_root: dir)
+        expect(services.master).not_to be_nil
+        id, delivery = inbox("p" * 26)
+        allow_any_instance_of(Domains::Messaging::VerifyHumanSource).to receive(:call).and_return(Kirei::Services::Result.new(result: delivery))
+        result = services.request_start.call(inbox_id: id, project_id: "project", title: "Work")
+        expect(result.errors.first.code).to eq(Services::Workflows::Dto::ErrorCode::RolesMissing.serialize)
+        expect(db[:workflow_requests].count).to eq(0)
+      end
     end
   end
 

@@ -35,9 +35,9 @@ module Domains
       end
 
       # Parses ROLE_CONFIG_FILE content with the same strict rules as stored rows.
-      sig { params(json: String).returns(Dto::RoleAssignments) }
-      def self.role_assignments_from_json(json)
-        strictly { role_assignments(Dto::RoleAssignments.from_hash(JSON.parse(json), true)) }
+      sig { params(json: String).returns(Dto::RoleFile) }
+      def self.role_file_from_json(json)
+        strictly { role_file(Dto::RoleFile.from_hash(JSON.parse(json), true)) }
       rescue JSON::ParserError
         raise Errors::MalformedRecord, "Malformed role configuration"
       end
@@ -88,6 +88,17 @@ module Domains
                                          controller: controller && role_config(controller))
         verified!(roles.serialize == stored.serialize)
         roles
+      end
+
+      sig { params(stored: Dto::RoleFile).returns(Dto::RoleFile) }
+      private_class_method def self.role_file(stored)
+        writer = stored.writer
+        reviewer = stored.reviewer
+        controller = stored.controller
+        file = Dto::RoleFile.new(writer: writer && role_config(writer), reviewer: reviewer && role_config(reviewer),
+                                 controller: controller && role_config(controller))
+        verified!(file.serialize == stored.serialize)
+        file
       end
 
       sig { params(stored: Dto::RoleConfig).returns(Dto::RoleConfig) }

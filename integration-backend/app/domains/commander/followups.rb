@@ -81,7 +81,7 @@ module Domains
             begin
               raise IOError, "Dispatch lease lost" unless before_effect.call
 
-              @herdr.prompt(pane_id: session[:pane_id], text: source.verified_delivery.body.sub(/\A@#{Regexp.escape(@handle)} route [a-zA-Z0-9-]+\n/, ""))
+              @herdr.prompt(pane_id: session[:pane_id], text: source.verified_delivery.body.sub(/\A@#{Regexp.escape(@handle)} route [a-zA-Z0-9_-]+\n/, ""))
               @db[:followups].where(id: id).update(status: "delivered", delivered_at: Time.now)
               "delivered"
             rescue StandardError

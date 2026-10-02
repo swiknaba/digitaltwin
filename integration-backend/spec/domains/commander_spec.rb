@@ -132,6 +132,16 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     expect(sender.deliver(row[:id])).to eq("delivered")
     expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
   end
+  it "strips the route header of a human workflow id before prompting the Writer" do
+    id = "workflow_Ab3dEf9hJk2m"
+    db[:projects].insert(id: "p1", channel_id: "1".rjust(26, "c"), slug: "owner/repo1", remote_identity: "github.com/owner/repo1", workspace: "/tmp/p1")
+    db[:workflows].insert(id: id, project_id: "p1", channel_id: "1".rjust(26, "c"), thread_id: "root1", branch: "b1", worktree_path: "/tmp/w1", phase: "implementation", role_configurations: workflow_roles)
+    db[:sessions].insert(id: "s1", workflow_id: id, role: "writer", generation: 1, pane_id: "pane1", alias: "writer1",
+                         credential_digest: "digest1", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({ "cli" => "codex" }), runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation1" }))
+    row = routing.route(inbox_id: source(body: "@agent route #{id}\nPlease also cover that case"), selection: id)
+    expect(sender.deliver(row[:id])).to eq("delivered")
+    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
+  end
   it "delivers a busy-session follow-up through worker ticks after the writer becomes idle" do
     workflow
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")

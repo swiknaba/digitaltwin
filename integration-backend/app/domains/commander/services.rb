@@ -10,7 +10,7 @@ module Domains
       Decision = Platform::Jobs::Dto::Decision
       ClaimedJob = Platform::Jobs::Dto::ClaimedJob
       HandlerMap = T.type_alias { T::Hash[Platform::Jobs::Dto::JobKind, Platform::Jobs::Handler] }
-      Roles = Domains::Workflows::Dto::RoleAssignments
+      RoleFile = Domains::Workflows::Dto::RoleFile
       Workflows = ::Services::Workflows
       Commands = ::Services::Commands::Dto
 
@@ -41,8 +41,9 @@ module Domains
         listener = Adapters::Mattermost::Api.new(client: Adapters::Mattermost::Client.new(url: url, token_file: ENV.fetch("MATTERMOST_LISTENER_TOKEN_FILE")))
         resolver = Adapters::Mattermost::DeliveryVerifier.new(api: listener, local_bot_ids: ENV.fetch("MATTERMOST_LOCAL_BOT_IDS").split(","),
                                                               peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","))
-        # Parsed once here; a malformed file fails startup.
-        roles = ENV["ROLE_CONFIG_FILE"] ? Domains::Workflows::Records.role_assignments_from_json(File.read(ENV.fetch("ROLE_CONFIG_FILE"))) : nil
+        # Parsed once here; a malformed file fails startup. A controller-only
+        # file is valid; starts then fail with RolesMissing.
+        roles = ENV["ROLE_CONFIG_FILE"] ? Domains::Workflows::Records.role_file_from_json(File.read(ENV.fetch("ROLE_CONFIG_FILE"))) : nil
         worker = Adapters::Mattermost::Api.new(client: Adapters::Mattermost::Client.new(url: url, token_file: ENV.fetch("MATTERMOST_WORKER_TOKEN_FILE")))
         new(db, resolver: resolver, membership: listener, api: worker, bot_id: ENV.fetch("MATTERMOST_WORKER_BOT_ID"), roles: roles)
       end
@@ -50,7 +51,7 @@ module Domains
       sig do
         params(db: Sequel::Database, resolver: Domains::Messaging::DeliveryVerifier,
                membership: Domains::Messaging::MembershipCheck,
-               api: Adapters::Mattermost::Api, bot_id: String, roles: T.nilable(Roles),
+               api: Adapters::Mattermost::Api, bot_id: String, roles: T.nilable(RoleFile),
                policy: Domains::Workflows::Policy, herdr: Adapters::Herdr::Client,
                evidence: Adapters::Git::Evidence, worktrees: T.nilable(::Services::Projects::PrepareWorktree),
                credential_root: String).void
@@ -74,7 +75,7 @@ module Domains
         @reviews = T.let(Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: @routing, policy: policy), Domains::Reviews::Coordinator)
         latest_review = Workflows::LatestReview.new(db)
         @advance_approval = T.let(Workflows::AdvanceApproval.new(evidence: evidence, reviews: @reviews, latest_review: latest_review), Workflows::AdvanceApproval)
-        @request_start = T.let(Workflows::RequestStart.new(source: @source, roles: roles), Workflows::RequestStart)
+        @request_start = T.let(Workflows::RequestStart.new(source: @source, roles: roles&.assignments), Workflows::RequestStart)
         @reconcile_start = T.let(Workflows::ReconcileStart.new(source: @source, api: api, bot_id: bot_id), Workflows::ReconcileStart)
         @provision = T.let(Workflows::Provision.new(db, source: @source, api: api, bot_id: bot_id, worktrees: worktrees || ::Services::Projects::PrepareWorktree.new,
                                                         sessions: @sessions, policy: policy), Workflows::Provision)
