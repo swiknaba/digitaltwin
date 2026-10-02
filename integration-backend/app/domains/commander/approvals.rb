@@ -36,48 +36,44 @@ module Domains
         d = @resolver.delivery(post_id: source.post_id, channel_id: source.channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted)
         raise ArgumentError, "Human source changed" unless d.actor.member && !d.actor.bot && d.actor.user_id == source.user_id && d.post_revision == source.post_revision
 
-        w = @db[:workflows][id: workflow_id] or raise ArgumentError, "Missing workflow"
-        contextual = d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch("WORKER_HANDLE", "worker")} approve"
+        catalog = Domains::Workflows::Catalog.new
+        w = catalog.find(id: workflow_id) or raise ArgumentError, "Missing workflow"
+        contextual = d.channel_id == w.channel_id && d.thread_id == w.thread_id && d.body == "@#{ENV.fetch("WORKER_HANDLE", "worker")} approve"
         exact = d.body == "@#{@handle} approve #{workflow_id} #{gate} #{commit}"
         raise ArgumentError, "Approval requires exact or verified thread binding" unless exact || contextual
-        raise ArgumentError, "Destination membership required" unless @membership.call(w[:channel_id], d.actor.user_id)
+        raise ArgumentError, "Destination membership required" unless @membership.call(w.channel_id, d.actor.user_id)
 
-        @db.synchronize do
-          locked = @db.get(Sequel.function(:pg_try_advisory_lock, Sequel.function(:hashtextextended, workflow_id, 0)))
-          raise ArgumentError, "Workflow busy" unless locked
+        # Platform::Lock::Busy is the ArgumentError "Workflow busy" this path raised before.
+        Platform::Lock.new.call(key: workflow_id) do
+          current = @current_commit.call(worktree(w))
+          @db.transaction do
+            locked = catalog.find_for_update(id: workflow_id) or raise ArgumentError, "Missing workflow"
+            review = @db[:reviews].where(workflow_id: workflow_id, gate: gate).order(Sequel.desc(:round)).first
+            review_commit = optional_text(review && review[:review_commit])
+            approved = review && review[:verdict] == "approve" && review[:target_commit] == commit && current == (review_commit || commit)
+            raise ArgumentError, "Approval binding is stale" unless !locked.archived_at && locked.phase.serialize == "#{gate}_human_approval" && approved
 
-          begin
-            current = @current_commit.call(worktree(w[:worktree_path], w[:branch]))
-            @db.transaction do
-              w = @db[:workflows].where(id: workflow_id).for_update.first
-              review = @db[:reviews].where(workflow_id: workflow_id, gate: gate).order(Sequel.desc(:round)).first
-              raise ArgumentError, "Approval binding is stale" unless !w[:archived_at] && w[:phase] == "#{gate}_human_approval" && review && review[:verdict] == "approve" && review[:target_commit] == commit && current == (review[:review_commit] || commit)
-
-              @evidence&.approval(worktree: worktree(w[:worktree_path], w[:branch]), binding: Domains::Workflows::Dto::ArtifactBinding.from_artifacts(artifacts: w[:artifacts], gate: gate), target_commit: commit,
-                                  review_commit: review[:review_commit], review_path: review[:review_path])
-
-              old = @db[:approvals][post_id: d.post_id]
-              if old
-                raise ArgumentError, "Source approval already bound" unless old[:workflow_id] == workflow_id && old[:kind] == gate && old[:target_commit] == commit
-
-                return old[:id]
-              end
-              @db[:approvals].insert_conflict(target: %i[workflow_id kind target_commit]).insert(
-                workflow_id: workflow_id, kind: gate, target_commit: commit, user_id: d.actor.user_id,
-                channel_id: d.channel_id, post_id: d.post_id
-              )
-            end
-          ensure
-            @db.get(Sequel.function(:pg_advisory_unlock, Sequel.function(:hashtextextended, workflow_id, 0)))
+            gate_value = Domains::Workflows::Dto::Gate.deserialize(gate)
+            @evidence&.approval(worktree: worktree(locked), binding: locked.artifacts.fetch(gate_value), target_commit: commit,
+                                review_commit: review_commit, review_path: optional_text(review[:review_path]))
+            Platform::Unwrap.call(Domains::Workflows::Approvals.new.record(workflow_id: workflow_id, gate: gate_value, target_commit: commit, user_id: d.actor.user_id,
+                                                                           channel_id: d.channel_id, post_id: d.post_id)).id
           end
         end
       end
 
-      sig { params(worktree_path: Object, branch: Object).returns(Adapters::Git::Dto::WorktreeRef) }
-      private def worktree(worktree_path, branch)
-        raise ArgumentError, "Invalid workflow evidence" unless worktree_path.is_a?(String) && branch.is_a?(String)
+      sig { params(workflow: Domains::Workflows::Dto::WorkflowView).returns(Adapters::Git::Dto::WorktreeRef) }
+      private def worktree(workflow)
+        Adapters::Git::Dto::WorktreeRef.new(worktree_path: workflow.worktree_path, branch: workflow.branch)
+      end
 
-        Adapters::Git::Dto::WorktreeRef.new(worktree_path: worktree_path, branch: branch)
+      # Raw review values are untyped until Task 8; BasicObject accepts them without a cast.
+      sig { params(value: BasicObject).returns(T.nilable(String)) }
+      private def optional_text(value)
+        case value
+        when NilClass, String then value
+        else raise ArgumentError, "Malformed durable review record"
+        end
       end
     end
   end

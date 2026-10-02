@@ -22,7 +22,7 @@ module Adapters
         db = Kirei::App.raw_db_connection
         services = Domains::Commander::Services.from_env(db)
         requests = Domains::Commander::Requests.new(db, source: services.source)
-        value = Domains::Commander::Tools.new(db, services: services, requests: requests).call(request_value.name, request_value.arguments, token: bearer)
+        value = Domains::Commander::Tools.new(services: services, requests: requests).call(request_value.name, request_value.arguments, token: bearer)
         render_json({ "result" => value }, status: 200)
       rescue ArgumentError, Sequel::Error, Adapters::Mattermost::Errors::RequestFailed
         rejected_response

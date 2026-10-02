@@ -27,6 +27,13 @@ module Domains
       extend T::Sig
       include Kirei::Model
 
+      sig { override.returns(Integer) }
+      def self.human_id_length = 12
+
+      # The table and chat messages call these "sessions"; the class name avoids a clash with the domain module.
+      sig { override.returns(String) }
+      def self.human_id_prefix = "session"
+
       Configuration = T.type_alias { T::Hash[String, Object] }
 
       sig { override.returns(String) }

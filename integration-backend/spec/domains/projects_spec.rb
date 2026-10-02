@@ -43,15 +43,15 @@ RSpec.describe "Repository workspace and enrollment" do
     FileUtils.mkdir_p("#{@root}/owner")
     File.symlink(@dir, "#{@root}/owner/repo")
     expect(resolve_repository.call(slug: "owner/repo")).to be_failed
-    File.symlink(@dir, "#{@trees}/12345678-1234-4234-8234-123456789abc")
+    File.symlink(@dir, "#{@trees}/workflow_abcdefghjkmn")
     expect(
-      prepare_worktree.call(slug: "owner/repo", workflow_id: "12345678-1234-4234-8234-123456789abc",
-                            branch: "digitaltwin/12345678-1234-4234-8234-123456789abc")
+      prepare_worktree.call(slug: "owner/repo", workflow_id: "workflow_abcdefghjkmn",
+                            branch: "digitaltwin/workflow_abcdefghjkmn")
     ).to be_failed
   end
   it "keeps two same-repository threads in independent branches and revalidates after restart" do
     repo = repository
-    ids = [SecureRandom.uuid, SecureRandom.uuid]
+    ids = Array.new(2) { Domains::Workflows::Entities::Workflow.generate_human_id }
     paths = ids.map { |id| prepare_worktree.call(slug: "owner/repo", workflow_id: id, branch: "digitaltwin/#{id}").result }
     File.write("#{paths.first}/only-first", "one")
     expect(File.exist?("#{paths.last}/only-first")).to be(false)
@@ -120,8 +120,8 @@ RSpec.describe "Repository workspace and enrollment" do
   end
 
   it "keeps workspace paths inside their roots" do
-    expect(@paths.worktree(slug: "owner/repo", workflow_id: "12345678-1234-4234-8234-123456789abc")).to eq("#{File.realpath(@trees)}/12345678-1234-4234-8234-123456789abc")
+    expect(@paths.worktree(slug: "owner/repo", workflow_id: "workflow_abcdefghjkmn")).to eq("#{File.realpath(@trees)}/workflow_abcdefghjkmn")
     expect { @paths.contained!(root: File.realpath(@root), path: "#{@root}/../escape") }.to raise_error(ArgumentError, "Workspace escape")
-    expect { @paths.worktree(slug: "owner/repo", workflow_id: "not-a-uuid") }.to raise_error(ArgumentError, "Invalid workflow UUID/branch")
+    expect { @paths.worktree(slug: "owner/repo", workflow_id: "not-a-workflow-id") }.to raise_error(ArgumentError, "Invalid workflow id/branch")
   end
 end

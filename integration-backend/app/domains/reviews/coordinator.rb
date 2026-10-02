@@ -11,8 +11,8 @@ module Domains
       Identifier = T.type_alias { T.any(String, Integer) }
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Configuration = T.type_alias { T::Hash[String, Object] }
-      ArtifactRef = T.type_alias { T::Hash[String, T.nilable(String)] }
-      ArtifactRefs = T.type_alias { T::Hash[String, ArtifactRef] }
+      Workflows = Domains::Workflows
+      Workflow = Workflows::Dto::WorkflowView
 
       sig do
         params(db: Sequel::Database, herdr: Adapters::Herdr::Client,
@@ -26,6 +26,9 @@ module Domains
         @routing = routing
         @policy = policy
         @lock = T.let(Platform::Lock.new, Platform::Lock)
+        @catalog = T.let(Workflows::Catalog.new, Workflows::Catalog)
+        @transitions = T.let(Workflows::Transitions.new, Workflows::Transitions)
+        @queued_messages = T.let(Workflows::QueuedMessages.new, Workflows::QueuedMessages)
       end
 
       sig { params(token: String, generation: Integer, kind: String, commit: String).returns(Identifier) }
@@ -42,21 +45,21 @@ module Domains
         s = checked_session(session_id, generation, "writer")
         workflow_id = row_string!(s, :workflow_id)
         @lock.call(key: workflow_id) do
-          w = row!(@db[:workflows][id: workflow_id])
-          old = @db[:reviews][workflow_id: row_string!(w, :id), gate: kind, target_commit: commit]
+          w = workflow!(workflow_id)
+          old = @db[:reviews][workflow_id: w.id, gate: kind, target_commit: commit]
           return old[:id] if old
 
-          current_phase = phase_for(w)
-          raise ArgumentError, "Writer phase required" unless current_phase == PHASES[kind] && row_optional_time(w, :archived_at).nil?
+          gate = Workflows::Dto::Gate.deserialize(kind)
+          raise ArgumentError, "Writer phase required" unless w.effective_phase == gate.writing_phase && w.archived_at.nil?
 
           settled!(s)
           path = kind == "implementation" ? nil : "docs/#{kind}.md"
           @evidence.artifact(worktree: worktree!(w), commit: commit, path: path)
-          round = (@db[:reviews].where(workflow_id: row_string!(w, :id), gate: kind).max(:round) || 0) + 1
+          round = (@db[:reviews].where(workflow_id: w.id, gate: kind).max(:round) || 0) + 1
           raise ArgumentError, "Review rounds exhausted" if round > 3
 
           base = kind == "implementation" ? @evidence.base(worktree: worktree!(w), commit: commit) : nil
-          reviewer_row = @db[:sessions][workflow_id: row_string!(w, :id), role: "reviewer", active: true]
+          reviewer_row = @db[:sessions][workflow_id: w.id, role: "reviewer", active: true]
           reviewer = reviewer_row && row!(reviewer_row)
           raise ArgumentError, "Reviewer missing/diversity violated" unless reviewer
 
@@ -67,12 +70,10 @@ module Domains
           raise ArgumentError, "Reviewer missing/diversity violated" if same_provider || same_family
 
           @db.transaction do
-            id = @db[:reviews].insert(workflow_id: row_string!(w, :id), gate: kind, round: round, target_commit: commit, base_commit: base,
+            id = @db[:reviews].insert(workflow_id: w.id, gate: kind, round: round, target_commit: commit, base_commit: base,
                                       review_path: "docs/review.md", reviewer_configuration: Sequel.pg_jsonb(reviewer_configuration))
-            refs = artifact_refs!(w).merge(kind => { "commit" => commit, "path" => path })
-            changes = row_string!(w, :phase) == "paused" ? { saved_phase: "#{kind}_review", paused_commit: commit } : { phase: "#{kind}_review" }
-            version = row_integer!(w, :version)
-            @db[:workflows].where(id: row_string!(w, :id), version: version).update(**changes, artifacts: Sequel.pg_jsonb(refs), version: version + 1)
+            ref = Workflows::Dto::ArtifactRef.new(commit: commit, path: path)
+            Platform::Unwrap.call(@transitions.record_artifact(workflow_id: w.id, gate: gate, ref: ref, expected_version: w.version))
             Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::ReviewPrompt, payload: Dto::ReviewPromptJob.new(review_id: id), dispatch_key: "review:#{id}")
             id
           end
@@ -96,10 +97,12 @@ module Domains
         return old[:id] if old
 
         @lock.call(key: workflow_id) do
-          w = row!(@db[:workflows][id: workflow_id])
-          current_phase = phase_for(w)
-          kind = current_phase.delete_suffix("_review")
-          raise ArgumentError, "Review lock required" unless PHASES.key?(kind) && current_phase.end_with?("_review")
+          w = workflow!(workflow_id)
+          current_phase = w.effective_phase
+          gate = Workflows::Dto::Gate.values.find { |candidate| candidate.review_phase == current_phase }
+          raise ArgumentError, "Review lock required" unless gate
+
+          kind = gate.serialize
 
           record = row!(@db[:reviews].where(workflow_id: workflow_id, gate: kind).order(Sequel.desc(:round)).first)
           raise ArgumentError, "Undispatched review" unless %w[delivered sending uncertain].include?(row_string!(record, :dispatch_state)) && row_optional_string(record, :verdict).nil?
@@ -132,18 +135,17 @@ module Domains
                                                     session_id: row_string!(s, :id), generation: generation)
               Platform::Audit::Log.new.record(event_key: "review:receipt:#{row_identifier!(record, :id)}", action: "verified_review_prompt_reconciliation", details: details)
             end
-            changes = row_string!(w, :phase) == "paused" ? { saved_phase: phase, paused_commit: review_commit } : { phase: phase }
-            version = row_integer!(w, :version)
-            @db[:workflows].where(id: workflow_id, version: version).update(**changes, version: version + 1,
-                                                                                       blocker: phase == "blocked" ? "Three review rounds requested changes" : nil)
+            version = w.version
+            Platform::Unwrap.call(@transitions.enter(workflow_id: workflow_id, phase: Workflows::Dto::Phase.deserialize(phase), expected_version: version,
+                                                     paused_commit: review_commit, blocker: phase == "blocked" ? "Three review rounds requested changes" : nil))
             queue_release(workflow_id, version + 1)
             if verdict == "changes_requested" && phase != "blocked"
               jobs.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowPhasePrompt, payload: Domains::Workflows::Dto::PhasePromptJob.new(workflow_id: workflow_id, version: version + 1),
                            dispatch_key: "workflow:phase:#{workflow_id}:#{version + 1}")
             end
             message = Domains::Messaging::Dto::OutgoingMessage.new(
-              channel_id: row_string!(w, :channel_id),
-              thread_id: row_optional_string(w, :thread_id),
+              channel_id: w.channel_id,
+              thread_id: w.thread_id,
               bot: Domains::Messaging::Dto::Bot::Worker,
               role: Domains::Messaging::Dto::SpeakerRole::Reviewer,
               body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.",
@@ -168,15 +170,15 @@ module Domains
 
       sig { params(workflow_id: String).returns(T.nilable(String)) }
       def release(workflow_id)
-        w = row!(@db[:workflows][id: workflow_id])
-        return unless PHASES.value?(row_string!(w, :phase))
+        w = workflow!(workflow_id)
+        return unless w.phase.writing?
 
         transient = T.let(nil, T.nilable(Adapters::Mattermost::Errors::RequestFailed))
         jobs = Platform::Jobs::Store.new
-        @db[:queued_messages].where(workflow_id: workflow_id).order(:id).each do |row|
+        @queued_messages.pending(workflow_id: workflow_id).each do |row|
           begin
-            result = @routing.route(inbox_id: row[:inbox_id])
-            @db[:queued_messages].where(id: row[:id]).delete if route_dispatched?(result)
+            result = @routing.route(inbox_id: row.inbox_id)
+            @queued_messages.remove(id: row.id) if route_dispatched?(result)
           rescue ArgumentError, Adapters::Mattermost::Errors::RequestFailed => error
             if error.is_a?(Adapters::Mattermost::Errors::RequestFailed) && ![403, 404].include?(error.status)
               transient = error
@@ -184,8 +186,8 @@ module Domains
             end
             # Retain invalid sources for reconciliation; one revoked message
             # must not prevent other verified instructions from being released.
-            Platform::Audit::Log.new.record_once(event_key: "release:invalid:#{row[:id]}", action: "release_source_rejected",
-                                                 details: Dto::ReleaseRejectedAudit.new(workflow_id: workflow_id, inbox_id: row[:inbox_id]))
+            Platform::Audit::Log.new.record_once(event_key: "release:invalid:#{row.id}", action: "release_source_rejected",
+                                                 details: Dto::ReleaseRejectedAudit.new(workflow_id: workflow_id, inbox_id: row.inbox_id))
           end
         end
         @db[:followups].where(workflow_id: workflow_id, status: "queued").each do |row|
@@ -204,13 +206,13 @@ module Domains
 
           return Platform::Jobs::Dto::Decision.block("Live review dispatch evidence required") unless @policy.dispatch_allowed?
 
-          w = row!(@db[:workflows][id: row_string!(record, :workflow_id)])
-          return Platform::Jobs::Dto::Decision.defer("Paused review") if w[:phase] == "paused"
+          w = workflow!(row_string!(record, :workflow_id))
+          return Platform::Jobs::Dto::Decision.defer("Paused review") if w.phase == Workflows::Dto::Phase::Paused
 
-          raise ArgumentError, "Review phase changed" unless w[:phase] == "#{record[:gate]}_review"
+          raise ArgumentError, "Review phase changed" unless w.phase.serialize == "#{record[:gate]}_review"
 
           @evidence.artifact(worktree: worktree!(w), commit: row_string!(record, :target_commit), path: artifact_path!(w, row_string!(record, :gate)))
-          s = row!(@db[:sessions][workflow_id: row_string!(w, :id), role: "reviewer", active: true])
+          s = row!(@db[:sessions][workflow_id: w.id, role: "reviewer", active: true])
           raise ArgumentError, "Reviewer configuration changed" unless configuration!(s) == configuration!(record, :reviewer_configuration)
 
           live = @herdr.pane(row_string!(s, :pane_id))
@@ -314,14 +316,6 @@ module Domains
         value
       end
 
-      sig { params(row: Row, key: Symbol).returns(T.nilable(Time)) }
-      private def row_optional_time(row, key)
-        value = row.fetch(key) { return nil }
-        raise ArgumentError, "Malformed durable review record" unless value.nil? || value.is_a?(Time)
-
-        value
-      end
-
       sig { params(row: Row, key: Symbol).returns(Integer) }
       private def row_integer!(row, key)
         value = row.fetch(key) { raise ArgumentError, "Malformed durable review record" }
@@ -338,14 +332,14 @@ module Domains
         value
       end
 
-      sig { params(workflow: Row).returns(String) }
-      private def phase_for(workflow)
-        row_string!(workflow, row_string!(workflow, :phase) == "paused" ? :saved_phase : :phase)
+      sig { params(workflow_id: String).returns(Workflow) }
+      private def workflow!(workflow_id)
+        @catalog.find(id: workflow_id) or raise ArgumentError, "Malformed durable review record"
       end
 
-      sig { params(workflow: Row).returns(Adapters::Git::Dto::WorktreeRef) }
+      sig { params(workflow: Workflow).returns(Adapters::Git::Dto::WorktreeRef) }
       private def worktree!(workflow)
-        Adapters::Git::Dto::WorktreeRef.new(worktree_path: row_string!(workflow, :worktree_path), branch: row_string!(workflow, :branch))
+        Adapters::Git::Dto::WorktreeRef.new(worktree_path: workflow.worktree_path, branch: workflow.branch)
       end
 
       sig { params(record: Row, key: Symbol).returns(String) }
@@ -354,27 +348,6 @@ module Domains
         raise ArgumentError, "Invalid review evidence" unless value
 
         value
-      end
-
-      sig { params(workflow: Row).returns(ArtifactRefs) }
-      private def artifact_refs!(workflow)
-        raw = workflow.fetch(:artifacts) { raise ArgumentError, "Malformed workflow record" }
-        artifact_refs = Hash.try_convert(raw)
-        raise ArgumentError, "Malformed workflow record" unless artifact_refs
-
-        refs = T.let({}, ArtifactRefs)
-        artifact_refs.each do |kind, raw_ref|
-          ref = Hash.try_convert(raw_ref)
-          raise ArgumentError, "Malformed workflow record" unless kind.is_a?(String) && ref
-
-          commit = ref.fetch("commit") { raise ArgumentError, "Malformed workflow record" }
-          path = ref.fetch("path") { raise ArgumentError, "Malformed workflow record" }
-          raise ArgumentError, "Malformed workflow record" unless commit.nil? || commit.is_a?(String)
-          raise ArgumentError, "Malformed workflow record" unless path.nil? || path.is_a?(String)
-
-          refs[kind] = { "commit" => commit, "path" => path }
-        end
-        refs
       end
 
       sig { params(row: Row, key: Symbol).returns(Configuration) }
@@ -419,9 +392,10 @@ module Domains
         result.is_a?(Hash) && (result.key?(:id) || result.key?("id"))
       end
 
-      sig { params(workflow: Row, gate: String).returns(T.nilable(String)) }
+      sig { params(workflow: Workflow, gate: String).returns(T.nilable(String)) }
       private def artifact_path!(workflow, gate)
-        artifact_refs!(workflow).fetch(gate) { raise ArgumentError, "Malformed workflow record" }.fetch("path")
+        ref = workflow.artifacts.fetch(Workflows::Dto::Gate.deserialize(gate)) or raise ArgumentError, "Malformed workflow record"
+        ref.path
       end
     end
   end

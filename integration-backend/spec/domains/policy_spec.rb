@@ -4,7 +4,7 @@ RSpec.describe "Workflow policy preparation" do
   let(:human) { Domains::Messaging::Dto::VerifiedActor.new(user_id: "u", channel_id: "c", member: true, bot: false) }
   let(:bot) { Domains::Messaging::Dto::VerifiedActor.new(user_id: "b", channel_id: "c", member: true, bot: true) }
   it "requires both provider and family diversity" do
-    role = ->(provider, family) { Domains::Workflows::Entities::RoleConfig.new(cli: "cli", provider: provider, model: "m", family: family) }
+    role = ->(provider, family) { Domains::Workflows::Dto::RoleConfig.new(cli: "cli", provider: provider, model: "m", family: family, launch_args: []) }
     expect(policy.diverse?(role.call("a", "x"), role.call("b", "y"))).to be(true)
     expect(policy.diverse?(role.call("a", "x"), role.call("a", "y"))).to be(false)
     expect(policy.diverse?(role.call("a", "x"), role.call("b", "x"))).to be(false)

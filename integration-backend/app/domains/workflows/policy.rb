@@ -7,7 +7,7 @@ module Domains
     class Policy
       extend T::Sig
 
-      sig { params(writer: Entities::RoleConfig, reviewer: Entities::RoleConfig).returns(T::Boolean) }
+      sig { params(writer: Dto::RoleConfig, reviewer: Dto::RoleConfig).returns(T::Boolean) }
       def diverse?(writer, reviewer)
         writer.provider != reviewer.provider && writer.family != reviewer.family
       end

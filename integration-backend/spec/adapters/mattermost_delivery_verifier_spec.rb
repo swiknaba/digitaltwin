@@ -101,7 +101,7 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
     db[:projects].insert(id: "p", channel_id: channel, slug: "owner/repo", remote_identity: "github.com/owner/repo",
                          workspace: "/tmp/fixture")
     db[:workflows].insert(id: "w", project_id: "p", channel_id: channel, thread_id: root_id, branch: "digitaltwin/w",
-                          worktree_path: "/tmp/w", phase: "spec_review")
+                          worktree_path: "/tmp/w", phase: "spec_review", role_configurations: workflow_roles)
     router = Services::Inbound::RecordDelivery.new
     router.call(delivery: verify)
     expect(db[:queued_messages].count).to eq(1)

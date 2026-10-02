@@ -13,6 +13,9 @@ module Domains
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Row = T.type_alias { T::Hash[Symbol, Object] }
       Configuration = T.type_alias { T::Hash[String, Object] }
+      Workflows = Domains::Workflows
+      Workflow = Workflows::Dto::WorkflowView
+      RoleConfig = Workflows::Dto::RoleConfig
 
       sig do
         params(
@@ -32,11 +35,12 @@ module Domains
         @url = callback_url
         @policy = policy
         @lock = T.let(Platform::Lock.new, Platform::Lock)
+        @catalog = T.let(Workflows::Catalog.new, Workflows::Catalog)
       end
 
       # Called only by operator-configured bootstrap; never exposed as an MCP
       # tool to Worker/Reviewer or accepted from a model-supplied role.
-      sig { params(configuration: Configuration).returns(String) }
+      sig { params(configuration: RoleConfig).returns(String) }
       def bootstrap(configuration:)
         @lock.call(key: "controller") do
           existing = @db[:sessions][role: "controller", active: true]
@@ -49,12 +53,12 @@ module Domains
           return pending[:id] if pending
 
           validate_configuration!(configuration)
-          id, token = SecureRandom.uuid, SecureRandom.hex(32)
+          id, token = RuntimeSession.generate_human_id, SecureRandom.hex(32)
           @credentials.write(name: credential_name(id), token: token)
           @db.transaction do
             generation = (@db[:sessions].where(role: "controller").max(:generation) || 0) + 1
             @db[:sessions].insert(id: id, role: "controller", generation: generation, pane_id: "pending:#{id}", alias: "digitaltwin-#{id}",
-                                  configuration: Sequel.pg_jsonb(configuration), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
+                                  configuration: Sequel.pg_jsonb(configuration.serialize), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
             Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionStart, payload: Dto::SessionOperationJob.new(operation_id: op), dispatch_key: "session:start:#{id}")
@@ -67,8 +71,8 @@ module Domains
       def reserve(workflow_id:, role:)
         raise ArgumentError, "Workflow role required" unless %w[writer reviewer].include?(role)
 
-        w = @db[:workflows][id: workflow_id] or raise ArgumentError, "Missing workflow"
-        Platform::Unwrap.call(@source.call(inbox_id: w[:source_inbox_id], destination: w[:channel_id]))
+        w = @catalog.find(id: workflow_id) or raise ArgumentError, "Missing workflow"
+        Platform::Unwrap.call(@source.call(inbox_id: source_inbox_id(w), destination: w.channel_id))
         @lock.call(key: workflow_id) do
           existing = @db[:sessions][workflow_id: workflow_id, role: role, active: true]
           if existing
@@ -79,21 +83,21 @@ module Domains
           queued = @db[:sessions].where(workflow_id: workflow_id, role: role).join(:session_operations, session_id: :id).where(Sequel[:session_operations][:kind] => "start", Sequel[:session_operations][:state] => %w[queued sending uncertain]).select(Sequel[:sessions][:id]).first
           return queued[:id] if queued
 
-          configuration = w[:role_configurations].fetch(role)
+          configuration = role == "writer" ? w.role_configurations.writer : w.role_configurations.reviewer
           validate_configuration!(configuration)
-          id = SecureRandom.uuid
+          id = RuntimeSession.generate_human_id
           token = SecureRandom.hex(32)
           @credentials.write(name: credential_name(id), token: token)
           @db.transaction do
             generation = (@db[:sessions].where(workflow_id: workflow_id, role: role).max(:generation) || 0) + 1
             @db[:sessions].insert(id: id, workflow_id: workflow_id, role: role, generation: generation, pane_id: "pending:#{id}", alias: "digitaltwin-#{id}",
-                                  configuration: Sequel.pg_jsonb(configuration), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
+                                  configuration: Sequel.pg_jsonb(configuration.serialize), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
             Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionStart, payload: Dto::SessionOperationJob.new(operation_id: op), dispatch_key: "session:start:#{id}")
             message = Domains::Messaging::Dto::OutgoingMessage.new(
-              channel_id: w[:channel_id],
-              thread_id: w[:thread_id],
+              channel_id: w.channel_id,
+              thread_id: w.thread_id,
               bot: Domains::Messaging::Dto::Bot::Worker,
               role: Domains::Messaging::Dto::SpeakerRole.deserialize(role),
               body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.",
@@ -114,10 +118,10 @@ module Domains
           return op[:state] unless op[:state] == "queued"
           return "queued" unless @policy.dispatch_allowed?
 
-          w = @db[:workflows][id: session[:workflow_id]]
-          Platform::Unwrap.call(@source.call(inbox_id: w[:source_inbox_id], destination: w[:channel_id])) if w
+          w = workflow_for(session[:workflow_id])
+          Platform::Unwrap.call(@source.call(inbox_id: source_inbox_id(w), destination: w.channel_id)) if w
           if op[:kind] == "start"
-            return "queued" if w && (w[:phase] == "paused" || w[:archived_at] || %w[closed cancelled].include?(w[:phase]))
+            return "queued" if w && (w.phase == Workflows::Dto::Phase::Paused || w.archived_at || w.phase.terminal?)
           end
           @db[:session_operations].where(id: operation_id).update(state: "sending")
           begin
@@ -126,7 +130,7 @@ module Domains
             if op[:kind] == "start"
               env = { "DIGITALTWIN_SESSION_TOKEN_FILE" => @credentials.path(name: credential_name(session[:id])), "DIGITALTWIN_SESSION_GENERATION" => session[:generation].to_s, "DIGITALTWIN_CALLBACK_URL" => @url,
                       "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE" => @credentials.path(name: "#{session[:id]}.request-token") }
-              created = @herdr.create_workspace(cwd: w ? w[:worktree_path] : nil, label: session[:alias], env: env)
+              created = @herdr.create_workspace(cwd: w&.worktree_path, label: session[:alias], env: env)
               @db[:sessions].where(id: session[:id]).update(pane_id: created.root_pane_id, workspace_id: created.workspace_id)
               live = @herdr.start(pane_id: created.root_pane_id, name: session[:alias], launch: launch_spec(session[:configuration]))
               identity = live.agent_session
@@ -155,17 +159,16 @@ module Domains
         end
       end
 
-      sig { params(op: Row, session: Row, workflow: T.nilable(Row)).void }
+      sig { params(op: Row, session: Row, workflow: T.nilable(Workflow)).void }
       private def complete_operation(op, session, workflow)
         @db[:session_operations].where(id: op[:id]).update(state: "complete")
         queue_renewal(@db[:sessions][id: session[:id]]) if op[:kind] == "start"
         if workflow && row_string(op, :kind) == "start" && row_string(session, :role) == "writer"
-          workflow_id = row_string(workflow, :id)
-          version = row_integer(workflow, :version)
-          Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowPhasePrompt, payload: Domains::Workflows::Dto::PhasePromptJob.new(workflow_id: workflow_id, version: version),
-                                            dispatch_key: "workflow:phase:#{workflow_id}:#{version}")
-        elsif workflow && row_string(op, :kind) == "stop" && %w[closed cancelled].include?(row_string(workflow, :phase)) && @db[:sessions].where(workflow_id: row_string(workflow, :id), active: true).empty?
-          @db[:workflows].where(id: row_string(workflow, :id)).update(archived_at: Time.now)
+          Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowPhasePrompt,
+                                            payload: Workflows::Dto::PhasePromptJob.new(workflow_id: workflow.id, version: workflow.version),
+                                            dispatch_key: "workflow:phase:#{workflow.id}:#{workflow.version}")
+        elsif workflow && row_string(op, :kind) == "stop" && workflow.phase.terminal? && @db[:sessions].where(workflow_id: workflow.id, active: true).empty?
+          Workflows::Transitions.new.archive(workflow_id: workflow.id)
         end
       end
 
@@ -198,8 +201,8 @@ module Domains
           scope = s[:workflow_id] ? { workflow_id: s[:workflow_id], role: s[:role] } : { role: "controller" }
           raise ArgumentError, "Session replaced" unless @db[:sessions].where(scope).max(:generation) == generation
 
-          w = s[:workflow_id] && @db[:workflows][id: s[:workflow_id]]
-          Platform::Unwrap.call(@source.call(inbox_id: w[:source_inbox_id], destination: w[:channel_id])) if w
+          w = workflow_for(s[:workflow_id])
+          Platform::Unwrap.call(@source.call(inbox_id: source_inbox_id(w), destination: w.channel_id)) if w
           live = @herdr.pane(s[:pane_id])
           raise ArgumentError, "Session identity not proven" unless s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity] && RENEWABLE.include?(live.agent_status)
 
@@ -222,17 +225,17 @@ module Domains
       public def reconcile(operation_id:, inbox_id:, pane_id:)
         op = @db[:session_operations][id: operation_id] or raise ArgumentError, "Unknown session operation"
         s = @db[:sessions][id: op[:session_id]]
-        w = s[:workflow_id] && @db[:workflows][id: s[:workflow_id]]
+        w = workflow_for(s[:workflow_id])
         initial_request = !w && @db[:master_requests].where(session_id: s[:id]).order(:inbox_id).first
-        original_id = w ? w[:source_inbox_id] : initial_request && initial_request[:inbox_id]
+        original_id = w ? w.source_inbox_id : initial_request && initial_request[:inbox_id]
         original = original_id && Domains::Messaging::Inbox.new.find(id: original_id)
         raise ArgumentError, "Human source binding required" unless original
 
-        d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: w ? w[:channel_id] : original.channel_id))
+        d = Platform::Unwrap.call(@source.call(inbox_id: inbox_id, destination: w ? w.channel_id : original.channel_id))
         command = "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-session #{operation_id} #{pane_id}"
         raise ArgumentError, "Exact original-human session recovery required" unless d.actor.user_id == original.user_id && d.body == command
 
-        @lock.call(key: w ? w[:id] : "controller") do
+        @lock.call(key: w ? w.id : "controller") do
           op = @db[:session_operations][id: operation_id]
           key = "session:recovery:#{operation_id}"
           audit = Platform::Audit::Log.new
@@ -246,7 +249,7 @@ module Domains
           raise ArgumentError, "Operation not uncertain" unless %w[sending uncertain].include?(op[:state])
 
           s = @db[:sessions][id: s[:id]]
-          raise ArgumentError, "Session generation replaced" unless @db[:sessions].where(w ? { workflow_id: w[:id], role: s[:role] } : { role: "controller" }).max(:generation) == s[:generation]
+          raise ArgumentError, "Session generation replaced" unless @db[:sessions].where(w ? { workflow_id: w.id, role: s[:role] } : { role: "controller" }).max(:generation) == s[:generation]
           raise ArgumentError, "Different recorded pane" unless s[:pane_id].start_with?("pending:") || s[:pane_id] == pane_id
 
           job = jobs.find_by_key(dispatch_key: "session:#{op[:kind]}:#{s[:id]}")
@@ -254,13 +257,13 @@ module Domains
           raise ArgumentError, "Operation lease still live" if job&.status == Platform::Jobs::Dto::JobStatus::Running && lease_expires_at && lease_expires_at > Time.now
 
           changes = if op[:kind] == "start"
-                      raise ArgumentError, "Workflow closed" if w && (w[:archived_at] || %w[closed cancelled].include?(w[:phase]))
+                      raise ArgumentError, "Workflow closed" if w && (w.archived_at || w.phase.terminal?)
 
                       live = @herdr.pane(pane_id)
                       identity = live.agent_session
                       raise ArgumentError, "Unproved exact role conversation" unless identity && proven_identity?(identity)
 
-                      valid = live.name == s[:alias] && live.cwd == (w ? w[:worktree_path] : "/home/runtime") && live.agent == s[:configuration]["cli"] && identity.agent == s[:configuration]["cli"]
+                      valid = live.name == s[:alias] && live.cwd == (w ? w.worktree_path : "/home/runtime") && live.agent == s[:configuration]["cli"] && identity.agent == s[:configuration]["cli"]
                       valid &&= SETTLED.include?(live.agent_status) && live.interactive_ready == true && live.launch_pending == false
                       raise ArgumentError, "Unproved exact role conversation" unless valid
 
@@ -276,7 +279,7 @@ module Domains
                     end
           @db.transaction do
             @db[:sessions].where(id: s[:id]).update(changes)
-            complete_operation(op, s, w && @db[:workflows][id: w[:id]])
+            complete_operation(op, s, w && @catalog.find(id: w.id))
             jobs.close_reconciled(id: job.id) if job
             details = Dto::SessionRecoveryAudit.new(inbox_id: inbox_id, operation_id: operation_id, session_id: s[:id], generation: s[:generation], pane_id: pane_id)
             audit.record(event_key: key, action: "verified_session_reconciliation", details: details)
@@ -322,20 +325,24 @@ module Domains
         end
       end
 
-      sig { params(config: Configuration).void }
+      # RoleConfig types the fields; this rejects empty values and NUL arguments.
+      sig { params(config: RoleConfig).void }
       private def validate_configuration!(config)
-        required = %w[cli provider model family]
-        required.each do |key|
-          value = config[key]
-          raise ArgumentError, "Incomplete role configuration" unless value.is_a?(String) && !value.empty?
-        end
+        raise ArgumentError, "Incomplete role configuration" if [config.cli, config.provider, config.model, config.family].any?(&:empty?)
+        raise ArgumentError, "Incomplete role configuration" if config.launch_args.any? { |argument| argument.include?("\0") }
+      end
 
-        args = config["launch_args"]
-        raise ArgumentError, "Incomplete role configuration" unless args.is_a?(Array)
-
-        args.each do |argument|
-          raise ArgumentError, "Incomplete role configuration" unless argument.is_a?(String) && !argument.include?("\0")
+      # Session rows are untyped until Task 7; only a String id names a workflow.
+      sig { params(workflow_id: BasicObject).returns(T.nilable(Workflow)) }
+      private def workflow_for(workflow_id)
+        case workflow_id
+        when String then @catalog.find(id: workflow_id)
         end
+      end
+
+      sig { params(workflow: Workflow).returns(Integer) }
+      private def source_inbox_id(workflow)
+        workflow.source_inbox_id or raise ArgumentError, "Missing verified source"
       end
       sig { params(id: String).returns(String) }
       private def credential_name(id) = "#{id}.token"

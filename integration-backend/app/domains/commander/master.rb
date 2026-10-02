@@ -11,7 +11,7 @@ module Domains
 
       sig do
         params(db: Sequel::Database, sessions: Domains::Sessions::Lifecycle, source: Domains::Messaging::VerifyHumanSource,
-               herdr: Adapters::Herdr::Client, configuration: Domains::Sessions::Lifecycle::Configuration,
+               herdr: Adapters::Herdr::Client, configuration: Domains::Workflows::Dto::RoleConfig,
                credential_root: String, policy: Domains::Workflows::Policy).void
       end
       def initialize(db, sessions:, source:, herdr:, configuration:, credential_root: "/run/herdr/session-credentials", policy: Domains::Workflows::Policy.new)
@@ -124,8 +124,10 @@ module Domains
         Platform::Lock.new.call(key: "controller") do
           raise ArgumentError, "Request does not require recovery" unless @db[:master_requests][id: request_id][:state] == "uncertain"
 
-          wids = @db[:workflows].where(source_inbox_id: r[:inbox_id]).select_map(:id)
-          raise ArgumentError, "Workflow effect still uncertain" if @db[:workflow_requests].where(inbox_id: r[:inbox_id], state: %w[sending uncertain]).count.positive? || @db[:reviews].where(workflow_id: wids, dispatch_state: %w[sending uncertain]).count.positive?
+          wids = Domains::Workflows::Catalog.new.ids_for_source(inbox_id: original.id)
+          start = Domains::Workflows::Requests.new.for_inbox(inbox_id: original.id)
+          start_uncertain = start && [Domains::Workflows::Dto::RequestState::Sending, Domains::Workflows::Dto::RequestState::Uncertain].include?(start.state)
+          raise ArgumentError, "Workflow effect still uncertain" if start_uncertain || @db[:reviews].where(workflow_id: wids, dispatch_state: %w[sending uncertain]).count.positive?
 
           sids = @db[:sessions].where(workflow_id: wids).select_map(:id)
           raise ArgumentError, "Session effect still uncertain" if @db[:session_operations].where(session_id: sids, state: %w[sending uncertain]).count.positive?

@@ -5,14 +5,11 @@ raw_table_access:
 - app/domains/commander/master.rb
 - app/domains/commander/requests.rb
 - app/domains/commander/routing.rb
-- app/domains/commander/services.rb
-- app/domains/commander/tools.rb
 - app/domains/reviews/coordinator.rb
 - app/domains/sessions/lifecycle.rb
-- app/domains/workflows/coordinator.rb
-- app/domains/workflows/provision.rb
-- app/services/inbound/record_delivery.rb
 - app/services/sessions/post_worker_chat.rb
+- app/services/workflows/latest_review.rb
+- app/services/workflows/provision.rb
 broad_signatures:
 - app/domains/commander/requests.rb
 - app/domains/commander/routing.rb
@@ -20,13 +17,9 @@ broad_signatures:
 - app/domains/reviews/coordinator.rb
 - app/domains/sessions/lifecycle.rb
 - app/domains/sessions/runtime_session.rb
-- app/domains/workflows/coordinator.rb
-- app/domains/workflows/provision.rb
-- app/domains/workflows/workflow.rb
 raw_db_connection:
 - app/adapters/http/master.rb
 advisory_locks:
-- app/domains/commander/approvals.rb
 - app/domains/commander/followups.rb
 layer_dependencies:
 - app/adapters/http/callbacks.rb
@@ -41,5 +34,3 @@ layer_dependencies:
 - app/domains/reviews/coordinator.rb
 - app/domains/reviews/intake.rb
 - app/domains/sessions/lifecycle.rb
-- app/domains/workflows/coordinator.rb
-- app/domains/workflows/provision.rb

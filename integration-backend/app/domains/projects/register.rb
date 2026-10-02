@@ -11,7 +11,7 @@ module Domains
       sig { params(channel_id: String, slug: String, remote_identity: String, workspace: String).returns(Kirei::Services::Result[Dto::Project]) }
       def call(channel_id:, slug:, remote_identity:, workspace:)
         project = Entities::Project.db.transaction(savepoint: true) do
-          Entities::Project.create(id: SecureRandom.uuid, channel_id: channel_id, slug: slug, remote_identity: remote_identity, workspace: workspace)
+          Entities::Project.create(id: Entities::Project.generate_human_id, channel_id: channel_id, slug: slug, remote_identity: remote_identity, workspace: workspace)
         end
         Kirei::Services::Result.new(result: T.must(Directory.new.find(id: project.id)))
       rescue Sequel::UniqueConstraintViolation

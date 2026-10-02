@@ -25,7 +25,7 @@ module Services
       sig { params(slug: String, workflow_id: String, branch: String).returns(Kirei::Services::Result[String]) }
       def call(slug:, workflow_id:, branch:)
         Kirei::Services::Runner.call(self.class.name.to_s) do
-          raise ArgumentError, "Invalid workflow UUID/branch" unless branch == "digitaltwin/#{workflow_id}"
+          raise ArgumentError, "Invalid workflow id/branch" unless branch == "digitaltwin/#{workflow_id}"
 
           path = @paths.worktree(slug: slug, workflow_id: workflow_id)
           resolved = @resolve_repository.call(slug: slug)

@@ -29,10 +29,10 @@ module Services
         match = body.match(/\A@#{agent} recover-master ([0-9a-f-]+)\z/)
         return Dto::RecoverMaster.new(request_id: capture(match, 1)) if match
 
-        match = body.match(/\A@#{agent} approve ([a-zA-Z0-9-]+) (spec|plan) ([0-9a-f]{40})\z/)
+        match = body.match(/\A@#{agent} approve ([a-zA-Z0-9_-]+) (spec|plan) ([0-9a-f]{40})\z/)
         return Dto::Approve.new(workflow_id: capture(match, 1), gate: Dto::ApprovalGate.deserialize(capture(match, 2)), commit: capture(match, 3)) if match
 
-        match = body.match(/\A@#{agent} route ([a-zA-Z0-9-]+)\n(.+)/m)
+        match = body.match(/\A@#{agent} route ([a-zA-Z0-9_-]+)\n(.+)/m)
         return Dto::Route.new(workflow_id: capture(match, 1), text: capture(match, 2)) if match
 
         Dto::MalformedDirective.new if body.match?(/\A@#{agent} (approve|route)\b/)

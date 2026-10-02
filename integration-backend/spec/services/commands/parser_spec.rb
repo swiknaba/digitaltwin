@@ -25,6 +25,7 @@ RSpec.describe Services::Commands::Parser do
     expect(parse("@agent approve w-1 spec #{commit}")).to eq(dto::Approve.new(workflow_id: "w-1", gate: dto::ApprovalGate::Spec, commit: commit))
     expect(parse("@agent approve w1 plan #{commit}")).to eq(dto::Approve.new(workflow_id: "w1", gate: dto::ApprovalGate::Plan, commit: commit))
     expect(parse("@agent route w1\nPlease cover\nboth cases")).to eq(dto::Route.new(workflow_id: "w1", text: "Please cover\nboth cases"))
+    expect(parse("@agent route workflow_abcdefghjkmn\nhi")).to eq(dto::Route.new(workflow_id: "workflow_abcdefghjkmn", text: "hi"))
   end
 
   it "parses Worker commands with today's whitespace and word-boundary rules" do

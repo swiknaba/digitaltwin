@@ -10,7 +10,8 @@ module Domains
       Decision = Platform::Jobs::Dto::Decision
       ClaimedJob = Platform::Jobs::Dto::ClaimedJob
       HandlerMap = T.type_alias { T::Hash[Platform::Jobs::Dto::JobKind, Platform::Jobs::Handler] }
-      Roles = T.type_alias { Domains::Workflows::Provision::Roles }
+      Roles = Domains::Workflows::Dto::RoleAssignments
+      Workflows = ::Services::Workflows
       Commands = ::Services::Commands::Dto
 
       sig { returns(T.nilable(Master)) }
@@ -25,14 +26,11 @@ module Domains
       sig { returns(Domains::Sessions::Lifecycle) }
       attr_reader :sessions
 
-      sig { returns(Domains::Workflows::Provision) }
-      attr_reader :provision
+      sig { returns(Workflows::RequestStart) }
+      attr_reader :request_start
 
       sig { returns(Domains::Reviews::Coordinator) }
       attr_reader :reviews
-
-      sig { returns(Domains::Workflows::Coordinator) }
-      attr_reader :workflows
 
       sig { returns(Domains::Messaging::VerifyHumanSource) }
       attr_reader :source
@@ -43,7 +41,8 @@ module Domains
         listener = Adapters::Mattermost::Api.new(client: Adapters::Mattermost::Client.new(url: url, token_file: ENV.fetch("MATTERMOST_LISTENER_TOKEN_FILE")))
         resolver = Adapters::Mattermost::DeliveryVerifier.new(api: listener, local_bot_ids: ENV.fetch("MATTERMOST_LOCAL_BOT_IDS").split(","),
                                                               peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","))
-        roles = ENV["ROLE_CONFIG_FILE"] ? JSON.parse(File.read(ENV.fetch("ROLE_CONFIG_FILE"))) : {}
+        # Parsed once here; a malformed file fails startup.
+        roles = ENV["ROLE_CONFIG_FILE"] ? Domains::Workflows::Records.role_assignments_from_json(File.read(ENV.fetch("ROLE_CONFIG_FILE"))) : nil
         worker = Adapters::Mattermost::Api.new(client: Adapters::Mattermost::Client.new(url: url, token_file: ENV.fetch("MATTERMOST_WORKER_TOKEN_FILE")))
         new(db, resolver: resolver, membership: listener, api: worker, bot_id: ENV.fetch("MATTERMOST_WORKER_BOT_ID"), roles: roles)
       end
@@ -51,7 +50,7 @@ module Domains
       sig do
         params(db: Sequel::Database, resolver: Domains::Messaging::DeliveryVerifier,
                membership: Domains::Messaging::MembershipCheck,
-               api: Adapters::Mattermost::Api, bot_id: String, roles: Roles,
+               api: Adapters::Mattermost::Api, bot_id: String, roles: T.nilable(Roles),
                policy: Domains::Workflows::Policy, herdr: Adapters::Herdr::Client,
                evidence: Adapters::Git::Evidence, worktrees: T.nilable(::Services::Projects::PrepareWorktree),
                credential_root: String).void
@@ -73,10 +72,18 @@ module Domains
           Domains::Sessions::Lifecycle
         )
         @reviews = T.let(Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: @routing, policy: policy), Domains::Reviews::Coordinator)
-        @workflows = T.let(Domains::Workflows::Coordinator.new(db, source: @source, herdr: herdr, evidence: evidence, reviews: @reviews, sessions: @sessions, policy: policy), Domains::Workflows::Coordinator)
-        @provision = T.let(Domains::Workflows::Provision.new(db, source: @source, api: api, bot_id: bot_id,
-                                                                 worktrees: worktrees || ::Services::Projects::PrepareWorktree.new, sessions: @sessions, roles: roles, policy: policy), Domains::Workflows::Provision)
-        controller_role = roles["controller"]
+        latest_review = Workflows::LatestReview.new(db)
+        @advance_approval = T.let(Workflows::AdvanceApproval.new(evidence: evidence, reviews: @reviews, latest_review: latest_review), Workflows::AdvanceApproval)
+        @request_start = T.let(Workflows::RequestStart.new(source: @source, roles: roles), Workflows::RequestStart)
+        @reconcile_start = T.let(Workflows::ReconcileStart.new(source: @source, api: api, bot_id: bot_id), Workflows::ReconcileStart)
+        @provision = T.let(Workflows::Provision.new(db, source: @source, api: api, bot_id: bot_id, worktrees: worktrees || ::Services::Projects::PrepareWorktree.new,
+                                                        sessions: @sessions, policy: policy), Workflows::Provision)
+        @control = T.let(Workflows::Control.new(source: @source, herdr: herdr, evidence: evidence, reviews: @reviews, sessions: @sessions), Workflows::Control)
+        @dispatch_phase_prompt = T.let(Workflows::DispatchPhasePrompt.new(source: @source, herdr: herdr, evidence: evidence, latest_review: latest_review, policy: policy),
+                                       Workflows::DispatchPhasePrompt)
+        @approve_current = T.let(Workflows::ApproveCurrent.new(source: @source, approvals: @approvals, advance: @advance_approval), Workflows::ApproveCurrent)
+        @start_existing = T.let(Workflows::StartExisting.new(source: @source, request_start: @request_start), Workflows::StartExisting)
+        controller_role = roles&.controller
         @master = T.let(controller_role && Master.new(db, sessions: @sessions, source: @source, herdr: herdr,
                                                           configuration: controller_role, credential_root: credential_root, policy: policy), T.nilable(Master))
         @followups = T.let(Followups.new(db, herdr: herdr, resolver: resolver, membership: member, policy: policy), Followups)
@@ -94,15 +101,15 @@ module Domains
                          Kind::ReviewPrompt => ->(job) { @reviews.call(job: job) },
                          Kind::ReviewRelease => ->(job) { @reviews.release_job(job: job) },
                          Kind::ReviewCallback => ->(job) { review_callback(job: job) },
-                         Kind::MasterControl => ->(job) { master_control(job: job) },
+                         Kind::MasterControl => ->(job) { @control.call(job: job) },
                          Kind::SessionRenew => ->(job) { @sessions.renew_job(job: job) },
-                         Kind::WorkflowPhasePrompt => ->(job) { @workflows.call(job: job) },
-                         Kind::WorkflowStart => ->(job) { start_existing(job: job) },
-                         Kind::WorkflowPause => ->(job) { control_existing(job: job) },
-                         Kind::WorkflowResume => ->(job) { control_existing(job: job) },
-                         Kind::WorkflowFinish => ->(job) { control_existing(job: job) },
-                         Kind::WorkflowCancel => ->(job) { control_existing(job: job) },
-                         Kind::WorkflowApprove => ->(job) { approve_existing(job: job) }
+                         Kind::WorkflowPhasePrompt => ->(job) { @dispatch_phase_prompt.call(job: job) },
+                         Kind::WorkflowStart => ->(job) { @start_existing.call(job: job) },
+                         Kind::WorkflowPause => ->(job) { @control.call(job: job) },
+                         Kind::WorkflowResume => ->(job) { @control.call(job: job) },
+                         Kind::WorkflowFinish => ->(job) { @control.call(job: job) },
+                         Kind::WorkflowCancel => ->(job) { @control.call(job: job) },
+                         Kind::WorkflowApprove => ->(job) { @approve_current.call(job: job) }
                        }, T::Hash[Platform::Jobs::Dto::JobKind, Platform::Jobs::CallableHandler::Callable])
         master = @master
         values[Kind::MasterDispatch] = ->(job) { master.call(job: job) } if master
@@ -121,19 +128,12 @@ module Domains
       end
 
       sig { params(job: ClaimedJob).returns(Decision) }
-      def master_control(job:)
-        payload = Dto::MasterControlJob.from_hash(job.payload, true)
-        @workflows.control(inbox_id: payload.inbox_id, workflow_id: payload.workflow_id, action: payload.action, expected_version: payload.expected_version)
-        Decision.complete
-      end
-
-      sig { params(job: ClaimedJob).returns(Decision) }
       def route(job:)
         id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
         command = parse(human(id).body)
         case command
         when Commands::RecoverStart
-          @provision.reconcile(id: command.request_id, inbox_id: id, thread_id: command.thread_id)
+          Platform::Unwrap.call(@reconcile_start.call(request_id: command.request_id, inbox_id: id, thread_id: command.thread_id))
           return Decision.complete
         when Commands::RecoverSession
           @sessions.reconcile(operation_id: command.operation_id, inbox_id: id, pane_id: command.pane_id)
@@ -160,50 +160,9 @@ module Domains
         # Exact approvals advance only through the coordinator's independent
         # revision/gate validation. Normal contextual prompts keep their session.
         approval = parse(human(id).body)
-        @workflows.advance_approval(workflow_id: approval.workflow_id, gate: approval.gate.serialize) if approval.is_a?(Commands::Approve)
-        Decision.complete
-      end
-
-      sig { params(job: ClaimedJob).returns(Decision) }
-      def control_existing(job:)
-        payload = Dto::InboxDispatchJob.from_hash(job.payload, true)
-        inbox_id = payload.inbox_id
-        d = human(inbox_id)
-        w = @db[:workflows][id: required(payload.workflow_id)]
-        action = job.kind.serialize.delete_prefix("workflow.")
-        raise ArgumentError, "Control source/workflow mismatch" unless w && d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch("WORKER_HANDLE", "worker")} #{action}"
-
-        @workflows.control(inbox_id: inbox_id, workflow_id: w[:id], action: action, expected_version: required_integer(payload.expected_version))
-        Decision.complete
-      end
-
-      sig { params(job: ClaimedJob).returns(Decision) }
-      def approve_existing(job:)
-        payload = Dto::InboxDispatchJob.from_hash(job.payload, true)
-        inbox_id = payload.inbox_id
-        d = human(inbox_id)
-        w = @db[:workflows][id: required(payload.workflow_id)]
-        raise ArgumentError, "Approval source/workflow mismatch" unless w && d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && w[:version] == required_integer(payload.expected_version)
-
-        gate = w[:phase].delete_suffix("_human_approval")
-        ref = w[:artifacts].fetch(gate)
-        @approvals.record(inbox_id: inbox_id, workflow_id: w[:id], gate: gate, commit: ref.fetch("commit"))
-        @workflows.advance_approval(workflow_id: w[:id], gate: gate)
-        Decision.complete
-      end
-
-      sig { params(job: ClaimedJob).returns(Decision) }
-      def start_existing(job:)
-        id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
-        d = human(id)
-        command = parse(d.body)
-        start = command.is_a?(Commands::WorkerCommand) && command.action == Commands::WorkerAction::Start && command.single_space_separator
-        raise ArgumentError, "Human root start required" unless d.root_post && start
-
-        project = Domains::Projects::Directory.new.for_channel(channel_id: d.channel_id)
-        raise ArgumentError, "Use verified project mapping through Master" unless project
-
-        @provision.request(inbox_id: id, project_id: project.id, title: d.body, existing_thread: d.thread_id)
+        if approval.is_a?(Commands::Approve)
+          Platform::Unwrap.call(@advance_approval.call(workflow_id: approval.workflow_id, gate: Domains::Workflows::Dto::Gate.deserialize(approval.gate.serialize)))
+        end
         Decision.complete
       end
 
@@ -219,13 +178,6 @@ module Domains
 
       sig { params(value: T.nilable(String)).returns(String) }
       private def required(value)
-        raise ArgumentError, "Controller job is malformed" unless value
-
-        value
-      end
-
-      sig { params(value: T.nilable(Integer)).returns(Integer) }
-      private def required_integer(value)
         raise ArgumentError, "Controller job is malformed" unless value
 
         value

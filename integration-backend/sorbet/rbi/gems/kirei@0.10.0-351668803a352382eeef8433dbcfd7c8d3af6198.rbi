@@ -562,13 +562,15 @@ module Kirei::Model::ClassMethods
   sig { override.returns(T::Array[T.attached_class]) }
   def all; end
 
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:123
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:121
   sig { params(value: T.any(::Sequel::SQL::Expression, T::Array[::Numeric])).returns(::Sequel::SQL::Expression) }
   def cast_to_vector(value); end
 
-  # default values defined in the model are used, if omitted in the hash
+  # Default values defined in the model are used if omitted in the hash.
+  # A missing `id` is filled with `generate_human_id`; primary keys are
+  # always application-generated strings, never database sequences.
   #
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:64
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:65
   sig { override.params(hash: T::Hash[::Symbol, T.untyped]).returns(T.attached_class) }
   def create(hash); end
 
@@ -580,26 +582,27 @@ module Kirei::Model::ClassMethods
   sig { override.params(sql: ::String, params: T::Array[T.untyped]).returns(T::Array[T::Hash[::Symbol, T.untyped]]) }
   def exec_sql(sql, params); end
 
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:138
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:136
   sig { override.params(hash: T::Hash[::Symbol, T.untyped]).returns(T.nilable(T.attached_class)) }
   def find_by(hash); end
 
   # Generates a human-readable ID for the record.
   # The ID is prefixed with the table name and an underscore.
   #
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:196
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:195
   sig { override.returns(::String) }
   def generate_human_id; end
 
-  # defaults to 6
+  # 12 characters from a 55-character alphabet; collisions are negligible
+  # even for large tables. Override per model for shorter, hand-typed ids.
   #
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:185
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:184
   sig { override.returns(::Integer) }
   def human_id_length; end
 
   # defaults to "model_name" (table_name without the trailing "s")
   #
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:189
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:188
   sig { override.returns(::String) }
   def human_id_prefix; end
 
@@ -617,7 +620,7 @@ module Kirei::Model::ClassMethods
   # Source: https://sorbet.org/docs/tstruct#from_hash-gotchas
   # "strict" defaults to "false".
   #
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:153
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:151
   sig do
     override
       .params(
@@ -627,7 +630,7 @@ module Kirei::Model::ClassMethods
   end
   def resolve(query, strict = T.unsafe(nil)); end
 
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:177
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:175
   sig { override.params(query: ::Sequel::Dataset, strict: T.nilable(T::Boolean)).returns(T.nilable(T.attached_class)) }
   def resolve_first(query, strict = T.unsafe(nil)); end
 
@@ -645,7 +648,7 @@ module Kirei::Model::ClassMethods
   # so this only hits the database once per table per app lifecycle.
   # @see https://github.com/jeremyevans/sequel/blob/master/lib/sequel/extensions/schema_caching.rb
   #
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:114
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:112
   sig { params(column_name: ::String).returns(T::Boolean) }
   def vector_column?(column_name); end
 
@@ -653,7 +656,7 @@ module Kirei::Model::ClassMethods
   sig { override.params(hash: T::Hash[::Symbol, T.untyped]).returns(T::Array[T.attached_class]) }
   def where(hash); end
 
-  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:88
+  # pkg:gem/kirei#lib/kirei/model/class_methods.rb:86
   sig { override.params(attributes: T::Hash[T.any(::String, ::Symbol), T.untyped]).void }
   def wrap_jsonb_non_primivitives!(attributes); end
 end

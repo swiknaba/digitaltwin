@@ -18,7 +18,12 @@ module Domains
     module Entities
       # created_at is set by the column default and is not modelled.
       class Project < T::Struct
+        extend T::Sig
         include Kirei::Model
+
+        # Project ids appear in chat and branch names; 12 characters keep them collision-free.
+        sig { override.returns(Integer) }
+        def self.human_id_length = 12
         include Kirei::Domain::Entity
 
         const :id, String

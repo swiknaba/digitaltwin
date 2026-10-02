@@ -16,9 +16,8 @@ module Domains
         "workflow_control" => { "workflow_id" => "string", "action" => "string", "expected_version" => "integer" }
       }.freeze, FieldDefinitions)
 
-      sig { params(db: Sequel::Database, services: Services, requests: Requests).void }
-      def initialize(db, services:, requests:)
-        @db = db
+      sig { params(services: Services, requests: Requests).void }
+      def initialize(services:, requests:)
         @services = services
         @requests = requests
       end
@@ -45,9 +44,9 @@ module Domains
         when "list_projects"
           Domains::Projects::Directory.new.all.select { |p| @services.source.call(inbox_id: request_inbox_id(r), destination: p.channel_id).success? rescue false }.map { |p| { id: p.id, slug: p.slug, channel_id: p.channel_id } }
         when "list_workflows"
-          @db[:workflows].where(archived_at: nil).all.select { |w|
-            @services.source.call(inbox_id: request_inbox_id(r), destination: w[:channel_id]).success? rescue false
-          }.map { |w| w.slice(:id, :project_id, :channel_id, :thread_id, :phase, :version, :artifacts, :source_inbox_id) }
+          Domains::Workflows::Catalog.new.active.select { |w|
+            @services.source.call(inbox_id: request_inbox_id(r), destination: w.channel_id).success? rescue false
+          }.map { |w| workflow_summary(w) }
         when "read_context"
           Domains::Messaging::Inbox.new.recent(since: Time.now - 1800, limit: 10).filter_map do |record|
             begin
@@ -59,7 +58,8 @@ module Domains
             end
           end
         when "start_workflow"
-          { "request_id" => @services.provision.request(inbox_id: request_inbox_id(r), project_id: required_string(args, "project_id"), title: required_string(args, "title")) }
+          start = @services.request_start.call(inbox_id: request_inbox_id(r), project_id: required_string(args, "project_id"), title: required_string(args, "title"))
+          { "request_id" => Platform::Unwrap.call(start) }
         when "send_prompt"
           # A model may propose a workflow based on real conversation evidence;
           # an unbound selection still needs a human clarification command.
@@ -67,15 +67,22 @@ module Domains
         when "workflow_control"
           raise ArgumentError, "Unsupported control" unless %w[pause resume finish cancel].include?(args["action"])
 
-          w = @db[:workflows][id: args["workflow_id"]] or raise ArgumentError, "Missing workflow"
+          w = Domains::Workflows::Catalog.new.find(id: required_string(args, "workflow_id")) or raise ArgumentError, "Missing workflow"
           inbox_id = request_inbox_id(r)
-          Platform::Unwrap.call(@services.source.call(inbox_id: inbox_id, destination: w[:channel_id]))
-          raise ArgumentError, "Workflow version changed" unless w[:version] == args["expected_version"]
+          Platform::Unwrap.call(@services.source.call(inbox_id: inbox_id, destination: w.channel_id))
+          raise ArgumentError, "Workflow version changed" unless w.version == args["expected_version"]
 
-          payload = Dto::MasterControlJob.new(inbox_id: inbox_id, workflow_id: w[:id], action: required_string(args, "action"), expected_version: required_integer(args, "expected_version"))
-          Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterControl, payload: payload, dispatch_key: "master:control:#{r[:id]}:#{w[:id]}:#{args["action"]}:#{w[:version]}")
+          payload = Dto::MasterControlJob.new(inbox_id: inbox_id, workflow_id: w.id, action: required_string(args, "action"), expected_version: required_integer(args, "expected_version"))
+          Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterControl, payload: payload, dispatch_key: "master:control:#{r[:id]}:#{w.id}:#{args["action"]}:#{w.version}")
           { "status" => "queued" }
         end
+      end
+
+      # Keeps the list_workflows JSON fields and their order.
+      sig { params(workflow: Domains::Workflows::Dto::WorkflowView).returns(T::Hash[Symbol, T.nilable(T.any(String, Integer, T::Hash[String, T::Hash[String, T.nilable(String)]]))]) }
+      private def workflow_summary(workflow)
+        { id: workflow.id, project_id: workflow.project_id, channel_id: workflow.channel_id, thread_id: workflow.thread_id, phase: workflow.phase.serialize,
+          version: workflow.version, artifacts: workflow.artifacts.serialize, source_inbox_id: workflow.source_inbox_id }
       end
 
       sig { params(args: ToolArguments, key: String).returns(String) }

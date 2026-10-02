@@ -22,6 +22,7 @@ module Domains
         @policy = policy
         @handle = handle
         @inbox = T.let(Domains::Messaging::Inbox.new, Domains::Messaging::Inbox)
+        @catalog = T.let(Domains::Workflows::Catalog.new, Domains::Workflows::Catalog)
       end
 
       # All future review/session transitions must use this same workflow mutex.
@@ -38,20 +39,21 @@ module Domains
             return row[:status] unless row[:status] == "queued"
             return "queued" unless @policy.dispatch_allowed?
 
-            w = @db[:workflows][id: row[:workflow_id]]
-            return "queued" if w[:phase] == "paused" || w[:phase].end_with?("_review") || w[:phase].end_with?("_human_approval")
-            return block(id, "Workflow inactive") if w[:archived_at] || Routing::TERMINAL.include?(w[:phase]) || w[:phase] == "blocked"
+            w = T.must(@catalog.find(id: row[:workflow_id]))
+            phase = w.phase
+            return "queued" if phase == Domains::Workflows::Dto::Phase::Paused || phase.review? || phase.human_approval?
+            return block(id, "Workflow inactive") if w.archived_at || phase.terminal? || phase == Domains::Workflows::Dto::Phase::Blocked
 
-            return "queued" unless %w[spec_writing plan_writing implementation].include?(w[:phase])
+            return "queued" unless phase.writing?
 
             source = T.must(@inbox.find(id: row[:inbox_id]))
             d = @resolver.delivery(post_id: source.post_id, channel_id: source.channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted)
             valid_source = d.actor.member && !d.actor.bot && d.actor.user_id == source.user_id && d.post_revision == source.post_revision
-            valid_source &&= d.body == source.verified_delivery.body && @membership.call(w[:channel_id], d.actor.user_id)
+            valid_source &&= d.body == source.verified_delivery.body && @membership.call(w.channel_id, d.actor.user_id)
             return block(id, "Source or membership changed") unless valid_source
 
-            session = @db[:sessions][id: row[:session_id], generation: row[:generation], workflow_id: w[:id], role: "writer"]
-            latest = session && @db[:sessions].where(workflow_id: w[:id], role: "writer").max(:generation)
+            session = @db[:sessions][id: row[:session_id], generation: row[:generation], workflow_id: w.id, role: "writer"]
+            latest = session && @db[:sessions].where(workflow_id: w.id, role: "writer").max(:generation)
             return block(id, "Session stale; reconcile without creating a session") unless session && latest == row[:generation]
 
             unless session[:active]
@@ -64,7 +66,7 @@ module Domains
               return live_renewal ? "queued" : block(id, "Credential renewal requires reconciliation")
             end
 
-            pending = @db[:followups].where(workflow_id: w[:id]).where(Sequel[:followups][:id] < id).where(status: %w[queued sending uncertain]).count
+            pending = @db[:followups].where(workflow_id: w.id).where(Sequel[:followups][:id] < id).where(status: %w[queued sending uncertain]).count
             return "queued" unless pending.zero?
 
             live = @herdr.pane(session[:pane_id])
@@ -72,7 +74,7 @@ module Domains
             return "queued" if live.agent_status == Status::Working && same_conversation
 
             ready = SETTLED.include?(live.agent_status) && live.interactive_ready == true && live.launch_pending == false
-            identity = same_conversation && live.name == session[:alias] && live.cwd == w[:worktree_path] && live.agent == session[:configuration]["cli"]
+            identity = same_conversation && live.name == session[:alias] && live.cwd == w.worktree_path && live.agent == session[:configuration]["cli"]
             return block(id, "Session not ready") unless ready && identity
 
             @db[:followups].where(id: id, status: "queued").update(status: "sending")
@@ -128,12 +130,12 @@ module Domains
         authority &&= d.post_revision == source.post_revision && d.body == command && source.verified_delivery.body == command
         raise ArgumentError, "Recovery requires the original human's exact instruction binding" unless authority
 
-        w = @db[:workflows][id: row[:workflow_id]]
-        raise ArgumentError, "Recovery destination membership required" unless @membership.call(w[:channel_id], d.actor.user_id)
+        w = T.must(@catalog.find(id: row[:workflow_id]))
+        raise ArgumentError, "Recovery destination membership required" unless @membership.call(w.channel_id, d.actor.user_id)
 
         audit = Platform::Audit::Log.new
         jobs = Platform::Jobs::Store.new
-        Platform::Lock.new.call(key: w[:id]) do
+        Platform::Lock.new.call(key: w.id) do
           row = @db[:followups][id: id]
           receipt_key = "followup:recovery:#{id}"
           receipt = audit.find(event_key: receipt_key)
@@ -149,16 +151,16 @@ module Domains
           lease_expires_at = job&.lease_expires_at
           raise ArgumentError, "Send still holds a live lease" if job&.status == Platform::Jobs::Dto::JobStatus::Running && lease_expires_at && lease_expires_at > Time.now
 
-          s = @db[:sessions][id: row[:session_id], workflow_id: w[:id], generation: row[:generation], role: "writer", active: true]
-          latest = @db[:sessions].where(workflow_id: w[:id], role: "writer").max(:generation)
+          s = @db[:sessions][id: row[:session_id], workflow_id: w.id, generation: row[:generation], role: "writer", active: true]
+          latest = @db[:sessions].where(workflow_id: w.id, role: "writer").max(:generation)
           live = s && @herdr.pane(s[:pane_id])
           settled = live && latest == row[:generation] && s[:runtime_identity] && live.agent_session&.serialize == s[:runtime_identity]
           settled &&= SETTLED.include?(live.agent_status) && live.name == s[:alias]
-          settled &&= live.cwd == w[:worktree_path] && live.agent == s[:configuration]["cli"]
+          settled &&= live.cwd == w.worktree_path && live.agent == s[:configuration]["cli"]
           raise ArgumentError, "Same conversation must be positively settled" unless settled
 
           @db.transaction do
-            details = Dto::FollowupRecoveryAudit.new(inbox_id: inbox_id, followup_id: id, workflow_id: w[:id], session_id: s[:id], generation: s[:generation], user_id: d.actor.user_id, outcome: outcome)
+            details = Dto::FollowupRecoveryAudit.new(inbox_id: inbox_id, followup_id: id, workflow_id: w.id, session_id: s[:id], generation: s[:generation], user_id: d.actor.user_id, outcome: outcome)
             audit.record(event_key: receipt_key, action: "human_followup_reconciliation", details: details)
             @db[:followups].where(id: id).update(status: outcome == "delivered" ? "delivered" : "blocked", reason: "Human #{outcome} confirmation at inbox #{inbox_id}; no resend", delivered_at: outcome == "delivered" ? Time.now : nil)
             jobs.close_reconciled(id: job.id) if job

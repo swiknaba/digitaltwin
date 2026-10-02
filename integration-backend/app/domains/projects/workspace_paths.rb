@@ -10,7 +10,8 @@ module Domains
     class WorkspacePaths
       extend T::Sig
 
-      UUID_PATTERN = T.let(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/, Regexp)
+      # Kirei human id: "workflow_" plus 12 unambiguous alphanumerics (Domains::Workflows::Entities::Workflow).
+      WORKFLOW_ID_PATTERN = T.let(/\Aworkflow_[A-Za-z0-9]{12}\z/, Regexp)
 
       sig { params(root: String, worktrees_root: String).void }
       def initialize(root: ENV.fetch("WORKSPACE_ROOT", "/workspace/repos"),
@@ -27,7 +28,7 @@ module Domains
 
       sig { params(slug: String, workflow_id: String).returns(String) }
       def worktree(slug:, workflow_id:)
-        raise ArgumentError, "Invalid workflow UUID/branch" unless workflow_id.match?(UUID_PATTERN)
+        raise ArgumentError, "Invalid workflow id/branch" unless workflow_id.match?(WORKFLOW_ID_PATTERN)
 
         RepositoryIdentity.slug!(slug)
         contained!(root: @trees, path: File.join(@trees, workflow_id))

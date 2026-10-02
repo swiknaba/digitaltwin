@@ -59,9 +59,21 @@ module HerdrFixtures
   end
 end
 
+# Stored workflows need typed role configurations; the column default {} is
+# not a valid workflow (Domains::Workflows::Records fails closed on it).
+module WorkflowFixtures
+  WORKFLOW_ROLES = {
+    "writer" => { "cli" => "codex", "provider" => "openai", "model" => "fixture-gpt", "family" => "gpt", "launch_args" => [] },
+    "reviewer" => { "cli" => "claude", "provider" => "anthropic", "model" => "fixture-claude", "family" => "claude", "launch_args" => [] }
+  }.freeze
+
+  def workflow_roles = Sequel.pg_jsonb(WORKFLOW_ROLES)
+end
+
 RSpec.configure do |config|
   config.include JobFixtures
   config.include HerdrFixtures
+  config.include WorkflowFixtures
   config.before do
     tables = %i[master_requests session_operations workflow_requests followups conversation_bindings callbacks sessions approvals reviews queued_messages workflows projects outbox inbox audit jobs chat_checkpoints confirmations]
     Kirei::App.raw_db_connection.run("TRUNCATE #{tables.join(",")} RESTART IDENTITY CASCADE")

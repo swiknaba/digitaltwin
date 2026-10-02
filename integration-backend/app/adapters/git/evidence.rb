@@ -54,7 +54,7 @@ module Adapters
         true
       end
 
-      sig { params(worktree: Dto::WorktreeRef, binding: T.nilable(Domains::Workflows::Dto::ArtifactBinding), target_commit: String).returns(TrueClass) }
+      sig { params(worktree: Dto::WorktreeRef, binding: T.nilable(Domains::Workflows::Dto::ArtifactRef), target_commit: String).returns(TrueClass) }
       def approved_artifact(worktree:, binding:, target_commit:)
         current = clean_revision(worktree)
         path = binding&.path
@@ -69,7 +69,7 @@ module Adapters
       end
 
       sig do
-        params(worktree: Dto::WorktreeRef, binding: T.nilable(Domains::Workflows::Dto::ArtifactBinding), target_commit: String,
+        params(worktree: Dto::WorktreeRef, binding: T.nilable(Domains::Workflows::Dto::ArtifactRef), target_commit: String,
                review_commit: T.nilable(String), review_path: T.nilable(String)).returns(TrueClass)
       end
       def approval(worktree:, binding:, target_commit:, review_commit:, review_path:)

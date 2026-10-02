@@ -9,7 +9,7 @@ RSpec.describe "POST /internal/callbacks/say wire format" do
 
   before do
     db[:projects].insert(id: "p", channel_id: "c", slug: "owner/repo", remote_identity: "github.com/owner/repo", workspace: "/workspace/repos/owner/repo")
-    db[:workflows].insert(id: "w", project_id: "p", channel_id: "c", thread_id: "root", branch: "digitaltwin/fixture", worktree_path: "/workspace/worktrees/fixture")
+    db[:workflows].insert(id: "w", project_id: "p", channel_id: "c", thread_id: "root", branch: "digitaltwin/fixture", worktree_path: "/workspace/worktrees/fixture", role_configurations: workflow_roles)
     db[:sessions].insert(id: "s", workflow_id: "w", role: "writer", generation: 1, pane_id: "pane", alias: "alias",
                          configuration: Sequel.pg_jsonb({}), credential_digest: Digest::SHA256.hexdigest("fixture-token"), credential_expires_at: Time.now + 60)
   end

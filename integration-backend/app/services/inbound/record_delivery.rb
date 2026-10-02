@@ -5,8 +5,7 @@ module Services
   module Inbound
     # Persists a verified delivery, then classifies it and queues durable work
     # before any worker performs an effect. Recording and queueing share one
-    # transaction. Workflow reads use Domains::Workflows::Workflow and the
-    # queued_messages insert stays raw until Task 6.
+    # transaction.
     class RecordDelivery
       extend T::Sig
 
@@ -14,18 +13,23 @@ module Services
       Kind = Platform::Jobs::Dto::JobKind
       Status = Dto::IngestStatus
       Outcome = T.type_alias { Kirei::Services::Result[Dto::IngestOutcome] }
+      Workflow = Domains::Workflows::Dto::WorkflowView
 
       sig do
         params(agent_handle: String, worker_handle: String, master_channel_id: T.nilable(String),
-               record: Messaging::RecordDelivery, outbox: Messaging::Outbox).void
+               record: Messaging::RecordDelivery, outbox: Messaging::Outbox, catalog: Domains::Workflows::Catalog,
+               queued_messages: Domains::Workflows::QueuedMessages).void
       end
       def initialize(agent_handle: ENV.fetch("AGENT_HANDLE", "agent"), worker_handle: ENV.fetch("WORKER_HANDLE", "worker"),
-                     master_channel_id: ENV["MASTER_CHANNEL_ID"], record: Messaging::RecordDelivery.new, outbox: Messaging::Outbox.new)
+                     master_channel_id: ENV["MASTER_CHANNEL_ID"], record: Messaging::RecordDelivery.new, outbox: Messaging::Outbox.new,
+                     catalog: Domains::Workflows::Catalog.new, queued_messages: Domains::Workflows::QueuedMessages.new)
         @agent = T.let(valid_handle!(agent_handle), String)
         @worker = T.let(valid_handle!(worker_handle), String)
         @master_channel = master_channel_id
         @record = record
         @outbox = outbox
+        @catalog = catalog
+        @queued_messages = queued_messages
       end
 
       sig { params(delivery: Messaging::Dto::VerifiedDelivery).returns(Outcome) }
@@ -72,9 +76,9 @@ module Services
         handle
       end
 
-      sig { params(delivery: Messaging::Dto::VerifiedDelivery).returns(T.nilable(Domains::Workflows::Workflow)) }
+      sig { params(delivery: Messaging::Dto::VerifiedDelivery).returns(T.nilable(Workflow)) }
       private def workflow_for(delivery)
-        Domains::Workflows::Workflow.find_by(channel_id: delivery.channel_id, thread_id: delivery.thread_id, archived_at: nil)
+        @catalog.active_in_thread(channel_id: delivery.channel_id, thread_id: delivery.thread_id)
       end
 
       sig { params(body: String).returns(T.nilable(String)) }
@@ -90,25 +94,23 @@ module Services
           delivery.actor.member && !delivery.actor.bot
       end
 
-      sig { params(workflow: Domains::Workflows::Workflow).returns(T::Boolean) }
+      sig { params(workflow: Workflow).returns(T::Boolean) }
       private def dispatch_suppressed?(workflow)
         phase = workflow.phase
-        phase == "paused" || phase.end_with?("_review")
+        phase == Domains::Workflows::Dto::Phase::Paused || phase.review?
       end
 
-      sig { params(workflow: Domains::Workflows::Workflow).returns(T::Boolean) }
-      private def closed?(workflow)
-        %w[closed cancelled].include?(workflow.phase)
-      end
+      sig { params(workflow: Workflow).returns(T::Boolean) }
+      private def closed?(workflow) = workflow.phase.terminal?
 
-      sig { params(workflow: Domains::Workflows::Workflow, inbox_id: Integer).void }
+      sig { params(workflow: Workflow, inbox_id: Integer).void }
       private def queue_message(workflow, inbox_id)
-        Domains::Workflows::Workflow.db[:queued_messages].insert(workflow_id: workflow.id, inbox_id: inbox_id, workflow_version: workflow.version)
+        @queued_messages.enqueue(workflow_id: workflow.id, inbox_id: inbox_id, workflow_version: workflow.version)
       end
 
       sig do
         params(kind: Kind, delivery: Messaging::Dto::VerifiedDelivery, inbox_id: Integer,
-               workflow: T.nilable(Domains::Workflows::Workflow)).returns(Outcome)
+               workflow: T.nilable(Workflow)).returns(Outcome)
       end
       private def queue(kind, delivery, inbox_id, workflow: nil)
         payload = Domains::Commander::Dto::InboxDispatchJob.new(inbox_id: inbox_id, channel_id: delivery.channel_id, thread_id: delivery.thread_id,

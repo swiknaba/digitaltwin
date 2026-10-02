@@ -27,7 +27,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
 
   def workflow(n = 1, phase: "implementation")
     db[:projects].insert(id: "p#{n}", channel_id: n.to_s.rjust(26, "c"), slug: "owner/repo#{n}", remote_identity: "github.com/owner/repo#{n}", workspace: "/tmp/p#{n}")
-    db[:workflows].insert(id: "w#{n}", project_id: "p#{n}", channel_id: n.to_s.rjust(26, "c"), thread_id: "root#{n}", branch: "b#{n}", worktree_path: "/tmp/w#{n}", phase: phase)
+    db[:workflows].insert(id: "w#{n}", project_id: "p#{n}", channel_id: n.to_s.rjust(26, "c"), thread_id: "root#{n}", branch: "b#{n}", worktree_path: "/tmp/w#{n}", phase: phase, role_configurations: workflow_roles)
     db[:sessions].insert(id: "s#{n}", workflow_id: "w#{n}", role: "writer", generation: 1, pane_id: "pane#{n}", alias: "writer#{n}",
                          credential_digest: "digest#{n}", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({ "cli" => "codex" }), runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation#{n}" }))
     "w#{n}"

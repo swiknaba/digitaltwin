@@ -1,6 +1,6 @@
 GIT
   remote: https://github.com/swiknaba/kirei.git
-  revision: 84055a2e5268fe9cb1ced493975b456f8b03025c
+  revision: 351668803a352382eeef8433dbcfd7c8d3af6198
   branch: main
   specs:
     kirei (0.10.0)

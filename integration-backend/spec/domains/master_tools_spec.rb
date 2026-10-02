@@ -8,8 +8,8 @@ RSpec.describe "Request-bound Master tools and stdio MCP" do
   }
   let(:source) { double(call: Kirei::Services::Result.new(result: delivery)) }
   let(:requests) { Domains::Commander::Requests.new(db, source: source) }
-  let(:services) { double(source: source, provision: double(request: "provision-id")) }
-  let(:tools) { Domains::Commander::Tools.new(db, services: services, requests: requests) }
+  let(:services) { double(source: source, request_start: double(call: Kirei::Services::Result.new(result: "provision-id"))) }
+  let(:tools) { Domains::Commander::Tools.new(services: services, requests: requests) }
   before do
     @inbox = db[:inbox].insert(channel_id: "master", thread_id: "root", post_id: "human-post", post_revision: 1, event_kind: "posted", user_id: "human", verified_delivery: Sequel.pg_jsonb({}))
     db[:sessions].insert(id: "controller", role: "controller", pane_id: "pane", alias: "master", generation: 1, credential_digest: "session-digest", credential_expires_at: Time.now + 3600, configuration: Sequel.pg_jsonb({}))
@@ -28,7 +28,7 @@ RSpec.describe "Request-bound Master tools and stdio MCP" do
   end
   it "queues source and version-bound controls for the socket-owning worker" do
     db[:projects].insert(id: "project", channel_id: "project-channel", slug: "owner/repo", remote_identity: "github.com/owner/repo", workspace: "/tmp/repo")
-    db[:workflows].insert(id: "workflow", project_id: "project", channel_id: "project-channel", thread_id: "project-root", branch: "branch", worktree_path: "/tmp/workflow")
+    db[:workflows].insert(id: "workflow", project_id: "project", channel_id: "project-channel", thread_id: "project-root", branch: "branch", worktree_path: "/tmp/workflow", role_configurations: workflow_roles)
     args = { "request_id" => "request", "workflow_id" => "workflow", "action" => "pause", "expected_version" => 0 }
     2.times { expect(tools.call("workflow_control", args, token: "request-token")).to eq({ "status" => "queued" }) }
     expect(db[:jobs].where(kind: "master.control").count).to eq(1)

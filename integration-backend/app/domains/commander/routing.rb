@@ -6,7 +6,7 @@ module Domains
     class Routing
       extend T::Sig
 
-      TERMINAL = T.let(%w[closed cancelled].freeze, T::Array[String])
+      Workflow = Domains::Workflows::Dto::WorkflowView
       Interpretation = T.type_alias { T::Hash[String, Object] }
       sig do
         params(db: Sequel::Database, resolver: Domains::Messaging::DeliveryVerifier,
@@ -23,6 +23,7 @@ module Domains
         @approvals = approvals
         @handle = handle
         @inbox = T.let(Domains::Messaging::Inbox.new, Domains::Messaging::Inbox)
+        @catalog = T.let(Domains::Workflows::Catalog.new, Domains::Workflows::Catalog)
       end
 
       # Only verified inbox identities enter this service. Selection is a human
@@ -35,8 +36,9 @@ module Domains
         raise ArgumentError, "Human member required" unless d.actor.member && !d.actor.bot
 
         interpreted = nil
+        workflows = active
         if interpretation
-          target = active[id: interpretation.fetch("workflow_id")]
+          target = find(workflows, interpretation.fetch("workflow_id"))
           ids = interpretation.fetch("evidence_inbox_ids")
           raise ArgumentError, "Interpretation requires cited task evidence" unless target && ids.is_a?(Array) && !ids.empty? && ids.size <= 10
 
@@ -47,63 +49,64 @@ module Domains
             verified = @resolver.delivery(post_id: evidence.post_id, channel_id: evidence.channel_id, event_kind: Domains::Messaging::Dto::EventKind::Posted)
             next false unless verified.post_revision == evidence.post_revision && verified.actor.user_id == evidence.user_id && verified.body == evidence.verified_delivery.body && verified.actor.member && !verified.actor.bot
 
-            direct_evidence = evidence.channel_id == target[:channel_id] && evidence.thread_id == target[:thread_id]
-            bound_evidence = @db[:conversation_bindings][inbox_id: evidence_id, workflow_id: target[:id]]
-            direct_evidence || bound_evidence || target[:source_inbox_id] == evidence_id
+            direct_evidence = evidence.channel_id == target.channel_id && evidence.thread_id == target.thread_id
+            bound_evidence = @db[:conversation_bindings][inbox_id: evidence_id, workflow_id: target.id]
+            direct_evidence || bound_evidence || target.source_inbox_id == evidence_id
           end
           raise ArgumentError, "Interpretation is not grounded in accessible recent task context" unless grounded
 
           interpreted = target
         end
         conversation_thread = d.thread_id
-        allowed_channels = active.select_map(:channel_id).uniq.select { |channel| @membership.call(channel, d.actor.user_id) }
+        allowed_channels = workflows.map(&:channel_id).uniq.select { |channel| @membership.call(channel, d.actor.user_id) }
         @db.transaction do
           @inbox.lock(id: inbox_id)
           existing = @db[:followups][inbox_id: inbox_id]
           return existing if existing
 
-          direct = active.where(channel_id: d.channel_id, thread_id: d.thread_id).first
+          workflows = active
+          direct = workflows.find { |workflow| workflow.channel_id == d.channel_id && workflow.thread_id == d.thread_id }
           binding = @db[:conversation_bindings][channel_id: d.channel_id, thread_id: conversation_thread, user_id: d.actor.user_id]
           if !binding && d.root_post && d.channel_id == @master_channel
             binding = @db[:conversation_bindings][channel_id: d.channel_id, thread_id: "master", user_id: d.actor.user_id]
           end
-          recent = binding && binding[:updated_at] > @now.call - 1800 && active[id: binding[:workflow_id]]
+          recent = binding && binding[:updated_at] > @now.call - 1800 && find(workflows, binding[:workflow_id])
           raise ArgumentError, "Selection requires an exact human routing command" if selection && !d.body.start_with?("@#{@handle} route #{selection}\n")
 
-          selected = selection && active[id: selection]
+          selected = selection && find(workflows, selection)
           raise ArgumentError, "Inactive selection" if selection && !selected
 
-          targets = [direct, selected, interpreted, (selected || interpreted) ? nil : recent].select { |w| w.is_a?(Hash) }.uniq { |w| w[:id] }
+          targets = [direct, selected, interpreted, (selected || interpreted) ? nil : recent].grep(Workflow).uniq(&:id)
           if targets.size != 1
             acknowledge(d, inbox_id, "Which project thread should receive this instruction? Please select the workflow.", "clarification") if clarify
             return { status: "clarification" }
           end
-          w = @db[:workflows].where(id: targets.first[:id]).for_update.first
-          raise ArgumentError, "Workflow became inactive" if w[:archived_at] || TERMINAL.include?(w[:phase])
-          raise ArgumentError, "Destination membership required" unless allowed_channels.include?(w[:channel_id])
+          w = @catalog.find_for_update(id: T.must(targets.first).id)
+          raise ArgumentError, "Workflow became inactive" if !w || w.archived_at || w.phase.terminal?
+          raise ArgumentError, "Destination membership required" unless allowed_channels.include?(w.channel_id)
 
-          sessions = @db[:sessions].where(workflow_id: w[:id], role: "writer", active: true).all
+          sessions = @db[:sessions].where(workflow_id: w.id, role: "writer", active: true).all
           session = sessions.size == 1 ? sessions.first : nil
           if sessions.empty?
-            starting = @db[:sessions].where(workflow_id: w[:id], role: "writer", active: false).join(:session_operations, session_id: :id).where(Sequel[:session_operations][:kind] => "start",
-                                                                                                                                                 Sequel[:session_operations][:state] => %w[
-                                                                                                                                                   queued sending uncertain
-                                                                                                                                                 ]).select_all(:sessions).all
+            starting = @db[:sessions].where(workflow_id: w.id, role: "writer", active: false).join(:session_operations, session_id: :id).where(Sequel[:session_operations][:kind] => "start",
+                                                                                                                                               Sequel[:session_operations][:state] => %w[
+                                                                                                                                                 queued sending uncertain
+                                                                                                                                               ]).select_all(:sessions).all
             session = starting.first if starting.size == 1
           end
           Domains::Sessions::Lifecycle.schedule_renewal(@db, session) if session && session[:active] && session[:credential_expires_at] <= @now.call
           evidence = { "source_inbox_id" => inbox_id, "selection" => selection, "interpretation" => interpretation,
-                       "direct_thread" => direct && direct[:id], "recent_binding" => recent && binding[:inbox_id] }
-          id = @db[:followups].insert(inbox_id: inbox_id, workflow_id: w[:id], session_id: session && session[:id],
+                       "direct_thread" => direct&.id, "recent_binding" => recent && binding[:inbox_id] }
+          id = @db[:followups].insert(inbox_id: inbox_id, workflow_id: w.id, session_id: session && session[:id],
                                       generation: session && session[:generation], evidence: Sequel.pg_jsonb(evidence),
                                       status: session ? "queued" : "blocked", reason: session ? nil : "Session reconciliation required")
           threads = [conversation_thread]
           threads << "master" if d.root_post && d.channel_id == @master_channel
           threads.each do |context_thread|
             @db[:conversation_bindings].insert_conflict(target: %i[channel_id thread_id user_id], update: {
-                                                          workflow_id: w[:id], inbox_id: inbox_id, updated_at: @now.call
+                                                          workflow_id: w.id, inbox_id: inbox_id, updated_at: @now.call
                                                         }).insert(channel_id: d.channel_id, thread_id: context_thread, user_id: d.actor.user_id,
-                                                                  workflow_id: w[:id], inbox_id: inbox_id, updated_at: @now.call)
+                                                                  workflow_id: w.id, inbox_id: inbox_id, updated_at: @now.call)
           end
           acknowledge(d, inbox_id, session ? "Instruction #{id} queued for the existing project session; delivery is pending." : "Instruction #{id} recorded; session reconciliation is required before delivery.", "queued")
           Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionFollowup, payload: Dto::FollowupJob.new(followup_id: id), dispatch_key: "followup:#{id}") if session
@@ -130,8 +133,13 @@ module Domains
         Platform::Jobs::Dto::Decision.complete
       end
 
-      sig { returns(Sequel::Dataset) }
-      private def active = @db[:workflows].where(archived_at: nil).exclude(phase: TERMINAL)
+      # Routable workflows: not archived and not closed or cancelled.
+      sig { returns(T::Array[Workflow]) }
+      private def active = @catalog.active.reject { |workflow| workflow.phase.terminal? }
+
+      # Model and binding ids are untyped input; only an exact id string matches.
+      sig { params(workflows: T::Array[Workflow], id: BasicObject).returns(T.nilable(Workflow)) }
+      private def find(workflows, id) = workflows.find { |workflow| workflow.id == id }
 
       sig { params(d: Domains::Messaging::Dto::VerifiedDelivery, id: Integer, text: String, kind: String).returns(String) }
       private def acknowledge(d, id, text, kind)
