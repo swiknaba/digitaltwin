@@ -18,7 +18,7 @@ The integrator coordinates this file; component workers propose changes before c
 | Independent fleets | Verified Mattermost/Git handoffs only; versioned peer envelope; no shared runtime/private APIs | Kirei; `docs/interfaces/peer-handoff.md` in Task 10 |
 
 Kirei's shared `Actor`, `RoleConfig`, `ArtifactRef`, `SessionRef`, and `Outcome` remain the plan's typed entities.
-Keep migration order `001_jobs` through `006_confirmations`; the Kirei owner coordinates all additions.
+Keep existing migration order `001_jobs` through `006_confirmations`; append `007_master_routing` for contextual bindings/follow-ups. The Kirei owner coordinates all additions.
 Writer/Reviewer require different providers and model families, verified threads, and exact revision gates.
 Uncertain external results remain blocked for reconciliation unless retry idempotency is proven.
 

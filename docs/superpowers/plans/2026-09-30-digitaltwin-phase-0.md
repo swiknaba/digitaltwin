@@ -405,6 +405,20 @@ These sources validate names and compatibility considerations; Task 1 still sele
 - [ ] Check that all three gates use the same rules and bot/prompt instructions cannot bypass the lock.
 - [ ] After review, commit: `feat: coordinate immutable artifact review rounds`.
 
+## Master-first routing increment (2026-10-02)
+
+1. Add durable contextual bindings and follow-up delivery state after migration 006.
+2. Route ordinary verified human Master-chat messages through a configured destination.
+   Reuse existing workflow/session identity; clarify conflicts and parallel-session ambiguity.
+3. Queue review/pause instructions with source-bound acknowledgment. Serialize sends and
+   persist an uncertain state before any retry could repeat a socket effect.
+4. Implement the captured Herdr 0.9.3 `agent.get`/`agent.prompt` interface with strict identity
+   and response checks. Test Unix-socket fixtures and real PostgreSQL concurrency.
+5. Bind Master-chat approval to exact workflow/gate/revision plus destination membership.
+6. Keep provider dispatch disabled until authenticated chat, selected Master MCP and real
+   CLI prompt/settled evidence pass. The unimplemented Master interpretation/bootstrap,
+   project-thread creation and session creation remain explicit follow-on gates.
+
 ## Task 9: Master and Local MCP Bridge
 
 **Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/controller/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/controller_spec.rb`; update `docs/phase-1-voice-controller.md` if thread creation is deferred.
@@ -418,7 +432,7 @@ Harness-native subagents are allowed where supported and stay subordinate to the
 Emergency operations use available typed tools. Keep existing destructive/irreversible confirmations; add no emergency-specific approval gate.
 `start_workflow` requires a verified thread in the selected project channel.
 If optional creation is enabled, Kirei first creates/reconciles the thread and records its association before calling the same workflow-start service.
-Keep source actor/context verified; preserve normal coding gates. The Master does not infer a target from unrelated channel messages.
+Keep source actor/context verified; preserve normal coding gates. The Master resolves relevant verified conversation/task context; unrelated channel messages are not target evidence.
 
 - [ ] Write `selected_master_config_reaches_sessions_start`: assert controller role, `workflow_id: nil`, `repo: nil`, and unchanged CLI/provider/model/family. Assert another Task 1-validated CLI/provider reaches the same interface unchanged.
 - [ ] Write `channel_context_survives_tool_call`, `restart_creates_fresh_session_with_same_config`, `secret_values_never_returned`. Assert restart uses the same config in neutral Runtime home, reconstructs PostgreSQL status, and preserves sender/context checks.

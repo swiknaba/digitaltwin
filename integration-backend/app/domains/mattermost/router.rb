@@ -4,8 +4,9 @@ module Domains
   module Mattermost
     class Router
       def initialize(db, agent_handle: ENV.fetch("AGENT_HANDLE", "agent"),
-                     worker_handle: ENV.fetch("WORKER_HANDLE", "worker"))
-        @db, @agent, @worker = db, agent_handle, worker_handle
+                     worker_handle: ENV.fetch("WORKER_HANDLE", "worker"),
+                     master_channel_id: ENV["MASTER_CHANNEL_ID"])
+        @db, @agent, @worker, @master_channel = db, agent_handle, worker_handle, master_channel_id
         raise ArgumentError, "Invalid bot handle" unless [@agent, @worker].all? { |v| v.match?(/\A[a-z0-9_.-]+\z/) }
       end
 
@@ -24,7 +25,7 @@ module Domains
           return result("rejected",
                         "Human action requires verified member") if command && (!d.actor.member || d.actor.bot)
 
-          if d.body.match?(/(?:\A|\s)@#{Regexp.escape(@agent)}\b/) && !d.actor.bot
+          if (d.channel_id == @master_channel || d.body.match?(/(?:\A|\s)@#{Regexp.escape(@agent)}\b/)) && d.actor.member && !d.actor.bot
             queue("master.prompt", d, id)
           elsif command == "start"
             return result("rejected", "Start requires a new thread root") unless d.root_post && !workflow

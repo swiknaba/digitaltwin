@@ -9,6 +9,23 @@ Async do
   if ENV["CHAT_VALIDATION_MODE"] == "1"
     delivery = Domains::Mattermost::Delivery.from_env(db)
     handlers["mattermost.post"] = delivery.method(:call)
+    client = Domains::Mattermost::Client.new(url: ENV.fetch("MATTERMOST_URL"), token_file: ENV.fetch("MATTERMOST_LISTENER_TOKEN_FILE"))
+    resolver = Domains::Mattermost::ActorResolver.new(client,
+                                                      local_bot_ids: ENV.fetch("MATTERMOST_LOCAL_BOT_IDS").split(","),
+                                                      peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","))
+    membership = ->(channel, user) do
+      member = client.get("/api/v4/channels/#{channel}/members/#{user}")
+      member["channel_id"] == channel && member["user_id"] == user
+    rescue Domains::Mattermost::Client::Error
+      false
+    end
+    approvals = Domains::Controller::Approvals.new(db, resolver: resolver, membership: membership,
+                                                       current_commit: Domains::Controller::GitRevision.new)
+    routing = Domains::Controller::Routing.new(db, resolver: resolver, membership: membership, approvals: approvals)
+    handlers["master.prompt"] = routing.method(:call)
+    handlers["workflow.prompt"] = routing.method(:call)
+    followups = Domains::Controller::Followups.new(db, herdr: Domains::Sessions::Herdr.new, resolver: resolver, membership: membership)
+    handlers["session.followup"] = followups.method(:call)
   end
   Domains::Jobs::Worker.new(db, handlers: handlers).run
 ensure

@@ -64,7 +64,7 @@ JSON bodies are bounded at 64 KiB and normalized to StringIO for Kirei's parser.
 The listener and Mattermost delivery handler require `CHAT_VALIDATION_MODE=1` for disposable validation.
 That mode does not enable agent sessions, reviews, approvals, Master MCP, or production workflows.
 
-Migrations `001`–`006` provide jobs/inbox/outbox/audit, projects, and preparatory sessions/workflows/reviews/confirmations storage.
+Migrations `001`–`007` provide jobs/inbox/outbox/audit, projects, and preparatory sessions/workflows/reviews/confirmations storage.
 `Domains::Workflows::Entities` owns the typed shared contracts.
 `Policy` contains pure approval/diversity/settled-state checks; it is not an enabled workflow coordinator.
 Enrollment and Git worktree services validate explicit channel mappings, remote identities, branches, and real paths.
@@ -108,6 +108,35 @@ The server accepts only generation/key/text and derives destination, role, and b
 Changed-key content, wrong credentials, stale generations, expired sessions, and archived workflows fail closed.
 Tokens are read from mounted/session files. This implementation does not create live session credentials.
 Artifact/review callbacks and MCP remain unavailable pending Task 1 evidence.
+
+## Master routing increment
+
+`MASTER_CHANNEL_ID` makes ordinary verified human messages in that explicitly monitored
+channel enter `master.prompt`. With disposable `CHAT_VALIDATION_MODE=1`, the worker now
+handles Master prompts and active project `workflow.prompt` jobs through the same routing
+service. This needs the listener token file and configured local/peer bot IDs as well as
+outbox bot credentials. Source and destination membership are rechecked.
+
+Routing uses verified project thread identity or a same-human conversation binding younger
+than 30 minutes. It asks for clarification if evidence conflicts or no binding exists.
+Explicit clarification accepts `@agent route WORKFLOW_ID` followed by a newline and the
+instruction. That control line is removed before a session prompt. No keyword inference,
+new session or project thread is created. Selected Master interpretation/MCP is still open.
+
+Follow-ups retain source inbox, target workflow, session generation, evidence and delivery
+state. Acknowledgments say queued. `agent.get`/`agent.prompt` implement the captured Herdr
+wire contract; live dispatch remains disabled by `Policy`, including validation mode.
+The adapter never calls start/resume and never replaces a stale conversation.
+Every future review/session transition must acquire the same workflow advisory mutex
+(`hashtextextended(workflow_id, 0)`) used by follow-up sends and approvals. Database
+transactions do not contain network calls. Interrupted `sending` and `uncertain` records
+need positive reconciliation evidence; never reset them for an automatic retry.
+Blocked send jobs and review-release scheduling remain coordinator work behind Task 1.
+
+An exact `@agent approve WORKFLOW_ID spec|plan FULL_COMMIT` can record human approval
+from Master chat only at the matching human-approval phase, for the latest approving
+review and a clean matching Git worktree. The source post cannot approve another workflow.
+Recording approval does not advance or bypass the workflow coordinator's remaining gates.
 
 ## Checks and remaining gates
 

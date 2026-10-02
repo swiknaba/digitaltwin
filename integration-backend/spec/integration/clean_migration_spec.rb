@@ -18,17 +18,17 @@ RSpec.describe "Clean application migration entrypoint" do
     env = { "DATABASE_URL" => url, "RACK_ENV" => "test", "NO_LOGS" => "true" }
     output, status = Open3.capture2e(env, "bundle", "exec", "rake", "db:migrate", chdir: root)
     expect(status.success?).to be(true), output
-    expect(db[:schema_info].get(:version)).to eq(6)
+    expect(db[:schema_info].get(:version)).to eq(7)
     expect(db.tables).to include(:jobs, :projects, :sessions, :workflows, :reviews, :confirmations)
     output, status = Open3.capture2e(env, "bundle", "exec", "rake", "db:migrate", chdir: root)
     expect(status.success?).to be(true), output
-    expect(db[:schema_info].get(:version)).to eq(6)
-    output, status = Open3.capture2e(env.merge("STEPS" => "6"), "bundle", "exec", "rake", "db:rollback", chdir: root)
+    expect(db[:schema_info].get(:version)).to eq(7)
+    output, status = Open3.capture2e(env.merge("STEPS" => "7"), "bundle", "exec", "rake", "db:rollback", chdir: root)
     expect(status.success?).to be(true), output
     expect(db[:schema_info].get(:version)).to eq(0)
     output, status = Open3.capture2e(env, "bundle", "exec", "rake", "db:migrate", chdir: root)
     expect(status.success?).to be(true), output
-    expect(db[:schema_info].get(:version)).to eq(6)
+    expect(db[:schema_info].get(:version)).to eq(7)
   ensure
     db&.disconnect
   end
