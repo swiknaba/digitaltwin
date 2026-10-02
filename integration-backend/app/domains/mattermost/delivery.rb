@@ -48,11 +48,12 @@ module Domains
         @bot_ids = T.let(bot_ids, T::Hash[String, String])
       end
 
-      sig { params(job: Domains::Jobs::Job, jobs: Domains::Jobs::Store).void }
-      def call(job, jobs)
-        row = outbox_item(@db[:outbox][id: job_payload(job).fetch("outbox_id")])
+      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
+      def call(job:)
+        payload = Dto::OutboxPostJob.from_hash(job.payload, true)
+        row = outbox_item(@db[:outbox][id: payload.outbox_id])
         raise ArgumentError, "Unknown outbox item" unless row
-        return if row.status == "delivered"
+        return Platform::Jobs::Dto::Decision.complete if row.status == "delivered"
 
         raise "Outbox requires reconciliation" unless row.status == "pending"
 
@@ -60,13 +61,14 @@ module Domains
         bot = @bot_ids.fetch(row.bot)
         verify_destination!(client, row, bot)
         @db.transaction do
-          raise "Lost external effect lease" unless jobs.begin_effect(id: job_string(job, :id), lease_token: job_string(job, :lease_token))
+          raise "Lost external effect lease" unless job.lease.begin_effect
 
           @db[:outbox].where(id: row.id).update(status: "uncertain")
         end
         remote = client.post("/api/v4/posts", post_payload(row))
         verify_result!(remote, row, bot)
         @db[:outbox].where(id: row.id).update(status: "delivered", remote_post_id: string_value(remote, "id"))
+        Platform::Jobs::Dto::Decision.complete
       end
 
       sig { params(outbox_id: String).returns(T::Boolean) }
@@ -87,7 +89,9 @@ module Domains
         verify_result!(post, row, bot)
         @db.transaction do
           @db[:outbox].where(id: row.id, status: "uncertain").update(status: "delivered", remote_post_id: string_value(post, "id"))
-          @db[:jobs].where(dispatch_key: "outbox:#{row.id}", status: "uncertain").update(status: "complete", lease_token: nil, lease_expires_at: nil)
+          jobs = Platform::Jobs::Store.new
+          job = jobs.find_by_key(dispatch_key: "outbox:#{row.id}")
+          jobs.close_uncertain(id: job.id) if job
         end
         true
       end
@@ -266,28 +270,6 @@ module Domains
       sig { params(value: String).returns(T::Boolean) }
       def identifier?(value)
         value.match?(/\A[a-z0-9]{26}\z/)
-      end
-
-      sig { params(job: Domains::Jobs::Job).returns(T::Hash[String, String]) }
-      def job_payload(job)
-        value = job.payload
-        payload = T.let({}, T::Hash[String, String])
-        value.each do |key, item|
-          raise ArgumentError, "Malformed delivery job" unless item.is_a?(String)
-
-          payload[key] = item
-        end
-        payload
-      end
-
-      sig { params(job: Domains::Jobs::Job, key: Symbol).returns(String) }
-      def job_string(job, key)
-        return job.id if key == :id
-
-        token = job.lease_token
-        return token if key == :lease_token && token
-
-        raise ArgumentError, "Malformed delivery job"
       end
     end
   end

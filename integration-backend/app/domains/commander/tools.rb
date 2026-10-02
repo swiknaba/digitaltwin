@@ -69,8 +69,11 @@ module Domains
           @services.source.human(request_inbox_id(r), destination: w[:channel_id])
           raise ArgumentError, "Workflow version changed" unless w[:version] == args["expected_version"]
 
-          payload = { "inbox_id" => r[:inbox_id], "workflow_id" => w[:id], "action" => args["action"], "expected_version" => args["expected_version"] }
-          Domains::Jobs::Store.new.enqueue(kind: "master.control", payload: payload, key: "master:control:#{r[:id]}:#{w[:id]}:#{args["action"]}:#{w[:version]}")
+          inbox_id = request_inbox_id(r)
+          raise ArgumentError, "Invalid request capability" unless inbox_id.is_a?(Integer)
+
+          payload = Dto::MasterControlJob.new(inbox_id: inbox_id, workflow_id: w[:id], action: required_string(args, "action"), expected_version: required_integer(args, "expected_version"))
+          Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterControl, payload: payload, dispatch_key: "master:control:#{r[:id]}:#{w[:id]}:#{args["action"]}:#{w[:version]}")
           { "status" => "queued" }
         end
       end
@@ -81,6 +84,14 @@ module Domains
       def required_string(args, key)
         value = args.fetch(key) { raise ArgumentError, "Missing #{key}" }
         raise ArgumentError, "Invalid #{key}" unless value.is_a?(String)
+
+        value
+      end
+
+      sig { params(args: ToolArguments, key: String).returns(Integer) }
+      def required_integer(args, key)
+        value = args.fetch(key) { raise ArgumentError, "Missing #{key}" }
+        raise ArgumentError, "Invalid #{key}" unless value.is_a?(Integer)
 
         value
       end

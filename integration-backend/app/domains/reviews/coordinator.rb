@@ -8,7 +8,6 @@ module Domains
 
       PHASES = T.let({ "spec" => "spec_writing", "plan" => "plan_writing", "implementation" => "implementation" }.freeze, T::Hash[String, String])
       Row = T.type_alias { T::Hash[Symbol, Object] }
-      Payload = T.type_alias { Domains::Jobs::Job::Payload }
       Identifier = T.type_alias { T.any(String, Integer) }
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Configuration = T.type_alias { T::Hash[String, Object] }
@@ -24,7 +23,7 @@ module Domains
         @evidence = evidence
         @routing = routing
         @policy = policy
-        @lock = T.let(Domains::Workflows::Lock.new(db), Domains::Workflows::Lock)
+        @lock = T.let(Platform::Lock.new, Platform::Lock)
       end
 
       sig { params(token: String, generation: Integer, kind: String, commit: String).returns(Identifier) }
@@ -40,7 +39,7 @@ module Domains
 
         s = checked_session(session_id, generation, "writer")
         workflow_id = row_string!(s, :workflow_id)
-        @lock.call(workflow_id) do
+        @lock.call(key: workflow_id) do
           w = row!(@db[:workflows][id: workflow_id])
           old = @db[:reviews][workflow_id: row_string!(w, :id), gate: kind, target_commit: commit]
           return old[:id] if old
@@ -72,7 +71,7 @@ module Domains
             changes = row_string!(w, :phase) == "paused" ? { saved_phase: "#{kind}_review", paused_commit: commit } : { phase: "#{kind}_review" }
             version = row_integer!(w, :version)
             @db[:workflows].where(id: row_string!(w, :id), version: version).update(**changes, artifacts: Sequel.pg_jsonb(refs), version: version + 1)
-            Domains::Jobs::Store.new.enqueue(kind: "review.prompt", payload: { "review_id" => id }, key: "review:#{id}")
+            Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::ReviewPrompt, payload: Dto::ReviewPromptJob.new(review_id: id), dispatch_key: "review:#{id}")
             id
           end
         end
@@ -94,7 +93,7 @@ module Domains
         old = @db[:reviews][workflow_id: workflow_id, review_commit: review_commit, verdict: verdict]
         return old[:id] if old
 
-        @lock.call(workflow_id) do
+        @lock.call(key: workflow_id) do
           w = row!(@db[:workflows][id: workflow_id])
           current_phase = phase_for(w)
           kind = current_phase.delete_suffix("_review")
@@ -105,9 +104,11 @@ module Domains
           raise ArgumentError, "Reviewer configuration changed" unless configuration!(s) == configuration!(record, :reviewer_configuration)
 
           if row_string!(record, :dispatch_state) != "delivered"
-            job = @db[:jobs][dispatch_key: "review:#{row_identifier!(record, :id)}"]
-            raise ArgumentError, "Review prompt effect unproved" unless job && job[:effect_started_at]
-            raise ArgumentError, "Review prompt lease still live" if job[:status] == "running" && job[:lease_expires_at] && job[:lease_expires_at] > Time.now
+            job = Platform::Jobs::Store.new.find_by_key(dispatch_key: "review:#{row_identifier!(record, :id)}")
+            raise ArgumentError, "Review prompt effect unproved" unless job&.effect_started_at
+
+            lease_expires_at = job.lease_expires_at
+            raise ArgumentError, "Review prompt lease still live" if job.status == Platform::Jobs::Dto::JobStatus::Running && lease_expires_at && lease_expires_at > Time.now
           end
           settled!(s)
           @evidence.review(evidence_workflow!(w), evidence_record!(record), review_commit, verdict, review_configuration!(configuration!(s)))
@@ -120,10 +121,13 @@ module Domains
                   end
           @db.transaction do
             @db[:reviews].where(id: row_identifier!(record, :id)).update(review_commit: review_commit, verdict: verdict, dispatch_state: "delivered")
-            @db[:jobs].where(dispatch_key: "review:#{row_identifier!(record, :id)}").update(status: "complete", lease_token: nil, lease_expires_at: nil)
+            jobs = Platform::Jobs::Store.new
+            prompt_job = jobs.find_by_key(dispatch_key: "review:#{row_identifier!(record, :id)}")
+            jobs.close_reconciled(id: prompt_job.id) if prompt_job
             if row_string!(record, :dispatch_state) != "delivered"
-              @db[:audit].insert(event_key: "review:receipt:#{row_identifier!(record, :id)}", action: "verified_review_prompt_reconciliation",
-                                 details: Sequel.pg_jsonb({ "review_id" => row_identifier!(record, :id), "target_commit" => row_string!(record, :target_commit), "review_commit" => review_commit, "session_id" => row_string!(s, :id), "generation" => generation }))
+              details = Dto::ReviewReceiptAudit.new(review_id: row_integer!(record, :id), target_commit: row_string!(record, :target_commit), review_commit: review_commit,
+                                                    session_id: row_string!(s, :id), generation: generation)
+              Platform::Audit::Log.new.record(event_key: "review:receipt:#{row_identifier!(record, :id)}", action: "verified_review_prompt_reconciliation", details: details)
             end
             changes = row_string!(w, :phase) == "paused" ? { saved_phase: phase, paused_commit: review_commit } : { phase: phase }
             version = row_integer!(w, :version)
@@ -131,7 +135,8 @@ module Domains
                                                                                        blocker: phase == "blocked" ? "Three review rounds requested changes" : nil)
             queue_release(workflow_id, version + 1)
             if verdict == "changes_requested" && phase != "blocked"
-              Domains::Jobs::Store.new.enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version + 1 }, key: "workflow:phase:#{workflow_id}:#{version + 1}")
+              jobs.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowPhasePrompt, payload: Domains::Workflows::Dto::PhasePromptJob.new(workflow_id: workflow_id, version: version + 1),
+                           dispatch_key: "workflow:phase:#{workflow_id}:#{version + 1}")
             end
             Domains::Mattermost::Outbox.new.enqueue(channel_id: row_string!(w, :channel_id), thread_id: row_optional_string(w, :thread_id), bot: "worker", role: "reviewer",
                                                     body: "Review #{verdict} for #{row_string!(record, :target_commit)}; committed at #{review_commit}.", key: "review:result:#{row_identifier!(record, :id)}")
@@ -142,12 +147,13 @@ module Domains
 
       sig { params(workflow_id: String, version: Integer).returns(String) }
       def queue_release(workflow_id, version)
-        Domains::Jobs::Store.new.enqueue(kind: "review.release", payload: { "workflow_id" => workflow_id }, key: "review:release:#{workflow_id}:#{version}")
+        Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::ReviewRelease, payload: Dto::ReleaseJob.new(workflow_id: workflow_id), dispatch_key: "review:release:#{workflow_id}:#{version}")
       end
 
-      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).returns(T.nilable(String)) }
-      def release_job(job, _store)
-        release(payload_string!(job.payload, "workflow_id"))
+      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
+      def release_job(job:)
+        release(Dto::ReleaseJob.from_hash(job.payload, true).workflow_id)
+        Platform::Jobs::Dto::Decision.complete
       end
 
       sig { params(workflow_id: String).returns(T.nilable(String)) }
@@ -156,6 +162,7 @@ module Domains
         return unless PHASES.value?(row_string!(w, :phase))
 
         transient = T.let(nil, T.nilable(Domains::Mattermost::Client::Error))
+        jobs = Platform::Jobs::Store.new
         @db[:queued_messages].where(workflow_id: workflow_id).order(:id).each do |row|
           begin
             result = @routing.route(inbox_id: row[:inbox_id])
@@ -167,31 +174,29 @@ module Domains
             end
             # Retain invalid sources for reconciliation; one revoked message
             # must not prevent other verified instructions from being released.
-            @db[:audit].insert_conflict(target: :event_key).insert(event_key: "release:invalid:#{row[:id]}", action: "release_source_rejected", details: Sequel.pg_jsonb({ "workflow_id" => workflow_id, "inbox_id" => row[:inbox_id] }))
+            Platform::Audit::Log.new.record_once(event_key: "release:invalid:#{row[:id]}", action: "release_source_rejected",
+                                                 details: Dto::ReleaseRejectedAudit.new(workflow_id: workflow_id, inbox_id: row[:inbox_id]))
           end
         end
         @db[:followups].where(workflow_id: workflow_id, status: "queued").each do |row|
-          @db[:jobs].where(dispatch_key: "followup:#{row[:id]}", status: "blocked", effect_started_at: nil).update(status: "pending", attempts: 0, available_at: Time.now, last_error: nil)
+          job = jobs.find_by_key(dispatch_key: "followup:#{row[:id]}")
+          jobs.requeue_blocked(id: job.id) if job
         end
         raise transient if transient
       end
 
-      sig { params(job: Domains::Jobs::Job, store: Domains::Jobs::Store).void }
-      def call(job, store)
-        record = row!(@db[:reviews][id: payload_identifier!(job.payload, "review_id")])
-        @lock.call(row_string!(record, :workflow_id)) do
-          return if record[:dispatch_state] == "delivered"
+      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
+      def call(job:)
+        record = row!(@db[:reviews][id: Dto::ReviewPromptJob.from_hash(job.payload, true).review_id])
+        @lock.call(key: row_string!(record, :workflow_id)) do
+          return Platform::Jobs::Dto::Decision.complete if record[:dispatch_state] == "delivered"
           raise ArgumentError, "Uncertain review prompt" unless record[:dispatch_state] == "queued"
 
-          unless @policy.dispatch_allowed?
-            store.block(id: job.id, lease_token: lease_token!(job), reason: "Live review dispatch evidence required")
-            return
-          end
+          return Platform::Jobs::Dto::Decision.block("Live review dispatch evidence required") unless @policy.dispatch_allowed?
+
           w = row!(@db[:workflows][id: row_string!(record, :workflow_id)])
-          if w[:phase] == "paused"
-            store.defer(id: job.id, lease_token: lease_token!(job), reason: "Paused review")
-            return
-          end
+          return Platform::Jobs::Dto::Decision.defer("Paused review") if w[:phase] == "paused"
+
           raise ArgumentError, "Review phase changed" unless w[:phase] == "#{record[:gate]}_review"
 
           @evidence.artifact(evidence_workflow!(w), row_string!(record, :target_commit), artifact_path!(w, row_string!(record, :gate)))
@@ -200,13 +205,13 @@ module Domains
 
           live = @herdr.get(row_string!(s, :pane_id))
           if live["agent_status"] == "working" && live["agent_session"] == row_json_object!(s, :runtime_identity)
-            store.defer(id: job.id, lease_token: lease_token!(job), reason: "Reviewer busy")
-            return
+            return Platform::Jobs::Dto::Decision.defer("Reviewer busy")
           end
+
           settled!(s)
           @db[:reviews].where(id: record[:id]).update(dispatch_state: "sending")
           begin
-            raise IOError, "Dispatch lease lost" unless store.begin_effect(id: job.id, lease_token: lease_token!(job))
+            raise IOError, "Dispatch lease lost" unless job.lease.begin_effect
 
             prompt = "Review #{record[:gate]} target #{record[:target_commit]}, base #{record[:base_commit]}. " \
                      "Change only #{record[:review_path]}; append Target, Provider, Model, Family, Verdict and Reviewed-at (UTC ISO8601) fields. " \
@@ -217,6 +222,7 @@ module Domains
             @db[:reviews].where(id: record[:id]).update(dispatch_state: "uncertain")
             raise
           end
+          Platform::Jobs::Dto::Decision.complete
         end
       end
 
@@ -396,30 +402,6 @@ module Domains
           required[key] = value
         end
         required
-      end
-
-      sig { params(payload: Payload, key: String).returns(String) }
-      def payload_string!(payload, key)
-        value = payload.fetch(key) { raise ArgumentError, "Malformed durable job payload" }
-        raise ArgumentError, "Malformed durable job payload" unless value.is_a?(String)
-
-        value
-      end
-
-      sig { params(payload: Payload, key: String).returns(Identifier) }
-      def payload_identifier!(payload, key)
-        value = payload.fetch(key) { raise ArgumentError, "Malformed durable job payload" }
-        raise ArgumentError, "Malformed durable job payload" unless value.is_a?(String) || value.is_a?(Integer)
-
-        value
-      end
-
-      sig { params(job: Domains::Jobs::Job).returns(String) }
-      def lease_token!(job)
-        token = job.lease_token
-        raise ArgumentError, "Review job lease is missing" unless token
-
-        token
       end
 
       sig { params(result: Object).returns(T::Boolean) }

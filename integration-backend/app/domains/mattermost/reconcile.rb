@@ -1,7 +1,6 @@
 # typed: strict
 # frozen_string_literal: true
 
-
 module Domains
   module Mattermost
     class Reconcile
@@ -168,10 +167,8 @@ module Domains
       def quarantine(channel_id, post, error)
         digest = Digest::SHA256.hexdigest(JSON.generate([channel_id, post]))
         post_id = post.is_a?(Hash) && post["id"].is_a?(String) && post["id"].match?(/\A[a-z0-9]{26}\z/) ? post["id"] : nil
-        @db[:audit].insert_conflict(target: :event_key).insert(
-          event_key: "history-rejected:#{digest}", action: "history_rejected", channel_id: channel_id,
-          post_id: post_id, details: Sequel.pg_jsonb({ reason: error.message })
-        )
+        Platform::Audit::Log.new.record_once(event_key: "history-rejected:#{digest}", action: "history_rejected", channel_id: channel_id,
+                                             post_id: post_id, details: Dto::HistoryRejectedAudit.new(reason: error.message))
       end
 
       sig { params(post: HistoryPost, key: String).returns(String) }

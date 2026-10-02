@@ -9,10 +9,6 @@ module Domains
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Row = T.type_alias { T::Hash[Symbol, Object] }
       Configuration = T.type_alias { T::Hash[String, Object] }
-      Job = T.type_alias { T::Hash[Symbol, Object] }
-      # Reconciliation is invoked from a persisted inbox record (integer) or a
-      # transport adapter (string); Commander::Source revalidates either form.
-      InboxId = T.type_alias { T.any(Integer, String) }
 
       sig do
         params(
@@ -31,14 +27,14 @@ module Domains
         @root = credential_root
         @url = callback_url
         @policy = policy
-        @lock = T.let(Domains::Workflows::Lock.new(db), Domains::Workflows::Lock)
+        @lock = T.let(Platform::Lock.new, Platform::Lock)
       end
 
       # Called only by operator-configured bootstrap; never exposed as an MCP
       # tool to Worker/Reviewer or accepted from a model-supplied role.
       sig { params(configuration: Configuration).returns(String) }
       def bootstrap(configuration:)
-        @lock.call("controller") do
+        @lock.call(key: "controller") do
           existing = @db[:sessions][role: "controller", active: true]
           if existing
             queue_renewal(existing) if existing[:credential_expires_at] <= Time.now + 300
@@ -57,7 +53,7 @@ module Domains
                                   configuration: Sequel.pg_jsonb(configuration), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
-            Domains::Jobs::Store.new.enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
+            Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionStart, payload: Dto::SessionOperationJob.new(operation_id: op), dispatch_key: "session:start:#{id}")
           end
           id
         end
@@ -69,7 +65,7 @@ module Domains
 
         w = @db[:workflows][id: workflow_id] or raise ArgumentError, "Missing workflow"
         @source.human(w[:source_inbox_id], destination: w[:channel_id])
-        @lock.call(workflow_id) do
+        @lock.call(key: workflow_id) do
           existing = @db[:sessions][workflow_id: workflow_id, role: role, active: true]
           if existing
             queue_renewal(existing) if existing[:credential_expires_at] <= Time.now + 300
@@ -90,7 +86,7 @@ module Domains
                                   configuration: Sequel.pg_jsonb(configuration), credential_digest: Digest::SHA256.hexdigest(token), credential_expires_at: Time.now + 3600, active: false)
             op = SecureRandom.uuid
             @db[:session_operations].insert(id: op, session_id: id, kind: "start")
-            Domains::Jobs::Store.new.enqueue(kind: "session.start", payload: { "operation_id" => op }, key: "session:start:#{id}")
+            Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionStart, payload: Dto::SessionOperationJob.new(operation_id: op), dispatch_key: "session:start:#{id}")
             Domains::Mattermost::Outbox.new.enqueue(channel_id: w[:channel_id], thread_id: w[:thread_id], bot: "worker", role: role,
                                                     body: "#{role.capitalize} session #{id} reserved; start operation #{op} is queued, not started.", key: "session:reserved:#{id}")
           end
@@ -102,7 +98,7 @@ module Domains
       def execute(operation_id, before_effect: -> { true })
         op = @db[:session_operations][id: operation_id] or raise ArgumentError, "Missing session operation"
         session = @db[:sessions][id: op[:session_id]]
-        @lock.call(session[:workflow_id] || "controller") do
+        @lock.call(key: session[:workflow_id] || "controller") do
           op = @db[:session_operations][id: operation_id]
           return op[:state] unless op[:state] == "queued"
           return "queued" unless @policy.dispatch_allowed?
@@ -159,7 +155,8 @@ module Domains
         if workflow && row_string(op, :kind) == "start" && row_string(session, :role) == "writer"
           workflow_id = row_string(workflow, :id)
           version = row_integer(workflow, :version)
-          Domains::Jobs::Store.new.enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => workflow_id, "version" => version }, key: "workflow:phase:#{workflow_id}:#{version}")
+          Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowPhasePrompt, payload: Domains::Workflows::Dto::PhasePromptJob.new(workflow_id: workflow_id, version: version),
+                                            dispatch_key: "workflow:phase:#{workflow_id}:#{version}")
         elsif workflow && row_string(op, :kind) == "stop" && %w[closed cancelled].include?(row_string(workflow, :phase)) && @db[:sessions].where(workflow_id: row_string(workflow, :id), active: true).empty?
           @db[:workflows].where(id: row_string(workflow, :id)).update(archived_at: Time.now)
         end
@@ -176,28 +173,26 @@ module Domains
           id = row_string(session, :id)
           expires_at = row_time(session, :credential_expires_at)
           key = "session:renew:#{id}:#{expires_at.to_i}"
-          Domains::Jobs::Store.new.enqueue(kind: "session.renew", payload: { "session_id" => id, "generation" => row_integer(session, :generation) }, key: key, available_at: [Time.now, expires_at - 300].max)
+          Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionRenew, payload: Dto::RenewalJob.new(session_id: id, generation: row_integer(session, :generation)),
+                                            dispatch_key: key, available_at: [Time.now, expires_at - 300].max)
         end
       end
 
       public
 
-      sig { params(job: Job, store: Domains::Jobs::Store).void }
-      def renew_job(job, store)
-        id = row_string(job, :id)
-        lease_token = row_string(job, :lease_token)
-        unless @policy.dispatch_allowed?
-          store.block(id: id, lease_token: lease_token, reason: "Live session renewal evidence required")
-          return
-        end
-        payload = row_object(job, :payload)
-        renew(session_id: object_string(payload, "session_id"), generation: object_integer(payload, "generation"))
+      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
+      def renew_job(job:)
+        return Platform::Jobs::Dto::Decision.block("Live session renewal evidence required") unless @policy.dispatch_allowed?
+
+        payload = Dto::RenewalJob.from_hash(job.payload, true)
+        renew(session_id: payload.session_id, generation: payload.generation)
+        Platform::Jobs::Dto::Decision.complete
       end
 
       sig { params(session_id: String, generation: Integer).void }
       def renew(session_id:, generation:)
         s = @db[:sessions][id: session_id, generation: generation, active: true] or raise ArgumentError, "Inactive renewal session"
-        @lock.call(s[:workflow_id] || "controller") do
+        @lock.call(key: s[:workflow_id] || "controller") do
           s = @db[:sessions][id: session_id, generation: generation, active: true] or raise ArgumentError, "Inactive renewal session"
           scope = s[:workflow_id] ? { workflow_id: s[:workflow_id], role: s[:role] } : { role: "controller" }
           raise ArgumentError, "Session replaced" unless @db[:sessions].where(scope).max(:generation) == generation
@@ -222,7 +217,7 @@ module Domains
         @db[:sessions].where(active: true).each { |s| queue_renewal(s) }
       end
 
-      sig { params(operation_id: String, inbox_id: InboxId, pane_id: String).returns(String) }
+      sig { params(operation_id: String, inbox_id: Integer, pane_id: String).returns(String) }
       def reconcile(operation_id:, inbox_id:, pane_id:)
         op = @db[:session_operations][id: operation_id] or raise ArgumentError, "Unknown session operation"
         s = @db[:sessions][id: op[:session_id]]
@@ -236,12 +231,14 @@ module Domains
         command = "@#{ENV.fetch("AGENT_HANDLE", "agent")} recover-session #{operation_id} #{pane_id}"
         raise ArgumentError, "Exact original-human session recovery required" unless d.actor.user_id == original[:user_id] && d.body == command
 
-        @lock.call(w ? w[:id] : "controller") do
+        @lock.call(key: w ? w[:id] : "controller") do
           op = @db[:session_operations][id: operation_id]
           key = "session:recovery:#{operation_id}"
-          receipt = @db[:audit][event_key: key]
+          audit = Platform::Audit::Log.new
+          jobs = Platform::Jobs::Store.new
+          receipt = audit.find(event_key: key)
           if receipt
-            raise ArgumentError, "Recovery pane changed" unless receipt[:details]["pane_id"] == pane_id
+            raise ArgumentError, "Recovery pane changed" unless Dto::SessionRecoveryAudit.from_hash(receipt.details, true).pane_id == pane_id
 
             return "complete"
           end
@@ -251,8 +248,9 @@ module Domains
           raise ArgumentError, "Session generation replaced" unless @db[:sessions].where(w ? { workflow_id: w[:id], role: s[:role] } : { role: "controller" }).max(:generation) == s[:generation]
           raise ArgumentError, "Different recorded pane" unless s[:pane_id].start_with?("pending:") || s[:pane_id] == pane_id
 
-          job = @db[:jobs][dispatch_key: "session:#{op[:kind]}:#{s[:id]}"]
-          raise ArgumentError, "Operation lease still live" if job && job[:status] == "running" && job[:lease_expires_at] && job[:lease_expires_at] > Time.now
+          job = jobs.find_by_key(dispatch_key: "session:#{op[:kind]}:#{s[:id]}")
+          lease_expires_at = job&.lease_expires_at
+          raise ArgumentError, "Operation lease still live" if job&.status == Platform::Jobs::Dto::JobStatus::Running && lease_expires_at && lease_expires_at > Time.now
 
           changes = if op[:kind] == "start"
                       raise ArgumentError, "Workflow closed" if w && (w[:archived_at] || %w[closed cancelled].include?(w[:phase]))
@@ -277,8 +275,9 @@ module Domains
           @db.transaction do
             @db[:sessions].where(id: s[:id]).update(changes)
             complete_operation(op, s, w && @db[:workflows][id: w[:id]])
-            @db[:jobs].where(id: job[:id]).update(status: "complete", lease_token: nil, lease_expires_at: nil) if job
-            @db[:audit].insert(event_key: key, action: "verified_session_reconciliation", details: Sequel.pg_jsonb({ "inbox_id" => inbox_id, "operation_id" => operation_id, "session_id" => s[:id], "generation" => s[:generation], "pane_id" => pane_id }))
+            jobs.close_reconciled(id: job.id) if job
+            details = Dto::SessionRecoveryAudit.new(inbox_id: inbox_id, operation_id: operation_id, session_id: s[:id], generation: s[:generation], pane_id: pane_id)
+            audit.record(event_key: key, action: "verified_session_reconciliation", details: details)
             Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Session operation #{operation_id} reconciled against runtime evidence; no start or stop was repeated.", key: key)
           end
           FileUtils.rm_f(credential_path(s[:id])) if op[:kind] == "stop"
@@ -288,28 +287,28 @@ module Domains
 
       sig { params(workflow_id: String).void }
       def stop(workflow_id:)
-        @lock.call(workflow_id) do
+        @lock.call(key: workflow_id) do
           @db.transaction do
             @db[:sessions].where(workflow_id: workflow_id, active: true).each do |s|
               next if @db[:session_operations][session_id: s[:id], kind: "stop"]
 
               op = SecureRandom.uuid
               @db[:session_operations].insert(id: op, session_id: s[:id], kind: "stop")
-              Domains::Jobs::Store.new.enqueue(kind: "session.stop", payload: { "operation_id" => op }, key: "session:stop:#{s[:id]}")
+              Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::SessionStop, payload: Dto::SessionOperationJob.new(operation_id: op), dispatch_key: "session:stop:#{s[:id]}")
             end
           end
         end
       end
 
-      sig { params(job: Job, store: Domains::Jobs::Store).void }
-      def call(job, store)
-        id = row_string(job, :id)
-        lease_token = row_string(job, :lease_token)
-        state = execute(object_string(row_object(job, :payload), "operation_id"), before_effect: -> { store.begin_effect(id: id, lease_token: lease_token) })
+      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
+      def call(job:)
+        state = execute(Dto::SessionOperationJob.from_hash(job.payload, true).operation_id, before_effect: -> { job.lease.begin_effect })
         if state == "queued" && @policy.dispatch_allowed?
-          store.defer(id: id, lease_token: lease_token, reason: "Session start waits for phase")
+          Platform::Jobs::Dto::Decision.defer("Session start waits for phase")
         elsif state != "complete"
-          store.block(id: id, lease_token: lease_token, reason: "Session #{state}; evidence/reconciliation required")
+          Platform::Jobs::Dto::Decision.block("Session #{state}; evidence/reconciliation required")
+        else
+          Platform::Jobs::Dto::Decision.complete
         end
       end
 
@@ -375,12 +374,6 @@ module Domains
       sig { params(row: Row, key: Symbol).returns(Integer) }
       def row_integer(row, key) = self.class.row_integer(row, key)
 
-      sig { params(row: Row, key: Symbol).returns(T::Hash[String, Object]) }
-      def row_object(row, key)
-        value = row.fetch(key) { raise ArgumentError, "Malformed database row" }
-        object(value)
-      end
-
       sig { params(value: Object).returns(T::Hash[String, Object]) }
       def object(value)
         raise ArgumentError, "Malformed JSON object" unless value.is_a?(Hash)
@@ -398,14 +391,6 @@ module Domains
       def object_string(object, key)
         value = object.fetch(key) { raise ArgumentError, "Malformed JSON object" }
         raise ArgumentError, "Malformed JSON object" unless value.is_a?(String)
-
-        value
-      end
-
-      sig { params(object: T::Hash[String, Object], key: String).returns(Integer) }
-      def object_integer(object, key)
-        value = object.fetch(key) { raise ArgumentError, "Malformed JSON object" }
-        raise ArgumentError, "Malformed JSON object" unless value.is_a?(Integer)
 
         value
       end

@@ -7,8 +7,6 @@ module Domains
     class Router
       extend T::Sig
 
-      InboxId = T.type_alias { T.any(Integer, String) }
-
       sig do
         params(db: Sequel::Database, agent_handle: String, worker_handle: String,
                master_channel_id: T.nilable(String)).void
@@ -34,18 +32,18 @@ module Domains
           return result("rejected", "Human action requires verified member") if command && (!delivery.actor.member || delivery.actor.bot)
 
           if master_prompt?(delivery)
-            queue("master.prompt", delivery, inbox_id)
+            queue(Platform::Jobs::Dto::JobKind::MasterPrompt, delivery, inbox_id)
           elsif command == "start"
             return result("rejected", "Start requires a new thread root") unless delivery.root_post && workflow.nil?
 
-            queue("workflow.start", delivery, inbox_id)
+            queue(Platform::Jobs::Dto::JobKind::WorkflowStart, delivery, inbox_id)
           elsif workflow && dispatch_suppressed?(workflow) && command.nil?
             queue_message(workflow, inbox_id)
             Outbox.new.enqueue(channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: "worker", role: "writer",
                                body: "Message queued; delivery waits for review or pause completion.", key: "queued:#{inbox_id}")
             result("accepted", "Queued under dispatch suppression")
           elsif workflow && !delivery.actor.bot && !closed?(workflow)
-            queue(command ? "workflow.#{command}" : "workflow.prompt", delivery, inbox_id, workflow: workflow)
+            queue(Platform::Jobs::Dto::JobKind.deserialize(command ? "workflow.#{command}" : "workflow.prompt"), delivery, inbox_id, workflow: workflow)
           else
             result("accepted", "No activated workflow")
           end
@@ -61,14 +59,14 @@ module Domains
         handle
       end
 
-      sig { params(delivery: VerifiedDelivery).returns(T.nilable(InboxId)) }
+      sig { params(delivery: VerifiedDelivery).returns(T.nilable(Integer)) }
       def persist_inbox(delivery)
         record = { channel_id: delivery.channel_id, post_id: delivery.post_id, event_kind: delivery.event_kind,
                    post_revision: delivery.post_revision }
         id = @db[:inbox].insert_conflict(target: record.keys).insert(**record, thread_id: delivery.thread_id,
                                                                                user_id: delivery.actor.user_id,
                                                                                verified_delivery: Sequel.pg_jsonb(delivery.serialize))
-        return id if id.is_a?(Integer) || id.is_a?(String)
+        return id if id.is_a?(Integer)
 
         nil
       end
@@ -102,23 +100,19 @@ module Domains
         %w[closed cancelled].include?(workflow.phase)
       end
 
-      sig { params(workflow: Domains::Workflows::Workflow, inbox_id: InboxId).void }
+      sig { params(workflow: Domains::Workflows::Workflow, inbox_id: Integer).void }
       def queue_message(workflow, inbox_id)
         @db[:queued_messages].insert(workflow_id: workflow.id, inbox_id: inbox_id, workflow_version: workflow.version)
       end
 
       sig do
-        params(kind: String, delivery: VerifiedDelivery, inbox_id: InboxId,
+        params(kind: Platform::Jobs::Dto::JobKind, delivery: VerifiedDelivery, inbox_id: Integer,
                workflow: T.nilable(Domains::Workflows::Workflow)).returns(Domains::Workflows::Entities::Outcome)
       end
       def queue(kind, delivery, inbox_id, workflow: nil)
-        payload = T.let({ "inbox_id" => inbox_id, "channel_id" => delivery.channel_id, "thread_id" => delivery.thread_id },
-                        Domains::Jobs::Job::Payload)
-        if workflow
-          payload["workflow_id"] = workflow.id
-          payload["expected_version"] = workflow.version
-        end
-        Domains::Jobs::Store.new.enqueue(kind: kind, payload: payload, key: "inbox:#{inbox_id}:#{kind}")
+        payload = Domains::Commander::Dto::InboxDispatchJob.new(inbox_id: inbox_id, channel_id: delivery.channel_id, thread_id: delivery.thread_id,
+                                                                workflow_id: workflow&.id, expected_version: workflow&.version)
+        Platform::Jobs::Store.new.enqueue(kind: kind, payload: payload, dispatch_key: "inbox:#{inbox_id}:#{kind.serialize}")
         result("blocked", "Recorded durably; live Task 1 workflow dispatch is gated")
       end
 

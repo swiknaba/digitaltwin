@@ -24,7 +24,7 @@ RSpec.describe "architecture boundaries" do
   reference_pattern = /\b(Domains|Services|Adapters|Platform)::(\w+)(?:::(\w+))?/
   raw_table_pattern = /\b(?:@?db|raw_db_connection)\[:|Sequel\.lit/
   broad_signature_pattern = /returns\(Object\)|T::Hash\[(?:Symbol|String), Object\]|T\.untyped|T\.unsafe/
-  entity_pattern = /Domains::(\w+)::Entities/
+  entity_pattern = /\b(Domains|Platform)::(\w+)::Entities/
 
   camelize = ->(name) { name.split("_").map(&:capitalize).join }
   snake = ->(name) { name.gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase }
@@ -76,7 +76,7 @@ RSpec.describe "architecture boundaries" do
           when "broad_signatures"
             line.match?(broad_signature_pattern) && boundary_files.none? { |glob| File.fnmatch?(glob, path) }
           when "private_entities"
-            line.scan(entity_pattern).flatten.any? { |name| !path.start_with?("app/domains/#{snake.call(name)}/") }
+            line.scan(entity_pattern).any? { |layer, name| !path.start_with?("app/#{layer.downcase}/#{snake.call(name)}/") }
           when "layer_dependencies"
             line.scan(reference_pattern).any? do |ref_layer, ref_context, ref_member|
               !allowed_reference.call(layer, context, ref_layer, ref_context, ref_member)

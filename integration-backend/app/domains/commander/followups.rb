@@ -55,9 +55,9 @@ module Domains
               return pending_start ? "queued" : block(id, "Inactive session requires reconciliation")
             end
             if session[:credential_expires_at] <= Time.now
-              renewal = Domains::Sessions::Lifecycle.schedule_renewal(@db, session)
-              state = @db[:jobs][id: renewal][:status]
-              return %w[pending running].include?(state) ? "queued" : block(id, "Credential renewal requires reconciliation")
+              renewal = Platform::Jobs::Store.new.find(id: Domains::Sessions::Lifecycle.schedule_renewal(@db, session))
+              live_renewal = [Platform::Jobs::Dto::JobStatus::Pending, Platform::Jobs::Dto::JobStatus::Running].include?(renewal&.status)
+              return live_renewal ? "queued" : block(id, "Credential renewal requires reconciliation")
             end
 
             pending = @db[:followups].where(workflow_id: w[:id]).where(Sequel[:followups][:id] < id).where(status: %w[queued sending uncertain]).count
@@ -92,20 +92,19 @@ module Domains
         end
       end
 
-      sig { params(job: Domains::Jobs::Job, store: Domains::Jobs::Store).void }
-      def call(job, store)
-        lease_token = job.lease_token
-        raise ArgumentError, "Follow-up job has no lease" unless lease_token
-
-        state = deliver(followup_id(job), before_effect: -> { store.begin_effect(id: job.id, lease_token: lease_token) })
+      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
+      def call(job:)
+        state = deliver(followup_id(job), before_effect: -> { job.lease.begin_effect })
         if state == "queued" && @policy.dispatch_allowed?
-          store.defer(id: job.id, lease_token: lease_token, reason: "Waiting for workflow/session readiness")
+          Platform::Jobs::Dto::Decision.defer("Waiting for workflow/session readiness")
         elsif state != "delivered"
-          store.block(id: job.id, lease_token: lease_token, reason: "Follow-up #{state}; reconciliation or gated release required")
+          Platform::Jobs::Dto::Decision.block("Follow-up #{state}; reconciliation or gated release required")
+        else
+          Platform::Jobs::Dto::Decision.complete
         end
       end
 
-      sig { params(id: Integer, inbox_id: T.any(Integer, String), outcome: String).returns(String) }
+      sig { params(id: Integer, inbox_id: Integer, outcome: String).returns(String) }
       def reconcile(id:, inbox_id:, outcome:)
         raise ArgumentError, "Explicit outcome required" unless %w[delivered discard].include?(outcome)
 
@@ -121,19 +120,23 @@ module Domains
         w = @db[:workflows][id: row[:workflow_id]]
         raise ArgumentError, "Recovery destination membership required" unless @membership.call(w[:channel_id], d.actor.user_id)
 
-        Domains::Workflows::Lock.new(@db).call(w[:id]) do
+        audit = Platform::Audit::Log.new
+        jobs = Platform::Jobs::Store.new
+        Platform::Lock.new.call(key: w[:id]) do
           row = @db[:followups][id: id]
           receipt_key = "followup:recovery:#{id}"
-          old = @db[:audit][event_key: receipt_key]
-          if old
-            raise ArgumentError, "Recovery outcome already bound" unless old[:details]["outcome"] == outcome && old[:details]["user_id"] == d.actor.user_id
+          receipt = audit.find(event_key: receipt_key)
+          if receipt
+            old = Dto::FollowupRecoveryAudit.from_hash(receipt.details, true)
+            raise ArgumentError, "Recovery outcome already bound" unless old.outcome == outcome && old.user_id == d.actor.user_id
 
             return outcome
           end
           raise ArgumentError, "Instruction does not require uncertain-send recovery" unless row[:status] == "uncertain" || row[:status] == "sending"
 
-          job = @db[:jobs][dispatch_key: "followup:#{id}"]
-          raise ArgumentError, "Send still holds a live lease" if job && job[:status] == "running" && job[:lease_expires_at] && job[:lease_expires_at] > Time.now
+          job = jobs.find_by_key(dispatch_key: "followup:#{id}")
+          lease_expires_at = job&.lease_expires_at
+          raise ArgumentError, "Send still holds a live lease" if job&.status == Platform::Jobs::Dto::JobStatus::Running && lease_expires_at && lease_expires_at > Time.now
 
           s = @db[:sessions][id: row[:session_id], workflow_id: w[:id], generation: row[:generation], role: "writer", active: true]
           latest = @db[:sessions].where(workflow_id: w[:id], role: "writer").max(:generation)
@@ -144,10 +147,10 @@ module Domains
           raise ArgumentError, "Same conversation must be positively settled" unless settled
 
           @db.transaction do
-            details = { "inbox_id" => inbox_id, "followup_id" => id, "workflow_id" => w[:id], "session_id" => s[:id], "generation" => s[:generation], "user_id" => d.actor.user_id, "outcome" => outcome }
-            @db[:audit].insert(event_key: receipt_key, action: "human_followup_reconciliation", details: Sequel.pg_jsonb(details))
+            details = Dto::FollowupRecoveryAudit.new(inbox_id: inbox_id, followup_id: id, workflow_id: w[:id], session_id: s[:id], generation: s[:generation], user_id: d.actor.user_id, outcome: outcome)
+            audit.record(event_key: receipt_key, action: "human_followup_reconciliation", details: details)
             @db[:followups].where(id: id).update(status: outcome == "delivered" ? "delivered" : "blocked", reason: "Human #{outcome} confirmation at inbox #{inbox_id}; no resend", delivered_at: outcome == "delivered" ? Time.now : nil)
-            @db[:jobs].where(dispatch_key: "followup:#{id}").update(status: "complete", lease_token: nil, lease_expires_at: nil)
+            jobs.close_reconciled(id: job.id) if job
             Domains::Mattermost::Outbox.new.enqueue(channel_id: d.channel_id, thread_id: d.thread_id, bot: "agent", role: "controller", body: "Instruction #{id}: human confirmed #{outcome}; no prompt was resent.", key: receipt_key)
           end
           outcome
@@ -160,10 +163,10 @@ module Domains
         "blocked"
       end
 
-      sig { params(job: Domains::Jobs::Job).returns(Integer) }
+      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Integer) }
       private def followup_id(job)
-        value = job.payload.fetch("followup_id") { raise ArgumentError, "Follow-up job is malformed" }
-        raise ArgumentError, "Follow-up job is malformed" unless value.is_a?(Integer) && value.positive?
+        value = Dto::FollowupJob.from_hash(job.payload, true).followup_id
+        raise ArgumentError, "Follow-up job is malformed" unless value.positive?
 
         value
       end

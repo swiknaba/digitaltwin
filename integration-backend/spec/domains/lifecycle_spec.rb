@@ -59,11 +59,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
 
   def review_job(id)
-    store = Domains::Jobs::Store.new
-    db[:jobs].exclude(kind: "review.prompt").update(available_at: Time.now + 3600)
-    job = store.claim(worker_id: "fixture")
-    reviews.call(job, store)
-    store.complete(id: job.id, lease_token: T.must(job.lease_token))
+    tick_job(Platform::Jobs::Dto::JobKind::ReviewPrompt) { |job| reviews.call(job: job) }
     expect(db[:reviews][id: id][:dispatch_state]).to eq("delivered")
   end
 
@@ -249,17 +245,15 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     db[:sessions].where(id: sid).update(active: true, pane_id: "master-pane", runtime_identity: Sequel.pg_jsonb(identity))
     master = Domains::Commander::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
     request = master.ingest(@inbox)
-    db[:jobs].exclude(kind: "master.dispatch").update(available_at: Time.now + 3600)
-    store = Domains::Jobs::Store.new
-    job = store.claim(worker_id: "fixture")
+    dispatch = Platform::Jobs::Dto::JobKind::MasterDispatch
     allow(herdr).to receive(:get).and_return({ "agent_session" => identity, "agent_status" => "working" })
-    master.call(job, store)
-    expect(db[:jobs][id: job.id].values_at(:status, :attempts)).to eq(["pending", 0])
-    db[:jobs].where(id: job.id).update(available_at: Time.now - 1)
+    tick_job(dispatch) { |job| master.call(job: job) }
+    job = db[:jobs][kind: dispatch.serialize]
+    expect(job.values_at(:status, :attempts)).to eq(["pending", 0])
+    db[:jobs].where(id: job[:id]).update(available_at: Time.now - 1)
     allow(herdr).to receive(:get).and_return({ "agent_session" => identity, "agent_status" => "idle" })
-    job = store.claim(worker_id: "fixture")
-    master.call(job, store)
-    store.complete(id: job.id, lease_token: T.must(job.lease_token))
+    tick_job(dispatch) { |claimed| master.call(job: claimed) }
+    expect(db[:jobs][id: job[:id]][:status]).to eq("complete")
     expect(db[:master_requests][id: request][:state]).to eq("active")
     token = File.read(File.join(@credential_root, "#{request}.request-token"))
     2.times { master.reply(request_id: request, token: token, text: "Instruction queued") }
@@ -369,5 +363,76 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "controller-pane")).to eq("complete")
     expect(db[:sessions][id: controller[:id]][:active]).to eq(true)
     expect(db[:workflows].count).to eq(0)
+  end
+
+  describe "worker path (Ruling 12 behavior fixes)" do
+    let(:kinds) { Platform::Jobs::Dto::JobKind }
+    let(:services) do
+      Domains::Commander::Services.allocate.tap do |services|
+        worker_source = double(human: Domains::Mattermost::VerifiedDelivery.new(
+          channel_id: channel, thread_id: "t" * 26, post_id: "q" * 26, post_revision: 1, event_kind: "posted", root_post: false, body: "@worker pause",
+          actor: Domains::Workflows::Entities::Actor.new(user_id: "u" * 26, channel_id: channel, member: true, bot: false)
+        ))
+        services.instance_variable_set(:@db, db)
+        services.instance_variable_set(:@source, worker_source)
+        services.instance_variable_set(:@workflows, workflows)
+      end
+    end
+
+    def job_status(kind) = db[:jobs][kind: kind.serialize][:status]
+
+    it "dispatches workflow.phase_prompt from a claimed job" do
+      workflow
+      workflows.queue_phase("workflow", 0)
+      tick_job(kinds::WorkflowPhasePrompt) { |job| workflows.call(job: job) }
+      expect(job_status(kinds::WorkflowPhasePrompt)).to eq("complete")
+      expect(herdr).to have_received(:prompt).once.with("writer", a_string_including("Current phase: spec_writing"))
+    end
+
+    it "starts a reserved session from a claimed session.start job" do
+      workflow(active_sessions: false)
+      id = sessions.reserve(workflow_id: "workflow", role: "writer")
+      allow(herdr).to receive(:workspace).and_return({ "workspace" => { "workspace_id" => "runtime-workspace" }, "root_pane" => { "pane_id" => "pane" } })
+      allow(herdr).to receive(:start).and_return({ "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "c" }, "agent_status" => "idle" })
+      tick_job(kinds::SessionStart) { |job| sessions.call(job: job) }
+      expect(job_status(kinds::SessionStart)).to eq("complete")
+      expect(db[:sessions][id: id][:active]).to be(true)
+    end
+
+    it "renews a session from a claimed session.renew job" do
+      workflow
+      %w[writer reviewer].each { |role| File.write(File.join(@credential_root, "#{role}.token"), "#{role}-token") }
+      db[:sessions].update(credential_expires_at: Time.now + 60)
+      sessions.renew_due
+      tick_job(kinds::SessionRenew) { |job| sessions.renew_job(job: job) }
+      expect(db[:jobs].where(kind: kinds::SessionRenew.serialize, status: "complete").count).to eq(1)
+      expect(db[:sessions].where { credential_expires_at > Time.now + 3000 }.count).to eq(1)
+    end
+
+    it "binds a provision request from a claimed workflow.provision job" do
+      id = provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")
+      tick_job(kinds::WorkflowProvision) { |job| provision.call(job: job) }
+      expect(job_status(kinds::WorkflowProvision)).to eq("complete")
+      expect(db[:workflow_requests][id: id][:state]).to eq("bound")
+    end
+
+    it "applies a router-produced workflow.pause job with an Integer inbox id" do
+      workflow
+      payload = Domains::Commander::Dto::InboxDispatchJob.new(inbox_id: @inbox, channel_id: channel, thread_id: "t" * 26, workflow_id: "workflow", expected_version: 0)
+      Platform::Jobs::Store.new.enqueue(kind: kinds::WorkflowPause, payload: payload, dispatch_key: "inbox:#{@inbox}:workflow.pause")
+      tick_job(kinds::WorkflowPause) { |job| services.control_existing(job: job) }
+      expect(job_status(kinds::WorkflowPause)).to eq("complete")
+      expect(db[:workflows].first[:phase]).to eq("paused")
+    end
+
+    it "applies a master.control job with an Integer inbox id and audits it" do
+      workflow
+      payload = Domains::Commander::Dto::MasterControlJob.new(inbox_id: @inbox, workflow_id: "workflow", action: "pause", expected_version: 0)
+      Platform::Jobs::Store.new.enqueue(kind: kinds::MasterControl, payload: payload, dispatch_key: "master:control:r:workflow:pause:0")
+      tick_job(kinds::MasterControl) { |job| services.master_control(job: job) }
+      expect(job_status(kinds::MasterControl)).to eq("complete")
+      expect(db[:workflows].first[:phase]).to eq("paused")
+      expect(db[:audit][event_key: "workflow:workflow:0:pause"][:details].to_hash).to eq("inbox_id" => @inbox, "workflow_id" => "workflow", "version" => 0)
+    end
   end
 end

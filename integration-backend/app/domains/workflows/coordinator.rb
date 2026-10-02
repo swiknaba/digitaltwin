@@ -6,11 +6,6 @@ module Domains
     class Coordinator
       extend T::Sig
 
-      Job = T.type_alias { T::Hash[Symbol, Object] }
-      # Persisted inbox IDs are integers; adapters may provide a string form
-      # that Commander::Source resolves and verifies at the authority boundary.
-      InboxId = T.type_alias { T.any(Integer, String) }
-
       sig do
         params(
           db: Sequel::Database,
@@ -30,16 +25,16 @@ module Domains
         @reviews = reviews
         @sessions = sessions
         @policy = policy
-        @lock = T.let(Lock.new(db), Lock)
+        @lock = T.let(Platform::Lock.new, Platform::Lock)
       end
 
-      sig { params(inbox_id: InboxId, workflow_id: String, action: String, expected_version: Integer).returns(String) }
+      sig { params(inbox_id: Integer, workflow_id: String, action: String, expected_version: Integer).returns(String) }
       def control(inbox_id:, workflow_id:, action:, expected_version:)
         raise ArgumentError, "Unsupported workflow action" unless %w[pause resume finish cancel].include?(action)
 
         w = @db[:workflows][id: workflow_id] or raise ArgumentError, "Missing workflow"
         @source.human(inbox_id, destination: w[:channel_id])
-        @lock.call(workflow_id) do
+        @lock.call(key: workflow_id) do
           w = @db[:workflows][id: workflow_id]
           raise ArgumentError, "Workflow version changed" unless w[:version] == expected_version && !w[:archived_at]
 
@@ -71,13 +66,13 @@ module Domains
           @db.transaction do
             @db[:workflows].where(id: workflow_id, version: expected_version).update(**changes, version: expected_version + 1)
             if action == "resume" && %w[spec_writing plan_writing implementation].include?(changes[:phase])
-              pending = @db[:jobs].where(kind: "workflow.phase_prompt", effect_started_at: nil, status: %w[pending blocked]).all.any? { |job| job[:payload]["workflow_id"] == workflow_id }
+              pending = Platform::Jobs::Store.new.unstarted?(kind: Platform::Jobs::Dto::JobKind::WorkflowPhasePrompt, field: "workflow_id", value: workflow_id)
               queue_phase(workflow_id, expected_version + 1) if pending
             end
             @reviews.queue_release(workflow_id, expected_version + 1) if action == "resume"
             @sessions.stop(workflow_id: workflow_id) if %w[finish cancel].include?(action)
-            @db[:audit].insert(event_key: "workflow:#{workflow_id}:#{expected_version}:#{action}", action: action,
-                               details: Sequel.pg_jsonb({ "inbox_id" => inbox_id, "workflow_id" => workflow_id, "version" => expected_version }))
+            Platform::Audit::Log.new.record(event_key: "workflow:#{workflow_id}:#{expected_version}:#{action}", action: action,
+                                            details: Dto::WorkflowControlAudit.new(inbox_id: inbox_id, workflow_id: workflow_id, version: expected_version))
           end
         end
         action
@@ -85,7 +80,7 @@ module Domains
 
       sig { params(workflow_id: String, gate: String).void }
       def advance_approval(workflow_id:, gate:)
-        @lock.call(workflow_id) do
+        @lock.call(key: workflow_id) do
           w = @db[:workflows][id: workflow_id]
           raise ArgumentError, "Approval phase mismatch" unless w[:phase] == "#{gate}_human_approval"
 
@@ -107,31 +102,23 @@ module Domains
         end
       end
 
-      sig { params(job: Job, store: Domains::Jobs::Store).void }
-      def call(job, store)
-        payload = job_payload(job)
-        job_id = job_string(job, :id)
-        lease_token = job_string(job, :lease_token)
-        w = @db[:workflows][id: payload.fetch("workflow_id")]
-        @lock.call(w[:id]) do
+      sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
+      def call(job:)
+        payload = Dto::PhasePromptJob.from_hash(job.payload, true)
+        w = @db[:workflows][id: payload.workflow_id]
+        @lock.call(key: w[:id]) do
           w = @db[:workflows][id: w[:id]]
-          unless @policy.dispatch_allowed?
-            store.block(id: job_id, lease_token: lease_token, reason: "Live Writer dispatch evidence required")
-            return
-          end
-          if w[:phase] == "paused"
-            store.defer(id: job_id, lease_token: lease_token, reason: "Paused")
-            return
-          end
-          return unless payload["version"] == w[:version]
+          return Platform::Jobs::Dto::Decision.block("Live Writer dispatch evidence required") unless @policy.dispatch_allowed?
+          return Platform::Jobs::Dto::Decision.defer("Paused") if w[:phase] == "paused"
+          return Platform::Jobs::Dto::Decision.complete unless payload.version == w[:version]
           raise ArgumentError, "Phase changed" unless %w[spec_writing plan_writing implementation].include?(w[:phase])
 
           current_writer = @db[:sessions][workflow_id: w[:id], role: "writer", active: true]
           live = current_writer && @herdr.get(current_writer[:pane_id])
           if live && live["agent_status"] == "working" && live["agent_session"] == current_writer[:runtime_identity]
-            store.defer(id: job_id, lease_token: lease_token, reason: "Writer busy")
-            return
+            return Platform::Jobs::Dto::Decision.defer("Writer busy")
           end
+
           s = validate_sessions(w, "writer").first
           raise ArgumentError, "Writer session missing" unless s
 
@@ -143,7 +130,7 @@ module Domains
 
             validate_prior_approvals(w, gate == "plan" ? %w[spec plan] : %w[spec])
           end
-          raise IOError, "Dispatch lease lost" unless store.begin_effect(id: job_id, lease_token: lease_token)
+          raise IOError, "Dispatch lease lost" unless job.lease.begin_effect
 
           latest_review = @db[:reviews].where(workflow_id: w[:id], verdict: "changes_requested").order(Sequel.desc(:id)).first
           feedback = latest_review ? "Read corrective feedback in #{latest_review[:review_path]} at #{latest_review[:review_commit]} for target #{latest_review[:target_commit]}. " : ""
@@ -154,12 +141,14 @@ module Domains
                               "Stop changes during review. " \
                               "Do not create independent sessions."
           @herdr.prompt(row_string(s, :pane_id), prompt)
+          Platform::Jobs::Dto::Decision.complete
         end
       end
 
       sig { params(id: String, version: Integer).void }
       def queue_phase(id, version)
-        Domains::Jobs::Store.new.enqueue(kind: "workflow.phase_prompt", payload: { "workflow_id" => id, "version" => version }, key: "workflow:phase:#{id}:#{version}")
+        Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowPhasePrompt, payload: Dto::PhasePromptJob.new(workflow_id: id, version: version),
+                                          dispatch_key: "workflow:phase:#{id}:#{version}")
       end
 
       private
@@ -202,22 +191,6 @@ module Domains
           raise ArgumentError, "Session uncertain or replaced" unless s[:runtime_identity] && live["agent_session"] == s[:runtime_identity] && %w[idle done].include?(live["agent_status"]) && s[:credential_expires_at] > Time.now
         end
         rows
-      end
-
-      sig { params(job: Job).returns(T::Hash[String, Object]) }
-      def job_payload(job)
-        payload = job.fetch(:payload)
-        raise ArgumentError, "Invalid workflow job" unless payload.is_a?(Hash) && payload.keys.all? { |key| key.is_a?(String) }
-
-        payload
-      end
-
-      sig { params(job: Job, key: Symbol).returns(String) }
-      def job_string(job, key)
-        value = job.fetch(key)
-        raise ArgumentError, "Invalid workflow job" unless value.is_a?(String)
-
-        value
       end
 
       sig { params(row: T::Hash[Symbol, Object], key: Symbol).returns(String) }

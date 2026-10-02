@@ -137,7 +137,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     db[:jobs].where(kind: "mattermost.post").update(status: "complete")
     ready = herdr.get("pane1")
     allow(herdr).to receive(:get).and_return(ready.merge("agent_status" => "working"))
-    worker = Domains::Jobs::Worker.new(handlers: { "session.followup" => sender.method(:call) })
+    worker = Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::SessionFollowup => Platform::Jobs::CallableHandler.new(->(job) { sender.call(job: job) }) })
     Async { expect(worker.tick).to eq(true) }.wait
     job = db[:jobs][kind: "session.followup"]
     expect(job[:status]).to eq("pending")
@@ -159,7 +159,7 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     row = routing.route(inbox_id: source(body: "@agent route w1\nPlease also cover that case"), selection: "w1")
     db[:jobs].where(kind: "mattermost.post").update(status: "complete")
     before = db[:workflows][id: "w1"]
-    worker = Domains::Jobs::Worker.new(handlers: { "session.followup" => sender.method(:call) })
+    worker = Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::SessionFollowup => Platform::Jobs::CallableHandler.new(->(job) { sender.call(job: job) }) })
     Async { expect(worker.tick).to eq(true) }.wait
     job = db[:jobs][kind: "session.followup"]
     expect(job[:status]).to eq("pending")
@@ -368,7 +368,10 @@ RSpec.describe "Master contextual routing (isolated fixtures)" do
     services = Domains::Commander::Services.allocate
     services.instance_variable_set(:@source, Domains::Commander::Source.new(db, resolver: resolver, membership: membership))
     services.instance_variable_set(:@followups, sender)
-    services.route({ payload: { "inbox_id" => recovery } }, nil)
+    inbox = db[:inbox][id: recovery]
+    Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterPrompt, dispatch_key: "inbox:#{recovery}:master.prompt",
+                                      payload: Domains::Commander::Dto::InboxDispatchJob.new(inbox_id: recovery, channel_id: inbox[:channel_id], thread_id: inbox[:thread_id]))
+    expect(services.route(job: claim_job(Platform::Jobs::Dto::JobKind::MasterPrompt))).to eq(Platform::Jobs::Dto::Decision.complete)
     expect(db[:followups][id: row[:id]][:status]).to eq("blocked")
     expect(herdr).not_to have_received(:prompt)
   end

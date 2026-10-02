@@ -1,15 +1,12 @@
 # typed: strict
 # frozen_string_literal: true
 
-
 module Domains
   module Reviews
     # Validates the short-lived callback capability before durable queueing. Git
     # and Herdr evidence are intentionally checked by the worker that owns them.
     class Intake
       extend T::Sig
-
-      CallbackPayload = T.type_alias { T::Hash[String, Object] }
 
       sig do
         params(token: String, generation: Integer, action: String, commit: String, kind: T.nilable(String), verdict: T.nilable(String)).returns(String)
@@ -20,8 +17,9 @@ module Domains
 
         session = active_session(token: token, generation: generation, role: role)
         payload = callback_payload(session_id: session.id, generation: generation, action: action, commit: commit, kind: kind, verdict: verdict)
-        key = "review:callback:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
-        Domains::Jobs::Store.new.enqueue(kind: "review.callback", payload: payload, key: key)
+        # The digest covers the serialized payload; CallbackJob prop order keeps it stable.
+        key = "review:callback:#{Digest::SHA256.hexdigest(JSON.generate(payload.serialize))}"
+        Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::ReviewCallback, payload: payload, dispatch_key: key)
         "queued"
       end
 
@@ -54,19 +52,17 @@ module Domains
         session
       end
 
-      sig { params(session_id: String, generation: Integer, action: String, commit: String, kind: T.nilable(String), verdict: T.nilable(String)).returns(CallbackPayload) }
+      sig { params(session_id: String, generation: Integer, action: String, commit: String, kind: T.nilable(String), verdict: T.nilable(String)).returns(Dto::CallbackJob) }
       def callback_payload(session_id:, generation:, action:, commit:, kind:, verdict:)
-        payload = T.let({ "session_id" => session_id, "generation" => generation, "action" => action, "commit" => commit }, CallbackPayload)
         if action == "artifact"
           raise ArgumentError, "Invalid artifact" unless kind
 
-          payload["kind"] = kind
+          Dto::CallbackJob.new(session_id: session_id, generation: generation, action: action, commit: commit, kind: kind)
         else
           raise ArgumentError, "Invalid verdict" unless verdict
 
-          payload["verdict"] = verdict
+          Dto::CallbackJob.new(session_id: session_id, generation: generation, action: action, commit: commit, verdict: verdict)
         end
-        payload
       end
     end
   end

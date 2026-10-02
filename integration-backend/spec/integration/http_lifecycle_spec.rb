@@ -65,16 +65,17 @@ RSpec.describe "Async HTTP ownership and Worker execution (local transport fixtu
   it "executes injected local handlers outside transactions and fails uncertain effects closed" do
     db = Kirei::App.raw_db_connection
     db[:jobs].delete
-    store = Domains::Jobs::Store.new
-    id = store.enqueue(kind: "fixture", payload: {}, key: "effect")
+    store = Platform::Jobs::Store.new
+    kind = Platform::Jobs::Dto::JobKind::MattermostPost
+    id = store.enqueue(kind: kind, payload: Domains::Mattermost::Dto::OutboxPostJob.new(outbox_id: "effect"), dispatch_key: "effect")
     calls = 0
-    handler = ->(job, jobs) do
+    handler = Platform::Jobs::CallableHandler.new(lambda do |job|
       expect(db.in_transaction?).to be(false)
-      expect(jobs.begin_effect(id: job.id, lease_token: T.must(job.lease_token))).to be(true)
+      expect(job.lease.begin_effect).to be(true)
       calls += 1
       raise IOError, "Unknown network result"
-    end
-    worker = Domains::Jobs::Worker.new(handlers: { "fixture" => handler })
+    end)
+    worker = Platform::Jobs::Worker.new(handlers: { kind => handler })
     Async { worker.tick; worker.tick }.wait
     expect(calls).to eq(1)
     expect(db[:jobs][id: id][:status]).to eq("uncertain")

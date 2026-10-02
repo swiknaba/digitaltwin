@@ -6,10 +6,11 @@ module Domains
     class Services
       extend T::Sig
 
-      HandlerMap = T.type_alias { T::Hash[String, Object] }
+      Kind = Platform::Jobs::Dto::JobKind
+      Decision = Platform::Jobs::Dto::Decision
+      ClaimedJob = Platform::Jobs::Dto::ClaimedJob
+      HandlerMap = T.type_alias { T::Hash[Platform::Jobs::Dto::JobKind, Platform::Jobs::Handler] }
       Roles = T.type_alias { Domains::Workflows::Provision::Roles }
-      LegacyJob = T.type_alias { T::Hash[Symbol, Object] }
-      RoutedJob = T.type_alias { T.any(Domains::Jobs::Job, LegacyJob) }
 
       sig { returns(T.nilable(Master)) }
       attr_reader :master
@@ -82,149 +83,130 @@ module Domains
 
       sig { returns(HandlerMap) }
       def handlers
-        values = { "master.prompt" => method(:route), "workflow.prompt" => @routing.method(:call),
-                   "session.followup" => @followups.method(:call), "workflow.provision" => @provision.method(:call),
-                   "session.start" => @sessions.method(:call), "session.stop" => @sessions.method(:call),
-                   "review.prompt" => @reviews.method(:call), "review.release" => @reviews.method(:release_job),
-                   "review.callback" => method(:review_callback), "master.control" => method(:master_control), "session.renew" => @sessions.method(:renew_job), "workflow.phase_prompt" => @workflows.method(:call),
-                   "workflow.start" => method(:start_existing) }
-        %w[pause resume finish cancel].each { |action| values["workflow.#{action}"] = method(:control_existing) }
-        values["workflow.approve"] = method(:approve_existing)
-        values["master.dispatch"] = @master.method(:call) if @master
-        values
+        values = T.let({
+                         Kind::MasterPrompt => ->(job) { route(job: job) },
+                         Kind::WorkflowPrompt => ->(job) { @routing.call(job: job) },
+                         Kind::SessionFollowup => ->(job) { @followups.call(job: job) },
+                         Kind::WorkflowProvision => ->(job) { @provision.call(job: job) },
+                         Kind::SessionStart => ->(job) { @sessions.call(job: job) },
+                         Kind::SessionStop => ->(job) { @sessions.call(job: job) },
+                         Kind::ReviewPrompt => ->(job) { @reviews.call(job: job) },
+                         Kind::ReviewRelease => ->(job) { @reviews.release_job(job: job) },
+                         Kind::ReviewCallback => ->(job) { review_callback(job: job) },
+                         Kind::MasterControl => ->(job) { master_control(job: job) },
+                         Kind::SessionRenew => ->(job) { @sessions.renew_job(job: job) },
+                         Kind::WorkflowPhasePrompt => ->(job) { @workflows.call(job: job) },
+                         Kind::WorkflowStart => ->(job) { start_existing(job: job) },
+                         Kind::WorkflowPause => ->(job) { control_existing(job: job) },
+                         Kind::WorkflowResume => ->(job) { control_existing(job: job) },
+                         Kind::WorkflowFinish => ->(job) { control_existing(job: job) },
+                         Kind::WorkflowCancel => ->(job) { control_existing(job: job) },
+                         Kind::WorkflowApprove => ->(job) { approve_existing(job: job) }
+                       }, T::Hash[Platform::Jobs::Dto::JobKind, Platform::Jobs::CallableHandler::Callable])
+        master = @master
+        values[Kind::MasterDispatch] = ->(job) { master.call(job: job) } if master
+        values.transform_values { |callable| Platform::Jobs::CallableHandler.new(callable) }
       end
 
-      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
-      def review_callback(job, _store)
-        p = job.payload
-        if p["action"] == "artifact"
-          @reviews.ready_session(session_id: payload_string(p, "session_id"), generation: payload_integer(p, "generation"), kind: payload_string(p, "kind"), commit: payload_string(p, "commit"))
+      sig { params(job: ClaimedJob).returns(Decision) }
+      def review_callback(job:)
+        p = Domains::Reviews::Dto::CallbackJob.from_hash(job.payload, true)
+        if p.action == "artifact"
+          @reviews.ready_session(session_id: p.session_id, generation: p.generation, kind: required(p.kind), commit: p.commit)
         else
-          @reviews.finish_session(session_id: payload_string(p, "session_id"), generation: payload_integer(p, "generation"), review_commit: payload_string(p, "commit"), verdict: payload_string(p, "verdict"))
+          @reviews.finish_session(session_id: p.session_id, generation: p.generation, review_commit: p.commit, verdict: required(p.verdict))
         end
+        Decision.complete
       end
 
-      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
-      def master_control(job, _store)
-        payload = job.payload
-        @workflows.control(inbox_id: payload_string(payload, "inbox_id"), workflow_id: payload_string(payload, "workflow_id"),
-                           action: payload_string(payload, "action"), expected_version: payload_integer(payload, "expected_version"))
+      sig { params(job: ClaimedJob).returns(Decision) }
+      def master_control(job:)
+        payload = Dto::MasterControlJob.from_hash(job.payload, true)
+        @workflows.control(inbox_id: payload.inbox_id, workflow_id: payload.workflow_id, action: payload.action, expected_version: payload.expected_version)
+        Decision.complete
       end
 
-      # The worker always provides Jobs::Job. A legacy hash is accepted only
-      # at this controller edge so existing in-process callers can use the
-      # recovery commands while they migrate to the durable job entity.
-      sig { params(job: RoutedJob, store: T.nilable(Domains::Jobs::Store)).void }
-      def route(job, store)
-        id = inbox_id(job)
+      sig { params(job: ClaimedJob).returns(Decision) }
+      def route(job:)
+        id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
         source = @source.human(id)
         start_recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-start ([0-9a-f-]+) ([a-z0-9]{26})\z/)
         if start_recovery
-          @provision.reconcile(id: capture(start_recovery, 1), inbox_id: string_id(id), thread_id: capture(start_recovery, 2))
-          return
+          @provision.reconcile(id: capture(start_recovery, 1), inbox_id: id, thread_id: capture(start_recovery, 2))
+          return Decision.complete
         end
         session_recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-session ([0-9a-f-]+) ([a-zA-Z0-9_.:-]+)\z/)
         if session_recovery
-          @sessions.reconcile(operation_id: capture(session_recovery, 1), inbox_id: string_id(id), pane_id: capture(session_recovery, 2))
-          return
+          @sessions.reconcile(operation_id: capture(session_recovery, 1), inbox_id: id, pane_id: capture(session_recovery, 2))
+          return Decision.complete
         end
         followup_recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-followup ([0-9]+) (delivered|discard)\z/)
         if followup_recovery
           @followups.reconcile(id: capture(followup_recovery, 1).to_i, inbox_id: id, outcome: capture(followup_recovery, 2))
-          return
+          return Decision.complete
         end
         recovery = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} recover-master ([0-9a-f-]+)\z/)
         if recovery
           raise ArgumentError, "Master not configured" unless @master
 
           @master.recover(request_id: capture(recovery, 1), inbox_id: id)
-          return
+          return Decision.complete
         end
         if @master && !source.body.match?(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} (approve|route)\b/)
           @master.ingest(id)
-          return
+          return Decision.complete
         end
-        raise ArgumentError, "Controller job must be durable" unless job.is_a?(Domains::Jobs::Job) && store
-
-        @routing.call(job, store)
+        @routing.call(job: job)
         # Exact approvals advance only through the coordinator's independent
         # revision/gate validation. Normal contextual prompts keep their session.
         source = @source.human(id)
         match = source.body.match(/\A@#{Regexp.escape(ENV.fetch("AGENT_HANDLE", "agent"))} approve ([a-zA-Z0-9-]+) (spec|plan) ([0-9a-f]{40})\z/)
         @workflows.advance_approval(workflow_id: capture(match, 1), gate: capture(match, 2)) if match
+        Decision.complete
       end
 
-      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
-      def control_existing(job, _store)
-        payload = job.payload
-        inbox_id = payload_string(payload, "inbox_id")
-        workflow_id = payload_string(payload, "workflow_id")
+      sig { params(job: ClaimedJob).returns(Decision) }
+      def control_existing(job:)
+        payload = Dto::InboxDispatchJob.from_hash(job.payload, true)
+        inbox_id = payload.inbox_id
         d = @source.human(inbox_id)
-        w = @db[:workflows][id: workflow_id]
-        action = job.kind.delete_prefix("workflow.")
+        w = @db[:workflows][id: required(payload.workflow_id)]
+        action = job.kind.serialize.delete_prefix("workflow.")
         raise ArgumentError, "Control source/workflow mismatch" unless w && d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && d.body == "@#{ENV.fetch("WORKER_HANDLE", "worker")} #{action}"
 
-        @workflows.control(inbox_id: inbox_id, workflow_id: w[:id], action: action, expected_version: payload_integer(payload, "expected_version"))
+        @workflows.control(inbox_id: inbox_id, workflow_id: w[:id], action: action, expected_version: required_integer(payload.expected_version))
+        Decision.complete
       end
 
-      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
-      def approve_existing(job, _store)
-        payload = job.payload
-        inbox_id = payload_string(payload, "inbox_id")
+      sig { params(job: ClaimedJob).returns(Decision) }
+      def approve_existing(job:)
+        payload = Dto::InboxDispatchJob.from_hash(job.payload, true)
+        inbox_id = payload.inbox_id
         d = @source.human(inbox_id)
-        w = @db[:workflows][id: payload_string(payload, "workflow_id")]
-        raise ArgumentError, "Approval source/workflow mismatch" unless w && d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && w[:version] == payload_integer(payload, "expected_version")
+        w = @db[:workflows][id: required(payload.workflow_id)]
+        raise ArgumentError, "Approval source/workflow mismatch" unless w && d.channel_id == w[:channel_id] && d.thread_id == w[:thread_id] && w[:version] == required_integer(payload.expected_version)
 
         gate = w[:phase].delete_suffix("_human_approval")
         ref = w[:artifacts].fetch(gate)
         @approvals.record(inbox_id: inbox_id, workflow_id: w[:id], gate: gate, commit: ref.fetch("commit"))
         @workflows.advance_approval(workflow_id: w[:id], gate: gate)
+        Decision.complete
       end
 
-      sig { params(job: Domains::Jobs::Job, _store: Domains::Jobs::Store).void }
-      def start_existing(job, _store)
-        id = inbox_id(job)
+      sig { params(job: ClaimedJob).returns(Decision) }
+      def start_existing(job:)
+        id = Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
         d = @source.human(id)
         raise ArgumentError, "Human root start required" unless d.root_post && d.body.match?(/\A@#{Regexp.escape(ENV.fetch("WORKER_HANDLE", "worker"))} start\b/)
 
         project = @db[:projects][channel_id: d.channel_id]
         raise ArgumentError, "Use verified project mapping through Master" unless project
 
-        @provision.request(inbox_id: string_id(id), project_id: project[:id], title: d.body, existing_thread: d.thread_id)
+        @provision.request(inbox_id: id, project_id: project[:id], title: d.body, existing_thread: d.thread_id)
+        Decision.complete
       end
 
       private
-
-      sig { params(job: RoutedJob).returns(T.any(Integer, String)) }
-      def inbox_id(job)
-        value = job_payload(job).fetch("inbox_id") { raise ArgumentError, "Controller job is malformed" }
-        raise ArgumentError, "Controller job is malformed" unless value.is_a?(Integer) || value.is_a?(String)
-
-        value
-      end
-
-      sig { params(job: RoutedJob).returns(Domains::Jobs::Job::Payload) }
-      def job_payload(job)
-        return job.payload if job.is_a?(Domains::Jobs::Job)
-
-        value = job.fetch(:payload) { raise ArgumentError, "Controller job is malformed" }
-        raise ArgumentError, "Controller job is malformed" unless value.is_a?(Hash)
-
-        payload = T.let({}, Domains::Jobs::Job::Payload)
-        value.each do |key, item|
-          raise ArgumentError, "Controller job is malformed" unless key.is_a?(String)
-
-          payload[key] = item
-        end
-        payload
-      end
-
-      sig { params(value: T.any(Integer, String)).returns(String) }
-      def string_id(value)
-        return value if value.is_a?(String)
-
-        value.to_s
-      end
 
       sig { params(match: T.nilable(MatchData), index: Integer).returns(String) }
       def capture(match, index)
@@ -234,18 +216,16 @@ module Domains
         value
       end
 
-      sig { params(payload: Domains::Jobs::Job::Payload, key: String).returns(String) }
-      def payload_string(payload, key)
-        value = payload.fetch(key) { raise ArgumentError, "Controller job is malformed" }
-        raise ArgumentError, "Controller job is malformed" unless value.is_a?(String)
+      sig { params(value: T.nilable(String)).returns(String) }
+      def required(value)
+        raise ArgumentError, "Controller job is malformed" unless value
 
         value
       end
 
-      sig { params(payload: Domains::Jobs::Job::Payload, key: String).returns(Integer) }
-      def payload_integer(payload, key)
-        value = payload.fetch(key) { raise ArgumentError, "Controller job is malformed" }
-        raise ArgumentError, "Controller job is malformed" unless value.is_a?(Integer)
+      sig { params(value: T.nilable(Integer)).returns(Integer) }
+      def required_integer(value)
+        raise ArgumentError, "Controller job is malformed" unless value
 
         value
       end

@@ -19,7 +19,7 @@ module Domains
           raise ArgumentError, "Response key reused with changed content" unless same_message?(persisted, message)
 
           id = persisted.id
-          Domains::Jobs::Store.new.enqueue(kind: "mattermost.post", payload: { "outbox_id" => id }, key: "outbox:#{id}")
+          Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::MattermostPost, payload: Dto::OutboxPostJob.new(outbox_id: id), dispatch_key: "outbox:#{id}")
           id
         end
       end

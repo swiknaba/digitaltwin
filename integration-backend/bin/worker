@@ -10,12 +10,12 @@ Async do
   handlers = {}
   if ENV["CHAT_VALIDATION_MODE"] == "1"
     delivery = Domains::Mattermost::Delivery.from_env(db)
-    handlers["mattermost.post"] = delivery.method(:call)
+    handlers[Platform::Jobs::Dto::JobKind::MattermostPost] = Platform::Jobs::CallableHandler.new(->(job) { delivery.call(job: job) })
     services = Domains::Commander::Services.from_env(db)
     handlers.merge!(services.handlers)
     services.sessions.renew_due
   end
-  Domains::Jobs::Worker.new(handlers: handlers).run
+  Platform::Jobs::Worker.new(handlers: handlers).run
 ensure
   Kirei::App.raw_db_connection.disconnect
 end.wait
