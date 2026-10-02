@@ -98,5 +98,5 @@ DATABASE_URL=... MIGRATION_TEST_DATABASE_URL=... bin/check   # specs, RuboCop, S
 ## Code layout
 
 `app/domains/` holds bounded contexts that own tables and rules. `app/services/` holds cross-domain use cases and job handlers.
-`app/adapters/` translates vendors and transports (Mattermost, Herdr, git, HTTP, MCP).
-`app/platform/` holds shared jobs, locks, and audit. Conventions: [AGENTS.md](AGENTS.md).
+`app/adapters/` translates vendors and transports (Mattermost, Herdr, git, credential files, HTTP, MCP).
+`app/platform/` holds shared jobs, locks, transactions, audit, and JSON boundary types. Conventions: [AGENTS.md](AGENTS.md).

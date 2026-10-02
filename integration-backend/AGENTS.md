@@ -15,8 +15,8 @@
 - `app/` has four Zeitwerk layers. See `docs/superpowers/plans/2026-10-02-backend-ddd-refactor.md` for the full rules.
   - `domains/<ctx>/` holds bounded contexts that own tables and invariants. Each context has private `entities/`, public `dto/` and `errors/`, and public services.
   - `services/` holds cross-domain use cases and job handlers.
-  - `adapters/` holds vendor and transport translation: Mattermost, Herdr, git, HTTP, and MCP.
-  - `platform/` holds shared primitives: jobs, lock, and audit.
+  - `adapters/` holds vendor and transport translation: Mattermost, Herdr, git, credential files, HTTP, and MCP.
+  - `platform/` holds shared primitives: jobs, lock, transaction, audit, and JSON boundary types.
 - Domains reference only their own code, `Platform`, and other contexts' `Dto`. Domains never reference `Services` or `Adapters`.
 - Nothing outside a context references its `entities/`.
 - Public services return `Kirei::Services::Result`. Persistence uses `Kirei::Model` only. Do not access raw tables with `db[:table]`.

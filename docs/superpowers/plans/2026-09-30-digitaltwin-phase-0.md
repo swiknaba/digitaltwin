@@ -83,11 +83,11 @@ Cross-deployable acceptance, recovery, and image-contract tests belong in root `
 
 | Path | Responsibility |
 | --- | --- |
-| Generated under `integration-backend/`: `app.rb`, `config.ru`, `lib/tasks/db.rake`, `Rakefile`, `.irbrc`, `config/routes.rb`, `app/controllers/base.rb`, `sorbet/config`, and base directories | Kirei CLI bootstrap, copied from empty staging directory |
+| Generated under `integration-backend/`: `app.rb`, `config.ru`, `lib/tasks/db.rake`, `Rakefile`, `.irbrc`, `config/routes.rb`, `app/adapters/http/base.rb`, `sorbet/config`, and base directories | Kirei CLI bootstrap, copied from empty staging directory |
 | `integration-backend/{Gemfile,Gemfile.lock,.ruby-version}`, `agent-runtime/.nvmrc`, component test setup | Reproducible Ruby and Node dependencies; runtime and local pins agree |
 | `agent-runtime/tools.lock.yml`, `integration-backend/config/deployment.example.yml` | Exact pins, non-secret configuration, bot/model identities |
 | `integration-backend/db/migrate/001_jobs.rb` through `006_confirmations.rb` | Incremental migrations: jobs/inbox/outbox/audit (3), projects (5), sessions (6), workflows/approvals (7), reviews (8), confirmations (9) |
-| `integration-backend/app/domains/{jobs,mattermost,projects,workflows,reviews,runtime,forge,controller}/` | Typed entities, services, thin controllers, and adapters per domain |
+| `integration-backend/app/{domains,services,adapters,platform}/` | Typed entities, services, thin controllers, and adapters per domain |
 | `integration-backend/bin/{web,worker,chat-listener,digitaltwin,mcp}` | Process entry points and controlled operations |
 | `integration-backend/Dockerfile`, `agent-runtime/Dockerfile`, component `.dockerignore`, root `compose.yml`/`.env.example` | Kirei/Runtime builds and pinned upstream chat/push services for local integration |
 | `mobile-apps/` | Planned custom Mattermost mobile builds, upstream pin/patch inventory, signing/distribution configuration, tests |
@@ -97,7 +97,7 @@ Cross-deployable acceptance, recovery, and image-contract tests belong in root `
 | `AGENTS.md`, `.agents/changelog.md`, `CHANGELOG.md` | Workflow rules and summaries, not a second task queue |
 | `README.md` (existing) | Development commands and links |
 
-Shared types in `app/domains/workflows/entities.rb`:
+Shared types in `app/domains/{workflows,messaging}/dto/`:
 
 - `Actor(user_id: String, channel_id: String, member: Boolean, bot: Boolean)`; from verified Mattermost context, never set freely by the model.
 - `RoleConfig(cli: String, provider: String, model: String, family: String)`; the Writer/Reviewer pair checks both differences.
@@ -206,21 +206,21 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 
 ## Task 3: Durable Jobs, Inbox, and Outbox
 
-**Files:** Create `db/migrate/001_jobs.rb`, `app/domains/workflows/entities.rb`, `app/domains/jobs/{entities,worker,store}.rb`, `app/domains/mattermost/outbox.rb`, `spec/domains/jobs_spec.rb`.
+**Files:** Create `db/migrate/001_jobs.rb`, `app/domains/workflows/dto/`, `app/platform/jobs/{entities/job,worker,store}.rb`, `app/domains/messaging/outbox.rb`, `spec/platform/jobs_spec.rb`.
 
 **Interfaces:** `Jobs.enqueue(kind: String, payload: Hash, key: String) -> String`; `Jobs.claim(worker_id: String, now: Time) -> Job?`; `complete(id:, lease_token:)`; `retry(id:, lease_token:, error:)`. `Outbox.enqueue(channel_id:, thread_id: String?, bot:, role: String?, body:, key:) -> String`. PostgreSQL jobs dispatch Herdr work, reconciliation, and outbox delivery beyond event ingestion; Kirei needs no Sidekiq or Redis.
 
 - [ ] Write PostgreSQL tests: two workers never claim the same job; a unique key returns one job; an expired lease is retryable; an old lease token cannot complete a job.
 - [ ] Define and type-check all shared workflow contracts before Tasks 4-6 consume them. Add the Task 3 schema constraints above.
 - [ ] Add `transaction_rollback_discards_state_and_outbox`, `fifth_failure_blocks`, `effect_succeeded_before_crash`, and `unknown_post_result`: rollback leaves neither state nor outbox row; five failed attempts block; unknown effects do not issue a duplicate network call before reconciliation.
-- [ ] Run `bundle exec rspec spec/domains/jobs_spec.rb`; expect missing schema/store.
+- [ ] Run `bundle exec rspec spec/platform/jobs_spec.rb`; expect missing schema/store.
 - [ ] Implement short `FOR UPDATE SKIP LOCKED` claims, lease/heartbeat, bounded retry values, and atomic state change plus outbox. Dispatch a long agent session, then release the job; reconcile completion separately.
 - [ ] Check actual PostgreSQL concurrency, retry budget, and dead workers. Treat a crash after an unconfirmed network effect as blocked or uncertain; do not claim exactly-once external delivery.
 - [ ] After review, commit: `feat: add durable leased jobs and delivery outbox`.
 
 ## Task 4: Mattermost Routing and Verified Senders
 
-**Files:** Create `app/domains/mattermost/{client,listener,reconcile,router,actor_resolver,worker_chat}.rb`, `spec/domains/mattermost_spec.rb`; create `bin/chat-listener`; extend `bin/digitaltwin` and Task 3 outbox.
+**Files:** Create `app/adapters/mattermost/{client,delivery_verifier}.rb`, `app/services/inbound/{chat_listener,history_recovery,record_delivery}.rb`, `app/services/sessions/post_worker_chat.rb`, `spec/adapters/mattermost_delivery_verifier_spec.rb`; create `bin/chat-listener`; extend `bin/digitaltwin` and Task 3 outbox.
 
 **Interfaces:** `Router.ingest(delivery: VerifiedDelivery) -> Outcome`; `ActorResolver.resolve(channel_id:, user_id:) -> Actor`; `VerifiedDelivery` contains server-verified channel, post, root, sender, event kind, and post revision. Client methods follow Task 1 exactly.
 `thread_id` is the verified root post ID. Event identities support REST backfill; they are not invented webhook delivery IDs.
@@ -237,7 +237,7 @@ Workflow notices require a verified thread; Master replies may use source-channe
 - [ ] Validate session credential/generation and active role before enqueueing Worker output. Keep Mattermost credentials in Kirei, outside model output and Runtime callbacks.
 - [ ] Reuse Task 8's callback authentication mechanism when integrated. Its credentials prevent accidental mix-ups within the shared Runtime, not malicious isolation.
 - [ ] Check `agent_any_channel_preserves_source`, `worker_unactivated_thread_does_not_start`, `worker_thread_routes_without_repeat_mention`, and `worker_thread_cannot_route_to_another_workflow`; ordinary messages expose no internal workflow IDs.
-- [ ] Run `bundle exec rspec spec/domains/mattermost_spec.rb`; expect missing router.
+- [ ] Run `bundle exec rspec spec/adapters/mattermost_delivery_verifier_spec.rb`; expect missing router.
 - [ ] Implement `@agent` to Master and thread-specific `@worker start`/`approve`/`pause`/`resume`/`finish`/`cancel`/ordinary message to the active project phase. Activate only the thread root with `@worker start`; route later human thread messages without a repeated mention. Store inbox before dispatch.
 - [ ] Persist messages received while paused. On resume, dispatch them only after phase/revision checks and normal workflow gates.
 - [ ] Resolve server `is_bot` and configured bot identities through Mattermost. Neither unconfigured bots nor forged fields can grant human authority.
@@ -247,7 +247,7 @@ Workflow notices require a verified thread; Master replies may use source-channe
 
 ## Task 5: Enrollment and Git Workspace
 
-**Files:** Create `db/migrate/002_projects.rb`, `app/domains/projects/{enroll,repository_identity,workspace}.rb`, `app/domains/git_repos/client.rb`, `spec/domains/projects_spec.rb`, `bin/digitaltwin` enrollment.
+**Files:** Create `db/migrate/002_projects.rb`, `app/services/projects/enroll.rb`, `app/domains/projects/{repository_identity,workspace_paths}.rb`, `app/domains/git_repos/client.rb`, `spec/domains/projects_spec.rb`, `bin/digitaltwin` enrollment.
 
 **Interfaces:** `Projects.enroll(actor: Actor, channel_id: String, slug: String, choice: clone|create_private|stop) -> Outcome`; `Workspace.resolve(slug: String) -> String`; `GitRepos.clone(slug:, destination:)`, `create_private(slug:)`, `read_revision(repo:, commit:)`.
 
@@ -388,7 +388,7 @@ These sources validate names and compatibility considerations; Task 1 still sele
 
 ## Task 8: Artifact-ready and Mutually Exclusive Reviews
 
-**Files:** Create `db/migrate/005_reviews.rb`, `app/domains/reviews/{coordinator,callback,verdict}.rb`, `bin/digitaltwin` callback, `spec/domains/reviews_spec.rb`.
+**Files:** Create `db/migrate/005_reviews.rb`, `app/services/reviews/`, `app/domains/reviews/{callback,verdict}.rb`, `bin/digitaltwin` callback, `spec/domains/reviews_spec.rb`.
 
 **Interfaces:** `Reviews.ready(session: SessionRef, artifact: ArtifactRef) -> Outcome`; `begin(workflow_id:, target:)`; `finish(session:, review_commit:, verdict: approve|changes_requested) -> Outcome`. CLI: `digitaltwin artifact-ready --kind <kind> --commit <sha>` and `review-ready --commit <sha> --verdict <verdict>`.
 
