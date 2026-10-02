@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "revision": "ae71773036126133b75359fe2673ca0bbb1fbf32",
+  "reviewed_backend_revision": "b45cf0aa827dd19c81e9791c7b5e82ef8d0e36d0",
+  "tests": 21,
+  "root_configuration_tests": 15,
+  "combined_integration_tests": 6,
+  "duration_seconds": 42.953,
+  "image_ids": {
+    "agent-runtime": "sha256:310adf641d71977d157f5bc32af24f19d1bb49f9dbfe33e3444ed3fb75c62cec",
+    "backend-web": "sha256:4c11db1a41289166841e24e220c2fb1e0bc534916578d5d90f41e281d4f4dbb9",
+    "backend-worker": "sha256:4c11db1a41289166841e24e220c2fb1e0bc534916578d5d90f41e281d4f4dbb9",
+    "mattermost": "sha256:5d8907d3be72f4c3978769d86c0a0fa4bda055774650ba35657fb34e1ad7101c"
+  },
+  "live_local_containers": true,
+  "database_ownership_and_migrations": true,
+  "container_security_socket_callback_hash_no_plugins": true,
+  "falcon_parallel_health_and_callback_auth_rejection": true,
+  "pending_migrations_rejected_pool_5_timeout_2": true,
+  "synthetic_callbacks": true,
+  "synthetic_jobs_dedup_leases_uncertain_restart": true,
+  "synthetic_packaged_callback_two_threads_replay_changed_body": true,
+  "own_resources_removed": true,
+  "authenticated_chat": false,
+  "provider_cli": false,
+  "master_mcp": false,
+  "phase0_acceptance": false,
+  "published": false
+}

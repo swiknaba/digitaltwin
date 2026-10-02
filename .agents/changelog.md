@@ -76,3 +76,64 @@
 - Rename component folders to integration-backend, agent-runtime, chat-backend, push-service, and mobile-apps so directory ownership does not depend on implementation technology.
 - Update local links, path/branch conventions, mobile ignore rules, component README titles, and future packaging paths; preserve upstream image/API identifiers and source behavior.
 - Validate document links, stale-path references, Compose configuration, Ruby/shell syntax, schema/artifact identity, and the relocated live migration regression suite.
+
+## 2026-10-01 — Root integration preparation
+
+- Prepare opt-in backend Compose with agreed UID, port, database/pool settings, migration gate, worker-only Herdr socket volume, and actual process commands.
+- Add native Mattermost local-mode health and plugin/marketplace controls; retain the explicit upstream plugin archive audit/removal gap.
+- Add disposable dependency acceptance and root configuration tests; record received socket/callback/push contracts and a real roundtrip procedure without provider credentials.
+- Verify five root agreement tests, Compose configuration, own-database connections, denied cross-database connections, and Mattermost native health/ping/version. Remove disposable resources; retain live authenticated chat/provider/MCP gates.
+
+## 2026-10-01 — Combined-stack check preparation
+
+- Add concise reasons for root glue, shared docs, scripts, and tests; leave component-owned files untouched.
+- Confirm callback generation environment, private base URL, CLI arguments, and HTTP acceptance from the backend owner's standalone client.
+- Prepare read-only combined-stack backend health/socket/status checks with an explicit project and Runtime service. No actual combined-stack or provider pass is claimed before reviewed component integration.
+- Verify seven root contract/safety checks, Compose configuration, Python syntax, and whitespace. Publication requires the renewed direct approval; no unreviewed component merge occurs here.
+
+## 2026-10-01 — Component handoff wiring preparation
+
+- Inspect fetched component PR handoffs without merging them; prepare local combined Compose for minimal derived chat, hash-checked single-source Runtime callback packaging, private socket/home/workspace volumes, and optional credential-disabled push.
+- Add network-free one-shot volume/config setup and callback context staging; leave component directories untouched and the existing dependency default intact pending review clearance.
+- Validate combined configuration and root contract tests. Actual image builds, fresh combined boot, authentication/provider roundtrip, and main-default handoff remain unclaimed until reviewed component integration.
+
+## 2026-10-01 — Reviewed chat root default
+
+- Integrate only the explicitly review-cleared chat merge locally; build its minimal derived artifact through root Compose and make it the PostgreSQL/chat default.
+- Seed writable UID2000 chat configuration in a network-free one-shot initializer. Keep Runtime volume setup opt-in and push/email disabled.
+- Verify root Compose contracts and disposable derived-chat dependency startup/database isolation; retain all authenticated chat/provider and combined-stack gates. Publication remains blocked; no alternate route is used.
+
+## 2026-10-01 — Reviewed Runtime root check
+
+- Integrate the review-cleared Runtime merge locally; build only its explicit offline target and verify fresh root volume initialization, native Herdr 0.9.3/protocol22 health, and same-UID mode0600 socket access from a second container.
+- Remove all disposable resources; package no callback and start no backend/CLI/provider session. Add a reusable offline Runtime acceptance mode and strict release-bound server-health checks.
+- Independently verify the backend owner's frozen formatted callback hash and update root staging enforcement. Keep callback packaging blocked until the matching reviewed Runtime pin update and backend merge.
+- Verify 12 root tests, all Compose profiles/configurations, Python syntax, and whitespace; retain publication and full roundtrip blockers.
+
+## 2026-10-01 — Stable combined-test preparation
+
+- Integrate only the approved main baseline containing mobile and the Runtime callback-pin follow-up. Confirm matching root/Runtime SHA256 enforcement without staging unreviewed backend code.
+- Verify 12 root tests, all Compose profiles/configurations, Python syntax, and whitespace; keep the checkout clean and stable pending the backend's reviewed merge and independent combined testing.
+
+## 2026-10-01 — Role health correction
+
+- Correct the independent integration review finding: worker/listener now override the backend image's web probe with their role-specific `bin/health` command.
+- Add a root regression for both role probes; verify 13 root tests and Compose configuration without merging the pending backend or claiming actual combined startup.
+
+## 2026-10-01 — Credential-free listener gate
+
+- Make the authenticated listener opt-in under `chat-validation`; set its private server URL and explicit validation mode without creating tokens or identities.
+- Keep worker validation disabled by default; document separate operator credential/identity wiring and fail-closed startup. Verify the listener is absent from default service selection and 14 root tests pass.
+
+## 2026-10-01 — Reviewed combined baseline
+
+- Integrate only the approved backend main merge locally; independently verify the frozen callback from its source commit and final reviewed backend head.
+- Finish authorized Runtime callback source-revision metadata without changing historical PR10 evidence or component behavior. Stage only the hash-checked single-file local build context.
+- Verify 14 root tests and all Compose profiles/configurations; freeze the clean combined baseline for independent actual-stack testing. Publication remains blocked and no full acceptance is claimed.
+
+## 2026-10-01 — Tested local core default
+
+- Integrate the independent six-test live combined-stack pass and sanitized evidence locally, preserving all approved main/root changes.
+- Promote the exact tested resolved service graph into default Compose; retain old overlay paths as no-op compatibility files and keep authenticated listener/push opt-in.
+- Add local `scripts/dev` bootstrap with preserved environment/data, explicit checksum-verified callback staging, and normal Compose build/start. Verify graph equivalence, 15 root tests, shell/Python syntax, and whitespace.
+- Require an independent targeted default-entrypoint rerun before treating the promotion as accepted. Publication remains blocked; authenticated chat/provider/MCP/device and full Phase 0 gates remain open.

@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""Root checks. Uses public samples only; never reads the operator's .env."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+import uuid
+
+ROOT = Path(__file__).resolve().parent.parent
+COMPOSE = ["docker", "compose", "--env-file", str(ROOT / ".env.example")]
+# Ambient Compose variables must not redirect this disposable check.
+ENV = {key: value for key, value in os.environ.items()
+       if not key.startswith("COMPOSE_") and key not in {
+           "POSTGRES_PASSWORD", "KIREI_DB_PASSWORD", "MATTERMOST_DB_PASSWORD", "BACKEND_PORT"}}
+
+
+def run(args, timeout=120, check=True):
+    result = subprocess.run(args, cwd=ROOT, env=ENV, text=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+    if check and result.returncode:
+        # Do not print service logs or resolved configuration containing passwords.
+        raise RuntimeError(f"command failed (exit {result.returncode}): {' '.join(args[:2])}")
+    return result
+
+
+def config():
+    for files in [["compose.yml"], ["compose.yml", "compose.backend.yml"],
+                  ["compose.yml", "compose.backend.yml", "compose.integration.yml"]]:
+        args = COMPOSE + ["--profile", "*"]
+        for name in files:
+            args += ["-f", str(ROOT / name)]
+        run(args + ["config", "--quiet"])
+    print(json.dumps({"check": "compose-config", "passed": True,
+                      "application_build_or_boot": False, "live_roundtrip": False}))
+
+
+def dependencies(derived_chat=False):
+    project = "digitaltwin-check-" + uuid.uuid4().hex[:12]
+    with tempfile.TemporaryDirectory(prefix="digitaltwin-check-") as temporary:
+        override = Path(temporary) / "compose.check.yml"
+        override.write_text('''services:
+  mattermost:
+    ports: !override
+      - "127.0.0.1::8065"
+''')
+        args = COMPOSE + ["-p", project, "-f", str(ROOT / "compose.yml")]
+        if derived_chat:
+            args += ["-f", str(ROOT / "compose.backend.yml"), "-f", str(ROOT / "compose.integration.yml")]
+        args += ["-f", str(override)]
+        cleanup_needed = False
+        try:
+            run(args + ["config", "--quiet"])
+            cleanup_needed = True
+            run(args + ["up", "-d", "--no-build", "--wait", "--wait-timeout", "180", "postgres", "mattermost"], timeout=240)
+            # Passwords below are the checked-in disposable samples, not operator credentials.
+            for user, password, database in [
+                ("kirei", "local-only-kirei", "digitaltwin_development"),
+                ("mattermost", "local-only-mattermost", "mattermost"),
+            ]:
+                base = args + ["exec", "-T", "-e", f"PGPASSWORD={password}", "postgres",
+                               "psql", "-h", "127.0.0.1", "-U", user, "-At", "-d"]
+                if run(base + [database, "-c", "SELECT current_user"]).stdout.strip() != user:
+                    raise RuntimeError("own-database identity mismatch")
+                other = "mattermost" if user == "kirei" else "digitaltwin_development"
+                denied = run(base + [other, "-c", "SELECT 1"], check=False)
+                if not denied.returncode or "permission denied for database" not in denied.stderr:
+                    raise RuntimeError("cross-database connection was not denied by database privilege")
+            address = run(args + ["port", "mattermost", "8065"]).stdout.strip()
+            if not address.startswith("127.0.0.1:") or "\n" in address:
+                raise RuntimeError("expected one disposable loopback port")
+            url = f"http://{address}/api/v4/system/ping"
+            deadline = time.monotonic() + 180
+            while True:
+                try:
+                    with urllib.request.urlopen(url, timeout=5) as response:
+                        payload = json.load(response)
+                        version = response.headers.get("X-Version-Id", "")
+                    if payload.get("status") != "OK":
+                        raise ValueError("Mattermost not healthy")
+                    if not version.startswith("11.11.1"):
+                        raise RuntimeError("unexpected Mattermost version")
+                    break
+                except (OSError, ValueError):
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("Mattermost ping did not become healthy")
+                    time.sleep(2)
+            evidence = {"check": "disposable-dependencies", "passed": True,
+                        "chat_packaging": "derived",
+                        "combined_volume_preparation": derived_chat,
+                        "own_database_connections": 2, "cross_database_denials": 2,
+                        "mattermost_ping": "OK", "mattermost_version": "11.11.1",
+                        "authenticated_chat": False, "live_provider": False,
+                        "live_roundtrip": False}
+        finally:
+            if cleanup_needed:
+                # Always target our generated project; never the operator's default project.
+                cleanup = run(args + ["down", "--volumes", "--remove-orphans"], check=False)
+                if cleanup.returncode:
+                    raise RuntimeError(f"cleanup failed; remove disposable project {project}")
+        evidence["disposable_resources_removed"] = True
+        print(json.dumps(evidence))
+
+
+def operator():
+    print("""Open live gates (this command starts nothing):
+1. Reviewed backend/runtime images, startup, migrations, socket UID/mode/mounts.
+2. Disposable authenticated Mattermost human/bot identities, memberships,
+   ordinary replies, WebSocket source verification, reconnect REST recovery.
+3. Operator-authorized provider credentials and real Linux Herdr CLI handshake.
+4. Mention -> durable queued dispatch -> real CLI -> exactly one source-thread reply.
+   Capture sanitized inbox/job/session/outbox identities and authenticated posts.
+5. Four-CLI start/prompt/state/stop, Writer settled state, selected Master MCP.
+6. Separate operator gates: signed-device push, restore, production deployment.
+Dependency health, fixture tests, and offline builds clear none of gates 2-6.
+Never persist credentials in evidence, Git, or images. Never report fixtures as live.
+""")
+
+
+def runtime_offline():
+    project = "digitaltwin-runtime-check-" + uuid.uuid4().hex[:12]
+    with tempfile.TemporaryDirectory(prefix="digitaltwin-runtime-check-") as temporary:
+        override = Path(temporary) / "compose.runtime-check.yml"
+        override.write_text("services:\n  agent-runtime:\n    image: digitaltwin-root-runtime-offline:check\n")
+        args = COMPOSE + ["-p", project]
+        for name in [ROOT / "compose.yml", ROOT / "compose.backend.yml", ROOT / "compose.integration.yml", override]:
+            args += ["-f", str(name)]
+        cleanup_needed = False
+        try:
+            run(args + ["config", "--quiet"])
+            cleanup_needed = True
+            run(args + ["up", "-d", "--no-build", "--pull", "never", "--wait", "--wait-timeout", "90", "agent-runtime"], timeout=120)
+            run(args + ["exec", "-T", "agent-runtime", "ruby", "-e",
+                        "abort('expected explicit offline target') if File.exist?('/usr/local/bin/digitaltwin')"])
+            socket_check = "s=File.stat('/run/herdr/herdr.sock'); abort('socket contract failed') unless Process.uid == 10001 && s.socket? && s.uid == 10001 && (s.mode & 0777) == 0600"
+            run(args + ["exec", "-T", "agent-runtime", "ruby", "-e", socket_check])
+            run(args + ["run", "--rm", "--no-deps", "--entrypoint", "ruby", "agent-runtime", "-e", socket_check])
+            status = json.loads(run(args + ["exec", "-T", "agent-runtime", "herdr", "status", "--json"]).stdout)
+            verify_herdr_status(status)
+        finally:
+            if cleanup_needed:
+                cleanup = run(args + ["down", "--volumes", "--remove-orphans"], check=False)
+                if cleanup.returncode:
+                    raise RuntimeError(f"cleanup failed; remove disposable project {project}")
+    print(json.dumps({"check": "disposable-root-runtime-offline", "passed": True,
+                      "herdr_version": "0.9.3", "herdr_protocol": 22,
+                      "socket_second_container": True, "callbacks_packaged": False,
+                      "backend_runtime_integration": False, "live_provider": False,
+                      "live_roundtrip": False, "disposable_resources_removed": True}))
+
+
+def verify_herdr_status(status):
+    server = status.get("server", {})
+    if not (server.get("running") is True and server.get("compatible") is True
+            and server.get("version") == "0.9.3" and server.get("protocol") == 22):
+        raise RuntimeError("Herdr server status differs from reviewed release contract")
+
+
+def stack(options):
+    """Observe an already started, reviewed stack. Never build/start/stop it."""
+    if not options.project or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", options.project):
+        raise RuntimeError("stack requires an explicit valid --project")
+    if not options.runtime_service:
+        raise RuntimeError("stack requires the reviewed --runtime-service name")
+    args = COMPOSE + ["-p", options.project]
+    files = options.compose_file or [str(ROOT / "compose.yml"), str(ROOT / "compose.backend.yml")]
+    for name in files:
+        args += ["-f", str(Path(name).resolve())]
+    services = run(args + ["config", "--services"]).stdout.splitlines()
+    if options.runtime_service not in services or "backend-web" not in services:
+        raise RuntimeError("reviewed Compose must contain Runtime and backend-web services")
+    address = run(args + ["port", "backend-web", "3000"]).stdout.strip()
+    if not address.startswith("127.0.0.1:") or "\n" in address:
+        raise RuntimeError("expected one backend loopback port")
+    for path in ["/livez", "/readyz"]:
+        with urllib.request.urlopen(f"http://{address}{path}", timeout=5) as response:
+            if response.status != 200:
+                raise RuntimeError("backend health route failed")
+    # The verified 0600 socket contract depends on a shared UID, not group access.
+    socket_check = "s=File.stat('/run/herdr/herdr.sock'); abort('socket contract failed') unless Process.uid == 10001 && s.socket? && s.uid == 10001 && (s.mode & 0777) == 0600"
+    for service in [options.runtime_service, "backend-worker"]:
+        run(args + ["exec", "-T", service, "ruby", "-e", socket_check])
+    status = run(args + ["exec", "-T", options.runtime_service, "herdr", "status", "--json"])
+    # Release-bound server health cannot establish CLI/provider/idle semantics.
+    verify_herdr_status(json.loads(status.stdout))
+    print(json.dumps({"check": "existing-stack-health-and-socket", "passed": True,
+                      "backend_health_routes": 2, "socket_consumers_checked": 2,
+                      "herdr_status_json": True, "authenticated_chat": False,
+                      "live_provider": False, "live_roundtrip": False,
+                      "stack_lifecycle_changed": False}))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("mode", choices=["config", "dependencies", "operator", "stack", "runtime-offline"])
+    parser.add_argument("--project", help="explicit existing project for read-only stack checks")
+    parser.add_argument("--runtime-service", help="reviewed Runtime Compose service name")
+    parser.add_argument("--compose-file", action="append", help="reviewed Compose files, in merge order")
+    parser.add_argument("--derived-chat", action="store_true", help="dependency mode: use previously built reviewed chat overlay")
+    options = parser.parse_args()
+    try:
+        if options.mode == "stack":
+            stack(options)
+        elif options.mode == "dependencies":
+            dependencies(options.derived_chat)
+        elif options.mode == "runtime-offline":
+            runtime_offline()
+        else:
+            {"config": config, "dependencies": dependencies, "operator": operator}[options.mode]()
+    except (RuntimeError, ValueError, subprocess.TimeoutExpired, OSError) as error:
+        print(f"acceptance failed: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

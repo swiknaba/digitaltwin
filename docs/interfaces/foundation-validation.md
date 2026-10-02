@@ -73,7 +73,7 @@ Start each branch/worktree from the reviewed foundation commit. The root session
 
 | Branch suggestion | Owned files | First deliverable and checks |
 | --- | --- | --- |
-| `build/integration-backend` | `integration-backend/`; coordinate shared contract changes through integrator | Finish Ruby 4.0.7 dependency lock/platforms, Puma/startup and component tests. Validate generated health routes and pending-migration startup. Coordinate Task 1 slice before production jobs/routing/enrollment. |
+| `build/integration-backend` | `integration-backend/`; coordinate shared contract changes through integrator | Finish Ruby 4.0.7 dependency lock/platforms, startup and component tests. Validate generated health routes and pending-migration startup. Coordinate Task 1 slice before production jobs/routing/enrollment. |
 | `build/agent-runtime` | `agent-runtime/` | Verify Linux Herdr 0.9.3 against captured schema, pin remaining tools/base, build non-root image and tool smoke checks. Prove four-CLI/idle/MCP behavior before dependent session/review work. Kirei owns adapter, sessions schema, and client source. |
 | `build/chat-backend` | `chat-backend/` | Validate pinned Team Edition 11.11.1 bot permissions, authenticated ordinary thread replies, identity/membership, REST backfill and restore. Deliver sanitized fixtures and artifact/license audit. Propose Compose edits through integrator. |
 | `build/push-service` | `push-service/` | Validate 6.6.0 config, health, safe secret references and server/mobile compatibility. Prepare offline checks now; APNs/FCM delivery waits for operator setup. |
@@ -83,3 +83,12 @@ Start each branch/worktree from the reviewed foundation commit. The root session
 The integrator owns root Compose/environment, `scripts/`, shared interfaces, and cross-service fixtures.
 Docs and scripts do not require standalone application implementation sessions.
 Merge dependency-compatible component results before the final integration test worker runs.
+
+## Root Integration Preparation
+
+The opt-in backend Compose contract and received socket/callback/push details are recorded in [local integration](local-integration.md).
+`scripts/acceptance config` and five root Compose agreement tests pass without application startup.
+`scripts/acceptance dependencies` passed against a fresh disposable project: both own-database connections,
+both cross-database denials, native Mattermost local-mode health, and HTTP ping/version 11.11.1.
+Its containers and volumes were removed. No accounts, bot tokens, provider sessions, or paid calls were created.
+Authenticated chat, actual backend/Runtime startup, and the real roundtrip remain open gates.

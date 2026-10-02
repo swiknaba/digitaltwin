@@ -1,0 +1,31 @@
+{
+  "passed": true,
+  "tests": 20,
+  "root_configuration_tests": 14,
+  "combined_integration_tests": 6,
+  "duration_seconds": 42.585,
+  "revision": "2405f04c5f2eb5783f2d3f685444fd3c3236b21a",
+  "reviewed_backend_revision": "b45cf0aa827dd19c81e9791c7b5e82ef8d0e36d0",
+  "root_baseline": "aee60f8f677681c3b6cfee9d6958ce86f4e05296",
+  "reviewed_main": "cc053ce173e49d23a813119ab2d8a91907f606a3",
+  "image_ids": {
+    "agent-runtime": "sha256:99f452f649bc7f376df1031a350fdb0272aa1480afec45e3c7bc57f4165d29c0",
+    "backend-web": "sha256:cdc7df52cf07e507f1ae26377b21d4c101561b5ddf7f3bb29b9b33f717238754",
+    "backend-worker": "sha256:cdc7df52cf07e507f1ae26377b21d4c101561b5ddf7f3bb29b9b33f717238754",
+    "mattermost": "sha256:edf81d9b287b5e41a70b9b55efec6e2f24c8445375e1a3723a019c91c81576aa"
+  },
+  "live_local_containers": true,
+  "database_ownership_and_migrations": true,
+  "container_security_socket_callback_hash_no_plugins": true,
+  "falcon_parallel_health_and_callback_auth_rejection": true,
+  "pending_migrations_rejected_pool_5_timeout_2": true,
+  "synthetic_callbacks": true,
+  "synthetic_jobs_dedup_leases_uncertain_restart": true,
+  "synthetic_packaged_callback_two_threads_replay_changed_body": true,
+  "own_resources_removed": true,
+  "authenticated_chat": false,
+  "provider_cli": false,
+  "master_mcp": false,
+  "phase0_acceptance": false,
+  "published": false
+}

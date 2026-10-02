@@ -1,0 +1,2 @@
+# Compatibility entrypoint; backend services now live in default compose.yml.
+services: {}
