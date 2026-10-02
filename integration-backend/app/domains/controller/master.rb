@@ -6,6 +6,7 @@ module Domains
   module Controller
     class Master
       extend T::Sig
+
       sig do
         params(db: Sequel::Database, sessions: Domains::Sessions::Lifecycle, source: Source,
                herdr: Domains::Sessions::Herdr, configuration: Domains::Sessions::Lifecycle::Configuration,

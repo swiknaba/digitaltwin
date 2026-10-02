@@ -5,6 +5,7 @@ module Domains
   module Controller
     class Followups
       extend T::Sig
+
       sig do
         params(db: Sequel::Database, herdr: Domains::Sessions::Herdr, resolver: Source::DeliveryResolver,
                membership: T.proc.params(channel_id: String, user_id: String).returns(T::Boolean),

@@ -5,6 +5,7 @@ module Domains
   module Controller
     class Routing
       extend T::Sig
+
       TERMINAL = T.let(%w[closed cancelled].freeze, T::Array[String])
       Interpretation = T.type_alias { T::Hash[String, Object] }
       sig do
