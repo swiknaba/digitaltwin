@@ -59,14 +59,14 @@ module Controllers
       end
     end
 
-    sig { params(values: Params).returns(ToolRequest) }
+    sig { params(values: Params).returns(Requests::ToolRequest) }
     def tool_request(values)
-      ToolRequest.new(name: string(values, "name"), arguments: arguments(values.fetch("arguments")))
+      Requests::ToolRequest.new(name: string(values, "name"), arguments: arguments(values.fetch("arguments")))
     end
 
-    sig { params(values: Params).returns(ReplyRequest) }
+    sig { params(values: Params).returns(Requests::ReplyRequest) }
     def reply_request(values)
-      ReplyRequest.new(request_id: string(values, "request_id"), text: string(values, "text"))
+      Requests::ReplyRequest.new(request_id: string(values, "request_id"), text: string(values, "text"))
     end
 
     sig { params(values: Params, expected: T::Array[String]).returns(T::Boolean) }

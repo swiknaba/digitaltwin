@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 module Controllers
-  class Master
+  module Requests
     class ReplyRequest < T::Struct
       const :request_id, String
       const :text, String

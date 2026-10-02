@@ -16,7 +16,7 @@ module Controllers
       callback = artifact_callback(values)
       intake.enqueue(token: callback.token, generation: callback.generation, action: "artifact", kind: callback.kind, commit: callback.commit)
       accepted_response
-    rescue MissingAuthorization, ArgumentError, Sequel::Error
+    rescue Errors::MissingAuthorization, ArgumentError, Sequel::Error
       rejected_response("Artifact callback rejected")
     end
 
@@ -28,7 +28,7 @@ module Controllers
       callback = review_callback(values)
       intake.enqueue(token: callback.token, generation: callback.generation, action: "review", commit: callback.commit, verdict: callback.verdict)
       accepted_response
-    rescue MissingAuthorization, ArgumentError, Sequel::Error
+    rescue Errors::MissingAuthorization, ArgumentError, Sequel::Error
       rejected_response("Review callback rejected")
     end
 
@@ -42,7 +42,7 @@ module Controllers
         token: callback.token, generation: callback.generation, key: callback.key, body: callback.body
       )
       render_json({ "status" => result.status, "reason" => result.reason }, status: result.status == "accepted" ? 202 : 403)
-    rescue MissingAuthorization
+    rescue Errors::MissingAuthorization
       unauthorized_response
     rescue ArgumentError, Sequel::Error
       render_json({ "status" => "rejected", "reason" => "Invalid callback" }, status: 403)
@@ -55,19 +55,19 @@ module Controllers
       Domains::Reviews::Intake.new
     end
 
-    sig { params(values: Params).returns(ArtifactCallback) }
+    sig { params(values: Params).returns(Requests::ArtifactCallback) }
     def artifact_callback(values)
-      ArtifactCallback.new(token: callback_token, generation: integer(values, "generation"), kind: string(values, "kind"), commit: string(values, "commit"))
+      Requests::ArtifactCallback.new(token: callback_token, generation: integer(values, "generation"), kind: string(values, "kind"), commit: string(values, "commit"))
     end
 
-    sig { params(values: Params).returns(ReviewCallback) }
+    sig { params(values: Params).returns(Requests::ReviewCallback) }
     def review_callback(values)
-      ReviewCallback.new(token: callback_token, generation: integer(values, "generation"), verdict: string(values, "verdict"), commit: string(values, "commit"))
+      Requests::ReviewCallback.new(token: callback_token, generation: integer(values, "generation"), verdict: string(values, "verdict"), commit: string(values, "commit"))
     end
 
-    sig { params(values: Params).returns(SayCallback) }
+    sig { params(values: Params).returns(Requests::SayCallback) }
     def say_callback(values)
-      SayCallback.new(token: callback_token, generation: integer(values, "generation"), key: string(values, "key"), body: string(values, "text"))
+      Requests::SayCallback.new(token: callback_token, generation: integer(values, "generation"), key: string(values, "key"), body: string(values, "text"))
     end
 
     sig { params(values: Params, expected: T::Array[String]).returns(T::Boolean) }
@@ -108,7 +108,7 @@ module Controllers
     sig { returns(String) }
     def callback_token
       value = request.env["HTTP_AUTHORIZATION"]
-      raise MissingAuthorization, "Session authorization required" unless value.is_a?(String) && value.start_with?("Bearer ")
+      raise Errors::MissingAuthorization, "Session authorization required" unless value.is_a?(String) && value.start_with?("Bearer ")
 
       value.delete_prefix("Bearer ")
     end

@@ -2,12 +2,12 @@
 # frozen_string_literal: true
 
 module Controllers
-  class Callbacks
-    class ReviewCallback < T::Struct
+  module Requests
+    class SayCallback < T::Struct
       const :token, String
       const :generation, Integer
-      const :verdict, String
-      const :commit, String
+      const :key, String
+      const :body, String
     end
   end
 end

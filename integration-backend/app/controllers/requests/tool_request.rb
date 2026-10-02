@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 module Controllers
-  class Master
+  module Requests
     class ToolRequest < T::Struct
       const :name, String
       const :arguments, T::Hash[String, Object]

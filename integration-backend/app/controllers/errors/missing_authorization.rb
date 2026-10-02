@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 module Controllers
-  class Callbacks
+  module Errors
     class MissingAuthorization < StandardError; end
   end
 end
