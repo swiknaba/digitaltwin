@@ -1,4 +1,6 @@
 #!/usr/bin/env ruby
+# typed: strict
+
 # Static shared-contract check; whole-project RBI generation is still open.
 require "bundler/setup"
 spec = Gem::Specification.find_by_name("sorbet-static")

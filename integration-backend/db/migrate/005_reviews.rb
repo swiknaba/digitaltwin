@@ -1,3 +1,6 @@
+# typed: strict
+# frozen_string_literal: true
+
 Sequel.migration do
   change do
     create_table(:reviews) do
@@ -12,9 +15,9 @@ Sequel.migration do
       String :verdict
       column :reviewer_configuration, :jsonb, null: false
       unique [:workflow_id, :gate, :round]
-      constraint(:review_verdict) { (verdict =~ nil) | (verdict =~ %w[approve changes_requested]) }
+      constraint(:review_verdict, Sequel.lit("verdict IS NULL OR verdict IN ('approve', 'changes_requested')"))
       constraint(:review_gate, gate: %w[spec plan implementation])
-      constraint(:review_round) { round >= 1 }
+      constraint(:review_round, Sequel.lit("round >= 1"))
     end
     create_table(:queued_messages) do
       primary_key :id

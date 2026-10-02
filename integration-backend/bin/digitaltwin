@@ -1,42 +1,45 @@
 #!/usr/bin/env ruby
+# typed: strict
 # frozen_string_literal: true
 
-# Standalone Runtime client, version 1; standard library only, Ruby >= 3.1.
+# Standalone Runtime client; standard library only, Ruby >= 3.1.
 require "json"
 require "net/http"
 require "optparse"
 require "uri"
 
 begin
-  raise ArgumentError,
-        "Only say is available; artifact/review callbacks require live validation" unless ARGV.shift == "say"
+  command = ARGV.shift
+  raise ArgumentError, "Expected say/artifact-ready/review-ready/master-reply" unless %w[say artifact-ready review-ready master-reply].include?(command)
 
   options = {}
   OptionParser.new do |parser|
-    parser.on("--text TEXT") { |value| options[:text] = value }
-    parser.on("--key KEY") { |value| options[:key] = value }
+    %w[text key kind commit verdict request-id].each { |field| parser.on("--#{field} VALUE") { |value| options[field] = value } }
   end.parse!(ARGV)
-  raise ArgumentError, "Expected --text and --key" unless ARGV.empty? && options[:text] && options[:key]
+  required = { "say" => %w[text key], "artifact-ready" => %w[kind commit], "review-ready" => %w[commit verdict], "master-reply" => %w[request-id text] }.fetch(command)
+  raise ArgumentError, "Invalid callback arguments" unless ARGV.empty? && options.keys.sort == required.sort
 
-  token = File.read(ENV.fetch("DIGITALTWIN_SESSION_TOKEN_FILE")).strip
-  raise ArgumentError, "Empty session credential" if token.empty?
+  token_env = command == "master-reply" ? "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE" : "DIGITALTWIN_SESSION_TOKEN_FILE"
+  token = File.read(ENV.fetch(token_env)).strip
+  raise ArgumentError, "Empty callback credential" if token.empty?
 
   base = URI(ENV.fetch("DIGITALTWIN_CALLBACK_URL"))
-  raise ArgumentError, "Expected private HTTP(S) base URL" unless %w[http
-                                                                     https].include?(base.scheme) && base.host && !base.userinfo && ["",
-                                                                                                                                     "/"].include?(base.path) && !base.query && !base.fragment
+  raise ArgumentError, "Expected private HTTP(S) base URL" unless %w[http https].include?(base.scheme) && base.host && !base.userinfo && ["", "/"].include?(base.path) && !base.query && !base.fragment
 
-  target = URI.join(base.to_s, "/internal/callbacks/say")
-  payload = { generation: Integer(ENV.fetch("DIGITALTWIN_SESSION_GENERATION")), key: options[:key],
-              text: options[:text] }
+  path = command == "master-reply" ? "/internal/master/reply" : "/internal/callbacks/#{command}"
+  target = URI.join(base.to_s, path)
+  payload = if command == "master-reply"
+              { request_id: options["request-id"], text: options["text"] }
+            else
+              options.merge("generation" => Integer(ENV.fetch("DIGITALTWIN_SESSION_GENERATION")))
+            end
   request = Net::HTTP::Post.new(target, "Authorization" => "Bearer #{token}", "Content-Type" => "application/json")
   request.body = JSON.generate(payload)
   response = Net::HTTP.start(target.host, target.port, use_ssl: target.scheme == "https", open_timeout: 5, read_timeout: 10, write_timeout: 10) { |http| http.request(request) }
-  raise "Callback rejected (HTTP #{response.code}); do not change the retry key" unless response.code == "202"
+  raise "Callback rejected (HTTP #{response.code})" unless response.code == "202"
 
-  puts "Queued in bound thread"
+  puts(command == "say" || command == "master-reply" ? "Queued in bound thread" : "Callback recorded; dispatch remains subject to workflow gates")
 rescue StandardError => e
-  # Never print response bodies, request headers or credential values.
-  warn(e.is_a?(ArgumentError) ? e.message : "Callback failed or uncertain; retry only with the same key")
+  warn(e.is_a?(ArgumentError) ? e.message : "Callback failed or uncertain; retry only the identical callback")
   exit 1
 end

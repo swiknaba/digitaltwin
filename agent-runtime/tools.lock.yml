@@ -25,6 +25,11 @@ ruby:
   version: "3.4.9"
   purpose: standalone_backend_callback_client_requires_at_least_3_1
   note: Kirei_application_Ruby_4_0_7_is_owned_by_backend_image
+  sorbet_runtime:
+    version: "0.6.13517"
+    url: https://rubygems.org/downloads/sorbet-runtime-0.6.13517.gem
+    sha256: a36469f5b45c3493721ff62fb1ff27186b7c228fe70894464f680056c66e8cf8
+    purpose: executes strict standalone callback MCP sources
 packages:
   distro_lock: apk-packages.lock
   npm_lock: package-lock.json
@@ -51,11 +56,9 @@ runtime:
   health: /opt/runtime/bin/runtime-health
   callback_target: with-callback
   callback_context: kirei-clients
-callback_client:
+callback_clients:
   owner: integration-backend
-  source: integration-backend/bin/digitaltwin
-  artifact_sha256: cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054
-  source_revision: 81d5d5c714c73890efccff172103f65171ecde20
-  validated_in_revision: 53c69b7d537b906a06303461c658f62b990f23d9
-  packaged_path: /usr/local/bin/digitaltwin
-  test_kind: disposable_HTTP_fixture_not_live_backend_delivery
+  manifest: contracts/kirei-clients.json
+  source_revision: 9bbac0b2b8bf286410375eb2d3ac33ec0a312eb8
+  packaged_directory: /usr/local/bin
+  validation: isolated_callback_stdio_fixtures_only_live_gates_open

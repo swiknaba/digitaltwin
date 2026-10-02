@@ -56,7 +56,7 @@ RSpec.describe "Numbered database migration tasks" do
   def numbered_migrations
     %w[jobs projects sessions workflows reviews confirmations].each_with_index do |name, offset|
       version = offset + 1
-      File.write("#{@root}/db/migrate/#{version.to_s.rjust(3, '0')}_#{name}.rb", <<~RUBY)
+      File.write("#{@root}/db/migrate/#{version.to_s.rjust(3, "0")}_#{name}.rb", <<~RUBY)
         Sequel.migration do
           up { create_table(:migration_fixture_#{version}) { primary_key :id } }
           down { drop_table(:migration_fixture_#{version}) }

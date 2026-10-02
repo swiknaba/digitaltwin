@@ -37,7 +37,7 @@ The suite verifies that the exact backend revision is an ancestor of HEAD before
 It uses public `.env.example` samples, ignores ambient Compose/password overrides, builds uniquely tagged images,
 and creates random loopback ports and uniquely named containers/networks/volumes.
 Cleanup removes only this suite's project volumes and its unique image tags, including on setup/test failure.
-It stages only the reviewed callback file into the ignored single-file build context.
+It stages only checksum-pinned backend callback/MCP files into the ignored build context.
 The credential-free default must exclude the gated listener and push profiles.
 
 Real local checks cover PostgreSQL role ownership and cross-database denials, all six migrations,
@@ -67,3 +67,8 @@ Without the explicit opt-in, normal discovery skips the live suite and runs conf
 | 27–28 | Blocked: Master reconstruction and independent peer fleet |
 | 29–30 | Blocked: encrypted restore, authenticated ordinary chat, signed mobile push/deep links |
 | 31–32 | Blocked: research and pushed configured memory repository |
+
+Client pin/staging validation: `python3 -m unittest discover -s tests -p test_client_contract.py`.
+After building the pinned with-callback image, run `tests/fixtures/runtime_clients.rb` via its Ruby
+entrypoint with network disabled. It verifies installed stdio MCP and callback HTTP wire behavior
+against an in-container fixture; no provider/CLI or authenticated chat compatibility is claimed.

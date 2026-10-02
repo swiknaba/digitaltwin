@@ -551,6 +551,22 @@ The worker asks an authorized human in Mattermost how to continue.
 
 `@agent` routes messages from any channel to one logical Master controller.
 The controller receives the source channel context with each request.
+Master chat is the primary interface. Project threads support detailed updates and fine-tuning.
+Follow-ups continue the relevant existing workflow and Writer conversation, including parallel
+workflows in one repository with separate worktrees. Never start a new session merely because
+the human adds instructions. Resolve verified source thread first, then an explicit human
+selection or recent same-human conversation binding. A selected Master may interpret recent
+conversation/task evidence and propose a target; Kirei rechecks project, workflow and session
+identities. Keywords alone are not authority. Conflicting evidence or multiple plausible
+workflows requires a short clarification; inactivity or a missing session requires reconciliation.
+Persist the evidence, source event, correlation and delivery state. A queue acknowledgment is
+not a delivery receipt. During review or pause, retain instructions without changing the frozen
+revision; release only after authoritative state is rechecked. Uncertain socket results must not
+be resent automatically. Master approvals identify the workflow, gate and exact reviewed Git
+commit and require current membership in both source and destination. A vague “approve”
+never applies across sessions. Only Master creates independently managed sessions; worker
+requests need human approval. Operational conversation retains its existing separate policy.
+
 The Master has shared conversational context and operational access across its fleet.
 Channel boundaries do not partition its context.
 Kirei still verifies each request's sender and source context.
@@ -603,8 +619,14 @@ It requests a second human confirmation before a destructive or irreversible act
 It never displays secret values.
 This existing confirmation rule does not impose a coding review cycle on operational conversation or emergency changes.
 
-After a restart, the system starts a fresh session with the same Master configuration.
-The controller reconstructs current state from PostgreSQL and typed operations.
+After a restart, retain an authoritative healthy Master conversation and reconstruct request
+state from PostgreSQL. Renew its short-lived credential only after verifying the same runtime
+identity and token digest. A missing/replaced conversation or uncertain external effect requires
+reconciliation; restarting a process never authorizes replay or an independent new session.
+The bounded implementation exposes project/workflow/context reads, starts, follow-ups and
+version-bound controls. Broader enrollment, Git/deployment and destructive tools remain planned.
+The model cites recent accessible task evidence; server-side identity and membership checks
+remain authoritative. Completed replies are idempotent; a queue acknowledgment is not delivery.
 
 ## 18. Human and peer authorization
 

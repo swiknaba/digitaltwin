@@ -1,9 +1,11 @@
 #!/usr/bin/env ruby
+# typed: strict
+
 require "json"
 require "net/http"
 role = ARGV.fetch(0)
 if role == "web"
-  response = Net::HTTP.get_response(URI("http://127.0.0.1:#{ENV.fetch('PORT', '3000')}/readyz"))
+  response = Net::HTTP.get_response(URI("http://127.0.0.1:#{ENV.fetch("PORT", "3000")}/readyz"))
   exit(response.code == "200" ? 0 : 1)
 elsif %w[worker chat-listener].include?(role)
   begin

@@ -33,10 +33,12 @@ class RootContractTest(unittest.TestCase):
     def test_socket_stays_private_to_worker(self):
         worker = self.services["backend-worker"]
         self.assertEqual(worker["environment"]["HERDR_SOCKET_PATH"], "/run/herdr/herdr.sock")
-        self.assertEqual(len(worker["volumes"]), 1)
+        self.assertEqual(len(worker["volumes"]), 2)
         self.assertEqual(worker["volumes"][0]["type"], "volume")
         self.assertEqual(worker["volumes"][0]["source"], "herdr-socket")
         self.assertEqual(worker["volumes"][0]["target"], "/run/herdr")
+        self.assertEqual(worker["volumes"][1]["source"], "runtime-workspace")
+        self.assertEqual(worker["volumes"][1]["target"], "/workspace")
 
     def test_nonweb_roles_override_image_web_probe(self):
         for service, role in [("backend-worker", "worker"), ("backend-chat-listener", "chat-listener")]:
