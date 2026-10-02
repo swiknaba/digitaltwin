@@ -3,8 +3,14 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-missing_sigils="$(find app config db lib -type f -name '*.rb' -print | sort | while IFS= read -r file; do
-  if ! head -n 1 "$file" | grep -qx '# typed: strict'; then
+production_ruby_files() {
+  find app config db lib -type f \( -name '*.rb' -o -name '*.rake' \) -print
+  printf '%s\n' Rakefile config.ru
+  grep -l '^#!/usr/bin/env ruby$' bin/* 2>/dev/null || true
+}
+
+missing_sigils="$(production_ruby_files | sort -u | while IFS= read -r file; do
+  if ! sed -n '1,2p' "$file" | grep -qx '# typed: strict'; then
     printf '%s\n' "$file"
   fi
 done)"
@@ -14,7 +20,7 @@ if [ -n "$missing_sigils" ]; then
   exit 1
 fi
 
-metrics="$(bundle exec spoom srb metrics show --dump app config db lib bin)"
+metrics="$(bundle exec spoom srb metrics show --dump app config db lib bin Rakefile config.ru lib/tasks/db.rake)"
 printf '%s\n' "$metrics"
 
 if ! printf '%s\n' "$metrics" | awk '

@@ -29,9 +29,9 @@ module Controllers
       const :body, String
     end
 
-    # Missing session credentials are an authentication failure. Keep this
-    # distinct from a supplied-but-invalid callback, which is intentionally
-    # opaque to prevent capability probing.
+    # A missing header is tracked separately so the interactive `say` endpoint
+    # can return HTTP 401. The legacy artifact/review callback endpoints remain
+    # opaque and map both absent and invalid capabilities to rejection.
     class MissingAuthorization < StandardError; end
 
     sig { returns(Response) }
@@ -42,9 +42,7 @@ module Controllers
       callback = artifact_callback(values)
       intake.enqueue(token: callback.token, generation: callback.generation, action: "artifact", kind: callback.kind, commit: callback.commit)
       accepted_response
-    rescue MissingAuthorization
-      unauthorized_response
-    rescue ArgumentError, Sequel::Error
+    rescue MissingAuthorization, ArgumentError, Sequel::Error
       rejected_response("Artifact callback rejected")
     end
 
@@ -56,9 +54,7 @@ module Controllers
       callback = review_callback(values)
       intake.enqueue(token: callback.token, generation: callback.generation, action: "review", commit: callback.commit, verdict: callback.verdict)
       accepted_response
-    rescue MissingAuthorization
-      unauthorized_response
-    rescue ArgumentError, Sequel::Error
+    rescue MissingAuthorization, ArgumentError, Sequel::Error
       rejected_response("Review callback rejected")
     end
 

@@ -1,11 +1,14 @@
-# typed: false
+# typed: strict
 
 # run on the database server once:
 #
 #   CREATE DATABASE digitaltwin_${environment};
 
 require "zeitwerk/inflector"
+require "sorbet-runtime"
 require_relative "../../app"
+
+extend T::Sig
 
 namespace :db do
   # RACK_ENV=development bundle exec rake db:create
@@ -137,7 +140,7 @@ namespace :db do
 
     # Define the content of the migration file
     content = <<~MIGRATION
-      # typed: false
+      # typed: strict
       # frozen_string_literal: true
 
       Sequel.migration do
@@ -216,10 +219,12 @@ namespace :db do
   end
 end
 
+sig { params(db: Sequel::Database).returns(Integer) }
 def integer_migration_version(db)
   db.table_exists?(:schema_info) ? db[:schema_info].get(:version).to_i : 0
 end
 
+sig { params(app: Module).void }
 def reset_memoized_class_level_instance_vars(app)
   %i[
     @default_db_name
@@ -230,6 +235,7 @@ def reset_memoized_class_level_instance_vars(app)
   end
 end
 
+sig { params(table_name: String, schema: T::Array[T::Array[Object]]).returns(String) }
 def format_schema_comments(table_name, schema)
   lines = ["# == Schema Info", "#", "# Table name: #{table_name}", "#"]
   schema.each do |column|

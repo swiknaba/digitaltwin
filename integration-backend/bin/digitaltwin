@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# typed: strict
 # frozen_string_literal: true
 
 # Standalone Runtime client; standard library only, Ruby >= 3.1.
