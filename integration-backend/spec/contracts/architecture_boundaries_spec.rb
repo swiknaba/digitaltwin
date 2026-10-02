@@ -22,9 +22,13 @@ RSpec.describe "architecture boundaries" do
     "app/platform/audit/entities/*"
   ].freeze
 
+  # Ruling 22: adapters may implement these domain ports (interface! modules).
+  port_constants = ["Domains::Messaging::DeliveryVerifier", "Domains::Messaging::MembershipCheck"].freeze
+
   layer_namespaces = { "domains" => "Domains", "services" => "Services", "adapters" => "Adapters", "platform" => "Platform" }.freeze
-  # The lookbehind skips gem namespaces such as Kirei::Services::Result.
-  reference_pattern = /(?<!::)\b(Domains|Services|Adapters|Platform)::(\w+)(?:::(\w+))?/
+  # The lookbehind skips gem namespaces such as Kirei::Services::Result but
+  # keeps root-anchored references such as ::Services::Commands::Parser.
+  reference_pattern = /(?<!\w::)\b(Domains|Services|Adapters|Platform)::(\w+)(?:::(\w+))?/
   raw_table_pattern = /\b(?:@?db|raw_db_connection)\[:|Sequel\.lit/
   broad_signature_pattern = /returns\(Object\)|T::Hash\[(?:Symbol|String), Object\]|T\.untyped|T\.unsafe/
   entity_pattern = /\b(Domains|Platform)::(\w+)::Entities/
@@ -64,7 +68,8 @@ RSpec.describe "architecture boundaries" do
     when "adapters"
       transport = %w[http mcp].include?(context)
       dto_reference = ref_member == "Dto" && (transport || ref_layer == "Domains")
-      ref_layer == "Platform" || own_context || dto_reference || (transport && ref_layer == "Services")
+      port = ref_layer == "Domains" && port_constants.include?("Domains::#{ref_context}::#{ref_member}")
+      ref_layer == "Platform" || own_context || dto_reference || port || (transport && ref_layer == "Services")
     when "services"
       !((ref_layer == "Domains" || ref_layer == "Platform") && ref_member == "Entities")
     else
@@ -72,31 +77,34 @@ RSpec.describe "architecture boundaries" do
     end
   end
 
+  # Whether one code line in `path` violates `rule`.
+  line_offends = lambda do |rule, path, line|
+    layer, context = layer_and_context.call(path)
+    case rule
+    when "raw_table_access"
+      line.match?(raw_table_pattern)
+    when "broad_signatures"
+      line.match?(broad_signature_pattern) && boundary_files.none? { |glob| File.fnmatch?(glob, path) }
+    when "raw_db_connection"
+      line.match?(raw_connection_pattern) && !raw_connection_owners.include?(path)
+    when "advisory_locks"
+      line.match?(advisory_lock_pattern) && !advisory_lock_owners.include?(path)
+    when "private_entities"
+      line.scan(entity_pattern).any? { |ref_layer, name| !path.start_with?("app/#{ref_layer.downcase}/#{snake.call(name)}/") }
+    when "layer_dependencies"
+      line.scan(reference_pattern).any? do |ref_layer, ref_context, ref_member|
+        !allowed_reference.call(layer, context, ref_layer, ref_context, ref_member)
+      end
+    else
+      raise ArgumentError, "unknown rule #{rule}"
+    end
+  end
+
   # Maps a rule name to the sorted "path:line" entries that violate it.
   violations_for = lambda do |rule|
     app_files.flat_map do |path|
-      layer, context = layer_and_context.call(path)
       code_lines.call(path).flat_map do |line_number, line|
-        offending =
-          case rule
-          when "raw_table_access"
-            line.match?(raw_table_pattern)
-          when "broad_signatures"
-            line.match?(broad_signature_pattern) && boundary_files.none? { |glob| File.fnmatch?(glob, path) }
-          when "raw_db_connection"
-            line.match?(raw_connection_pattern) && !raw_connection_owners.include?(path)
-          when "advisory_locks"
-            line.match?(advisory_lock_pattern) && !advisory_lock_owners.include?(path)
-          when "private_entities"
-            line.scan(entity_pattern).any? { |layer, name| !path.start_with?("app/#{layer.downcase}/#{snake.call(name)}/") }
-          when "layer_dependencies"
-            line.scan(reference_pattern).any? do |ref_layer, ref_context, ref_member|
-              !allowed_reference.call(layer, context, ref_layer, ref_context, ref_member)
-            end
-          else
-            raise ArgumentError, "unknown rule #{rule}"
-          end
-        offending ? ["#{path}:#{line_number}"] : []
+        line_offends.call(rule, path, line) ? ["#{path}:#{line_number}"] : []
       end
     end
   end
@@ -123,5 +131,18 @@ RSpec.describe "architecture boundaries" do
       expect(unexpected).to be_empty, "#{rule} violations not in the allowlist:\n#{unexpected.join("\n")}"
       expect(stale).to be_empty, "#{rule} allowlist entries that no longer violate (remove them):\n#{stale.join("\n")}"
     end
+  end
+
+  it "scans root-anchored references, skips gem namespaces, and allows declared adapter ports" do
+    domain_file = "app/domains/projects/catalog.rb"
+    adapter_file = "app/adapters/mattermost/api.rb"
+    flagged = ->(path, line) { line_offends.call("layer_dependencies", path, line) }
+
+    expect(flagged.call(domain_file, "::Services::Commands::Parser.new")).to be(true)
+    expect(flagged.call(domain_file, "Services::Commands::Parser.new")).to be(true)
+    expect(flagged.call(domain_file, "Kirei::Services::Result.new(result: x)")).to be(false)
+    expect(line_offends.call("private_entities", domain_file, "::Domains::Messaging::Entities::InboxEntry")).to be(true)
+    expect(flagged.call(adapter_file, "include Domains::Messaging::MembershipCheck")).to be(false)
+    expect(flagged.call(adapter_file, "Domains::Messaging::Outbox.new")).to be(true)
   end
 end

@@ -42,4 +42,12 @@ RSpec.describe Services::Sessions::PostWorkerChat do
     db[:sessions].update(role: "reviewer")
     expect(post(token: "fixture-token", generation: 1, body: "q", key: "a").errors.first&.detail).to eq("Session role is not active in this phase")
   end
+  it "rolls back the fresh callback receipt when the outbox key already holds other content" do
+    db[:outbox].insert(id: "existing", response_key: "callback:s:1:message", channel_id: "c", thread_id: "root", bot: "worker", role: "writer",
+                       body: "[writer] other", status: "pending")
+    result = post(token: "fixture-token", generation: 1, body: "question", key: "message")
+    expect(result.errors.first&.detail).to eq("Response key reused with changed content")
+    expect(db[:callbacks].count).to eq(0)
+    expect(db[:outbox].select_map(:body)).to eq(["[writer] other"])
+  end
 end

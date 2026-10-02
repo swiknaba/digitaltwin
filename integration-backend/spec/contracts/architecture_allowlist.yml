@@ -31,8 +31,6 @@ advisory_locks:
 layer_dependencies:
 - app/adapters/http/callbacks.rb
 - app/adapters/http/master.rb
-- app/adapters/mattermost/api.rb
-- app/adapters/mattermost/delivery_verifier.rb
 - app/domains/commander/approvals.rb
 - app/domains/commander/followups.rb
 - app/domains/commander/master.rb
