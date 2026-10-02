@@ -1,3 +1,6 @@
+# typed: strict
+# frozen_string_literal: true
+
 Sequel.migration do
   change do
     create_table(:jobs) do
@@ -15,7 +18,7 @@ Sequel.migration do
       String :last_error
       DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       constraint(:job_status, status: %w[pending running complete blocked uncertain])
-      constraint(:attempt_budget) { (attempts >= 0) & (attempts <= 5) }
+      constraint(:attempt_budget, Sequel.lit("attempts >= 0 AND attempts <= 5"))
       index [:status, :available_at]
     end
     create_table(:inbox) do
