@@ -1,16 +1,34 @@
 AllCops:
+  DisabledByDefault: true
   NewCops: enable
   TargetRubyVersion: 4.0
   SuggestExtensions: false
   Exclude:
     - vendor/**/*
     - tmp/**/*
-# Long test fixture/envelope literals are intentionally kept together.
+Layout:
+  Enabled: true
+
 Layout/LineLength:
   Max: 280
+
+Lint:
+  Enabled: true
+
 Lint/SuppressedException:
   Exclude:
     - spec/**/*
+
 Lint/EmptyBlock:
   Exclude:
     - spec/**/*
+Security:
+  Enabled: true
+
+Style/StringLiterals:
+  Enabled: true
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  Enabled: true
+  EnforcedStyle: double_quotes

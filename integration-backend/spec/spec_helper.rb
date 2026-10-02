@@ -9,9 +9,21 @@ require "tmpdir"
 require "open3"
 Sequel.extension(:migration)
 
+# Production boundaries intentionally use nominal Sorbet interfaces. RSpec's
+# anonymous doubles cannot include those interfaces, even when each expected
+# message is explicitly stubbed. Keep that fixture limitation scoped to
+# parameter validation in the test process; return values and every concrete
+# production value are still checked by sorbet-runtime.
+T::Configuration.call_validation_error_handler = lambda do |_signature, options|
+  value = options.fetch(:value)
+  next if options.fetch(:kind) == "Parameter" && value.is_a?(RSpec::Mocks::Double)
+
+  raise TypeError, options.fetch(:pretty_message)
+end
+
 RSpec.configure do |config|
   config.before do
-    tables = %i[callbacks sessions approvals reviews queued_messages workflows projects outbox inbox audit jobs chat_checkpoints confirmations]
+    tables = %i[master_requests session_operations workflow_requests followups conversation_bindings callbacks sessions approvals reviews queued_messages workflows projects outbox inbox audit jobs chat_checkpoints confirmations]
     Kirei::App.raw_db_connection.run("TRUNCATE #{tables.join(",")} RESTART IDENTITY CASCADE")
   end
   config.before(:suite) do

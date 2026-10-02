@@ -1,3 +1,6 @@
+# typed: strict
+# frozen_string_literal: true
+
 Sequel.migration do
   change do
     create_table(:jobs) do
@@ -13,9 +16,9 @@ Sequel.migration do
       DateTime :available_at, null: false
       DateTime :effect_started_at
       String :last_error
-      DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       constraint(:job_status, status: %w[pending running complete blocked uncertain])
-      constraint(:attempt_budget) { (attempts >= 0) & (attempts <= 5) }
+      constraint(:attempt_budget, Sequel.lit("attempts >= 0 AND attempts <= 5"))
       index [:status, :available_at]
     end
     create_table(:inbox) do
@@ -27,7 +30,7 @@ Sequel.migration do
       String :event_kind, null: false
       Bignum :post_revision, null: false
       column :verified_delivery, :jsonb, null: false
-      DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       unique [:channel_id, :post_id, :event_kind, :post_revision]
     end
     create_table(:chat_checkpoints) do
@@ -44,7 +47,7 @@ Sequel.migration do
       String :body, text: true, null: false
       String :status, null: false, default: "pending"
       String :remote_post_id
-      DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       constraint(:outbox_status, status: %w[pending delivered uncertain blocked])
     end
     create_table(:audit) do
@@ -55,7 +58,7 @@ Sequel.migration do
       String :channel_id
       String :post_id
       column :details, :jsonb, null: false
-      DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
     end
   end
 end

@@ -1,0 +1,373 @@
+require_relative "../spec_helper"
+RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)" do
+  let(:db) { Kirei::App.raw_db_connection }
+  let(:policy) { double(dispatch_allowed?: true) }
+  let(:channel) { "c" * 26 }
+  let(:master_channel) { "m" * 26 }
+  let(:bot) { "b" * 26 }
+  let(:commit) { "a" * 40 }
+  let(:review_commit) { "b" * 40 }
+  let(:roles) {
+    { "writer" => { "cli" => "codex", "provider" => "openai", "model" => "fixture-gpt", "family" => "gpt", "launch_args" => ["--model", "fixture-gpt"] },
+      "reviewer" => { "cli" => "claude", "provider" => "anthropic", "model" => "fixture-claude", "family" => "claude", "launch_args" => ["--model", "fixture-claude"] } }
+  }
+  let(:source) { double(human: delivery) }
+  let(:delivery) {
+    Domains::Mattermost::VerifiedDelivery.new(channel_id: master_channel, thread_id: "r" * 26, post_id: "p" * 26, post_revision: 1,
+                                              event_kind: "posted", root_post: true, body: "Build this project", actor: Domains::Workflows::Entities::Actor.new(user_id: "u" * 26, channel_id: master_channel, member: true, bot: false))
+  }
+  let(:workspace) { double }
+  let(:routing) { double(route: { id: 123 }) }
+  let(:evidence) { double(artifact: true, review: true, approval: true, approved_artifact: true, head: commit, current: commit, base: "f" * 40) }
+  let(:herdr) { double }
+  let(:client) { double }
+  let(:sessions) { Domains::Sessions::Lifecycle.new(db, herdr: herdr, source: source, credential_root: @credential_root, callback_url: "http://fixture.invalid", policy: policy) }
+  let(:provision) { Domains::Workflows::Provision.new(db, source: source, client: client, bot_id: bot, workspace: workspace, sessions: sessions, roles: roles, policy: policy) }
+  let(:reviews) { Domains::Reviews::Coordinator.new(db, herdr: herdr, evidence: evidence, routing: routing, policy: policy) }
+  let(:workflows) { Domains::Workflows::Coordinator.new(db, source: source, herdr: herdr, evidence: evidence, reviews: reviews, sessions: sessions, policy: policy) }
+  before do
+    @credential_root = Dir.mktmpdir
+    @inbox = db[:inbox].insert(channel_id: master_channel, thread_id: delivery.thread_id, post_id: delivery.post_id, post_revision: 1,
+                               event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
+    db[:projects].insert(id: "project", channel_id: channel, slug: "owner/repo", remote_identity: "github.com/owner/repo", workspace: "/workspace/repos/owner/repo")
+    allow(workspace).to receive(:for_workflow) { |**args| "/workspace/worktrees/#{args[:workflow_id]}" }
+    allow(client).to receive(:get) do |path|
+      path.end_with?("/users/me") ? { "id" => bot, "is_bot" => true } : { "channel_id" => channel, "user_id" => bot }
+    end
+    allow(client).to receive(:post) do |_path, payload|
+      payload.merge("id" => "t" * 26, "user_id" => bot)
+    end
+    allow(herdr).to receive(:get) do |pane|
+      s = db[:sessions][pane_id: pane]
+      { "agent_session" => s[:runtime_identity], "agent_status" => "idle", "pane_id" => pane, "name" => s[:alias], "cwd" => "/workspace/worktrees/workflow", "agent" => s[:configuration]["cli"], "interactive_ready" => true, "launch_pending" => false }
+    end
+    allow(herdr).to receive(:prompt).and_return({})
+    allow(herdr).to receive(:close).and_return({})
+  end
+  after { FileUtils.remove_entry(@credential_root) }
+
+  def workflow(phase: "spec_writing", active_sessions: true)
+    db[:workflows].insert(id: "workflow", project_id: "project", channel_id: channel, thread_id: "t" * 26, branch: "digitaltwin/workflow", worktree_path: "/workspace/worktrees/workflow",
+                          source_inbox_id: @inbox, role_configurations: Sequel.pg_jsonb(roles), phase: phase)
+    return unless active_sessions
+
+    %w[writer reviewer].each do |role|
+      db[:sessions].insert(id: role, workflow_id: "workflow", role: role, generation: 1, pane_id: role, alias: role,
+                           configuration: Sequel.pg_jsonb(roles[role]), credential_digest: Digest::SHA256.hexdigest("#{role}-token"), credential_expires_at: Time.now + 3600,
+                           runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => roles[role]["cli"], "kind" => "id", "value" => "#{role}-conversation" }))
+    end
+  end
+
+  def review_job(id)
+    store = Domains::Jobs::Store.new(db)
+    db[:jobs].exclude(kind: "review.prompt").update(available_at: Time.now + 3600)
+    job = store.claim(worker_id: "fixture")
+    reviews.call(job, store)
+    store.complete(id: job[:id], lease_token: job[:lease_token])
+    expect(db[:reviews][id: id][:dispatch_state]).to eq("delivered")
+  end
+
+  it "creates one verified project thread and isolated workflow/worktree despite duplicate starts" do
+    id = provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")
+    expect(provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")).to eq(id)
+    expect(provision.execute(id)).to eq("bound")
+    expect(provision.execute(id)).to eq("bound")
+    expect(client).to have_received(:post).once
+    expect(db[:workflows].count).to eq(1)
+    expect(db[:sessions].count).to eq(2)
+    expect(db[:sessions].where(active: true).count).to eq(0)
+    expect(db[:session_operations].count).to eq(2)
+    expect(db[:conversation_bindings][inbox_id: @inbox][:workflow_id]).to eq(db[:workflows].first[:id])
+    expect { provision.request(inbox_id: @inbox, project_id: "project", title: "Different work") }.to raise_error(ArgumentError)
+  end
+  it "retains uncertain thread creation and never resends" do
+    allow(client).to receive(:post).and_raise(IOError)
+    id = provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")
+    expect(provision.execute(id)).to eq("uncertain")
+    expect(provision.execute(id)).to eq("uncertain")
+    expect(client).to have_received(:post).once
+    expect(db[:workflows].count).to eq(0)
+  end
+  it "keeps real dispatch gated despite durable starts" do
+    id = provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")
+    gated = Domains::Workflows::Provision.new(db, source: source, client: client, bot_id: bot, workspace: workspace, sessions: sessions, roles: roles)
+    expect(gated.execute(id)).to eq("queued")
+    expect(client).not_to have_received(:post)
+  end
+  it "starts the reserved session with callback environment and binds real conversation identity" do
+    workflow(active_sessions: false)
+    id = sessions.reserve(workflow_id: "workflow", role: "writer")
+    expect(sessions.reserve(workflow_id: "workflow", role: "writer")).to eq(id)
+    allow(herdr).to receive(:workspace).and_return({ "workspace" => { "workspace_id" => "runtime-workspace" }, "root_pane" => { "pane_id" => "pane" } })
+    identity = { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "actual-conversation" }
+    allow(herdr).to receive(:start).and_return({ "agent_session" => identity, "agent_status" => "idle" })
+    op = db[:session_operations][session_id: id]
+    expect(sessions.execute(op[:id])).to eq("complete")
+    expect(sessions.execute(op[:id])).to eq("complete")
+    expect(db[:sessions][id: id][:runtime_identity]).to eq(identity)
+    expect(herdr).to have_received(:start).once.with("pane", "digitaltwin-#{id}", roles["writer"])
+    expect(herdr).to have_received(:workspace).with(hash_including(env: hash_including("DIGITALTWIN_SESSION_GENERATION" => "1")))
+    expect(File.stat(File.join(@credential_root, "#{id}.token")).mode & 0777).to eq(0600)
+    expect { sessions.reserve(workflow_id: "workflow", role: "controller") }.to raise_error(ArgumentError)
+  end
+  it "does not repeat an uncertain session start or create another conversation" do
+    workflow(active_sessions: false)
+    id = sessions.reserve(workflow_id: "workflow", role: "writer")
+    allow(herdr).to receive(:workspace).and_raise(IOError)
+    op = db[:session_operations][session_id: id]
+    expect(sessions.execute(op[:id])).to eq("uncertain")
+    expect(sessions.reserve(workflow_id: "workflow", role: "writer")).to eq(id)
+    expect(sessions.execute(op[:id])).to eq("uncertain")
+    expect(herdr).to have_received(:workspace).once
+  end
+  it "freezes review, dispatches one reviewer prompt, and releases changes to the same writer" do
+    workflow
+    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    expect(reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)).to eq(id)
+    expect(db[:workflows].first[:phase]).to eq("spec_review")
+    review_job(id)
+    db[:queued_messages].insert(workflow_id: "workflow", inbox_id: @inbox, workflow_version: 1)
+    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
+    expect(db[:workflows].first[:phase]).to eq("spec_writing")
+    expect(db[:jobs].where(kind: "review.release").count).to eq(1)
+    reviews.release("workflow")
+    expect(routing).to have_received(:route).with(inbox_id: @inbox)
+    expect(db[:queued_messages].count).to eq(0)
+    expect(db[:sessions].where(role: "writer").count).to eq(1)
+  end
+  it "requires exact approving review and human artifact approval before next phase" do
+    workflow
+    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    review_job(id)
+    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "approve")
+    expect(db[:workflows].first[:phase]).to eq("spec_human_approval")
+    expect { workflows.advance_approval(workflow_id: "workflow", gate: "spec") }.to raise_error(ArgumentError)
+    db[:approvals].insert(workflow_id: "workflow", kind: "spec", target_commit: commit, user_id: delivery.actor.user_id, channel_id: master_channel, post_id: delivery.post_id)
+    workflows.advance_approval(workflow_id: "workflow", gate: "spec")
+    expect(db[:workflows].first[:phase]).to eq("plan_writing")
+    expect(db[:jobs].where(kind: "workflow.phase_prompt").count).to eq(1)
+  end
+  it "rejects unknown Writer state, wrong callback role/generation and nondiverse reviewer" do
+    workflow
+    allow(herdr).to receive(:get).and_return({ "agent_status" => "unknown" })
+    expect { reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
+    expect { reviews.ready(token: "reviewer-token", generation: 1, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
+    expect { reviews.ready(token: "writer-token", generation: 2, kind: "spec", commit: commit) }.to raise_error(ArgumentError)
+    expect(db[:reviews].count).to eq(0)
+  end
+  it "keeps pause orthogonal to callback completion and refuses unverified revision changes on resume" do
+    workflow
+    workflows.control(inbox_id: @inbox, workflow_id: "workflow", action: "pause", expected_version: 0)
+    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    expect(db[:workflows].first.values_at(:phase, :saved_phase)).to eq(["paused", "spec_review"])
+    allow(evidence).to receive(:current).and_return("f" * 40)
+    expect { workflows.control(inbox_id: @inbox, workflow_id: "workflow", action: "resume", expected_version: 2) }.to raise_error(ArgumentError)
+    allow(evidence).to receive(:current).and_return(commit)
+    workflows.control(inbox_id: @inbox, workflow_id: "workflow", action: "resume", expected_version: 2)
+    expect(db[:workflows].first[:phase]).to eq("spec_review")
+    expect(db[:reviews][id: id][:target_commit]).to eq(commit)
+  end
+  it "finishes only delivered work and archives only after both session stops are confirmed" do
+    workflow
+    expect { workflows.control(inbox_id: @inbox, workflow_id: "workflow", action: "finish", expected_version: 0) }.to raise_error(ArgumentError)
+    db[:workflows].update(phase: "done")
+    workflows.control(inbox_id: @inbox, workflow_id: "workflow", action: "finish", expected_version: 0)
+    expect(db[:workflows].first[:archived_at]).to be_nil
+    db[:session_operations].where(kind: "stop").each { |op| expect(sessions.execute(op[:id])).to eq("complete") }
+    expect(db[:workflows].first[:archived_at]).not_to be_nil
+    expect(db[:sessions].where(active: true).count).to eq(0)
+  end
+  it "retains a durable release across callback replay and one invalid queued source" do
+    workflow
+    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    review_job(id)
+    db[:queued_messages].insert(workflow_id: "workflow", inbox_id: @inbox, workflow_version: 1)
+    allow(routing).to receive(:route).and_raise(ArgumentError, "Revoked source")
+    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
+    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
+    expect(db[:jobs].where(kind: "review.release").count).to eq(1)
+    reviews.release("workflow")
+    expect(db[:queued_messages].count).to eq(1)
+    expect(db[:audit].where(action: "release_source_rejected").count).to eq(1)
+    allow(routing).to receive(:route).and_return({ id: 123 })
+    reviews.release("workflow")
+    expect(db[:queued_messages].count).to eq(0)
+  end
+
+  it "renews an expired same conversation without new sessions and rejects replacement" do
+    workflow
+    File.write(File.join(@credential_root, "writer.token"), "writer-token")
+    db[:sessions].where(id: "writer").update(credential_expires_at: Time.now - 1)
+    sessions.renew(session_id: "writer", generation: 1)
+    expect(db[:sessions][id: "writer"][:credential_expires_at]).to be > Time.now
+    expect(db[:sessions].count).to eq(2)
+    expect(db[:jobs].where(kind: "session.renew").first[:available_at]).to be > Time.now + 3000
+    allow(herdr).to receive(:get).and_return({ "agent_session" => { "value" => "replacement" }, "agent_status" => "idle" })
+    expect { sessions.renew(session_id: "writer", generation: 1) }.to raise_error(ArgumentError)
+  end
+
+  it "authenticates callback intake without HTTP socket or Git effects and deduplicates" do
+    workflow
+    intake = Domains::Reviews::Intake.new(db)
+    2.times { expect(intake.enqueue(token: "writer-token", generation: 1, action: "artifact", kind: "spec", commit: commit)).to eq("queued") }
+    expect(db[:jobs].where(kind: "review.callback").count).to eq(1)
+    expect(db[:reviews].count).to eq(0)
+    expect(herdr).not_to have_received(:get)
+    expect { intake.enqueue(token: "reviewer-token", generation: 1, action: "artifact", kind: "spec", commit: commit) }.to raise_error(ArgumentError)
+  end
+  it "rolls back terminal transition when durable session cleanup cannot be queued" do
+    workflow(phase: "done")
+    allow(sessions).to receive(:stop).and_raise(IOError, "Database enqueue failed")
+    expect { workflows.control(inbox_id: @inbox, workflow_id: "workflow", action: "finish", expected_version: 0) }.to raise_error(IOError)
+    expect(db[:workflows].first.values_at(:phase, :version)).to eq(["done", 0])
+  end
+
+  it "rolls back credential extension when its next renewal cannot be scheduled" do
+    workflow
+    File.write(File.join(@credential_root, "writer.token"), "writer-token")
+    expiry = Time.now - 1
+    db[:sessions].where(id: "writer").update(credential_expires_at: expiry)
+    allow(sessions).to receive(:queue_renewal).and_raise(IOError)
+    expect { sessions.renew(session_id: "writer", generation: 1) }.to raise_error(IOError)
+    expect(db[:sessions][id: "writer"][:credential_expires_at]).to be < Time.now
+  end
+
+  it "releases later messages despite a deleted Mattermost source" do
+    workflow
+    second = db[:inbox].insert(channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
+    [@inbox, second].each { |id| db[:queued_messages].insert(workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
+    allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Domains::Mattermost::Client::Error.new("Mattermost HTTP 404", status: 404))
+    reviews.release("workflow")
+    expect(db[:queued_messages].select_map(:inbox_id)).to eq([@inbox])
+    expect(routing).to have_received(:route).with(inbox_id: second)
+  end
+
+  it "keeps Master busy requests pending and recovers expired requests only for the bound human" do
+    config = roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini")
+    sid = sessions.bootstrap(configuration: config)
+    identity = { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "master-conversation" }
+    db[:sessions].where(id: sid).update(active: true, pane_id: "master-pane", runtime_identity: Sequel.pg_jsonb(identity))
+    master = Domains::Controller::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
+    request = master.ingest(@inbox)
+    db[:jobs].exclude(kind: "master.dispatch").update(available_at: Time.now + 3600)
+    store = Domains::Jobs::Store.new(db)
+    job = store.claim(worker_id: "fixture")
+    allow(herdr).to receive(:get).and_return({ "agent_session" => identity, "agent_status" => "working" })
+    master.call(job, store)
+    expect(db[:jobs][id: job[:id]].values_at(:status, :attempts)).to eq(["pending", 0])
+    db[:jobs].where(id: job[:id]).update(available_at: Time.now - 1)
+    allow(herdr).to receive(:get).and_return({ "agent_session" => identity, "agent_status" => "idle" })
+    job = store.claim(worker_id: "fixture")
+    master.call(job, store)
+    store.complete(id: job[:id], lease_token: job[:lease_token])
+    expect(db[:master_requests][id: request][:state]).to eq("active")
+    token = File.read(File.join(@credential_root, "#{request}.request-token"))
+    2.times { master.reply(request_id: request, token: token, text: "Instruction queued") }
+    expect(db[:outbox].where(response_key: "master:reply:#{request}").count).to eq(1)
+    expect { master.reply(request_id: request, token: token, text: "Changed") }.to raise_error(ArgumentError)
+    db[:master_requests].where(id: request).update(state: "uncertain", expires_at: Time.now - 1)
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-master #{request}")
+    allow(source).to receive(:human).and_return(recovery)
+    master.recover(request_id: request, inbox_id: @inbox)
+    expect(db[:master_requests][id: request][:state]).to eq("complete")
+  end
+  it "preserves queue order across transient source revalidation failures" do
+    workflow
+    second = db[:inbox].insert(channel_id: master_channel, thread_id: "second", post_id: "second-post", post_revision: 1, event_kind: "posted", user_id: delivery.actor.user_id, verified_delivery: Sequel.pg_jsonb(delivery.serialize))
+    [@inbox, second].each { |id| db[:queued_messages].insert(workflow_id: "workflow", inbox_id: id, workflow_version: 0) }
+    allow(routing).to receive(:route).with(inbox_id: @inbox).and_raise(Domains::Mattermost::Client::Error.new("Mattermost HTTP 500", status: 500))
+    expect { reviews.release("workflow") }.to raise_error(Domains::Mattermost::Client::Error)
+    expect(routing).not_to have_received(:route).with(inbox_id: second)
+    expect(db[:queued_messages].count).to eq(2)
+  end
+  it "reconciles a lost thread receipt by exact bot root evidence without posting again" do
+    allow(client).to receive(:post).and_raise(IOError)
+    id = provision.request(inbox_id: @inbox, project_id: "project", title: "Project work")
+    expect(provision.execute(id)).to eq("uncertain")
+    thread_id = "t" * 26
+    root = { "id" => thread_id, "channel_id" => channel, "root_id" => "", "delete_at" => 0, "user_id" => bot, "message" => "Project work", "props" => { "digitaltwin_workflow_request" => id } }
+    allow(client).to receive(:get).with("/api/v4/posts/#{thread_id}").and_return(root)
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-start #{id} #{thread_id}")
+    allow(source).to receive(:human).and_return(recovery)
+    2.times { expect(provision.reconcile(id: id, inbox_id: @inbox, thread_id: thread_id)).to eq("queued") }
+    expect(provision.execute(id)).to eq("bound")
+    expect(client).to have_received(:post).once
+    expect(db[:workflows].count).to eq(1)
+    expect(db[:audit].where(action: "verified_thread_reconciliation").count).to eq(1)
+  end
+
+  it "reconciles a started role against its exact alias cwd CLI and conversation without restarting" do
+    workflow(active_sessions: false)
+    sid = sessions.reserve(workflow_id: "workflow", role: "writer")
+    allow(herdr).to receive(:workspace).and_return({ "workspace" => { "workspace_id" => "runtime" }, "root_pane" => { "pane_id" => "pane" } })
+    allow(herdr).to receive(:start).and_raise(IOError)
+    op = db[:session_operations][session_id: sid]
+    expect(sessions.execute(op[:id])).to eq("uncertain")
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} pane")
+    allow(source).to receive(:human).and_return(recovery)
+    live = { "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
+             "name" => "digitaltwin-#{sid}", "cwd" => "/workspace/worktrees/workflow", "agent" => "codex" }
+    allow(herdr).to receive(:get).and_return(live.merge("name" => "different"))
+    expect { sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "pane") }.to raise_error(ArgumentError)
+    allow(herdr).to receive(:get).and_return(live)
+    2.times { expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "pane")).to eq("complete") }
+    expect(sessions.execute(op[:id])).to eq("complete")
+    expect(herdr).to have_received(:start).once
+    expect(db[:sessions][id: sid][:runtime_identity]).to eq(live["agent_session"])
+  end
+
+  it "reconciles an uncertain stop only from authoritative absence and archives after both stops" do
+    workflow(phase: "done")
+    workflows.control(inbox_id: @inbox, workflow_id: "workflow", action: "finish", expected_version: 0)
+    op = db[:session_operations][session_id: "writer", kind: "stop"]
+    allow(herdr).to receive(:close).and_raise(IOError)
+    expect(sessions.execute(op[:id])).to eq("uncertain")
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} writer")
+    allow(source).to receive(:human).and_return(recovery)
+    allow(herdr).to receive(:panes).and_return([{ "pane_id" => "writer" }])
+    expect { sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "writer") }.to raise_error(ArgumentError)
+    allow(herdr).to receive(:panes).and_return([])
+    expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "writer")).to eq("complete")
+    expect(db[:sessions][id: "writer"][:active]).to eq(false)
+    expect(db[:workflows].first[:archived_at]).to be_nil
+    allow(herdr).to receive(:close).and_return({})
+    reviewer = db[:session_operations][session_id: "reviewer", kind: "stop"]
+    expect(sessions.execute(reviewer[:id])).to eq("complete")
+    expect(db[:workflows].first[:archived_at]).not_to be_nil
+  end
+  it "reconciles uncertain reviewer prompt from a verified exact review callback without resending" do
+    workflow
+    id = reviews.ready(token: "writer-token", generation: 1, kind: "spec", commit: commit)
+    db[:reviews].where(id: id).update(dispatch_state: "uncertain")
+    db[:jobs].where(dispatch_key: "review:#{id}").update(status: "uncertain", effect_started_at: Time.now - 60)
+    reviews.finish(token: "reviewer-token", generation: 1, review_commit: review_commit, verdict: "changes_requested")
+    expect(db[:reviews][id: id][:dispatch_state]).to eq("delivered")
+    expect(db[:workflows].first[:phase]).to eq("spec_writing")
+    expect(db[:audit].where(action: "verified_review_prompt_reconciliation").count).to eq(1)
+    expect(db[:jobs][dispatch_key: "review:#{id}"][:status]).to eq("complete")
+    expect(herdr).not_to have_received(:prompt)
+  end
+
+  it "recovers Controller startup only for the first associated human request and exact neutral conversation" do
+    config = roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini")
+    master = Domains::Controller::Master.new(db, sessions: sessions, source: source, herdr: herdr, configuration: config, credential_root: @credential_root, policy: policy)
+    master.ingest(@inbox)
+    controller = db[:sessions][role: "controller"]
+    op = db[:session_operations][session_id: controller[:id]]
+    db[:sessions].where(id: controller[:id]).update(pane_id: "controller-pane")
+    db[:session_operations].where(id: op[:id]).update(state: "uncertain")
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} controller-pane")
+    allow(source).to receive(:human).and_return(recovery)
+    live = { "agent_session" => { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
+             "name" => controller[:alias], "cwd" => "/home/runtime", "agent" => "gemini" }
+    allow(herdr).to receive(:get).and_return(live)
+    expect(sessions.reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "controller-pane")).to eq("complete")
+    expect(db[:sessions][id: controller[:id]][:active]).to eq(true)
+    expect(db[:workflows].count).to eq(0)
+  end
+end

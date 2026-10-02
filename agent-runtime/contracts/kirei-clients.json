@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "source_revision": "9bbac0b2b8bf286410375eb2d3ac33ec0a312eb8",
+  "validation": "isolated_fixtures_passed_live_dispatch_gated",
+  "files": {
+    "digitaltwin": {
+      "source": "integration-backend/bin/digitaltwin",
+      "sha256": "6062994ea169e8d9f2137063e3b61113baa22709766efe381dc2587d5ae55a95"
+    },
+    "digitaltwin-mcp": {
+      "source": "integration-backend/bin/mcp",
+      "sha256": "299ae88f157590937b0e524b5e7fd559ca802be20f2912a6438cd1c1417eb87d"
+    },
+    "mcp.rb": {
+      "source": "integration-backend/app/domains/controller/mcp.rb",
+      "sha256": "0249584c095ad0c394471b95fdd35aaad53d242f5841ca36fb8bebe24ac7a77d"
+    },
+    "http_tools.rb": {
+      "source": "integration-backend/app/domains/controller/http_tools.rb",
+      "sha256": "db8d4fcdd7e3f7556df6bcc633a3f08725f1c0ed3a9c7c838bfe10d848ed87f1"
+    }
+  }
+}

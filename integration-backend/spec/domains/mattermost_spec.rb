@@ -23,6 +23,7 @@ RSpec.describe "Source-derived Mattermost adapter contracts (offline)" do
       data = responses; c.define_singleton_method(:get) { |path|
         Marshal.load(Marshal.dump(data.fetch(path)))
       }
+      c.extend(Domains::Mattermost::VerifiedDelivery::Transport)
     }
   }
   let(:resolver) { Domains::Mattermost::ActorResolver.new(client, local_bot_ids: ["b" * 26]) }

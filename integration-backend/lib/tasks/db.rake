@@ -1,11 +1,14 @@
-# typed: false
+# typed: strict
 
 # run on the database server once:
 #
 #   CREATE DATABASE digitaltwin_${environment};
 
-require 'zeitwerk/inflector'
+require "zeitwerk/inflector"
+require "sorbet-runtime"
 require_relative "../../app"
+
+extend T::Sig
 
 namespace :db do
   # RACK_ENV=development bundle exec rake db:create
@@ -137,7 +140,7 @@ namespace :db do
 
     # Define the content of the migration file
     content = <<~MIGRATION
-      # typed: false
+      # typed: strict
       # frozen_string_literal: true
 
       Sequel.migration do
@@ -191,7 +194,7 @@ namespace :db do
       namespace_parts.pop
       namespace_parts.map! { |part| APP_LOADER.inflector.camelize(part, full_path) }
 
-      constant_name = "#{namespace_parts.join('::')}::#{klass_constant_name}"
+      constant_name = "#{namespace_parts.join("::")}::#{klass_constant_name}"
 
       model_klass = Object.const_get(constant_name)
       next unless model_klass.respond_to?(:table_name)
@@ -216,10 +219,12 @@ namespace :db do
   end
 end
 
+sig { params(db: Sequel::Database).returns(Integer) }
 def integer_migration_version(db)
   db.table_exists?(:schema_info) ? db[:schema_info].get(:version).to_i : 0
 end
 
+sig { params(app: Module).void }
 def reset_memoized_class_level_instance_vars(app)
   %i[
     @default_db_name
@@ -230,6 +235,7 @@ def reset_memoized_class_level_instance_vars(app)
   end
 end
 
+sig { params(table_name: String, schema: T::Array[T::Array[Object]]).returns(String) }
 def format_schema_comments(table_name, schema)
   lines = ["# == Schema Info", "#", "# Table name: #{table_name}", "#"]
   schema.each do |column|
@@ -237,8 +243,8 @@ def format_schema_comments(table_name, schema)
     type = "#{info[:db_type]}(#{info[:max_length]})" if info[:max_length]
     type ||= info[:db_type]
     type = "#{type}, " if type.size >= 20 # e.g. "timestamp without time zone" exceeds 20 characters
-    null = info[:allow_null] ? 'null' : 'not null'
-    primary_key = info[:primary_key] ? ', primary key' : ''
+    null = info[:allow_null] ? "null" : "not null"
+    primary_key = info[:primary_key] ? ", primary key" : ""
     lines << "#  #{name.to_s.ljust(20)}:#{type.to_s.ljust(20)}#{null}#{primary_key}"
   end
   lines.join("\n") + "\n#"

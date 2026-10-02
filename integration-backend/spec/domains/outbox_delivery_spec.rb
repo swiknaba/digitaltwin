@@ -16,6 +16,7 @@ RSpec.describe "Mattermost outbox delivery (synthetic transport)" do
       fixture.instance_variable_get(:@calls) << [path, body]
       body.merge("id" => "p" * 26, "user_id" => fixture.instance_variable_get(:@bot))
     end
+    @client.extend(Domains::Mattermost::Delivery::Transport)
   end
   def run_delivery
     handler = Domains::Mattermost::Delivery.new(db, clients: { "worker" => @client }, bot_ids: { "worker" => @bot })

@@ -1,4 +1,6 @@
 #!/usr/bin/env ruby
+# typed: strict
+
 require_relative "../app"
 Startup.validate!
 exit if ENV["BOOT_CHECK_ONLY"] == "1"

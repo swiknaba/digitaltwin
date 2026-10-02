@@ -18,7 +18,7 @@ The integrator coordinates this file; component workers propose changes before c
 | Independent fleets | Verified Mattermost/Git handoffs only; versioned peer envelope; no shared runtime/private APIs | Kirei; `docs/interfaces/peer-handoff.md` in Task 10 |
 
 Kirei's shared `Actor`, `RoleConfig`, `ArtifactRef`, `SessionRef`, and `Outcome` remain the plan's typed entities.
-Keep migration order `001_jobs` through `006_confirmations`; the Kirei owner coordinates all additions.
+Keep existing migration order `001_jobs` through `006_confirmations`; append `007_master_routing` for contextual bindings/follow-ups and `008_workflow_lifecycle` for durable lifecycle/request receipts. The Kirei owner coordinates all additions.
 Writer/Reviewer require different providers and model families, verified threads, and exact revision gates.
 Uncertain external results remain blocked for reconciliation unless retry idempotency is proven.
 
@@ -80,3 +80,32 @@ The integrator owns cross-service fixtures in `tests/`; Kirei owns its unit/doma
 
 Root `tests/` runs automated integration checks. It does not grant authorization for live production or provider/device setup.
 Successful local checks cannot substitute for the plan's live and operator acceptance rows.
+
+## Master routing wire contract
+
+The standalone `digitaltwin-mcp` stdio bridge reads the current request token from a runtime
+file and calls private `/internal/master/{manifest,tools}` HTTP endpoints. Only a live Controller
+request capability may invoke tools. Tool arguments contain no actor, role configuration or
+session creation authority. Kirei re-fetches the source human and destination memberships.
+`send_prompt` cites 1–10 recent accessible inbox IDs grounded in the target thread, source task
+or recorded binding. Conflicts ask for clarification. `workflow_control` queues the exact
+source/workflow/version for worker validation; approval still requires exact human Git binding.
+
+`digitaltwin artifact-ready` and `review-ready` POST session-capability generation/commit callbacks.
+HTTP only authenticates and queues `review.callback`; the socket/worktree-owning worker checks
+actual settled state and Git evidence. Review transitions enqueue `review.release` transactionally.
+Deleted/revoked sources remain audited for reconciliation; transient server failures retain queue order for retry. Session renewal verifies the same conversation and file digest;
+terminal transitions durably queue both role stops before archival.
+
+Operator acceptance needs trusted `ROLE_CONFIG_FILE` profiles (`controller`, `writer`, `reviewer`:
+cli/provider/model/family/launch_args), current bot/token file references, verified project mapping
+and repository origin. Supply these through a private operator overlay to web, listener and worker
+as needed; mount no provider state into Git/images. Only the worker mounts `/workspace` and
+`/run/herdr`; web has neither. Runtime packages backend-owned clients from a checksum manifest.
+No environment variable enables `dispatch_allowed?`; live evidence and reviewed policy code are
+still required. Gemini remains the specified Master CLI; its actual launch/MCP profile is unproved.
+
+Bounded recovery commands and the minimum operator setup/evidence are recorded in
+[Master routing setup](master-routing-setup.md). Human follow-up outcome confirmation is explicitly
+audited and never treated as an automatic socket acknowledgment. Thread/session receipt recovery
+requires authoritative remote evidence and does not repeat an uncertain external action.

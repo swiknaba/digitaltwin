@@ -65,3 +65,16 @@ block dependent Tasks6–10. No Phase1 voice or later LiteLLM/review framework a
 
 The integrator should add root changelog/interface entries for these changes;
 worker ownership prevents concurrent `.agents/changelog.md` or shared docs edits.
+
+## Master routing client update (2026-10-02)
+
+Integrator packages four backend-owned stdlib clients from commit
+`68823ec0288270453ec502b5772c4d776d9d227f` using `contracts/kirei-clients.json`.
+The manifest supersedes the earlier single-callback handoff hashes for this draft.
+Actual local with-callback image ID:
+`sha256:fcb943cde87ee17c794833272428caeed80a502a7e65fe31b7015e615ae49c4f`.
+All four Docker SHA checks passed. Installed stdio MCP and artifact callback HTTP fixtures
+passed with network disabled. Actual Herdr0.9.3 accepted adapter workspace.create/env and
+pane.close, with no CLI started. This is local fixture/wire evidence, not actual Gemini MCP,
+role lifecycle/settled behavior, authenticated chat or a published OCI release.
+No runtime folder rename was applied; none existed on fetched main or the primary checkout.

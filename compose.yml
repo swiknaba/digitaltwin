@@ -164,6 +164,10 @@ services:
       target: "/run/herdr"
       type: volume
       volume: {}
+    - source: runtime-workspace
+      target: "/workspace"
+      type: volume
+      volume: {}
   local-volume-init:
     command:
     - "/bin/sh"

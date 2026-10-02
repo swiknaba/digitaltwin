@@ -405,6 +405,36 @@ These sources validate names and compatibility considerations; Task 1 still sele
 - [ ] Check that all three gates use the same rules and bot/prompt instructions cannot bypass the lock.
 - [ ] After review, commit: `feat: coordinate immutable artifact review rounds`.
 
+## Master-first routing increment (2026-10-02)
+
+1. Add durable contextual bindings and follow-up delivery state after migration 006.
+2. Route ordinary verified human Master-chat messages through a configured destination.
+   Reuse existing workflow/session identity; clarify conflicts and parallel-session ambiguity.
+3. Queue review/pause instructions with source-bound acknowledgment. Serialize sends and
+   persist an uncertain state before any retry could repeat a socket effect.
+4. Implement the captured Herdr 0.9.3 `agent.get`/`agent.prompt` interface with strict identity
+   and response checks. Test Unix-socket fixtures and real PostgreSQL concurrency.
+5. Bind Master-chat approval to exact workflow/gate/revision plus destination membership.
+6. Keep provider dispatch disabled until authenticated chat, selected Master MCP and real
+   CLI prompt/settled evidence pass.
+7. Add migration 008 for workflow requests, role lifecycle receipts and request-bound Master
+   capabilities. Provision verified bot roots, isolated worktrees and trusted role profiles.
+8. Queue authenticated artifact/review callbacks for the worker. Freeze exact targets, require
+   append-only review evidence and diverse roles, and durably release corrective follow-ups.
+9. Implement typed stdio MCP over private HTTP: project/workflow/context reads, workflow
+   starts, evidence-grounded follow-ups and version-bound controls. Master reply receipts
+   complete one request before the next dispatch. Expired/uncertain requests require an exact
+   same-human recovery command; no replay of uncertain external effects.
+10. Renew credentials against the same authoritative runtime conversation, source and token
+    digest. Commit renewal successors and terminal cleanup jobs atomically.
+11. Package checksum-pinned standalone callbacks/MCP; give only the worker Git/socket access.
+    Run isolated PostgreSQL, actual Git, Unix-socket and stdio fixtures plus independent review.
+
+Implemented in the routing draft; live dispatch remains closed. Still outside this bounded
+increment: new project enrollment through MCP, provider login,
+verified PR delivery/done transition, operational Git/deployment/destructive tools and live
+acceptance. These remain Task 6–10 work, not completed features.
+
 ## Task 9: Master and Local MCP Bridge
 
 **Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/controller/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/controller_spec.rb`; update `docs/phase-1-voice-controller.md` if thread creation is deferred.
@@ -418,7 +448,7 @@ Harness-native subagents are allowed where supported and stay subordinate to the
 Emergency operations use available typed tools. Keep existing destructive/irreversible confirmations; add no emergency-specific approval gate.
 `start_workflow` requires a verified thread in the selected project channel.
 If optional creation is enabled, Kirei first creates/reconciles the thread and records its association before calling the same workflow-start service.
-Keep source actor/context verified; preserve normal coding gates. The Master does not infer a target from unrelated channel messages.
+Keep source actor/context verified; preserve normal coding gates. The Master resolves relevant verified conversation/task context; unrelated channel messages are not target evidence.
 
 - [ ] Write `selected_master_config_reaches_sessions_start`: assert controller role, `workflow_id: nil`, `repo: nil`, and unchanged CLI/provider/model/family. Assert another Task 1-validated CLI/provider reaches the same interface unchanged.
 - [ ] Write `channel_context_survives_tool_call`, `restart_creates_fresh_session_with_same_config`, `secret_values_never_returned`. Assert restart uses the same config in neutral Runtime home, reconstructs PostgreSQL status, and preserves sender/context checks.
@@ -554,3 +584,17 @@ Later provider/MCP integration remains [issue #4](https://github.com/swiknaba/di
 3. **Mattermost contract:** Validate official Team Edition bot APIs, native threads, authenticated events, and REST reconnect recovery. Validate own mobile builds and self-hosted push. Validate Worker callbacks through Kirei's outbox. Missing secure sender/thread checks block human approval.
 4. **Infrastructure:** Production, image publication, Headscale, backup bucket, and restore test are separately authorized work in the infrastructure context. This plan provides contracts only.
 5. **Review exclusion:** Kirei prevents prompt dispatch, checks Git, and monitors Herdr. The accepted shared Runtime domain does not protect against intentional direct terminal/filesystem access. Such access blocks/invalidates review and does not count as approved work.
+
+
+### Bounded routing recovery follow-through
+
+- Preserve follow-up bindings during reserved-session startup, uncertain start reconciliation and
+  same-conversation renewal. No replacement generation is selected implicitly.
+- Include correlation/operation IDs in queue receipts. Persist uncertain state and recovery notice
+  atomically; human follow-up confirmation never triggers resend.
+- Reconcile lost thread/start/stop receipts only from exact human binding and authoritative root,
+  role conversation or global pane absence. Complete receipts and dependent jobs atomically.
+- Accept an uncertain review prompt's valid exact review callback only after its effect lease expires
+  and the existing identity/frozen-target/clean append-only Git checks pass.
+- Keep hosted CI absence, expanded independent review scope, and minimum manual setup/evidence
+  explicit in `docs/interfaces/master-routing-setup.md`.
