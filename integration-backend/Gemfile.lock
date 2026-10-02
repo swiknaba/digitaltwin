@@ -1,3 +1,19 @@
+GIT
+  remote: https://github.com/swiknaba/kirei.git
+  revision: ce9a5ce51b090d532f31d7b6d4564eeb1a774590
+  branch: main
+  specs:
+    kirei (0.10.0)
+      logger (~> 1.5)
+      oj (~> 3.0)
+      pg (~> 1.0)
+      rack (~> 3.0)
+      sequel (~> 5.0)
+      sequel_pg (~> 1.0)
+      sorbet-runtime (~> 0.5)
+      tzinfo-data (~> 1.0)
+      zeitwerk (~> 2.5)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -67,16 +83,6 @@ GEM
     io-stream (0.14.0)
       openssl (>= 3.3)
     json (3.0.2)
-    kirei (0.10.0)
-      logger (~> 1.5)
-      oj (~> 3.0)
-      pg (~> 1.0)
-      rack (~> 3.0)
-      sequel (~> 5.0)
-      sequel_pg (~> 1.0)
-      sorbet-runtime (~> 0.5)
-      tzinfo-data (~> 1.0)
-      zeitwerk (~> 2.5)
     language_server-protocol (3.17.0.6)
     lint_roller (1.1.0)
     localhost (1.8.0)
@@ -222,7 +228,7 @@ DEPENDENCIES
   async-http (>= 0.105, < 0.106)
   async-websocket (>= 0.30, < 0.31)
   falcon (>= 0.57, < 0.58)
-  kirei (>= 0.10, < 0.11)
+  kirei!
   rack-test (< 3.0)
   rake (< 14.0)
   rspec (< 4.0)
@@ -257,7 +263,7 @@ CHECKSUMS
   io-event (1.22.1) sha256=0dd054cefe4a29f1b8286604f332c14f3208d75f54902961e91e94d45e5e1600
   io-stream (0.14.0) sha256=07d9b13ea2066ccbbc761fff8d69ad5a31e47561d31e02cc271f3ed9c1a8f1cd
   json (3.0.2) sha256=8e6d7e7b11384c21230430cef90b71f14849a34a1f4452796670f7c981bd19df
-  kirei (0.10.0) sha256=eefd91f145d49e0a77b5d12ab0ca482c439dfc23fd5a15957cdba1a3f6c93321
+  kirei (0.10.0)
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   localhost (1.8.0) sha256=df7ea825b4f64949c588c17efac86bc47ddc4460d723778abe933b71759b2701

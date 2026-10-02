@@ -6,7 +6,7 @@
 # Table name: audit
 #
 #  id                  :integer             not null, primary key
-#  event_key           :text                not null, unique
+#  event_key           :text                not null
 #  action              :text                not null
 #  user_id             :text                null
 #  channel_id          :text                null

@@ -70,6 +70,16 @@ class Kirei::App < ::Kirei::Routing::Base
     # pkg:gem/kirei#lib/kirei/app.rb:33
     sig { returns(::String) }
     def version; end
+
+    private
+
+    # pkg:gem/kirei#lib/kirei/app.rb:84
+    sig { params(database: ::Sequel::Database).returns(::Sequel::Database) }
+    def apply_db_extensions(database); end
+
+    # pkg:gem/kirei#lib/kirei/app.rb:96
+    sig { returns(T::Hash[::Symbol, T.any(::Float, ::Integer, T::Array[::String])]) }
+    def db_connect_options; end
   end
 end
 
@@ -84,7 +94,12 @@ class Kirei::Config < ::T::Struct
   prop :sensitive_keys, T::Array[::Regexp], default: T.unsafe(nil)
   prop :app_name, ::String, default: T.unsafe(nil)
   prop :db_extensions, T::Array[::Symbol], default: T.unsafe(nil)
+  prop :db_global_extensions, T::Array[::Symbol], default: T.unsafe(nil)
   prop :db_url, T.nilable(::String)
+  prop :db_max_connections, T.nilable(::Integer)
+  prop :db_pool_timeout, T.nilable(::Float)
+  prop :db_connect_timeout, T.nilable(::Integer)
+  prop :db_connect_sqls, T::Array[::String], default: T.unsafe(nil)
   prop :db_strict_type_resolving, T.nilable(T::Boolean), default: T.unsafe(nil)
   prop :allowed_origins, T::Array[::String], default: T.unsafe(nil)
 end

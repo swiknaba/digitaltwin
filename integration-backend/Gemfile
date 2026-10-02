@@ -2,7 +2,7 @@ source "https://rubygems.org"
 
 ruby file: ".ruby-version"
 
-gem "kirei", ">= 0.10", "< 0.11"
+gem "kirei", git: "https://github.com/swiknaba/kirei.git", branch: "main"
 gem "rake", "< 14.0"
 gem "falcon", ">= 0.57", "< 0.58"
 gem "async-http", ">= 0.105", "< 0.106"

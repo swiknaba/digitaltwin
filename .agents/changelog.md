@@ -152,3 +152,7 @@
 - Rename the `orchestration` domain to `commander` (`Domains::Commander`).
 - Rename the `forge` domain to `git_repos` (`Domains::GitRepos`) and the `Projects::Enroll` `forge:` argument to `git_repos:`.
 - Add the layered DDD refactor plan `docs/superpowers/plans/2026-10-02-backend-ddd-refactor.md`, and update backend `AGENTS.md` layout rules to match it.
+
+## 2026-10-02
+
+- Removed the backend `config/initializers/database.rb` override of `Kirei::App.raw_db_connection`; `app.rb` now sets `db_global_extensions` (`fiber_concurrency`), pool bounds from `DB_POOL_SIZE`/`DB_POOL_TIMEOUT`, and session timeouts through Kirei 0.11 config. The Gemfile now sources Kirei from its git `main` branch; run `bundle install` and `bundle exec tapioca gem kirei` after swiknaba/kirei#41 merges.
