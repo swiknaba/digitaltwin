@@ -151,5 +151,40 @@
     "reviewed_head": "79343546b213e3691ecfadb87915f82880df77d5",
     "result": "no material findings",
     "source": "parent-relayed review"
+  },
+  "hosted_ci_history": [
+    {
+      "run": 37137915397,
+      "head": "592b03734d607b90bd4fcb9a76a8a113d32ebba5",
+      "result": "success",
+      "root_checks": 25,
+      "backend_examples": 253,
+      "tested_merge_revision": "716502e1a04d467ad0169197517ee06fbadf886f"
+    },
+    {
+      "run": 37138746258,
+      "head": "c4c772e961a4c0e82f35e6c2c8bb58e64deca391",
+      "result": "failure",
+      "failure": "chat reply timed out; backend checks passed"
+    },
+    {
+      "run": 37139546845,
+      "head": "de058d92766ecbc659c50abc1386122065e912c1",
+      "result": "failure",
+      "diagnosed_failure": "fixture replay reused a session capability pointer rotated by the next real queued dispatch"
+    }
+  ],
+  "fixture_replay_correction": "Retain the actual current request capability in a mode-0600 NamedTemporaryFile for MCP, reply and identical replay; delete on exit. No credentials are manufactured, persisted outside owned volumes or logged.",
+  "fixture_replay_correction_local_validation": {
+    "command": "scripts/test-full-stack",
+    "base_head": "de058d92766ecbc659c50abc1386122065e912c1",
+    "working_tree_changes": "request capability snapshot in Pi fixture plus documentation evidence",
+    "root_checks": 25,
+    "seconds": 134.964,
+    "backend_examples": 253,
+    "backend_failures": 0,
+    "rubocop": "passed",
+    "whole_project_sorbet": "passed",
+    "own_resources_removed": true
   }
 }

@@ -138,5 +138,5 @@ interactive conversation without repeating the start. Independent backend review
 `3ff136a67e047f80aa95c6561369c029eef4ce7d` in 127.415 seconds, including all 253
 backend examples, RuboCop and whole-project Sorbet. Both disposable stacks were
 removed. Independent review by backend worker `01a0fb73` reported no material findings.
-The branch is published following direct user approval; remote CI is pending. `evidence/full-stack-local-proposal.json` records
+The branch is published following direct user approval. Hosted CI passed once, then exposed a fixture replay race: completing a reply permits the next real queued dispatch to rotate the session token pointer. The fixture retains the actual current request capability in a temporary mode-0600 file for MCP/reply/replay and deletes it on exit. Final hosted validation is pending. `evidence/full-stack-local-proposal.json` records
 exact revisions, image IDs and the actual/fake boundary.

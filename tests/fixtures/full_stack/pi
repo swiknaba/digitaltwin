@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -50,34 +51,40 @@ for line in sys.stdin:
     request = re.search(r"Verified human request ([0-9a-f-]+) from channel", line)
     if request:
         request_id = request.group(1)
-        frames = "\n".join(json.dumps(row) for row in [
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize"},
-            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "list_projects", "arguments": {"request_id": request_id}}},
-        ]) + "\n"
-        # Dispatch marks Active after socket submission. Wait on actual authorization,
-        # without inventing a capability or rewriting backend request state.
-        deadline = time.monotonic() + 20
-        while True:
-            mcp = subprocess.run(["digitaltwin-mcp"], input=frames, capture_output=True, text=True, timeout=10)
-            rows = [json.loads(row) for row in mcp.stdout.splitlines()]
-            valid = (len(rows) == 3 and [row.get("id") for row in rows] == [1, 2, 3]
-                     and rows[0].get("result", {}).get("serverInfo", {}).get("name") == "digitaltwin"
-                     and any(tool.get("name") == "list_projects" for tool in rows[1].get("result", {}).get("tools", []))
-                     and "result" in rows[2] and not rows[2]["result"].get("isError", False)
-                     and rows[2]["result"].get("content") == [{"type": "text", "text": "[]"}])
-            if valid:
-                break
-            if time.monotonic() > deadline:
-                raise RuntimeError("Fixture MCP authorization did not become active")
-            time.sleep(0.1)
-        reply = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10)
-        if reply.returncode:
-            raise RuntimeError("Fixture reply rejected")
-        # Replaying the identical callback must return the existing receipt.
-        replay = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10)
-        if replay.returncode:
-            raise RuntimeError("Fixture reply replay rejected")
+        # Completing a reply permits the next request to rotate the session
+        # pointer. Retain the actual current capability for an identical replay.
+        with tempfile.NamedTemporaryFile(dir=Path.home(), prefix="fixture-request-") as capability:
+            capability.write(Path(os.environ["DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE"]).read_bytes())
+            capability.flush()
+            capability_env = {**os.environ, "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE": capability.name}
+            frames = "\n".join(json.dumps(row) for row in [
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+                {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "list_projects", "arguments": {"request_id": request_id}}},
+            ]) + "\n"
+            # Dispatch marks Active after socket submission. Wait on actual authorization,
+            # without inventing a capability or rewriting backend request state.
+            deadline = time.monotonic() + 20
+            while True:
+                mcp = subprocess.run(["digitaltwin-mcp"], input=frames, capture_output=True, text=True, timeout=10, env=capability_env)
+                rows = [json.loads(row) for row in mcp.stdout.splitlines()]
+                valid = (len(rows) == 3 and [row.get("id") for row in rows] == [1, 2, 3]
+                         and rows[0].get("result", {}).get("serverInfo", {}).get("name") == "digitaltwin"
+                         and any(tool.get("name") == "list_projects" for tool in rows[1].get("result", {}).get("tools", []))
+                         and "result" in rows[2] and not rows[2]["result"].get("isError", False)
+                         and rows[2]["result"].get("content") == [{"type": "text", "text": "[]"}])
+                if valid:
+                    break
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Fixture MCP authorization did not become active")
+                time.sleep(0.1)
+            reply = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10, env=capability_env)
+            if reply.returncode:
+                raise RuntimeError("Fixture reply rejected")
+            # Replaying the identical callback must return the existing receipt.
+            replay = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10, env=capability_env)
+            if replay.returncode:
+                raise RuntimeError("Fixture reply replay rejected")
     else:
         request_id = None
         print("DIRECT_REPLY=" + nonce, flush=True)
