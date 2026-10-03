@@ -51,9 +51,10 @@ module Domains
       sig { params(inbox_id: String).returns(T.nilable(Dto::MasterRequestView)) }
       def for_inbox(inbox_id:) = first(Entities::MasterRequest.query.where(inbox_id: inbox_id))
 
-      # The session's request with the lowest inbox id: its first human source.
-      sig { params(session_id: String).returns(T.nilable(Dto::MasterRequestView)) }
-      def first_for_session(session_id:) = first(Entities::MasterRequest.query.where(session_id: session_id).order(:inbox_id))
+      # Inbox ids of the session's requests, unordered. Ids are random strings,
+      # so callers order chronologically through Messaging::Inbox#earliest.
+      sig { params(session_id: String).returns(T::Array[String]) }
+      def inbox_ids_for_session(session_id:) = Entities::MasterRequest.query.where(session_id: session_id).select_map(:inbox_id).grep(String)
 
       sig { params(session_id: String, state: State).returns(T::Array[Dto::MasterRequestView]) }
       def in_state(session_id:, state:) = all(Entities::MasterRequest.query.where(session_id: session_id, state: state.serialize))

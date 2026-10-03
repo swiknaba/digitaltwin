@@ -484,6 +484,25 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(db[:workflows].count).to eq(0)
   end
 
+  it "binds Controller recovery to the earliest human request even when a later request has a smaller inbox id" do
+    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini"))
+    master = master_use_cases(config)
+    master.ingest(@inbox)
+    controller = db[:sessions][role: "controller"]
+    op = db[:session_operations][session_id: controller[:id]]
+    # Random string ids carry no order: the earlier request has the larger id and a different human.
+    earlier = db[:inbox].insert(id: "inbox_9", channel_id: master_channel, thread_id: delivery.thread_id, post_id: "q" * 26, post_revision: 1, event_kind: "posted",
+                                user_id: "v" * 26, verified_delivery: Sequel.pg_jsonb(delivery.serialize), created_at: Time.now - 3600)
+    db[:master_requests].insert(id: "earlier_request", inbox_id: earlier, session_id: controller[:id], credential_digest: "earlier-digest", expires_at: Time.now + 60, state: "complete")
+    db[:sessions].where(id: controller[:id]).update(pane_id: "controller-pane")
+    db[:session_operations].where(id: op[:id]).update(state: "uncertain")
+    recovery = delivery.dup
+    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} controller-pane")
+    allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
+    expect { reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "controller-pane") }
+      .to raise_error(Platform::Errors::ResultFailed, "Exact original-human session recovery required")
+  end
+
   describe "worker path (Ruling 12 behavior fixes)" do
     let(:kinds) { Platform::Jobs::Dto::JobKind }
     let(:thread_control) do

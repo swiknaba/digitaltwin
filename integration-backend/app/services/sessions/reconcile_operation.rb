@@ -179,12 +179,12 @@ module Services
       # The workflow's verified source, or the Controller's first human request.
       sig { params(session: Sessions::Dto::SessionView, workflow: T.nilable(Workflow)).returns(T.nilable(Messaging::Dto::InboxRecord)) }
       private def original_source(session, workflow)
-        original_id = if workflow
-                        workflow.source_inbox_id
-                      else
-                        @master_requests.first_for_session(session_id: session.id)&.inbox_id
-                      end
-        original_id && @inbox.find(id: original_id)
+        if workflow
+          source_id = workflow.source_inbox_id
+          source_id && @inbox.find(id: source_id)
+        else
+          @inbox.earliest(ids: @master_requests.inbox_ids_for_session(session_id: session.id))
+        end
       end
 
       sig { params(detail: String, code: Code).returns(Evidence) }

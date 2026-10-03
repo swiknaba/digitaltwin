@@ -13,6 +13,18 @@ module Domains
         entry && record(entry)
       end
 
+      # The oldest of `ids` by created_at, with the id as tie-breaker. Ids are
+      # random strings and carry no chronology.
+      sig { params(ids: T::Array[String]).returns(T.nilable(Dto::InboxRecord)) }
+      def earliest(ids:)
+        return nil if ids.empty?
+
+        id = Entities::InboxEntry.query.where(id: ids).order(:created_at, :id).limit(1).select_map(:id).grep(String).first
+        return nil unless id
+
+        find(id: id)
+      end
+
       # Newest first. A malformed row counts toward the limit but is skipped,
       # so one corrupt row does not hide the other recent context.
       sig { params(since: Time, limit: Integer).returns(T::Array[Dto::InboxRecord]) }
