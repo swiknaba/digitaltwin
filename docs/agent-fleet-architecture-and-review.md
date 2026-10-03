@@ -77,13 +77,13 @@ That file can start the required local dependencies with the application images.
 
 The application repository pins runtime tools and packages to exact versions in checked-in manifests.
 The Kirei application pins Ruby 4.0.7.
-The infrastructure layer selects production application images by OCI digest.
+The infrastructure layer selects production application images by explicit supported release tag; a major/minor tag is sufficient when the upstream publishes one.
 The operator upgrades those versions through reviewed manifest changes and rebuilt images.
 
 The infrastructure repository or hosting platform owns production orchestration.
 This includes production Compose files, networks, volumes, routing, restart policies, and backup schedules.
 
-Digitaltwin uses the official, unmodified Mattermost Team Edition server artifact, pinned by version and OCI digest.
+Digitaltwin uses the official, unmodified Mattermost Team Edition server artifact, selected by explicit release version.
 Kirei integrates externally through bot accounts, REST APIs, and authenticated WebSocket events.
 Mattermost supplies channels, real threads, PostgreSQL storage, and the browser interface.
 Keep server migrations, storage, configuration, and upgrades separate from Kirei.

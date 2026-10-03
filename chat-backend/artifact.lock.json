@@ -1,8 +1,6 @@
 {
   "version": "11.11.1",
   "image": "mattermost/mattermost-team-edition:11.11.1",
-  "index_digest": "sha256:6ad5912b45875ef2fafc41886b5a70a3ec1b6c17ec706e0492566e8a2fd8aa85",
-  "linux_amd64_digest": "sha256:14a2de6b71fe5f60660fb71ef2f020c5758d8559fdd35a3fca429d301b781154",
   "source": "https://github.com/mattermost/mattermost/releases/tag/v11.11.1",
   "verification": "Registry and compiled build identity verified; derived packaging removes all prepackaged plugins. Authenticated contracts and complete transitive license audit remain open.",
   "checked_on": "2026-10-01",
@@ -10,7 +8,6 @@
   "packaging": "Dockerfile preserves official core binaries/notices byte-for-byte; scratch final stage omits plugin archive layers",
   "build_tool": {
     "image": "busybox:1.37.0-musl",
-    "linux_amd64_digest": "sha256:dc88b80842580654294472735332ec7c7789a4010ec9a68b69f9b88c19abede6",
     "runtime_inclusion": false
   }
 }

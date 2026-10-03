@@ -18,8 +18,8 @@ thread, bot identity, membership, recovery, and custom mobile/push requirements.
 ```sh
 python3 -m unittest discover -s chat-backend/tests -v
 docker build --platform linux/amd64 -t digitaltwin-chat:phase0 chat-backend
-# Pull the pinned official AMD64 image first if it is not locally cached:
-docker pull --platform linux/amd64 mattermost/mattermost-team-edition:11.11.1@sha256:14a2de6b71fe5f60660fb71ef2f020c5758d8559fdd35a3fca429d301b781154
+# Pull the selected official AMD64 image first if it is not locally cached:
+docker pull --platform linux/amd64 mattermost/mattermost-team-edition:11.11.1
 chat-backend/bin/audit-artifact --derived-image digitaltwin-chat:phase0
 chat-backend/bin/local-check --image digitaltwin-chat:phase0
 ```

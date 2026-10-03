@@ -1,7 +1,7 @@
 # Component-only disposable check. Integrator owns root Compose.
 services:
   push-proxy:
-    image: mattermost/mattermost-push-proxy@sha256:eb47e608ad965306ab4052bfeacff74d4148099eb83831c84685bd8b30897ccd
+    image: mattermost/mattermost-push-proxy:6.6.0
     platform: linux/amd64
     command: ["-config", "/mattermost-push-proxy/config/mattermost-push-proxy.json"]
     read_only: true

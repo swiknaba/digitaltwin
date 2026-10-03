@@ -38,7 +38,7 @@ The independently tested overlay graph is promoted into default Compose; the old
 The promotion requires its own independent default-entrypoint rerun. Listener and push remain opt-in, with explicit operator credentials.
 See [local integration](local-integration.md) for remaining wiring contracts and the early real roundtrip procedure.
 See [foundation validation](foundation-validation.md) for artifact identities and the distinction between preparation and live gates.
-Do not use floating image tags or dummy applications to make scaffold startup appear successful.
+Use explicit upstream release tags (major/minor is sufficient when published); do not use `latest` or dummy applications to make scaffold startup appear successful.
 Production orchestration, networking, TLS, Headscale/Tailscale, encrypted S3 backups, and live deployments remain infrastructure responsibilities.
 
 ## Task 1 Evidence and Gates

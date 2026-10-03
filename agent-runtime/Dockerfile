@@ -1,5 +1,5 @@
 # Build context: agent-runtime/. Callback artifact is supplied as a named context.
-FROM node:22.23.2-alpine3.23@sha256:72c5815a06aed9a2273aea5628d74d348af57843a7b547af2fe53dd3e4b95261 AS runtime
+FROM node:22.23.2-alpine3.23 AS runtime
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
 COPY apk-packages.lock /opt/runtime/apk-packages.lock
