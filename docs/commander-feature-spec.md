@@ -1,6 +1,6 @@
 # Commander: feature behavior
 
-Draft for review, consolidating the [Phase 0 specification](agent-fleet-architecture-and-review.md), sections 11–20. This describes desired behavior, not current readiness. It changes no accepted decision until approved.
+Approved high-level behavior, consolidating the [Phase 0 specification](agent-fleet-architecture-and-review.md), sections 11–20. This describes the intended feature, not current readiness or an implementation plan.
 
 ## One main conversation
 
@@ -16,7 +16,7 @@ Commander uses the thread, named project, earlier conversation, and actual runni
 
 If several tasks fit, Commander asks a short question before acting. It makes the chosen project and task clear and never silently switches the target.
 
-New work gets its own workflow and project thread. We can select an existing thread. Automatic thread creation is an open choice below.
+New work gets its own workflow and project thread. Commander selects the appropriate existing thread from context rather than asking us to choose it each time. Follow-ups stay with their existing task. It asks only when the context is insufficient or genuinely ambiguous.
 
 ## Delegate and keep work separate
 
@@ -38,7 +38,7 @@ During review, new Writer instructions wait. They cannot change the reviewed ver
 
 ## Memory, failures, and restarts
 
-Durable memory should retain useful decisions and knowledge beyond a conversation. The agreed starting model uses a shared memory repository and project memory files, maintained through human requests and agent instructions, with no scheduled grooming job. Hermes is not integrated or required.
+Durable memory should retain project decisions, our working preferences, and lessons learned beyond a conversation. The agreed starting model uses a shared memory repository and project memory files, maintained through human requests and agent instructions, with no scheduled grooming job. Hermes is not integrated or required.
 
 After restart, Commander restores verified task state and reuses healthy matching conversations. Missing conversations or actions with uncertain outcomes are reported for reconciliation. It never invents success, repeats a potentially completed action, or creates replacement work to clear an error.
 
@@ -46,8 +46,8 @@ After restart, Commander restores verified task state and reuses healthy matchin
 
 Real service connections, replies, duplicate handling, and restart recovery pass automated tests with a scripted agent. Live provider behavior remains unverified, and production dispatch is disabled in code. Commander enrollment, Git/deployment/emergency tools, and durable memory have implementation or acceptance gaps.
 
-## Choices to confirm
+## Agreed first version
 
-1. Should the first enabled version focus on conversation, status, and routing for existing projects, with enrollment and emergency tools delivered afterward?
-2. For clearly requested new work, should Commander create the project thread, or should the first version ask us to select an existing thread?
-3. Which facts should durable memory retain: project decisions only, or also our working preferences and lessons across projects? How should we inspect and correct them?
+The first enabled version focuses on conversation, status, and routing for existing projects. Project enrollment and emergency tools come afterward.
+
+Commander selects the correct thread from context itself, with clarification only when needed. Durable memory includes working preferences and lessons learned alongside project decisions.
