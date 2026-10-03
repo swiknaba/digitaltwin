@@ -18,6 +18,27 @@ If several tasks fit, Commander asks a short question before acting. It makes th
 
 New work gets its own workflow and project thread. Commander selects the appropriate existing thread from context rather than asking us to choose it each time. Follow-ups stay with their existing task. It asks only when the context is insufficient or genuinely ambiguous.
 
+## Know who sent each instruction
+
+Kirei records whether an instruction reaches a worker directly from a human or through Commander.
+It separately retains the authenticated human request and source message behind the work.
+Commander’s generated instructions do not become direct human instructions, even when they follow a human request.
+
+Every worker prompt and follow-up includes backend-verified sender context.
+Worker base instructions explain the human and Commander roles and how forwarded requests differ from generated follow-ups.
+Prompt text alone cannot establish sender identity or human approval.
+Backend-generated phase and review instructions remain separate from the attributed request text.
+
+Project threads show who sent an instruction and link its originating request when accessible:
+
+- **Human:** Alice writes “Add search” directly in the task thread.
+- **Commander, forwarding Alice:** Alice asks in Commander chat; Commander forwards or rephrases that request for the worker.
+- **Commander, follow-up:** Commander writes “Also check keyboard navigation” within already authorized work; this is not a new instruction from Alice.
+
+Kirei records forwarding or rewriting, the target task and session, and the request relationship.
+Queued delivery, retries, and recovery retain the original attribution.
+Attribution explains an instruction’s source; it grants no additional permissions and cannot replace exact human approvals.
+
 ## Delegate and keep work separate
 
 Commander delegates normal coding and research to workers. Coding follows specification and approval, plan and approval, implementation and review, then a pull request. Both specification and plan are reviewed before human approval. Approvals name the task and exact version. Opening a pull request does not automatically merge or deploy it.

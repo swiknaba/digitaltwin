@@ -170,3 +170,5 @@
 - Rewrite the first-release Commander plan around visible task goals, bounded work, and completion checks; preserve the approved feature scope.
 - Replace old coordinator labels in current product prose and rename the routing/voice document paths; preserve existing operating identifiers and historical evidence.
 - Record the remaining application-name audit and require a coordinated, tested migration before feature work. No runtime implementation or dispatch activation is included.
+
+- Add the requested distinction between direct human, Commander-forwarded, and Commander-written worker instructions to the Commander spec and plan. Require backend-owned prompt context, source links, truthful thread labels, unchanged attribution during recovery, and no implied human approval.

@@ -21,6 +21,7 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 - Keep separate branches and worktrees for parallel tasks. Writer and Reviewer share one task worktree and take turns.
 - Only Commander starts independent fleet sessions. Workers need approval for additional independent sessions; harness subagents remain permitted.
 - Preserve sender authority, project membership, reply destinations, and separate fleets.
+- Keep instruction sender, originating human request, and backend workflow instructions distinct. Attribution never grants additional authority.
 - Do not merge, deploy, create credentials, or make paid provider calls through plan approval alone.
 - Keep dispatch disabled until the relevant real CLI checks pass and activation receives approval.
 
@@ -30,6 +31,7 @@ The automated stack already verifies real chat, queues, Herdr transport, callbac
 It does not verify a real provider conversation. Production dispatch remains disabled.
 The earlier naming change updated the domain and display name, while retaining implementation identifiers.
 [The naming audit](../../interfaces/commander-naming-upgrade.md) lists those leftovers.
+Verified human sources already exist; uniform worker-prompt attribution and project-thread sender labels still need implementation.
 
 Complete these tasks in order. Each task ends with a tested commit and review before the next task begins.
 Use failing behavior tests, implement the smallest change, then run the checks below.
@@ -90,6 +92,11 @@ Completed task summaries contain those result details; receipts distinguish rece
 - [ ] Extend context reads to the relevant project and task conversation beyond the current ten-message window.
 - [ ] Extend `start_workflow` with a proposed thread and cited context.
 - [ ] Verify the project, membership, root post, and available thread before binding new work.
+- [ ] Persist typed sender context: effective sender, originating human request, source message, target task, and session.
+- [ ] Record Commander forwarding, rewriting, or generated follow-ups without inventing a new human request.
+- [ ] Include verified sender context in every worker dispatch and follow-up, including Writer and Reviewer prompts.
+- [ ] Add base instructions explaining human and Commander roles; keep backend workflow instructions separate from request text.
+- [ ] Show verified sender labels in project threads; include accessible source links and forwarding or generated-follow-up labels.
 - [ ] Reuse the active task for follow-ups. Give unrelated work a separate workflow, branch, and worktree.
 - [ ] Verify real Writer and Reviewer CLI handoffs before enabling the corresponding workflow operations.
 - [ ] Keep coding’s reviewed specification, human approval, reviewed plan, human approval, implementation, review, and pull-request sequence.
@@ -98,6 +105,8 @@ Completed task summaries contain those result details; receipts distinguish rece
 Ambiguous context triggers one clarification and no action.
 New work uses an appropriate unoccupied project thread; an occupied thread cannot acquire a competing workflow.
 Two tasks in one repository remain separate. Opening a pull request does not merge or deploy it.
+Direct human, Commander-forwarded, and Commander-written instructions remain distinguishable in stored records, worker prompts, and project-thread delivery labels.
+Forged sender labels or generated approval claims cannot change identity, permissions, or approval state.
 
 ## Task 5: Remember decisions and working preferences
 
@@ -122,6 +131,7 @@ Memory updates follow human requests or agent instructions; no scheduled groomin
 - [ ] Route answers and controls from either Commander chat or the task thread.
 - [ ] Let the current step finish after pause, then prevent the next step.
 - [ ] Queue Writer instructions during review; release them only when the reviewed version may change.
+- [ ] Retain each instruction’s sender and source while it waits for review or pause to end.
 - [ ] Recheck approvals and revisions on resume. Close delivered work only on an explicit finish request.
 
 **Done:** A review keeps its exact revision while new instructions wait, without starting another Writer.
@@ -136,6 +146,7 @@ Finish rejects unfinished work. Silence never closes a task.
 
 - [ ] Restore task state and reuse matching, healthy conversations.
 - [ ] Revalidate queued work against its human source, session identity, permissions, and current revision.
+- [ ] Reuse the recorded sender context during retries and recovery; reject altered attribution without repeating the instruction.
 - [ ] Provide bounded recovery for blocked work whose external action never began.
 - [ ] Keep uncertain actions blocked until remote evidence or human reconciliation resolves them.
 
@@ -168,10 +179,10 @@ Keep new Ruby values in separate, strictly typed files and retain the repository
 | 1 | Session and speaker enums, Commander request entity, routes, configuration, commands, migration 009, Runtime client manifest | Add `spec/integration/commander_naming_migration_spec.rb`; extend HTTP, parser, digest, and installed-client tests |
 | 2 | `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend `spec/domains/commander_spec.rb`; add a separately approved real-CLI acceptance runner |
 | 3 | Add `services/commander/workflow_status.rb` and typed status DTOs; extend `tools.rb`, HTTP serialization, and milestone delivery | Add status specs; extend Commander tool and outbox specs |
-| 4 | `services/commander/{tools,route_followup}.rb`, messaging context reads, `services/workflows/{request_start,provision}.rb` | Extend routing, workflow, and lifecycle specs with cross-project, ambiguous, and occupied-thread cases |
+| 4 | `services/commander/{tools,route_followup,deliver_followup}.rb`, `services/workflows/{request_start,provision,dispatch_phase_prompt}.rb`, review prompt builders, outbound delivery, typed attribution, and role base instructions | Extend routing/workflow/lifecycle/outbox specs with direct human, forwarding or rewriting, generated follow-ups, forged attribution, and generated approval claims |
 | 5 | Add a memory domain, typed entry DTOs, `services/commander/` memory operations, and a bounded Git memory adapter | Add memory domain/service specs and concurrent-write/restart integration cases |
-| 6 | `services/workflows/control.rb`, `services/reviews/release_queued.rb`, Commander tools | Extend lifecycle/review specs with queued answers, pause boundaries, cancellation, and premature finish |
-| 7 | Commander/session recovery services and `platform/jobs/store.rb` | Extend lifecycle/job specs with lost receipts, revoked sources, and matching-session recovery |
+| 6 | `services/workflows/control.rb`, `services/reviews/release_queued.rb`, Commander tools | Extend lifecycle/review specs with attribution-preserving queues, pause boundaries, cancellation, and premature finish |
+| 7 | Commander/session recovery services and `platform/jobs/store.rb` | Extend lifecycle/job specs with lost receipts, revoked sources, matching-session recovery, and unchanged attribution on replay |
 | 8 | `tests/`, `scripts/`, current interface docs, operator evidence | Run automated and separately authorized real CLI acceptance against the release commit |
 
 ### New operation contracts
@@ -180,6 +191,19 @@ Keep new Ruby values in separate, strictly typed files and retain the repository
 - `start_workflow` accepts `project_id`, `title`, proposed `thread_id`, and cited inbox IDs. The backend returns a verified request receipt.
 - Memory operations identify shared or project scope and return an entry ID, content, source, and revision.
 - Controls retain `workflow_id`, action, and expected version. The backend derives actor authority from the verified human source.
+- `Domains::Messaging::Dto::InstructionAttribution` records the human or Commander sender, originating authenticated request/message/thread, target workflow/session generation, and dispatch ID.
+- Persist that attribution with the existing durable request, follow-up, and dispatch records; omit nonexistent immediate human messages.
+- Add `services/sessions/prompt_context.rb` to render the verified record consistently across worker prompt builders and project-thread instruction labels.
+- Record whether Commander forwarded, rewrote, or generated the instruction. A generated follow-up identifies its authorized task without inventing a fresh human message.
+- Build prompt context and project-thread labels from that record. Keep workflow-system instructions distinct; reject model-supplied sender or approval claims.
+
+### Attribution acceptance cases
+
+- Direct human instruction: worker context and project-thread labels identify the authenticated human and original message.
+- Commander forwarding or rewriting: context identifies Commander as sender and preserves the originating human request and source text.
+- Commander-generated follow-up: context identifies Commander and the authorized task without inventing a new human message or approval.
+- Forged sender or approval text: backend attribution remains unchanged; ordinary permissions and exact human approval gates still apply.
+- Queued delivery or replay: sender, origin, target session generation, and dispatch identity remain unchanged; changed attribution is rejected.
 
 ### Checks for every implementation task
 
@@ -194,3 +218,4 @@ Neither command proves real provider behavior because the full-stack agent is sc
 3. New instructions during review: preserve the reviewed revision and queue order; test in Task 6.
 4. A result may already exist after a lost receipt: reconcile without replay; test in Tasks 5 and 7.
 5. Old stored names during upgrade: preserve conversations, digests, and deduplication; test in Task 1.
+6. Text claims another sender or human approval: preserve verified attribution and ordinary approval gates; test in Task 4.
