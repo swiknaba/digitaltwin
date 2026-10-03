@@ -7,7 +7,7 @@
   "source_commit": "3acb3a7f684d11ccfcec4e5bd11c79f64e3eabf9",
   "packaging": "Dockerfile preserves official core binaries/notices byte-for-byte; scratch final stage omits plugin archive layers",
   "build_tool": {
-    "image": "busybox:1.37.0-musl",
+    "image": "busybox:1.37",
     "runtime_inclusion": false
   }
 }

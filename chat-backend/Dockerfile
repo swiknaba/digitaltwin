@@ -2,7 +2,7 @@
 # Official compiled server stays unchanged. Final scratch copy prevents removed
 # plugin archives from remaining in inherited image layers.
 FROM --platform=linux/amd64 mattermost/mattermost-team-edition:11.11.1 AS official
-FROM --platform=linux/amd64 busybox:1.37.0-musl AS pruned
+FROM --platform=linux/amd64 busybox:1.37 AS pruned
 RUN --mount=from=official,source=/,target=/upstream \
     mkdir /output && cp -a /upstream/. /output/ && \
     rm -rf /output/mattermost/prepackaged_plugins /output/mattermost/plugins /output/mattermost/client/plugins

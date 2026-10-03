@@ -174,7 +174,7 @@ services:
     - "/scripts/init-local-volumes.sh"
     environment:
       INIT_RUNTIME_VOLUMES: 'true'
-    image: busybox:1.37.0-musl
+    image: busybox:1.37
     network_mode: none
     platform: linux/amd64
     restart: 'no'
