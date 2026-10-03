@@ -1,4 +1,4 @@
-# Master routing increment
+# Commander routing increment
 
 Baseline: local and freshly fetched remote `main` were
 `f01b84665b723caa3ad9a266fb9d949caf262904` on 2026-10-02.
@@ -7,8 +7,8 @@ Implementation uses an isolated `build/master-context-routing` worktree.
 
 ## Implemented
 
-- Master intake, verified thread/recent human context and evidence-grounded semantic selection.
-  Conflicts clarify; parallel Master threads retain separate bindings and workflows retain worktrees.
+- Commander intake, verified thread/recent human context and evidence-grounded semantic selection.
+  Conflicts clarify; parallel Commander threads retain separate bindings and workflows retain worktrees.
 - Migration 007 persists follow-up evidence, correlation, generation and delivery state. Migration
   008 adds request capabilities, workflow/thread requests and session lifecycle receipts.
 - Verified bot thread creation, isolated worktree binding and trusted Writer/Reviewer reservation;
@@ -17,17 +17,17 @@ Implementation uses an isolated `build/master-context-routing` worktree.
   validates append-only reviewer changes, and queues durable release/corrective prompts.
 - Exact human approvals advance only after latest review and unchanged approved artifact checks.
   Pause/resume and terminal cleanup retain version/revision binding and archive after positive stops.
-- Typed stdio MCP uses private HTTP and expiring Controller request capabilities. Accessible
+- Typed stdio MCP uses private HTTP and expiring Commander request capabilities. Accessible
   context reads support interpretation; worker-originated independent sessions have no API.
 - Same-conversation credential renewal, busy readiness deferral, idempotent reply receipt and
-  exact same-human recovery for incomplete Master requests.
+  exact same-human recovery for incomplete Commander requests.
 
 ## Evidence
 
 Full checks use disposable PostgreSQL 18.6 and the Ruby 4.0.7 amd64 dependency image: RSpec,
 clean 001-008 migration/rollback, Layout/Lint/Security and shared-contract static typing.
 Fixtures cover concurrency, review release/rollback, credential expiry/replacement, callback
-roles/generations, authoritative context, Master request scope, stdio MCP and actual Git trees.
+roles/generations, authoritative context, Commander request scope, stdio MCP and actual Git trees.
 Final backend check passed 132 examples (127 main +4 migration helper +1 clean migration),
 87 files without lint offenses, and shared-contract static typing. Root contract tests passed 15; six opt-in live Compose tests were skipped.
 Client provenance/staging passed 2 tests. Independent read-only review found no remaining material
@@ -49,13 +49,13 @@ This is not positive CLI send/settled or selected Gemini MCP evidence.
 ## Remaining gates
 
 `dispatch_allowed?` stays false. Authenticated chat, actual role CLI lifecycle/settled behavior
-and selected Master MCP roundtrip remain unproved; operator profiles/credentials are not supplied.
+and selected Commander MCP roundtrip remain unproved; operator profiles/credentials are not supplied.
 No provider login, paid request, infrastructure change, Hermes/OpenClaw or LiteLLM was introduced.
 Uncertain follow-up outcomes have exact original-human delivered/discard reconciliation. Lost
 thread receipts recover only against verified bot roots; session receipts recover only against exact
 runtime identity or authoritative pane absence. No external operation is replayed. Review callbacks
 can reconcile uncertain review dispatch using exact Git/runtime evidence. See
-[minimum setup and acceptance](master-routing-setup.md).
+[minimum setup and acceptance](commander-routing-setup.md).
 New project enrollment, verified PR delivery/done transition, broader Git/deployment/destructive
 MCP tools and live Task 6-10 acceptance remain outside this bounded increment. The draft is not
 an enabled fleet or completion of all Phase 0 workflows. Preserve those evidence/code gaps.

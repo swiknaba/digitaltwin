@@ -14,7 +14,7 @@ The Phase 0 specification and plan define behavior; the layout document defines 
 ## Fresh-agent orientation
 
 - Read `README.md`, `docs/repository-layout-and-parallel-build.md`, and `docs/interfaces/service-boundaries.md` before changing a component. Use each component README for its run/check boundary.
-- The coordinating product role is **Commander** and its Mattermost display name is **Commander Shepard**. `controller` is the durable internal session role; `master` names in routes, migrations, request fields, and environment variables are compatibility identifiers. Preserve both unless a task explicitly includes a versioned migration and client rollout.
+- The coordinating product role is **Commander** and its Mattermost display name is **Commander Shepard**. Use Commander consistently in product prose. Complete the naming migration in the Commander implementation plan before feature work. Until that coordinated migration, preserve existing stored roles and private interfaces. Preserve historical migrations, upstream framework controller names, and immutable deduplication bytes. See `docs/interfaces/commander-naming-upgrade.md` for the remaining identifiers.
 - For backend work, read `integration-backend/AGENTS.md`, the [Kirei README at the locked revision](https://github.com/swiknaba/kirei/blob/351668803a352382eeef8433dbcfd7c8d3af6198/README.md), and the pinned source/revision in `integration-backend/Gemfile.lock` before changing persistence or result handling. The project's concrete DDD examples are `integration-backend/app/domains/commander/master_requests.rb`, `integration-backend/app/services/master/ingest_prompt.rb`, and `integration-backend/app/adapters/http/master.rb`; follow their DTO/result and boundary patterns rather than recreating raw database access.
 - Treat framework documentation as guidance, then verify against the locked dependency and repository tests. The refactor plan at `docs/superpowers/plans/2026-10-02-backend-ddd-refactor.md` is the local architecture contract; it is not permission to upgrade Kirei or rewrite stable wire/persistence names.
 
@@ -22,7 +22,7 @@ The Phase 0 specification and plan define behavior; the layout document defines 
 
 - Record exact upstream revisions and sanitized contract evidence before implementing dependent adapters.
 - Keep unresolved Task 1 checks explicit. Documentation inspection is not a live compatibility test.
-- Tasks 6-10 remain blocked by missing required Herdr, authenticated chat, idle, and selected Master MCP evidence.
+- Tasks 6-10 remain blocked by missing required Herdr, authenticated chat, idle, and selected Commander MCP evidence.
 - Preserve separate Kirei/Mattermost database ownership and production infrastructure ownership.
 - Store no signing keys, provider login state, or credentials in Git or images.
 - Keep LiveKit/voice in Phase 1 and LiteLLM/MCP direction after Phase 2.

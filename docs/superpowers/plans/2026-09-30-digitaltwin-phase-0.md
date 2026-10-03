@@ -437,7 +437,7 @@ acceptance. These remain Task 6-10 work, not completed features.
 
 ## Task 9: Master and Local MCP Bridge
 
-**Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/commander/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/commander_spec.rb`; update `docs/phase-1-voice-controller.md` if thread creation is deferred.
+**Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/commander/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/commander_spec.rb`; update `docs/phase-1-voice-commander.md` if thread creation is deferred.
 
 **Interfaces:** Master `RoleConfig(cli: String, provider: String, model: String, family: String)` reaches `Sessions.start(workflow_id: nil, generation:, role: controller, config:, repo: nil)` unchanged. MCP tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `finish_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials` receive server-side Actor/Channel/Thread context.
 
@@ -597,4 +597,4 @@ Later provider/MCP integration remains [issue #4](https://github.com/swiknaba/di
 - Accept an uncertain review prompt's valid exact review callback only after its effect lease expires
   and the existing identity/frozen-target/clean append-only Git checks pass.
 - Keep hosted CI absence, expanded independent review scope, and minimum manual setup/evidence
-  explicit in `docs/interfaces/master-routing-setup.md`.
+  explicit in `docs/interfaces/commander-routing-setup.md`.

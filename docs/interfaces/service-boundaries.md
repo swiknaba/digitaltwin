@@ -81,10 +81,10 @@ The integrator owns cross-service fixtures in `tests/`; Kirei owns its unit/doma
 Root `tests/` runs automated integration checks. It does not grant authorization for live production or provider/device setup.
 Successful local checks cannot substitute for the plan's live and operator acceptance rows.
 
-## Master routing wire contract
+## Commander routing wire contract
 
 The standalone `digitaltwin-mcp` stdio bridge reads the current request token from a runtime
-file and calls private `/internal/master/{manifest,tools}` HTTP endpoints. Only a live Controller
+file and calls private `/internal/master/{manifest,tools}` HTTP endpoints. Only a live Commander
 request capability may invoke tools. Tool arguments contain no actor, role configuration or
 session creation authority. Kirei re-fetches the source human and destination memberships.
 `send_prompt` cites 1-10 recent accessible inbox IDs grounded in the target thread, source task
@@ -103,9 +103,9 @@ and repository origin. Supply these through a private operator overlay to web, l
 as needed; mount no provider state into Git/images. Only the worker mounts `/workspace` and
 `/run/herdr`; web has neither. Runtime packages backend-owned clients from a checksum manifest.
 No environment variable enables `dispatch_allowed?`; live evidence and reviewed policy code are
-still required. Gemini remains the specified Master CLI; its actual launch/MCP profile is unproved.
+still required. Gemini remains the specified Commander CLI; its actual launch/MCP profile is unproved.
 
 Bounded recovery commands and the minimum operator setup/evidence are recorded in
-[Master routing setup](master-routing-setup.md). Human follow-up outcome confirmation is explicitly
+[Commander routing setup](commander-routing-setup.md). Human follow-up outcome confirmation is explicitly
 audited and never treated as an automatic socket acknowledgment. Thread/session receipt recovery
 requires authoritative remote evidence and does not repeat an uncertain external action.

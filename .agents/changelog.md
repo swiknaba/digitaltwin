@@ -164,3 +164,9 @@
 ## 2026-10-03
 
 - Refactored the backend into four Zeitwerk layers: `app/domains/` (bounded contexts with private `Kirei::Model` entities and public `dto/` and `errors/`), `app/services/` (use cases and job handlers), `app/adapters/` (Mattermost, Herdr, git, credential files, HTTP, MCP), and `app/platform/` (jobs, lock, transaction, audit, JSON boundary types). Public services return `Kirei::Services::Result`; `Services::Composition` is the composition root over `Services::Configuration` and `Services::JobHandlers`. `spec/contracts/architecture_boundaries_spec.rb` enforces the layer rules with an empty migration allowlist. The Master MCP manifest now types `evidence_inbox_ids` items as `"string"`.
+
+## 2026-10-03 — Commander plan and terminology
+
+- Rewrite the first-release Commander plan around visible task goals, bounded work, and completion checks; preserve the approved feature scope.
+- Replace old coordinator labels in current product prose and rename the routing/voice document paths; preserve existing operating identifiers and historical evidence.
+- Record the remaining application-name audit and require a coordinated, tested migration before feature work. No runtime implementation or dispatch activation is included.

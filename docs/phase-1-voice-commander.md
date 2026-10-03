@@ -1,13 +1,13 @@
 # Phase 1: Group Calls and AI Voice
 
 Phase 1 independently integrates self-hosted LiveKit with Mattermost for group calls and AI voice conversation.
-Voice uses the same Kirei controller service, status registry, verified context, and operational tools as `@agent`.
-Master keeps its operational/emergency role; ordinary coding retains Writer/Reviewer gates.
+Voice uses the same Kirei Commander service, status registry, verified context, and operational tools as `@agent`.
+Commander keeps its operational/emergency role; ordinary coding retains Writer/Reviewer gates.
 Mattermost remains the chat UI and transport. No chat-plugin MCP integration is required.
 
 ## Services and Integration
 
-Use the [Apache 2.0 LiveKit server](https://github.com/livekit/livekit/blob/master/LICENSE) and separately hosted voice workers.
+Use the [Apache 2.0 LiveKit server](https://github.com/livekit/livekit/blob/commander/LICENSE) and separately hosted voice workers.
 The [LiveKit Agents framework](https://github.com/livekit/agents/blob/main/LICENSE) provides an Apache 2.0 starting point for AI voice.
 Audit chosen SDKs, adapters, transitive dependencies, model services, and shipped outputs before adopting them.
 Hosting, speech/model inference, Apple/Google distribution, and network services still have operational costs.
@@ -20,7 +20,7 @@ Check current membership before joining; never infer authorization from an unver
 Keep service credentials and signing keys server-side.
 Human setup supplies production domains, TLS, media routing/TURN, secrets, and service orchestration.
 
-Support human group calls and a user-requested AI participant connected to the same Master service.
+Support human group calls and a user-requested AI participant connected to the same Commander service.
 The AI receives the call's verified source context and accesses existing typed tools through Kirei.
 The voice adapter handles speech input/output, interruption, turn-taking, join/leave, and connection loss.
 Do not assume chat notifications or a web plugin automatically supply native mobile call behavior.
@@ -36,16 +36,16 @@ No credentials, commercial terms, deployments, or app-store submissions are crea
 
 - Verify a human group call with authorized participants from browser and our iOS/Android builds.
 - Join an AI participant and ask “What's blocked, and what changed since yesterday?”
-- Return a concise answer with project names, current/stale status, and source links in the originating Mattermost thread or Master channel.
+- Return a concise answer with project names, current/stale status, and source links in the originating Mattermost thread or Commander channel.
 - Support follow-up questions, interruption, explicit AI leave, and reconnect without duplicate tool execution.
 - Reject unauthorized joins and expired tokens; test revoked channel membership and incorrect source context.
-- Preserve destructive-operation confirmations and coding gates when voice invokes the existing controller tools.
+- Preserve destructive-operation confirmations and coding gates when voice invokes the existing Commander tools.
 - Test background/locked-device audio, notifications, deep links, Bluetooth/headset routing, and network changes on real devices.
 - Keep unanswered integration findings explicit; release only after the required device, license, and service checks pass.
 
-## Deferred Controller Convenience: Workflow Thread Creation
+## Deferred Commander Convenience: Workflow Thread Creation
 
-Master-created Mattermost workflow threads remain optional in Phase 0.
+Commander-created Mattermost workflow threads remain optional in Phase 0.
 Include root-post creation there only if verified creation and retry reconciliation are straightforward.
 Otherwise, retain existing-thread starts and implement the convenience here.
 

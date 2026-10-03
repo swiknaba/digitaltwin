@@ -1,5 +1,8 @@
 # Bounded Commander routing: setup and acceptance
 
+Current commands below match the installed implementation.
+The [naming audit](commander-naming-upgrade.md) defines the migration required before new Commander feature work.
+
 Gemini was already the specified Commander default on main `f01b846` (§17 of the specification).
 This feature did not select another runtime or configure/authenticate Gemini. Runtime packages
 Gemini CLI 0.62.0; the actual operator role/model/launch profile remains to be supplied and validated.
@@ -18,7 +21,7 @@ Lost effect receipts now have bounded recovery:
 | --- | --- |
 | `@agent recover-followup ID delivered` or `discard` | Original human, destination membership, no live send lease, exact settled Writer conversation/generation. This records a human outcome, not an automatic socket receipt. Discard releases later queued instructions; a fresh human instruction is needed for any new send. |
 | `@agent recover-start REQUEST_ID THREAD_ID` | Original human; actual bot/channel/root/title/request correlation, undeleted root, no live creation lease. Continue against that root without posting another. |
-| `@agent recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Master-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
+| `@agent recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Commander-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
 | `@agent recover-master REQUEST_ID` | Original human, settled same Commander (`controller` internally) and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
 
 IDs appear in queue/reservation receipts. Recovery is not proof of a send when the user selects
@@ -47,8 +50,8 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    for authoritative REST checks. Optional peers use `MATTERMOST_PEER_BOT_IDS`. No bot token
    goes to Runtime. Activate only the disposable chat-validation listener/worker transport for acceptance;
    `CHAT_VALIDATION_MODE=1` does not enable Herdr effects.
-3. Supply `ROLE_CONFIG_FILE` to web and worker: a trusted controller entry; Writer/Reviewer
-   entries are additionally required when creating workflows or running review. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). Controller remains
+3. Supply `ROLE_CONFIG_FILE` to web and worker: a trusted Commander entry; Writer/Reviewer
+   entries are additionally required when creating workflows or running review. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). Commander remains
    Gemini unless the operator explicitly chooses otherwise. Writer/Reviewer must differ in provider
    and family. Use the actual already authorized models/login setup in Runtime; do not pass provider
    credentials as launch arguments. The neutral Commander directory is `/home/runtime`.

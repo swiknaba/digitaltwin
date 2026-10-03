@@ -2,7 +2,7 @@
 
 This document records the accepted Phase 0 decisions from the design interview.
 It also lists the remaining decisions that the implementation plan must resolve.
-[Phase 1 adds a voice interface to the controller](phase-1-voice-controller.md).
+[Phase 1 adds a voice interface to the Commander](phase-1-voice-commander.md).
 
 ## 1. Outcome
 
@@ -13,10 +13,11 @@ Each project workflow uses a writer and a reviewer from different model families
 The system preserves specifications, plans, reviews, code, and research in Git.
 
 The deployment includes a persistent **Commander** for operational conversation, status, coordination, and targeted emergency changes. Its Mattermost display name is **Commander Shepard**.
-Commander uses the same local agent runtime as project work; the durable internal session role remains `controller`.
+Commander uses the same local agent runtime as project work; the target durable session role is `commander`.
+The [naming audit](interfaces/commander-naming-upgrade.md) records the required migration from existing storage.
 
 Separate deployments communicate only through Mattermost and Git.
-They do not share filesystems, databases, sockets, private networks, or controller APIs.
+They do not share filesystems, databases, sockets, private networks, or Commander APIs.
 
 ## 2. Phase boundary
 
@@ -113,7 +114,7 @@ Its [commercial capability gates](https://github.com/mattermost/mattermost-plugi
 Its repository includes commercially licensed code despite its Apache label.
 Kirei's external Commander/Worker bots provide the selected path without promising free plugin MCP capabilities.
 The [LiteLLM/MCP direction](https://github.com/swiknaba/digitaltwin/issues/4) belongs after Phase 2; it adds no Phase 0/1/2 requirements.
-Keep current agent/controller tool interfaces until that later design.
+Keep current agent/Commander tool interfaces until that later design.
 Audit optional plugins individually. Hermes remains a candidate, not an adopted dependency.
 
 The application provides portable OCI images and environment configuration.
@@ -417,7 +418,7 @@ Commander start requests can use an existing verified thread in the selected pro
 Commander-created threads are an optional Phase 0 convenience when the API supports straightforward, verified creation with reconciliation.
 Kirei must verify and record the returned project-channel/thread association before starting the requested workflow.
 An uncertain creation result requires reconciliation before another creation or workflow start.
-If this integration is complex, keep the existing-thread path and defer creation to the [Phase 1 roadmap](phase-1-voice-controller.md).
+If this integration is complex, keep the existing-thread path and defer creation to the [Phase 1 roadmap](phase-1-voice-commander.md).
 Omitting this convenience does not block Phase 0 acceptance.
 
 The owner explicitly closes a delivered workflow with `@worker finish` in its thread.
@@ -573,7 +574,7 @@ Kirei still verifies each request's sender and source context.
 Independent fleets retain separate Commander sessions, credentials, runtime, and private control data.
 Their collaboration remains limited to shared Mattermost messages and Git artifacts.
 
-The controller is not bound to one repository.
+The Commander is not bound to one repository.
 It does not use the project specification and plan gates.
 Commander chat keeps the owner informed and coordinates work; it is not the ordinary coding agent.
 It can perform a targeted emergency change through the available operational tools.
@@ -582,7 +583,7 @@ Ordinary coding uses the writer/reviewer workflow and retains all its gates.
 
 Commander uses `RoleConfig(cli, provider, model, family)`.
 Gemini CLI is the default; the selected CLI runs through Herdr.
-The controller does not call provider model APIs directly.
+The Commander does not call provider model APIs directly.
 The operator may select another supported CLI after its Herdr and MCP contracts pass validation.
 Its session has no project workflow or repository binding and starts in the neutral Runtime home.
 
@@ -598,7 +599,7 @@ Those dispatches do not require repeated human spawn approvals and cannot expand
 Session creation authority is enforced at Kirei interfaces and in agent instructions.
 It does not create an isolation boundary within the shared Runtime or restrict the human's raw terminal access.
 
-The controller uses typed Digitaltwin operations through a local MCP bridge.
+The Commander uses typed Digitaltwin operations through a local MCP bridge.
 The bridge uses the same Kirei application codebase.
 The bridge exposes a small set of tools to the configured CLI and calls Kirei application operations.
 Kirei validates arguments, sender authority, workflow state, and required confirmations.
@@ -614,7 +615,7 @@ Its operations include:
 - Delete resources.
 - Change credential configuration.
 
-The controller can perform broad fleet operations.
+The Commander can perform broad fleet operations.
 It requests a second human confirmation before a destructive or irreversible action.
 It never displays secret values.
 This existing confirmation rule does not impose a coding review cycle on operational conversation or emergency changes.
@@ -711,7 +712,7 @@ An operator signs in again after a disaster recovery.
 The existing SSH bastion remains the path for raw Hetzner server administration.
 It does not provide the Herdr tunnel.
 Private Herdr attachment gives the human intentional raw access to the agents.
-The human acts as the controller and does not need a Commander session for terminal work.
+The human directs the fleet and does not need a Commander session for terminal work.
 Direct terminal input is unsupervised by the Kirei dispatch lock.
 
 The infrastructure layer supplies Headscale and a Tailscale sidecar for private runtime access.
@@ -830,7 +831,7 @@ The following earlier ideas no longer apply:
 - Permit small work without a specification and plan.
 - Run a periodic Commander memory session.
 - Limit application concurrency as a Phase 0 control-plane feature.
-- Give a controller direct access to another deployment.
+- Give a Commander direct access to another deployment.
 - Test collaboration with two complete server stacks.
 - Use separate Mattermost accounts for writer and reviewer.
 - Automate pull request merge or post-merge synchronization.

@@ -37,7 +37,7 @@ The Commander bot displays as **Commander Shepard** and defaults to the configur
 | `@worker finish` | Close a delivered workflow and stop its sessions. |
 | `@worker cancel` | Cancel the workflow and stop its sessions. |
 
-Only the original human can run a recover command. Details: [Commander routing setup](../docs/interfaces/master-routing-setup.md). `recover-master` remains the compatibility command name.
+Only the original human can run a recover command. Details: [Commander routing setup](../docs/interfaces/commander-routing-setup.md). `recover-master` remains the compatibility command name.
 
 ## Run it
 
@@ -85,7 +85,7 @@ DATABASE_URL=... MIGRATION_TEST_DATABASE_URL=... bin/check   # specs, RuboCop, S
 ## Operating rules
 
 - Dispatch to agent sessions is blocked. `Policy#dispatch_allowed?` returns `false` until live Herdr,
-  authenticated chat, and Master MCP evidence exists. No environment variable overrides it.
+  authenticated chat, and Commander MCP evidence exists. No environment variable overrides it.
   Workflow starts, prompts, reviews, and session renewals stay queued or blocked.
 - `CHAT_VALIDATION_MODE=1` does not enable agent sessions, reviews, approvals, or production workflows.
 - Store credentials only as mounted read-only files. Keep no tokens, signing keys, or provider login state in Git or images.

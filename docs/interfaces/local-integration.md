@@ -47,7 +47,7 @@ The default excludes the authenticated listener and push. Core health does not e
 | Runtime + backend | Verified socket contract below; image startup, volume initialization, health and reconnect behavior still need integration |
 | Backend | Exact chat credential/config names, source identity mapping, callback route/auth schema, readiness and process health |
 | Chat + backend | Authenticated event fixtures, local bot enablement/config, verified human/bot/channel/root/membership, REST reconnect behavior |
-| Runtime + backend | Single-source callback/MCP packaging, runtime-to-backend private URL, real CLI test and selected Master MCP evidence |
+| Runtime + backend | Single-source callback/MCP packaging, runtime-to-backend private URL, real CLI test and selected Commander MCP evidence |
 | Push + mobile | Validated private server/proxy configuration and operator-owned app identities; device evidence remains separate |
 
 No guessed socket path, auth variable, callback schema, or fabricated runtime replaces these handoffs.
@@ -96,7 +96,7 @@ Report chat/API, queue, Herdr/provider, and outbox/thread observations separatel
 Without the actual CLI execution, label the result a fixture/adapter check and keep the live slice open.
 Dependency ping alone proves neither authenticated chat nor the early slice.
 
-Four-CLI start/prompt/state/stop, Writer settled state, and selected Master MCP remain separate Task 1 gates.
+Four-CLI start/prompt/state/stop, Writer settled state, and selected Commander MCP remain separate Task 1 gates.
 Tasks 6-10 retain those gates. Signed-device push, restore, and production deployment retain their operator prerequisites.
 
 ## Combined Local Check Preparation
