@@ -9,7 +9,7 @@ RSpec.describe "Exclusive PostgreSQL checkout" do
         begin
           db.transaction do
             ids << db.get(Sequel.function(:pg_backend_pid))
-            db[:audit].insert(event_key: "rolled-back", action: "test", details: Sequel.pg_jsonb({}))
+            db[:audit].insert(id: "audit_rolled_back", event_key: "rolled-back", action: "test", details: Sequel.pg_jsonb({}))
             task.sleep(0.1)
             raise "rollback"
           end
@@ -19,7 +19,7 @@ RSpec.describe "Exclusive PostgreSQL checkout" do
       b = task.async do
         db.transaction do
           ids << db.get(Sequel.function(:pg_backend_pid))
-          db[:audit].insert(event_key: "committed", action: "test", details: Sequel.pg_jsonb({}))
+          db[:audit].insert(id: "audit_committed", event_key: "committed", action: "test", details: Sequel.pg_jsonb({}))
           task.sleep(0.1)
         end
       end

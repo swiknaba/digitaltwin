@@ -7,14 +7,14 @@ module Domains
     class Policy
       extend T::Sig
 
-      sig { params(writer: Entities::RoleConfig, reviewer: Entities::RoleConfig).returns(T::Boolean) }
+      sig { params(writer: Dto::RoleConfig, reviewer: Dto::RoleConfig).returns(T::Boolean) }
       def diverse?(writer, reviewer)
         writer.provider != reviewer.provider && writer.family != reviewer.family
       end
 
       sig do
         params(
-          actor: Entities::Actor,
+          actor: Domains::Messaging::Dto::VerifiedActor,
           channel_id: String,
           current_commit: String,
           reviewed_commit: String,
@@ -30,7 +30,7 @@ module Domains
       sig { params(state: String).returns(T::Boolean) }
       def settled?(state) = %w[idle done].include?(state)
 
-      # Cannot be enabled by ENV: requires reviewed release-bound evidence/code.
+      # Cannot be enabled by the environment: requires reviewed release-bound evidence/code.
       sig { returns(T::Boolean) }
       def dispatch_allowed? = false
     end

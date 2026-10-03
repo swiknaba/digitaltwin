@@ -17,15 +17,8 @@ Dir[File.join(__dir__, "config/initializers", "*.rb")].each { require(_1) }
 APP_ROOT = T.let(T.must(__dir__), String)
 APP_LOADER = Zeitwerk::Loader.new
 APP_LOADER.tag = File.basename(__FILE__, ".rb")
-[
-  "/app",
-  "/app/models",
-  "/app/services",
-].each do |root_namespace|
-  # a root namespace skips the auto-infered module for this folder
-  # so we don't have to write e.g. `Models::` or `Services::`
-  APP_LOADER.push_dir("#{File.dirname(__FILE__)}#{root_namespace}")
-end
+# every application class lives in a domain: `app/domains/<domain>/` maps to `Domains::<Domain>`
+APP_LOADER.push_dir("#{File.dirname(__FILE__)}/app")
 APP_LOADER.setup
 
 # Fifth: load configs
@@ -43,19 +36,17 @@ class Digitaltwin < Kirei::App
   config.app_name = "digitaltwin"
   config.sensitive_keys += [/text|body|authorization|credential/i]
 
-  sig { params(env: RequestLocalRouter::Environment).returns(RackBoundary::Response) }
-  def call(env)
-    RackCompatibility.new(super_method_app).call(env)
-  end
+  # Internal callbacks carry small JSON payloads; this backend receives no uploads.
+  config.max_request_body_bytes = 65_536
 
-  private
-
-  sig { returns(Method) }
-  def super_method_app
-    parent = method(:call).super_method
-    raise "Kirei application call handler is unavailable" unless parent
-
-    parent
+  # Falcon serves requests on fibers; Sequel must key connection ownership by fiber.
+  config.db_global_extensions = [:fiber_concurrency]
+  config.db_max_connections = Integer(ENV.fetch("DB_POOL_SIZE", "5"))
+  config.db_pool_timeout = Float(ENV.fetch("DB_POOL_TIMEOUT", "2"))
+  config.db_connect_timeout = 5
+  config.db_connect_sqls = ["SET statement_timeout = '10s'", "SET lock_timeout = '2s'"]
+  unless config.db_max_connections.to_i.positive? && config.db_pool_timeout.to_f.positive?
+    raise ArgumentError, "DB_POOL_SIZE and DB_POOL_TIMEOUT must be positive"
   end
 end
 

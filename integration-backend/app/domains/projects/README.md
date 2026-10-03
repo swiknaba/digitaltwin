@@ -1,6 +1,4 @@
 # Projects
-
-This domain enrolls projects and manages their local Git workspaces. It validates a
-repository's canonical identity, creates contained worktrees for workflows, and invokes
-the Forge client when a private repository must be created. It does not decide the
-workflow policy or send chat messages.
+Owns `projects`: the mapping of a chat channel to one GitHub repository checkout.
+Public API: `Directory`, `Register#call`, `WorkspacePaths` (pure path rules), `RepositoryIdentity`, and `Dto::*`.
+Git-running use cases live in `Services::Projects`: `Enroll`, `ResolveRepository`, `PrepareWorktree`.

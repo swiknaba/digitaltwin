@@ -17,13 +17,14 @@ Sequel.migration do
       TrueClass :active, null: false, default: true
       DateTime :last_verified_at
       String :state, null: false, default: "unknown"
+      DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       unique [:workflow_id, :role, :generation]
       constraint(:session_role, role: %w[writer reviewer controller])
       constraint(:session_scope,
                  Sequel.lit("(role = 'controller' AND workflow_id IS NULL) OR (role <> 'controller' AND workflow_id IS NOT NULL)"))
     end
     create_table(:callbacks) do
-      primary_key :id
+      String :id, primary_key: true
       foreign_key :session_id, :sessions, type: String, null: false
       Integer :generation, null: false
       String :key, null: false

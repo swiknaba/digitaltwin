@@ -143,3 +143,24 @@
 - Promote the exact tested resolved service graph into default Compose; retain old overlay paths as no-op compatibility files and keep authenticated listener/push opt-in.
 - Add local `scripts/dev` bootstrap with preserved environment/data, explicit checksum-verified callback staging, and normal Compose build/start. Verify graph equivalence, 15 root tests, shell/Python syntax, and whitespace.
 - Require an independent targeted default-entrypoint rerun before treating the promotion as accepted. Publication remains blocked; authenticated chat/provider/MCP/device and full Phase 0 gates remain open.
+
+## 2026-10-02 — Backend domain-only layout
+
+- Move HTTP controllers, DTOs, and errors from `app/controllers/` to `app/domains/orchestration/http/` (`Domains::Orchestration::Http`). Rename `requests/` to `dto/`.
+- Rename the `controller` domain to `orchestration` (`Domains::Orchestration`), including its spec, bin scripts, and contract paths.
+- Verify whole-project Sorbet check passes. Six RSpec failures (migration tasks, projects) also fail on the original commit.
+- Rename the `orchestration` domain to `commander` (`Domains::Commander`).
+- Rename the `forge` domain to `git_repos` (`Domains::GitRepos`) and the `Projects::Enroll` `forge:` argument to `git_repos:`.
+- Add the layered DDD refactor plan `docs/superpowers/plans/2026-10-02-backend-ddd-refactor.md`, and update backend `AGENTS.md` layout rules to match it.
+
+## 2026-10-02
+
+- Removed the backend `config/initializers/database.rb` override of `Kirei::App.raw_db_connection`; `app.rb` now sets `db_global_extensions` (`fiber_concurrency`), pool bounds from `DB_POOL_SIZE`/`DB_POOL_TIMEOUT`, and session timeouts through Kirei 0.11 config. The Gemfile now sources Kirei from its git `main` branch; run `bundle install` and `bundle exec tapioca gem kirei` after swiknaba/kirei#41 merges.
+- Replaced the backend `config/initializers/health.rb` JSON heartbeat with `Platform::Heartbeat`, which touches `digitaltwin-<role>.heartbeat` under `HEARTBEAT_DIR` (default `/tmp`); `bin/health` now fails on a missing or stale mtime only. `config/initializers/startup.rb` resolves migrations from `Kirei::App.root`.
+- Updated Kirei to git main `84055a2` (fiber-local router env, `PATH_INFO` routing, duck-typed `rack.input`, 400 for bad JSON, `max_request_body_bytes`) and regenerated its RBI. Removed `config/initializers/rack_compatibility.rb`, the `Digitaltwin#call` override, and `spec/contracts/rack_compatibility_spec.rb`; `app.rb` sets `config.max_request_body_bytes = 65_536`. The Falcon integration spec still verifies 400 and 413 end to end.
+- Projects, workflows, and sessions now get Kirei human ids (`project_`, `workflow_`, `session_` plus 12 characters) instead of UUIDs; workspace path validation and the approve/route command grammar accept them. Jobs, outbox, requests, operations, and confirmations keep UUIDs. Depends on swiknaba/kirei#43 only for integer-key `create`, which this backend does not call yet.
+- Converted `inbox`, `audit`, `callbacks`, `approvals`, `reviews`, `queued_messages`, and `followups` to String human ids (`inbox_`, `audit_`, `callback_`, `approval_`, `review_`, `queued_message_`, `followup_` plus 12 characters) by editing migrations in place. Added `Platform::HumanId` for raw-dataset inserts, `created_at` on `sessions`, `reviews`, and `queued_messages`, `created_at` ordering with `id` tiebreak, and the `recover-followup followup_<id>` grammar.
+
+## 2026-10-03
+
+- Refactored the backend into four Zeitwerk layers: `app/domains/` (bounded contexts with private `Kirei::Model` entities and public `dto/` and `errors/`), `app/services/` (use cases and job handlers), `app/adapters/` (Mattermost, Herdr, git, credential files, HTTP, MCP), and `app/platform/` (jobs, lock, transaction, audit, JSON boundary types). Public services return `Kirei::Services::Result`; `Services::Composition` is the composition root over `Services::Configuration` and `Services::JobHandlers`. `spec/contracts/architecture_boundaries_spec.rb` enforces the layer rules with an empty migration allowlist. The Master MCP manifest now types `evidence_inbox_ids` items as `"string"`.

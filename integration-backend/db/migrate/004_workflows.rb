@@ -25,7 +25,7 @@ Sequel.migration do
       add_foreign_key [:workflow_id], :workflows
     end
     create_table(:approvals) do
-      primary_key :id
+      String :id, primary_key: true
       foreign_key :workflow_id, :workflows, type: String, null: false
       String :kind, null: false
       constraint(:approval_kind, kind: %w[spec plan])

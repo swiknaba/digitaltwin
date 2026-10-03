@@ -32,3 +32,12 @@ Style/StringLiterals:
 Style/StringLiteralsInInterpolation:
   Enabled: true
   EnforcedStyle: double_quotes
+
+Style/ClassMethodsDefinitions:
+  Enabled: true
+  EnforcedStyle: def_self
+
+Style/AccessModifierDeclarations:
+  Enabled: true
+  EnforcedStyle: inline
+  AllowModifiersOnSymbols: false
