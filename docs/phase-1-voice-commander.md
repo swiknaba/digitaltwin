@@ -7,7 +7,7 @@ Mattermost remains the chat UI and transport. No chat-plugin MCP integration is 
 
 ## Services and Integration
 
-Use the [Apache 2.0 LiveKit server](https://github.com/livekit/livekit/blob/commander/LICENSE) and separately hosted voice workers.
+Use the [Apache 2.0 LiveKit server](https://github.com/livekit/livekit/blob/master/LICENSE) and separately hosted voice workers.
 The [LiveKit Agents framework](https://github.com/livekit/agents/blob/main/LICENSE) provides an Apache 2.0 starting point for AI voice.
 Audit chosen SDKs, adapters, transitive dependencies, model services, and shipped outputs before adopting them.
 Hosting, speech/model inference, Apple/Google distribution, and network services still have operational costs.

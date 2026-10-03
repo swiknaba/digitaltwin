@@ -73,10 +73,13 @@ Missing credentials leave this task explicitly blocked; scripted-agent results c
 - [ ] Add a status operation using stored workflows, sessions, reviews, approvals, and delivery receipts.
 - [ ] Report the last verified state when the Runtime cannot provide current status.
 - [ ] Send milestones, approval requests, blockers, and result links to Commander chat once.
+- [ ] Return source-thread result summaries with changes, checks, remaining problems, and artifact or pull-request links.
+- [ ] Distinguish received, queued, and delivered receipts from verified delivery state.
 
 **Done:** Two projects show distinct tasks, their current waits, and their source threads.
 An inaccessible project stays hidden. Unverified delivery is never described as delivered.
 Routine task messages remain in project threads.
+Completed task summaries contain those result details; receipts distinguish received, queued, and delivered.
 
 ## Task 4: Delegate work to the right thread
 
