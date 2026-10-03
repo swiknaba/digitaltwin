@@ -135,6 +135,9 @@ buffers/real event metadata; preserve valid aliases and generate lowercase bound
 aliases for invalid IDs; poll an accepted Herdr start for the same terminal's proven
 interactive conversation without repeating the start. They still require owner
 review. Full backend checks passed 253 examples, RuboCop and whole-project Sorbet.
-The full root invocation passed its other 24 checks before the final fixture fix;
-the corrected chat check passed separately. A final all-at-once run and remote CI
-remain pending. No branch or workflow has been published.
+`scripts/test-full-stack` passed all 25 checks together on local commit
+`3ff136a67e047f80aa95c6561369c029eef4ce7d` in 127.415 seconds, including all 253
+backend examples, RuboCop and whole-project Sorbet. Both disposable stacks were
+removed. Remote CI and independent owner review remain pending; no branch or
+workflow has been published. `evidence/full-stack-local-proposal.json` records
+exact revisions, image IDs and the actual/fake boundary.

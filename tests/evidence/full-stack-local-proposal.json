@@ -25,7 +25,14 @@
       "whole_project_sorbet": "passed",
       "typed_fixture_classes_included": true
     },
-    "final_all_at_once_root_run": "pending",
+    "final_all_at_once_root_run": {
+      "command": "scripts/test-full-stack",
+      "tested_commit": "3ff136a67e047f80aa95c6561369c029eef4ce7d",
+      "total": 25,
+      "passed": 25,
+      "failed": 0,
+      "duration_seconds": 127.415
+    },
     "remote_ci": "pending publication clearance and owner review"
   },
   "raw_herdr_start_observations": [
@@ -89,5 +96,54 @@
     "tests/fixtures/full_stack/observed_herdr.rb": "3b068164da84ab03a5104be054689510d4b83a7d856d2aba9248107fbd22e1f6",
     "tests/fixtures/full_stack/worker.rb": "3f8ace59c1124677fd33bc0c50a0f4a623f44042eae4e9a067a4946d26f2a563",
     "tests/fixtures/full_stack/dispatch_policy.rb": "1117135a2df4c79614eea5b37f343e56d3e225c42cee776f2b4c1acede60184a"
-  }
+  },
+  "live_evidence": [
+    {
+      "authenticated_chat": false,
+      "container_security_socket_callback_hash_no_plugins": true,
+      "database_ownership_and_migrations": true,
+      "falcon_parallel_health_and_callback_auth_rejection": true,
+      "image_ids": {
+        "agent-runtime": "sha256:bebfb9b5bea68387fac2ea8a084e12f4f7f2980574481682b369dcc09600317e",
+        "backend-web": "sha256:323dd83bc2761704b0777031bbb723e7a29bf6532e5e33f51f376f720fb7309b",
+        "backend-worker": "sha256:323dd83bc2761704b0777031bbb723e7a29bf6532e5e33f51f376f720fb7309b",
+        "mattermost": "sha256:8e274708ea181f9282233a74f07db34f938f6e89dd42dbe3cfe00aa123befdff"
+      },
+      "live_local_containers": true,
+      "master_mcp": false,
+      "own_resources_removed": true,
+      "pending_migrations_rejected_pool_5_timeout_2": true,
+      "phase0_acceptance": false,
+      "provider_cli": false,
+      "reviewed_backend_revision": "5efa1ee5eec492d693598d599e2b04f9c13e9980",
+      "revision": "3ff136a67e047f80aa95c6561369c029eef4ce7d",
+      "synthetic_callbacks": true,
+      "synthetic_jobs_dedup_leases_uncertain_restart": true,
+      "synthetic_packaged_callback_two_threads_replay_changed_body": true
+    },
+    {
+      "authenticated_chat": false,
+      "authenticated_disposable_chat": true,
+      "backend_examples": 253,
+      "backend_failures": 0,
+      "backend_restart_same_conversation": true,
+      "correct_threads_and_bot": true,
+      "duplicate_one_effect": true,
+      "fixture_agent_only": true,
+      "full_backend_tests_rubocop_sorbet_with_fixture_classes": true,
+      "image_ids": {},
+      "live_local_containers": true,
+      "master_mcp": false,
+      "own_resources_removed": true,
+      "phase0_acceptance": false,
+      "production_dispatch_policy": false,
+      "provider_cli": false,
+      "real_backend_mcp_http_with_fixture_agent": true,
+      "real_chat_rest_and_websocket": true,
+      "real_herdr_fixture_agent": true,
+      "reviewed_backend_revision": "5efa1ee5eec492d693598d599e2b04f9c13e9980",
+      "revision": "3ff136a67e047f80aa95c6561369c029eef4ce7d",
+      "synthetic_callbacks": true
+    }
+  ]
 }
