@@ -1,25 +1,25 @@
-# Bounded Master routing: setup and acceptance
+# Bounded Commander routing: setup and acceptance
 
-Gemini was already the specified Master default on main `f01b846` (§17 of the specification).
+Gemini was already the specified Commander default on main `f01b846` (§17 of the specification).
 This feature did not select another runtime or configure/authenticate Gemini. Runtime packages
 Gemini CLI 0.62.0; the actual operator role/model/launch profile remains to be supplied and validated.
 
 ## Feature boundary
 
 Given one already mapped project and healthy bound Writer conversation, a verified human can add
-instructions in Master chat. MCP reads authoritative workflows and accessible recent task context,
+instructions in Commander chat. MCP reads authoritative workflows and accessible recent task context,
 proposes a cited target, and Kirei checks that evidence before queuing the same Writer ID/generation.
 Ambiguity asks for clarification. Review/pause retains instructions until a writing phase resumes.
 Startup and credential renewal keep the same target pending; they do not create replacement sessions.
 
 Lost effect receipts now have bounded recovery:
 
-| Exact human command in Master chat | Evidence checked; no external action replayed |
+| Exact human command in Commander chat | Evidence checked; no external action replayed |
 | --- | --- |
 | `@agent recover-followup ID delivered` or `discard` | Original human, destination membership, no live send lease, exact settled Writer conversation/generation. This records a human outcome, not an automatic socket receipt. Discard releases later queued instructions; a fresh human instruction is needed for any new send. |
 | `@agent recover-start REQUEST_ID THREAD_ID` | Original human; actual bot/channel/root/title/request correlation, undeleted root, no live creation lease. Continue against that root without posting another. |
 | `@agent recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Master-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
-| `@agent recover-master REQUEST_ID` | Original human, settled same Controller and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
+| `@agent recover-master REQUEST_ID` | Original human, settled same Commander (`controller` internally) and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
 
 IDs appear in queue/reservation receipts. Recovery is not proof of a send when the user selects
 `delivered`; the audit labels that as human confirmation. A missing conversation/receipt remains
@@ -40,7 +40,7 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    has neither Git workspaces nor the Herdr socket. Build clients with the checksum staging script.
 2. Provide existing authenticated chat identities through read-only token-file mounts. Listener
    needs `MATTERMOST_URL`, `MATTERMOST_LISTENER_TOKEN_FILE`, `MATTERMOST_LOCAL_BOT_IDS`,
-   `MATTERMOST_CHANNEL_IDS` (including Master and project), and `MASTER_CHANNEL_ID`.
+   `MATTERMOST_CHANNEL_IDS` (including Commander and project), and `MASTER_CHANNEL_ID`.
    Worker additionally needs `MATTERMOST_WORKER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE`,
    both corresponding `*_BOT_ID` values, and the same local-bot IDs. Web's request-bound MCP
    services need the listener/Worker token-file references, Worker bot ID and chat/local-bot settings
@@ -51,14 +51,14 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    entries are additionally required when creating workflows or running review. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). Controller remains
    Gemini unless the operator explicitly chooses otherwise. Writer/Reviewer must differ in provider
    and family. Use the actual already authorized models/login setup in Runtime; do not pass provider
-   credentials as launch arguments. The neutral Master directory is `/home/runtime`.
+   credentials as launch arguments. The neutral Commander directory is `/home/runtime`.
 4. Retain a verified `projects` row binding the project channel to its repository slug/origin and
    `/workspace/repos/owner/repo`. Repository origin must match; branches/worktrees are verified.
    For existing-session acceptance, bind Writer's actual Herdr pane, alias, cwd, CLI, opaque
    `agent_session`, generation and runtime-only token digest/file. Never invent these values.
 5. Set `DIGITALTWIN_CALLBACK_URL=http://backend-web:3000` for the worker's session environment.
    Herdr workspace creation supplies the generated session-token file, generation and current
-   Master-request token-file path; the operator does not create or transmit their values.
+  Commander-request token-file path; the operator does not create or transmit their values.
 6. In the operator-owned Runtime Gemini user settings (`/home/runtime/.gemini/settings.json`),
    merge this server entry without replacing other settings or login state:
 
@@ -87,7 +87,7 @@ not proof that authenticated Gemini startup, tool discovery and tools/call succe
 
 Capture sanitized artifact/version/schema identities, state transitions and opaque correlations:
 
-- Actual chat human/bot identities, both memberships, ordinary Master posts, project root/replies,
+- Actual chat human/bot identities, both memberships, ordinary Commander posts, project root/replies,
   and reconnect/refetch behavior on the selected server.
 - Actual Gemini start through Herdr, exact conversation identity and settled/readiness fields;
   installed MCP initialize/list/read-context/tool-call for the verified human request. Wrong or
@@ -95,7 +95,7 @@ Capture sanitized artifact/version/schema identities, state transitions and opaq
 - Actual Writer start/get/prompt/settled on the same conversation and a source-thread callback.
   If enabling workflow creation/review as well, verify the configured Reviewer start/settled,
   diversity and review callback. Existing-workflow follow-ups do not require PR delivery or cloning.
-- One Master instruction, one additional instruction to the same Writer, an ambiguous request,
+- One Commander instruction, one additional instruction to the same Writer, an ambiguous request,
   review-lock queue/release and concurrent follow-ups; show IDs/generations did not change and
   acknowledgments distinguish queued, delivered and human-reconciled outcomes.
 

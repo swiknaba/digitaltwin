@@ -12,7 +12,7 @@ The integrator coordinates this file; component workers propose changes before c
 | Kirei outbox → Mattermost | Bot REST delivery to verified destinations; session role identity; stable deduplication and uncertain-result reconciliation | Kirei |
 | Kirei worker → Runtime | Release-bound Herdr Unix-socket API on shared task-local volume; explicit start/prompt/state/stop mapping | Kirei adapter; Runtime captures installed schema |
 | Runtime → Kirei | Private session/generation-bound callbacks; server-derived channel/thread/role; idempotency key and exact artifact commit | Kirei client/server source; Runtime packages clients |
-| Master CLI → Kirei | Stdio MCP bridge to typed services with verified source context; ordinary workflow gates and destructive-operation confirmations | Kirei |
+| Commander CLI → Kirei | Stdio MCP bridge to typed services with verified source context; ordinary workflow gates and destructive-operation confirmations | Kirei |
 | Mattermost → push proxy → mobile | Pinned upstream push contract and operator-owned matching app identities/APNs/FCM configuration | Push/mobile owners jointly |
 | Applications → PostgreSQL | Independent databases/roles/migrations; jobs, inbox, outbox, audit, and workflow state belong to Kirei | Kirei and upstream Mattermost separately |
 | Independent fleets | Verified Mattermost/Git handoffs only; versioned peer envelope; no shared runtime/private APIs | Kirei; `docs/interfaces/peer-handoff.md` in Task 10 |
@@ -57,12 +57,12 @@ Official documentation inspected on 2026-10-01 provides starting references, not
 | Exact Kirei/Herdr/CLI/server/proxy/PostgreSQL/mobile pins and artifact/license audit | Partial; verified upstream identities recorded in the foundation checkpoint; remaining tools and complete artifact audit open | Component owners record verified releases, digests/checksums, licenses/notices |
 | Installed Herdr schema and four real CLI start/prompt/state/stop handshakes | Partial; captured schema and preliminary Linux Alpine server/status evidence; four-CLI checks open | Runtime owner delivers reviewed image and sanitized live fixtures |
 | Writer settled handshake; unknown cannot mean idle | Open; docs alone cannot prove CLI state semantics | Runtime/Kirei owners validate before sessions/reviews |
-| Selected Master CLI real MCP round trip with verified channel context | Open; no live provider session started | Kirei/Runtime owners validate with operator-provided test credentials |
+| Selected Commander CLI real MCP round trip with verified channel context | Open; no live provider session started | Kirei/Runtime owners validate with operator-provided test credentials |
 | Authenticated ordinary thread replies, bot identities, membership and REST recovery | Open; dependency health passed, authenticated behavior untested | Mattermost/Kirei owners validate selected artifact locally |
 | Disposable mention → queued dispatch → one Herdr CLI → source-thread reply | Open; no running applications or provider test credentials | Integrator proves slice before Tasks 3-5 production workflow work |
 | Own signed mobile foreground/background push and thread deep links | Open; enrollment/signing/push credentials/device setup remain human tasks | Mobile/push owners separate offline checks from operator evidence |
 
-Tasks 6-10 retain the plan's blocking gates for missing required Herdr, idle, authenticated chat/thread, or selected Master MCP evidence.
+Tasks 6-10 retain the plan's blocking gates for missing required Herdr, idle, authenticated chat/thread, or selected Commander MCP evidence.
 Preparing a Dockerfile, build recipe, fixtures, or offline component tests does not clear these gates.
 No production infrastructure, provider login, app-store submission, or signed-device delivery has occurred in this scaffold task.
 
