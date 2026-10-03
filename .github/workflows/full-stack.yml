@@ -5,6 +5,8 @@ on:
     branches: [main]
 permissions:
   contents: read
+env:
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
 concurrency:
   group: full-stack-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
