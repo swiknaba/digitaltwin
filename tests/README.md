@@ -102,7 +102,7 @@ These steps do not validate the complete Commander workflow or authorize a remot
 
 Run `scripts/test-full-stack` with local Docker running. The proposed
 `.github/workflows/full-stack.yml` uses this command on ordinary PRs without repository/provider secrets.
-The workflow remains local and unverified pending publication clearance.
+The workflow is published; its real GitHub execution is tracked by PR checks.
 It includes the existing core checks, then starts an isolated test chat transport.
 
 Mattermost HTTP/WebSocket, authorization/refetch, PostgreSQL, durable jobs, Herdr
@@ -133,11 +133,10 @@ fixture evidence only, never selected-provider acceptance.
 Backend-owner proposals are separate local commits: decode locked WebSocket text
 buffers/real event metadata; preserve valid aliases and generate lowercase bounded
 aliases for invalid IDs; poll an accepted Herdr start for the same terminal's proven
-interactive conversation without repeating the start. They still require owner
-review. Full backend checks passed 253 examples, RuboCop and whole-project Sorbet.
+interactive conversation without repeating the start. Independent backend review reported no material findings. Full backend checks passed 253 examples, RuboCop and whole-project Sorbet.
 `scripts/test-full-stack` passed all 25 checks together on local commit
 `3ff136a67e047f80aa95c6561369c029eef4ce7d` in 127.415 seconds, including all 253
 backend examples, RuboCop and whole-project Sorbet. Both disposable stacks were
-removed. Remote CI and independent owner review remain pending; no branch or
-workflow has been published. `evidence/full-stack-local-proposal.json` records
+removed. Independent review by backend worker `01a0fb73` reported no material findings.
+The branch is published following direct user approval; remote CI is pending. `evidence/full-stack-local-proposal.json` records
 exact revisions, image IDs and the actual/fake boundary.

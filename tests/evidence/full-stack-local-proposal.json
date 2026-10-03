@@ -33,7 +33,7 @@
       "failed": 0,
       "duration_seconds": 127.415
     },
-    "remote_ci": "pending publication clearance and owner review"
+    "remote_ci": "pending pull-request workflow run after directly approved publication"
   },
   "raw_herdr_start_observations": [
     {
@@ -145,5 +145,11 @@
       "revision": "3ff136a67e047f80aa95c6561369c029eef4ce7d",
       "synthetic_callbacks": true
     }
-  ]
+  ],
+  "independent_review": {
+    "reviewer": "backend worker 01a0fb73",
+    "reviewed_head": "79343546b213e3691ecfadb87915f82880df77d5",
+    "result": "no material findings",
+    "source": "parent-relayed review"
+  }
 }
