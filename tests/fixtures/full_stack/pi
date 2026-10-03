@@ -19,6 +19,16 @@ TRACE = Path.home() / "fixture-effects.jsonl"
 SEQUENCE = 1
 
 
+def record_failure(kind, error, traceback):
+    detail = str(error) if isinstance(error, RuntimeError) else kind.__name__
+    with (Path.home() / "fixture-errors.jsonl").open("a") as stream:
+        stream.write(json.dumps({"pane_id": PANE, "error": detail}) + "\n")
+    sys.__excepthook__(kind, error, traceback)
+
+
+sys.excepthook = record_failure
+
+
 def herdr(*args):
     subprocess.run(["herdr", "pane", *args], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
 

@@ -43,8 +43,10 @@ class FullStackChatTest(core.DisposableComposeTest):
             logs = self.compose(["logs", "--no-color", "--tail", "30", "backend-chat-listener", "backend-worker", "backend-web", "agent-runtime"], check=False).stdout
             diagnostic = {"project": self.project, "states": state, "service_logs": logs[-12000:]}
             diagnostic["runtime_boundary_error"] = "\n".join(line for line in self.compose(["logs", "--no-color", "backend-worker"], check=False).stdout.splitlines()
-                                                               if "Session runtime effect unproved:" in line or "Fixture Herdr startup failed:" in line)[-2500:]
+                                                               if "Session runtime effect unproved:" in line or "Fixture Herdr startup failed:" in line or "Fixture Herdr prompt failed:" in line)[-2500:]
             diagnostic["fixture_effects"] = self.effects()
+            diagnostic["fixture_errors"] = self.compose(["exec", "-T", "agent-runtime", "python3", "-c",
+                                                         "from pathlib import Path; p=Path.home()/'fixture-errors.jsonl'; print(p.read_text() if p.exists() else '')"], check=False).stdout
             diagnostic["raw_start_probe"] = getattr(self, "raw_start_probe", None)
             diagnostic["herdr_panes"] = self.compose(["exec", "-T", "agent-runtime", "herdr", "pane", "list"], check=False).stdout
             diagnostic["job_outcomes"] = self.compose(["exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "digitaltwin_development", "-c",

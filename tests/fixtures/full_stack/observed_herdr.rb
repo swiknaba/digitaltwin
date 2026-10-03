@@ -13,5 +13,13 @@ module FullStackFixture
       warn "Fixture Herdr startup failed: #{error.message}"
       raise
     end
+
+    sig { override.params(pane_id: String, text: String).void }
+    def prompt(pane_id:, text:)
+      super
+    rescue Adapters::Herdr::Errors::ProtocolViolation => error
+      warn "Fixture Herdr prompt failed: #{error.message}"
+      raise
+    end
   end
 end
