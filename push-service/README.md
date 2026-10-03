@@ -26,7 +26,7 @@ Choose a unique project name per run. The local proxy has empty provider targets
 
 | Setting | Pinned upstream contract |
 | --- | --- |
-| Artifact | `mattermost/mattermost-push-proxy@sha256:eb47e608ad965306ab4052bfeacff74d4148099eb83831c84685bd8b30897ccd` |
+| Artifact | `mattermost/mattermost-push-proxy:6.6.0` |
 | Process | Existing entrypoint execs `/mattermost-push-proxy/bin/mattermost-push-proxy` |
 | Arguments | `-config /mattermost-push-proxy/config/mattermost-push-proxy.json` |
 | User | `nobody:nogroup`, UID/GID 65534 in inspected image |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify pinned official/derived image files; emit hashes, never file bodies."""
+"""Verify versioned official/derived image files; emit hashes, never file bodies."""
 import argparse
 import hashlib
 import json
@@ -10,7 +10,7 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = json.loads((ROOT / 'artifact.lock.json').read_text())
-OFFICIAL = LOCK['image'] + '@' + LOCK['linux_amd64_digest']
+OFFICIAL = LOCK['image']
 
 
 def inspect_image(image):

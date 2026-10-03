@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 # Official compiled server stays unchanged. Final scratch copy prevents removed
 # plugin archives from remaining in inherited image layers.
-FROM --platform=linux/amd64 mattermost/mattermost-team-edition:11.11.1@sha256:14a2de6b71fe5f60660fb71ef2f020c5758d8559fdd35a3fca429d301b781154 AS official
-FROM --platform=linux/amd64 busybox:1.37.0-musl@sha256:dc88b80842580654294472735332ec7c7789a4010ec9a68b69f9b88c19abede6 AS pruned
+FROM --platform=linux/amd64 mattermost/mattermost-team-edition:11.11.1 AS official
+FROM --platform=linux/amd64 busybox:1.37.0-musl AS pruned
 RUN --mount=from=official,source=/,target=/upstream \
     mkdir /output && cp -a /upstream/. /output/ && \
     rm -rf /output/mattermost/prepackaged_plugins /output/mattermost/plugins /output/mattermost/client/plugins

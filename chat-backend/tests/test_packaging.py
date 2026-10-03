@@ -16,11 +16,12 @@ class PackagingTests(unittest.TestCase):
         self.assertNotIn('8067', final)
         self.assertNotIn('8074', final)
 
-    def test_pins_match_dockerfile(self):
+    def test_versioned_images_match_dockerfile(self):
         lock = json.loads((ROOT / 'artifact.lock.json').read_text())
         dockerfile = (ROOT / 'Dockerfile').read_text()
-        self.assertIn(lock['image'] + '@' + lock['linux_amd64_digest'], dockerfile)
-        self.assertIn(lock['build_tool']['image'] + '@' + lock['build_tool']['linux_amd64_digest'], dockerfile)
+        self.assertIn(lock['image'], dockerfile)
+        self.assertIn(lock['build_tool']['image'], dockerfile)
+        self.assertNotIn('@sha256:', dockerfile)
 
 
 if __name__ == '__main__':

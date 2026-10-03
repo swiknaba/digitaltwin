@@ -8,8 +8,7 @@
   },
   "ruby": {
     "version": "4.0.7",
-    "image": "ruby:4.0.7-alpine",
-    "index_digest": "sha256:1ca7cb33e970630d571e0da6140e0bc925faec8f1f8f51f9f2cdf5e5f5eed7c9"
+    "image": "ruby:4.0.7-alpine"
   },
   "verification": "Ruby 4.0.7 Alpine builds on Linux ARM64 and AMD64; actual Falcon web and worker startup verified; component checks and shared-contract typing pass; whole-project RBI/type coverage remains open",
   "checked_on": "2026-10-01",

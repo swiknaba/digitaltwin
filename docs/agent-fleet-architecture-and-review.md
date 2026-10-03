@@ -12,8 +12,8 @@ The owner controls project work through Mattermost or an attached Herdr terminal
 Each project workflow uses a writer and a reviewer from different model families.
 The system preserves specifications, plans, reviews, code, and research in Git.
 
-The deployment includes a persistent master controller for operational conversation, status, coordination, and targeted emergency changes.
-The controller uses the same local agent runtime as project work.
+The deployment includes a persistent **Commander** for operational conversation, status, coordination, and targeted emergency changes. Its Mattermost display name is **Commander Shepard**.
+Commander uses the same local agent runtime as project work; the durable internal session role remains `controller`.
 
 Separate deployments communicate only through Mattermost and Git.
 They do not share filesystems, databases, sockets, private networks, or controller APIs.
@@ -77,13 +77,13 @@ That file can start the required local dependencies with the application images.
 
 The application repository pins runtime tools and packages to exact versions in checked-in manifests.
 The Kirei application pins Ruby 4.0.7.
-The infrastructure layer selects production application images by OCI digest.
+The infrastructure layer selects production application images by explicit supported release tag; a major/minor tag is sufficient when the upstream publishes one.
 The operator upgrades those versions through reviewed manifest changes and rebuilt images.
 
 The infrastructure repository or hosting platform owns production orchestration.
 This includes production Compose files, networks, volumes, routing, restart policies, and backup schedules.
 
-Digitaltwin uses the official, unmodified Mattermost Team Edition server artifact, pinned by version and OCI digest.
+Digitaltwin uses the official, unmodified Mattermost Team Edition server artifact, selected by explicit release version.
 Kirei integrates externally through bot accounts, REST APIs, and authenticated WebSocket events.
 Mattermost supplies channels, real threads, PostgreSQL storage, and the browser interface.
 Keep server migrations, storage, configuration, and upgrades separate from Kirei.
@@ -111,7 +111,7 @@ The [Agents plugin](https://github.com/mattermost/mattermost-plugin-agents) is n
 Mattermost remains chat transport/UI; MCP integration is not required in a chat plugin.
 Its [commercial capability gates](https://github.com/mattermost/mattermost-plugin-agents/blob/master/enterprise/license.go) restrict multi-provider, external MCP, and state-changing tools.
 Its repository includes commercially licensed code despite its Apache label.
-Kirei's external Master/Worker bots provide the selected path without promising free plugin MCP capabilities.
+Kirei's external Commander/Worker bots provide the selected path without promising free plugin MCP capabilities.
 The [LiteLLM/MCP direction](https://github.com/swiknaba/digitaltwin/issues/4) belongs after Phase 2; it adds no Phase 0/1/2 requirements.
 Keep current agent/controller tool interfaces until that later design.
 Audit optional plugins individually. Hermes remains a candidate, not an adopted dependency.
@@ -176,7 +176,7 @@ The Kirei application owns these modules:
 - Workflow state and approval gates.
 - Agent session commands through Herdr.
 - Review phase coordination.
-- Master controller tools.
+- Commander tools.
 - Git and GitHub operations.
 - Audit events and operational status.
 - Durable job execution and retry behavior.
@@ -265,7 +265,7 @@ The runtime persists the resulting login state.
 Mattermost does not implement a provider authentication flow.
 
 Gemini CLI can run and monitor its assigned session through Herdr after integration validation.
-When configured as Master, it can request other sessions through the authorized creation path in §17.
+When configured as Commander, it can request other sessions through the authorized creation path in §17.
 Herdr does not guarantee native Gemini session restore.
 The workflow restores context from committed artifacts when it starts a fresh Gemini session.
 
@@ -290,7 +290,7 @@ Writer and reviewer retain separate conversations.
 Unrelated work and every new workflow start with fresh conversations, even in the same repository.
 When a conversation cannot be reused reliably, create a fresh session from that workflow's saved state and committed artifacts.
 Restore its specification, plan, reviews, phase, revisions, and approvals; do not import another task's conversation.
-The Master deliberately shares fleet context under §17; independent fleets never share private session context.
+Commander deliberately shares fleet context under §17; independent fleets never share private session context.
 Conversation separation does not create a security boundary within the shared runtime.
 
 The writer and reviewer are workflow phases behind one project bot identity.
@@ -344,7 +344,7 @@ Mobile thread navigation and reply placement must pass on our own builds.
 
 The deployment uses two Mattermost bot accounts:
 
-- `@agent` is the master controller.
+- `@agent` is Commander (display name: Commander Shepard).
 - `@worker` handles project workflow phases.
 
 The exact account handles remain configurable for each deployment.
@@ -360,11 +360,11 @@ Record the source session/generation and deduplicate callback retries before pos
 An uncertain Mattermost post remains subject to reconciliation.
 
 Detailed progress, interview questions, reviews, and work results stay in the project workflow thread.
-Important summaries and blockers also appear in the configured Master chat under the Agent bot identity.
+Important summaries and blockers also appear in the configured Commander chat under the Commander Shepard bot identity.
 These include approval requests, blocked workflows, and PR-ready or delivered results.
 Each summary identifies the project and phase and links to its source thread and relevant artifacts.
 Kirei uses the durable outbox to deduplicate summaries by workflow event and destination.
-It does not mirror the complete project message stream into Master chat.
+It does not mirror the complete project message stream into Commander chat.
 
 Each worker response identifies the active role.
 For example, a response can label itself as writer or reviewer.
@@ -393,7 +393,7 @@ If a channel has no repository, the system asks the owner to select one action:
 2. Create a private GitHub repository with that name, then clone it.
 3. Stop and let the owner perform the setup.
 
-The master controller can perform enrollment through a typed operation.
+Commander can perform enrollment through a typed operation.
 A simple shell command or function calls the same application service.
 
 The operator supplies GitHub credentials with repository creation and push access.
@@ -402,8 +402,8 @@ The operator can use a personal account or a bot account.
 ## 13. Starting and routing project work
 
 `@worker start` in a thread root post starts a fresh writer and reviewer workflow for that thread.
-The verified human command routes through Master to create fresh underlying agent sessions and bind them to the verified thread identity.
-This is the human authorization for the requested workflow; no second start approval or separate Master-chat interaction is required.
+The verified human command routes through Commander to create fresh underlying agent sessions and bind them to the verified thread identity.
+This is the human authorization for the requested workflow; no second start approval or separate Commander-chat interaction is required.
 
 The system rejects a second start in an active thread.
 The owner must use a new thread for a new workflow.
@@ -413,8 +413,8 @@ The active phase determines whether the writer or reviewer receives the message.
 
 Ordinary Worker messages outside an activated thread require an explicit `@worker start` in a new thread root post.
 The system does not infer a workflow from an idle thread or an unactivated channel message.
-Master start requests can use an existing verified thread in the selected project channel.
-Master-created threads are an optional Phase 0 convenience when the API supports straightforward, verified creation with reconciliation.
+Commander start requests can use an existing verified thread in the selected project channel.
+Commander-created threads are an optional Phase 0 convenience when the API supports straightforward, verified creation with reconciliation.
 Kirei must verify and record the returned project-channel/thread association before starting the requested workflow.
 An uncertain creation result requires reconciliation before another creation or workflow start.
 If this integration is complex, keep the existing-thread path and defer creation to the [Phase 1 roadmap](phase-1-voice-controller.md).
@@ -547,52 +547,52 @@ Each gate permits three unsuccessful review rounds.
 After the third unsuccessful round, the workflow becomes blocked.
 The worker asks an authorized human in Mattermost how to continue.
 
-## 17. Master controller
+## 17. Commander
 
-`@agent` routes messages from any channel to one logical Master controller.
-The controller receives the source channel context with each request.
-Master chat is the primary interface. Project threads support detailed updates and fine-tuning.
+`@agent` (display name Commander Shepard) routes messages from any channel to one logical Commander session.
+Commander receives the source channel context with each request.
+Commander chat is the primary interface. Project threads support detailed updates and fine-tuning.
 Follow-ups continue the relevant existing workflow and Writer conversation, including parallel
 workflows in one repository with separate worktrees. Never start a new session merely because
 the human adds instructions. Resolve verified source thread first, then an explicit human
-selection or recent same-human conversation binding. A selected Master may interpret recent
+selection or recent same-human conversation binding. Commander may interpret recent
 conversation/task evidence and propose a target; Kirei rechecks project, workflow and session
 identities. Keywords alone are not authority. Conflicting evidence or multiple plausible
 workflows requires a short clarification; inactivity or a missing session requires reconciliation.
 Persist the evidence, source event, correlation and delivery state. A queue acknowledgment is
 not a delivery receipt. During review or pause, retain instructions without changing the frozen
 revision; release only after authoritative state is rechecked. Uncertain socket results must not
-be resent automatically. Master approvals identify the workflow, gate and exact reviewed Git
+be resent automatically. Commander approvals identify the workflow, gate and exact reviewed Git
 commit and require current membership in both source and destination. A vague “approve”
-never applies across sessions. Only Master creates independently managed sessions; worker
+never applies across sessions. Only Commander creates independently managed sessions; worker
 requests need human approval. Operational conversation retains its existing separate policy.
 
-The Master has shared conversational context and operational access across its fleet.
+Commander has shared conversational context and operational access across its fleet.
 Channel boundaries do not partition its context.
 Kirei still verifies each request's sender and source context.
-Independent fleets retain separate Master sessions, credentials, runtime, and private control data.
+Independent fleets retain separate Commander sessions, credentials, runtime, and private control data.
 Their collaboration remains limited to shared Mattermost messages and Git artifacts.
 
 The controller is not bound to one repository.
 It does not use the project specification and plan gates.
-Master chat keeps the owner informed and coordinates work; it is not the ordinary coding agent.
+Commander chat keeps the owner informed and coordinates work; it is not the ordinary coding agent.
 It can perform a targeted emergency change through the available operational tools.
 That operation does not require starting a coding workflow or passing its review and approval cycle.
 Ordinary coding uses the writer/reviewer workflow and retains all its gates.
 
-The Master uses `RoleConfig(cli, provider, model, family)`.
+Commander uses `RoleConfig(cli, provider, model, family)`.
 Gemini CLI is the default; the selected CLI runs through Herdr.
 The controller does not call provider model APIs directly.
 The operator may select another supported CLI after its Herdr and MCP contracts pass validation.
 Its session has no project workflow or repository binding and starts in the neutral Runtime home.
 
-Only Master can initiate separately managed agent sessions in the fleet.
+Only Commander can initiate separately managed agent sessions in the fleet.
 Workers and peer agents cannot autonomously create another session or start a peer chain.
-They may ask a human for approval; Master creates the authorized session after that approval.
+They may ask a human for approval; Commander creates the authorized session after that approval.
 Harness-native subordinate agents remain allowed when the selected harness supports them.
 Those subordinate agents belong to the invoking session and do not become independently managed fleet sessions.
 
-Kirei bootstraps/restores the configured Master and executes its authorized workflow role lifecycle.
+Kirei bootstraps/restores the configured Commander and executes its authorized workflow role lifecycle.
 Starting a human-requested workflow authorizes its Writer/Reviewer roles and their gated review/recovery dispatches.
 Those dispatches do not require repeated human spawn approvals and cannot expand into unrelated workflows.
 Session creation authority is enforced at Kirei interfaces and in agent instructions.
@@ -619,7 +619,7 @@ It requests a second human confirmation before a destructive or irreversible act
 It never displays secret values.
 This existing confirmation rule does not impose a coding review cycle on operational conversation or emergency changes.
 
-After a restart, retain an authoritative healthy Master conversation and reconstruct request
+After a restart, retain an authoritative healthy Commander conversation and reconstruct request
 state from PostgreSQL. Renew its short-lived credential only after verifying the same runtime
 identity and token digest. A missing/replaced conversation or uncertain external effect requires
 reconciliation; restarting a process never authorizes replay or an independent new session.
@@ -633,7 +633,7 @@ remain authoritative. Completed replies are idempotent; a queue acknowledgment i
 Any channel member can create ordinary work and send project instructions.
 Peer agents can send instructions to existing workflows through explicit Mattermost mentions.
 A bot cannot run `@worker start` to create a workflow or independently managed session.
-A request for new work requires human approval and creation through Master under §17.
+A request for new work requires human approval and creation through Commander under §17.
 
 Mattermost owns user administration, team/channel access, and channel membership.
 An authorized human is a verified channel member with `is_bot: false` whose user ID is not a configured bot identity.
@@ -667,7 +667,7 @@ Its initial envelope identifies these items:
 The receiving deployment derives sender identity and channel/thread membership from authenticated Mattermost events.
 It rejects unsupported versions, wrong recipients, replayed requests, and unverified target/artifact bindings.
 A handoff cannot authorize a new session or an automatic onward peer chain.
-An agent needing another session asks a human, then Master handles authorized creation.
+An agent needing another session asks a human, then Commander handles authorized creation.
 Do not substitute automatic hop or rate limits for this approval rule.
 
 The receiving deployment verifies the repository and revision with its own credentials.
@@ -711,7 +711,7 @@ An operator signs in again after a disaster recovery.
 The existing SSH bastion remains the path for raw Hetzner server administration.
 It does not provide the Herdr tunnel.
 Private Herdr attachment gives the human intentional raw access to the agents.
-The human acts as the controller and does not need a Master session for terminal work.
+The human acts as the controller and does not need a Commander session for terminal work.
 Direct terminal input is unsupervised by the Kirei dispatch lock.
 
 The infrastructure layer supplies Headscale and a Tailscale sidecar for private runtime access.
@@ -789,7 +789,7 @@ Phase 0 is acceptable when all criteria in this section pass.
 8. Each of the four supported agent CLIs starts through Herdr.
 9. The operator can attach to Herdr through the private tailnet.
 10. The public internet cannot connect directly to the runtime SSH port.
-11. `@agent` messages from any channel reach the master controller with source channel context.
+11. `@agent` messages from any channel reach Commander with source channel context.
 12. `@worker start` creates fresh writer and reviewer sessions for the mapped repository.
 13. A second start in an active thread is rejected without creating sessions; a new thread starts fresh sessions.
 14. A verified channel mapping resolves its explicitly enrolled repository slug under the configured workspace root.
@@ -805,7 +805,7 @@ Phase 0 is acceptable when all criteria in this section pass.
 24. Three unsuccessful rounds at one gate block the workflow and request human direction.
 25. The final workflow uses one branch and one pull request.
 26. The application does not merge the pull request without a direct conversational instruction.
-27. A master restart creates a fresh session with the selected configuration and restores status from durable state.
+27. A Commander restart creates a fresh session with the selected configuration and restores status from durable state.
 28. A simulated peer bot completes a handoff through only Mattermost and Git.
 29. An encrypted backup restores all included services without restoring excluded CLI credentials.
 30. The owner completes a threaded agent interview in our mobile builds; self-hosted push opens the correct channel and thread.
@@ -819,7 +819,7 @@ The implementation plan must include these validation steps:
 
 1. Validate Herdr socket methods and state reporting against the pinned Herdr release.
 2. Validate the writer idle handshake with each supported agent CLI.
-3. Validate startup and MCP tool calls through Herdr for the selected Master CLI.
+3. Validate startup and MCP tool calls through Herdr for the selected Commander CLI.
 
 ## 27. Superseded decisions
 
@@ -828,7 +828,7 @@ The following earlier ideas no longer apply:
 - Run Herdr directly on the host.
 - Use a dedicated host user as the main agent isolation boundary.
 - Permit small work without a specification and plan.
-- Run a periodic memory master.
+- Run a periodic Commander memory session.
 - Limit application concurrency as a Phase 0 control-plane feature.
 - Give a controller direct access to another deployment.
 - Test collaboration with two complete server stacks.

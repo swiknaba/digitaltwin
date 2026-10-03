@@ -17,7 +17,6 @@ herdr:
     sha256: 5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157
 base:
   image: node:22.23.2-alpine3.23
-  index_digest: sha256:72c5815a06aed9a2273aea5628d74d348af57843a7b547af2fe53dd3e4b95261
   architecture: linux/amd64
 node: "22.23.2"
 npm: "10.9.8"
@@ -59,6 +58,6 @@ runtime:
 callback_clients:
   owner: integration-backend
   manifest: contracts/kirei-clients.json
-  source_revision: 9bbac0b2b8bf286410375eb2d3ac33ec0a312eb8
+  source_revision: 5efa1ee5eec492d693598d599e2b04f9c13e9980
   packaged_directory: /usr/local/bin
   validation: isolated_callback_stdio_fixtures_only_live_gates_open
