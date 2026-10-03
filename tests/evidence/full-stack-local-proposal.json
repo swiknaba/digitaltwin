@@ -171,7 +171,14 @@
       "run": 37139546845,
       "head": "de058d92766ecbc659c50abc1386122065e912c1",
       "result": "failure",
-      "diagnosed_failure": "fixture replay reused a session capability pointer rotated by the next real queued dispatch"
+      "diagnosed_failure": "fixture recorded identical reply replay rejection; no second agent effect",
+      "source_inference": "Session capability pointer may rotate after completion; retaining it alone did not resolve the next hosted run."
+    },
+    {
+      "run": 37140262004,
+      "head": "03a48fdbf92f3e71d33385c31dbd714a1259604c",
+      "result": "failure",
+      "failure": "identical replay still rejected after retaining capability; controller Reply and Dispatch use fail-fast shared lock"
     }
   ],
   "fixture_replay_correction": "Retain the actual current request capability in a mode-0600 NamedTemporaryFile for MCP, reply and identical replay; delete on exit. No credentials are manufactured, persisted outside owned volumes or logged.",
@@ -185,6 +192,23 @@
     "backend_failures": 0,
     "rubocop": "passed",
     "whole_project_sorbet": "passed",
+    "own_resources_removed": true
+  },
+  "fixture_identical_replay": "Bounded retry of exact same request, text and retained capability only, per installed client instruction. Never repeat start/prompt; persistent rejection still fails; assert exactly one bot reply and one agent effect.",
+  "fixture_identical_replay_local_validation": {
+    "command": "scripts/test-full-stack",
+    "base_head": "03a48fdbf92f3e71d33385c31dbd714a1259604c",
+    "working_tree_changes": "bounded identical replay plus diagnostics/evidence",
+    "root_checks": 25,
+    "seconds": 135.28,
+    "backend_examples": 253,
+    "backend_failures": 0,
+    "rubocop": "passed",
+    "whole_project_sorbet": "passed",
+    "replay_attempts": [
+      1,
+      1
+    ],
     "own_resources_removed": true
   }
 }

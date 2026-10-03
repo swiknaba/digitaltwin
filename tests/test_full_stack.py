@@ -260,6 +260,7 @@ print(json.dumps(observations))
         self.assertEqual({row["nonce"] for row in before}, {"chat-0", "chat-1"})
         self.assertEqual(len(before), 2)
         self.assertTrue(all(row["mcp"] for row in before))
+        self.evidence["identical_replay_attempts"] = [row["replay_attempts"] for row in before]
         self.assertEqual(len({(row["session_id"], row["pane_id"]) for row in before}), 1)
         # WS delivery must be observed before reconnect/backfill can hide a broken WS parser.
         self.ruby("checkpoints=Domains::Messaging::Checkpoints.new; abort 'live WS absent' unless " +

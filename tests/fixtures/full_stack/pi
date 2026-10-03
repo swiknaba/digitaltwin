@@ -48,6 +48,7 @@ for line in sys.stdin:
         continue
     nonce = match.group(1)
     state("working")
+    replay_attempts = 0
     request = re.search(r"Verified human request ([0-9a-f-]+) from channel", line)
     if request:
         request_id = request.group(1)
@@ -81,13 +82,21 @@ for line in sys.stdin:
             reply = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10, env=capability_env)
             if reply.returncode:
                 raise RuntimeError("Fixture reply rejected")
-            # Replaying the identical callback must return the existing receipt.
-            replay = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10, env=capability_env)
-            if replay.returncode:
-                raise RuntimeError("Fixture reply replay rejected")
+            # Reply and the next queued dispatch share a fail-fast controller lock.
+            # The installed client permits retrying only the identical callback.
+            deadline = time.monotonic() + 20
+            while True:
+                replay_attempts += 1
+                replay = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10, env=capability_env)
+                if not replay.returncode:
+                    break
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Fixture reply replay rejected")
+                time.sleep(0.1)
+
     else:
         request_id = None
         print("DIRECT_REPLY=" + nonce, flush=True)
     with TRACE.open("a") as stream:
-        stream.write(json.dumps({"nonce": nonce, "request_id": request_id, "pane_id": PANE, "session_id": SESSION, "mcp": bool(request)}) + "\n")
+        stream.write(json.dumps({"nonce": nonce, "request_id": request_id, "pane_id": PANE, "session_id": SESSION, "mcp": bool(request), "replay_attempts": replay_attempts}) + "\n")
     state("idle")
