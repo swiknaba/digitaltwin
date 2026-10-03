@@ -1,0 +1,93 @@
+{
+  "baseline": "b6fee03810c1a2563a6136f3aeec03878823fe87",
+  "reviewed_backend": "5efa1ee5eec492d693598d599e2b04f9c13e9980",
+  "backend_owner_proposal_commits": [
+    "0aa202ea6b15c22048b4cc83db1fa65d90ccb61e",
+    "da783b0893f3037442bc0c4e5506b81d078effa5"
+  ],
+  "validation": {
+    "full_root_command": "scripts/test-full-stack",
+    "combined_run_before_final_fixture_correction": {
+      "total": 25,
+      "passed": 24,
+      "failed": 1
+    },
+    "corrected_chat_command": "DIGITALTWIN_RUN_FULL_STACK_TESTS=1 DIGITALTWIN_RUN_COMPOSE_TESTS=1 DIGITALTWIN_REVIEWED_BACKEND_REVISION=5efa1ee5eec492d693598d599e2b04f9c13e9980 python3 -m unittest discover -s tests -p test_full_stack.py -k test_real_chat_and_herdr_roundtrip -v",
+    "corrected_chat_result": {
+      "total": 1,
+      "passed": 1,
+      "duration_seconds": 63.45
+    },
+    "backend_bin_check": {
+      "examples": 253,
+      "failures": 0,
+      "rubocop": "passed",
+      "whole_project_sorbet": "passed",
+      "typed_fixture_classes_included": true
+    },
+    "final_all_at_once_root_run": "pending",
+    "remote_ci": "pending publication clearance and owner review"
+  },
+  "raw_herdr_start_observations": [
+    {
+      "delay": 0,
+      "name": "wire-probe",
+      "error_code": null,
+      "result_type": "agent_started",
+      "state": "unknown",
+      "launch_pending": true,
+      "interactive_ready": null,
+      "has_session": false
+    },
+    {
+      "delay": 0.5,
+      "name": "wire-probe",
+      "error_code": null,
+      "result_type": "agent_started",
+      "state": "unknown",
+      "launch_pending": true,
+      "interactive_ready": null,
+      "has_session": false
+    },
+    {
+      "delay": 0,
+      "name": "digitaltwin-session_abCDEF123xyz",
+      "error_code": "invalid_agent_name",
+      "result_type": null,
+      "state": null,
+      "launch_pending": null,
+      "interactive_ready": null,
+      "has_session": false
+    }
+  ],
+  "live_verified": [
+    "core Compose boot",
+    "migrations and separate DB ownership",
+    "Falcon parallel HTTP/rejected JSON",
+    "durable jobs/restart",
+    "native Mattermost health/HTML",
+    "UID/socket/mount/capability restrictions",
+    "authenticated disposable Mattermost REST/WebSocket",
+    "real Herdr CLI/direct fixture prompt",
+    "real backend MCP HTTP through installed client",
+    "correct thread and bot replies",
+    "identical callback replay",
+    "history deduplication",
+    "backend restart same conversation"
+  ],
+  "only_fake_layer": "Pi agent process and its native hook reports; no backend/chat/Herdr/MCP transport substitutes",
+  "production_dispatch_policy": false,
+  "provider_acceptance": false,
+  "phase0_acceptance": false,
+  "own_resources_removed": true,
+  "files_sha256": {
+    "tests/test_full_stack.py": "4bebe477f9076c5e0097a39e38634a4aa577f2e08e169f57f4b07df1991c1294",
+    "scripts/test-full-stack": "32b9b0733f50a66a4eea6e4cc25618a6eb63b5c3c01e1da3493b4e0007234525",
+    ".github/workflows/full-stack.yml": "94f8dd5c68b65d969617ae4db205c590c9ea7945232013e47521f7f36b5d1814",
+    "tests/fixtures/full_stack/composition.rb": "2059b6bcba249b6e5f44fa85422cc86caa36a77acbc112a81bfb4a884204a037",
+    "tests/fixtures/full_stack/pi": "7d1e1d44963643a4e13b081a07847957086a1677292810b30a42c19a9522732c",
+    "tests/fixtures/full_stack/observed_herdr.rb": "3b068164da84ab03a5104be054689510d4b83a7d856d2aba9248107fbd22e1f6",
+    "tests/fixtures/full_stack/worker.rb": "3f8ace59c1124677fd33bc0c50a0f4a623f44042eae4e9a067a4946d26f2a563",
+    "tests/fixtures/full_stack/dispatch_policy.rb": "1117135a2df4c79614eea5b37f343e56d3e225c42cee776f2b4c1acede60184a"
+  }
+}

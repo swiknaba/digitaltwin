@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Deterministic agent process for real Herdr; never calls a model provider."""
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+import uuid
+
+# Herdr reads the process-start environment when identifying a managed agent.
+# Re-exec once so the fixture hint is present there, before reporting hooks.
+if os.environ.get("HERDR_AGENT") != "pi":
+    os.execvpe(sys.executable, [sys.executable, *sys.argv], {**os.environ, "HERDR_AGENT": "pi"})
+PANE = os.environ["HERDR_PANE_ID"]
+SESSION = uuid.uuid4().hex
+TRACE = Path.home() / "fixture-effects.jsonl"
+SEQUENCE = 1
+
+
+def herdr(*args):
+    subprocess.run(["herdr", "pane", *args], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+
+
+def state(value):
+    global SEQUENCE
+    SEQUENCE += 1
+    herdr("report-agent", PANE, "--source", "herdr:pi", "--agent", "pi", "--state", value, "--agent-session-id", SESSION, "--seq", str(SEQUENCE))
+
+
+herdr("report-agent-session", PANE, "--source", "herdr:pi", "--agent", "pi", "--agent-session-id", SESSION, "--seq", str(SEQUENCE), "--session-start-source", "startup")
+state("idle")
+for line in sys.stdin:
+    match = re.search(r"(?:E2E_MESSAGE|DIRECT_MESSAGE)=([a-z0-9-]+)", line)
+    if not match:
+        continue
+    nonce = match.group(1)
+    state("working")
+    request = re.search(r"Verified human request ([0-9a-f-]+) from channel", line)
+    if request:
+        request_id = request.group(1)
+        frames = "\n".join(json.dumps(row) for row in [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "list_projects", "arguments": {"request_id": request_id}}},
+        ]) + "\n"
+        # Dispatch marks Active after socket submission. Wait on actual authorization,
+        # without inventing a capability or rewriting backend request state.
+        deadline = time.monotonic() + 20
+        while True:
+            mcp = subprocess.run(["digitaltwin-mcp"], input=frames, capture_output=True, text=True, timeout=10)
+            rows = [json.loads(row) for row in mcp.stdout.splitlines()]
+            valid = (len(rows) == 3 and [row.get("id") for row in rows] == [1, 2, 3]
+                     and rows[0].get("result", {}).get("serverInfo", {}).get("name") == "digitaltwin"
+                     and any(tool.get("name") == "list_projects" for tool in rows[1].get("result", {}).get("tools", []))
+                     and "result" in rows[2] and not rows[2]["result"].get("isError", False)
+                     and rows[2]["result"].get("content") == [{"type": "text", "text": "[]"}])
+            if valid:
+                break
+            if time.monotonic() > deadline:
+                raise RuntimeError("Fixture MCP authorization did not become active")
+            time.sleep(0.1)
+        reply = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10)
+        if reply.returncode:
+            raise RuntimeError("Fixture reply rejected")
+        # Replaying the identical callback must return the existing receipt.
+        replay = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10)
+        if replay.returncode:
+            raise RuntimeError("Fixture reply replay rejected")
+    else:
+        request_id = None
+        print("DIRECT_REPLY=" + nonce, flush=True)
+    with TRACE.open("a") as stream:
+        stream.write(json.dumps({"nonce": nonce, "request_id": request_id, "pane_id": PANE, "session_id": SESSION, "mcp": bool(request)}) + "\n")
+    state("idle")

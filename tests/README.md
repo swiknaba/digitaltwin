@@ -46,7 +46,7 @@ the shared 0600 Herdr socket, packaged callback hash, chat plugin absence, and p
 Synthetic database fixtures cover job deduplication, lease recovery, stale completion, uncertain effects,
 gated dispatch after restart, and callbacks/replays bound to two separate threads.
 The callback markers are public synthetic strings with short database expiry and a temporary Runtime `/tmp` file;
-the file is removed and fixture sessions invalidated after the test. No provider/chat accounts or login state are created.
+the file is removed and fixture sessions invalidated after the test. The credential-free core suite creates no provider/chat accounts or login state.
 
 JSON evidence identifies the tested Git/backend revisions and explicitly labels authenticated chat,
 provider CLI, Master MCP, and full Phase 0 acceptance as untested. Startup failures retain bounded, sanitized logs from the disposable services and captured Compose progress.
@@ -97,3 +97,44 @@ For a short human core/CLI check from the repository root:
 This checks the local UI and direct provider CLI. Commander/chat dispatch remains gated:
 the chat listener is opt-in, bot/account wiring is missing, and workflow dispatch policy returns false.
 These steps do not validate the complete Commander workflow or authorize a remote deployment.
+
+## Deterministic real chat and Herdr round trip
+
+Run `scripts/test-full-stack` with local Docker running. The proposed
+`.github/workflows/full-stack.yml` uses this command on ordinary PRs without repository/provider secrets.
+The workflow remains local and unverified pending publication clearance.
+It includes the existing core checks, then starts an isolated test chat transport.
+
+Mattermost HTTP/WebSocket, authorization/refetch, PostgreSQL, durable jobs, Herdr
+server/CLI, installed MCP/callback clients and bot delivery are real. Only the agent
+process is a scripted `pi` fixture; it reports its session identity and working/idle
+states through real Herdr and replies using the current backend-created capability.
+Temporary humans/bots/session tokens exist only in the disposable Mattermost database
+and mode-0600 test-volume files. They are destroyed with that stack; no operator
+accounts, provider login, production data or paid model calls are involved.
+
+The fixture worker is a separate entrypoint and typed composition/policy subclass
+mounted from `tests/fixtures/full_stack/`. The normal worker and hardcoded production
+dispatch policy are unchanged. Test identities/state are never acceptance evidence
+for a real provider, selected Commander CLI, autonomous fleet or remote deployment.
+
+Assertions cover direct Herdr prompting, live WebSocket intake before REST backfill,
+two correct source threads/bot identities, excluded actors, identical callback replay,
+reconnect/history duplicate suppression, and backend restart preserving the same
+agent pane/conversation. Failure artifacts contain bounded redacted diagnostics only;
+no token files, homes, resolved configuration or database dumps are uploaded/cached.
+
+Local validation now passes the real chat round trip, including backend MCP HTTP,
+correct bot/thread delivery, callback replay, REST backfill deduplication and same
+conversation after backend restart. The fixture simulates Pi's native hook protocol;
+Herdr must return its actual reported session identity before dispatch. This is
+fixture evidence only, never selected-provider acceptance.
+
+Backend-owner proposals are separate local commits: decode locked WebSocket text
+buffers/real event metadata; preserve valid aliases and generate lowercase bounded
+aliases for invalid IDs; poll an accepted Herdr start for the same terminal's proven
+interactive conversation without repeating the start. They still require owner
+review. Full backend checks passed 253 examples, RuboCop and whole-project Sorbet.
+The full root invocation passed its other 24 checks before the final fixture fix;
+the corrected chat check passed separately. A final all-at-once run and remote CI
+remain pending. No branch or workflow has been published.

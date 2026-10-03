@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$repo_root"
+# Known reviewed backend baseline; require the full merged history in CI.
+export DIGITALTWIN_REVIEWED_BACKEND_REVISION=5efa1ee5eec492d693598d599e2b04f9c13e9980
+export DIGITALTWIN_RUN_COMPOSE_TESTS=1
+export DIGITALTWIN_RUN_FULL_STACK_TESTS=1
+docker compose --env-file .env.example -f compose.yml pull postgres local-volume-init
+exec python3 -m unittest discover -s tests -v
