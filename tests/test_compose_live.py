@@ -23,8 +23,17 @@ EXPECTED_MIGRATION_VERSION = max(int(path.name.split("_", 1)[0]) for path in (RO
 class DisposableComposeTest(unittest.TestCase):
     @classmethod
     def command(cls, args, *, source=None, timeout=180, check=True):
-        result = subprocess.run(args, cwd=ROOT, env=ENV, input=source, text=True,
-                                capture_output=True, timeout=timeout)
+        try:
+            result = subprocess.run(args, cwd=ROOT, env=ENV, input=source, text=True,
+                                    capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            diagnostic = error.stderr or ""
+            if isinstance(diagnostic, bytes):
+                diagnostic = diagnostic.decode(errors="replace")
+            for marker in ["local-only-postgres", "local-only-kirei", "local-only-mattermost"]:
+                diagnostic = diagnostic.replace(marker, "<sample-redacted>")
+            diagnostic = re.sub(r"(postgres(?:ql)?://)[^@\s]+@", r"\1<redacted>@", diagnostic)
+            raise RuntimeError(f"local command timed out after {timeout}s: {args[0:2]}\n{diagnostic[-3000:]}") from error
         if check and result.returncode:
             # Service logs/config may contain credentials. Keep failure output sanitized.
             diagnostic = result.stderr[-3000:]
@@ -80,8 +89,9 @@ class DisposableComposeTest(unittest.TestCase):
             cls.compose(["up", "-d", "--no-build", "--pull", "never", "--wait", "--wait-timeout", "240"], timeout=300)
         except RuntimeError as error:
             # Fresh disposable stack contains only checked-in public DB samples.
-            diagnostic = cls.compose(["logs", "--no-color", "--tail", "150", "backend-migrate"], check=False)
-            detail = diagnostic.stdout + diagnostic.stderr
+            state = cls.compose(["ps", "--all", "--format", "json"], check=False)
+            diagnostic = cls.compose(["logs", "--no-color", "--tail", "30", "postgres", "local-volume-init", "backend-migrate", "backend-web", "backend-worker", "agent-runtime", "mattermost"], check=False)
+            detail = "Container states:\n" + state.stdout + state.stderr + "\nService logs:\n" + diagnostic.stdout + diagnostic.stderr
             for marker in ["local-only-postgres", "local-only-kirei", "local-only-mattermost"]:
                 detail = detail.replace(marker, "<sample-redacted>")
             detail = re.sub(r"(postgres(?:ql)?://)[^@\s]+@", r"\1<redacted>@", detail)
@@ -137,6 +147,10 @@ class DisposableComposeTest(unittest.TestCase):
         _, body, headers = self.get("mattermost", "/api/v4/system/ping")
         self.assertEqual(body["status"], "OK")
         self.assertTrue(headers.get("X-Version-Id", "").startswith("11.11.1"))
+        with urllib.request.urlopen(self.addresses["mattermost"] + "/", timeout=10) as response:
+            self.assertEqual(response.status, 200)
+            self.assertIn("text/html", response.headers.get("Content-Type", ""))
+            self.assertIn(b"<html", response.read(1048576).lower())
         self.ruby(f"abort 'migrations' unless Kirei::App.raw_db_connection[:schema_info].get(:version) == {EXPECTED_MIGRATION_VERSION}")
         for user, password, database, other in [
             ("kirei", "local-only-kirei", "digitaltwin_development", "mattermost"),

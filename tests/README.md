@@ -40,7 +40,7 @@ Cleanup removes only this suite's project volumes and its unique image tags, inc
 It stages only checksum-pinned backend callback/MCP files into the ignored build context.
 The credential-free default must exclude the gated listener and push profiles.
 
-Real local checks cover PostgreSQL role ownership and cross-database denials, all six migrations,
+Real local checks cover PostgreSQL role ownership and cross-database denials, the current migration version,
 Falcon parallel HTTP/request isolation and bounded JSON rejection, UID/mount/capability restrictions,
 the shared 0600 Herdr socket, packaged callback hash, chat plugin absence, and process restarts.
 Synthetic database fixtures cover job deduplication, lease recovery, stale completion, uncertain effects,
@@ -49,7 +49,7 @@ The callback markers are public synthetic strings with short database expiry and
 the file is removed and fixture sessions invalidated after the test. No provider/chat accounts or login state are created.
 
 JSON evidence identifies the tested Git/backend revisions and explicitly labels authenticated chat,
-provider CLI, Master MCP, and full Phase 0 acceptance as untested. A failure prints no service logs or resolved secrets.
+provider CLI, Master MCP, and full Phase 0 acceptance as untested. Startup failures retain bounded, sanitized logs from the disposable services and captured Compose progress.
 Without the explicit opt-in, normal discovery skips the live suite and runs configuration tests only.
 
 | Phase 0 criterion | Scope of this suite; remaining evidence |
@@ -72,3 +72,28 @@ Client pin/staging validation: `python3 -m unittest discover -s tests -p test_cl
 After building the pinned with-callback image, run `tests/fixtures/runtime_clients.rb` via its Ruby
 entrypoint with network disabled. It verifies installed stdio MCP and callback HTTP wire behavior
 against an in-container fixture; no provider/CLI or authenticated chat compatibility is claimed.
+
+## Final local validation after the backend refactor
+
+`evidence/final-local-e2e.json` records 23 passing root checks on main `1f34bb9d3ac6d6252c646c316b2d7de0ef6bd5b9`
+with the fixture/harness changes identified by SHA-256. Six checks boot real disposable containers.
+Separate backend `bin/check` passed 243 examples, RuboCop, and the whole-project Sorbet check.
+Installed MCP/callback clients passed synthetic HTTP fixtures; real unauthenticated Claude print mode
+returned the expected login-required result. Interactive Claude startup on the network-disabled probe
+returned to the shell after its connection failure; Herdr's initial readiness response alone does not
+prove a settled provider session. No authenticated chat, model response, or live Master MCP is claimed.
+
+Before Docker Desktop was restarted by the operator, even a native arm64 `/bin/true` container
+remained `Created` with PID 0. Both initial suites timed out before application execution.
+The recovered run passed without increasing timeouts or changing production gates.
+
+For a short human core/CLI check from the repository root:
+
+1. Run `./scripts/dev`, then `docker compose ps`; core services should be healthy.
+2. Open `http://localhost:8065` and create your local chat account.
+3. Run `docker compose exec agent-runtime claude auth login` and complete your own login.
+4. Run `docker compose exec agent-runtime claude --print 'Reply exactly DIGITALTWIN_OK'`; expect that response.
+
+This checks the local UI and direct provider CLI. Commander/chat dispatch remains gated:
+the chat listener is opt-in, bot/account wiring is missing, and workflow dispatch policy returns false.
+These steps do not validate the complete Commander workflow or authorize a remote deployment.

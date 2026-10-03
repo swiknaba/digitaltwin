@@ -1,0 +1,86 @@
+{
+  "authenticated_chat": false,
+  "backend_full_check": {
+    "command": "bin/check",
+    "disposable_databases": [
+      "digitaltwin_backend_test",
+      "digitaltwin_migration_test"
+    ],
+    "examples_passed": 243,
+    "exit": 0,
+    "failures": 0,
+    "own_resources_removed": true,
+    "rubocop_files": 349,
+    "rubocop_offenses": 0,
+    "signed_production_methods": 714,
+    "whole_project_sorbet": "No errors"
+  },
+  "claude_unauthenticated": {
+    "direct_print_exit": 1,
+    "direct_print_stdout": "Not logged in \u00b7 Please run /login",
+    "herdr_agent_start_invoked": true,
+    "herdr_print_prompt_invoked": true,
+    "herdr_print_screen": "Not logged in \u00b7 Please run /login",
+    "herdr_print_start_exit": 1,
+    "herdr_print_start_reason": "timed out waiting for interactive agent startup; print-mode CLI exited after login-required message",
+    "herdr_reported_idle_and_interactive_ready": true,
+    "home": "empty disposable tmpfs",
+    "interactive_screen": "network-disabled Anthropic connection failure then shell",
+    "network": "none",
+    "own_container_and_tmpfs_removed": true,
+    "provider_response": false,
+    "settled_authenticated_session": false,
+    "version": "2.1.287"
+  },
+  "container_security_socket_callback_hash_no_plugins": true,
+  "database_ownership_and_migrations": true,
+  "falcon_parallel_health_and_callback_auth_rejection": true,
+  "fixture_and_harness_sha256": {
+    "tests/fixtures/callback_state.rb": "93cacf8d2b41ec933c8fef384ecf9779dd8f50906de75051ca0c766d7ad47d01",
+    "tests/fixtures/durable_state.rb": "dc1187c469501a7b1dae1881c6aa5267894e4003ae006c78ff952248a4b1ed4a",
+    "tests/test_compose_live.py": "2e8fe6b8fc11f8b9a4e78511d81fc5dd3923faca396a18c17454a9d0a3a64446"
+  },
+  "image_ids": {
+    "agent-runtime": "sha256:5dc5fa1df55404fbeecacedc54cd8220a55c74c06b1ec4a39a415d3b91d183a3",
+    "backend-web": "sha256:cf5dbb539000e6a4df7188089ef421b0c41a860762c7078f2c2a2e9f06d636b4",
+    "backend-worker": "sha256:cf5dbb539000e6a4df7188089ef421b0c41a860762c7078f2c2a2e9f06d636b4",
+    "mattermost": "sha256:869bdfee7f344f22dd7b150c05b3c4d5eed4af3505eba0e803e23ea97e04e686"
+  },
+  "initial_environment_failure": {
+    "compose_timeout_seconds": 300,
+    "container_states": "Created; Pid 0; no process start",
+    "full_suite_attempts": 2,
+    "independent_native_arm64_true": "also stalled before process start",
+    "resolution": "user restarted Docker Desktop; native /bin/true then exit 0"
+  },
+  "live_local_containers": true,
+  "master_mcp": false,
+  "own_resources_removed": true,
+  "packaged_client_mock": {
+    "installed_callback_http": true,
+    "installed_stdio_mcp": true,
+    "network": "none",
+    "passed": true,
+    "real_master_mcp": false
+  },
+  "pending_migrations_rejected_pool_5_timeout_2": true,
+  "phase0_acceptance": false,
+  "provider_cli": false,
+  "readiness": {
+    "chat_listener": "opt-in and unconfigured",
+    "commander_workflow": false,
+    "core_boot_and_html_ui": true,
+    "hetzner_deployment": false,
+    "provider_login": "operator required",
+    "workflow_dispatch_policy": false
+  },
+  "reviewed_backend_revision": "5efa1ee5eec492d693598d599e2b04f9c13e9980",
+  "revision": "1f34bb9d3ac6d6252c646c316b2d7de0ef6bd5b9",
+  "root_checks_passed": 23,
+  "root_duration_seconds": 52.023,
+  "root_live_checks_passed": 6,
+  "synthetic_callbacks": true,
+  "synthetic_jobs_dedup_leases_uncertain_restart": true,
+  "synthetic_packaged_callback_two_threads_replay_changed_body": true,
+  "tested_worktree_changes": true
+}

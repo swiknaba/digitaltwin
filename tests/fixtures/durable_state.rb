@@ -1,22 +1,28 @@
+# typed: strict
+# frozen_string_literal: true
+
 # Synthetic fixture only, on a uniquely named disposable Compose database.
-db = Kirei::App.raw_db_connection
-store = Domains::Jobs::Store.new(db)
+store = Platform::Jobs::Store.new
+kind = Platform::Jobs::Dto::JobKind::MattermostPost
+payload = Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "integration:outbox")
 now = Time.now
-id = store.enqueue(kind: 'fixture', payload: { 'value' => 1 }, key: 'integration:dedup')
-abort 'dedup' unless store.enqueue(kind: 'fixture', payload: { 'value' => 1 }, key: 'integration:dedup') == id
+id = store.enqueue(kind: kind, payload: payload, dispatch_key: "integration:dedup")
+abort "dedup" unless store.enqueue(kind: kind, payload: payload, dispatch_key: "integration:dedup") == id
 begin
-  store.enqueue(kind: 'fixture', payload: { 'value' => 2 }, key: 'integration:dedup')
-  abort 'changed body accepted'
-rescue ArgumentError
+  store.enqueue(kind: kind, payload: Domains::Messaging::Dto::OutboxPostJob.new(outbox_id: "changed"), dispatch_key: "integration:dedup")
+  abort "changed body accepted"
+rescue Platform::Jobs::Errors::DispatchKeyReused
 end
-job = store.claim(worker_id: 'fixture', now: now + 1)
-abort 'stale token' if store.complete(id: id, lease_token: 'wrong', now: now + 2)
-recovered = store.claim(worker_id: 'recovery', now: now + 32)
-abort 'lease recovery' unless recovered[:id] == id && recovered[:lease_token] != job[:lease_token]
-abort 'complete' unless store.complete(id: id, lease_token: recovered[:lease_token], now: now + 33)
-uncertain = store.enqueue(kind: 'fixture', payload: {}, key: 'integration:uncertain')
-job = store.claim(worker_id: 'fixture', now: now + 34)
-abort 'effect marker' unless store.begin_effect(id: uncertain, lease_token: job[:lease_token], now: now + 35)
-store.claim(worker_id: 'recovery', now: now + 65)
-abort 'unsafe retry' unless db[:jobs][id: uncertain][:status] == 'uncertain'
-store.enqueue(kind: 'workflow.dispatch', payload: {}, key: 'integration:blocked')
+job = T.must(store.claim(worker_id: "fixture", now: now + 1))
+abort "stale token" if store.complete(id: id, lease_token: "wrong", now: now + 2)
+recovered = T.must(store.claim(worker_id: "recovery", now: now + 32))
+abort "lease recovery" unless recovered.id == id && recovered.lease.token != job.lease.token
+abort "complete" unless store.complete(id: id, lease_token: recovered.lease.token, now: now + 33)
+uncertain = store.enqueue(kind: kind, payload: payload, dispatch_key: "integration:uncertain")
+job = T.must(store.claim(worker_id: "fixture", now: now + 34))
+abort "effect marker" unless job.lease.begin_effect(now: now + 35)
+store.claim(worker_id: "recovery", now: now + 65)
+abort "unsafe retry" unless T.must(store.find(id: uncertain)).status == Platform::Jobs::Dto::JobStatus::Uncertain
+store.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterDispatch,
+              payload: Domains::Commander::Dto::MasterDispatchJob.new(request_id: "integration:request"),
+              dispatch_key: "integration:blocked")
