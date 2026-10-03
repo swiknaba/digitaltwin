@@ -64,7 +64,7 @@ module Services
         socket.flush
         auth = Async::Task.current.with_timeout(10) do
           loop do
-            value = parse_auth(socket.read.to_s)
+            value = parse_auth(read_text(socket))
             break value if value["seq_reply"] == 1
           end
         end
@@ -74,10 +74,8 @@ module Services
       sig { params(socket: Async::WebSocket::Connection).returns(T.noreturn) }
       private def consume(socket)
         loop do
-          message = Async::Task.current.with_timeout(30) { socket.read }
-          raise EOFError, "WebSocket closed" unless message
-
-          ingest_envelope(parse_event(message.to_s))
+          message = Async::Task.current.with_timeout(30) { read_text(socket) }
+          ingest_envelope(parse_event(message))
           Platform::Heartbeat.touch(role: Platform::Heartbeat::Role::ChatListener, dir: @heartbeat_dir)
         end
       end
@@ -94,18 +92,34 @@ module Services
         warn "Rejected unverified Mattermost event; REST reconciliation remains required"
       end
 
+      # The locked protocol-websocket Message exposes its payload through to_str;
+      # Object#to_s prints an object description instead of JSON.
+      sig { params(socket: Async::WebSocket::Connection).returns(String) }
+      private def read_text(socket)
+        message = T.let(socket.read, Object)
+        raise EOFError, "WebSocket closed" if message.nil?
+        raise RequestFailed, "Expected WebSocket text message" unless message.is_a?(Protocol::WebSocket::TextMessage)
+
+        text = T.let(message.to_str, Object)
+        raise RequestFailed, "Malformed WebSocket text buffer" unless text.is_a?(String)
+
+        text
+      end
+
       sig { params(json: String).returns(AuthEnvelope) }
       private def parse_auth(json)
         parsed = JSON.parse(json)
         raise RequestFailed, "Malformed WebSocket authentication response" unless parsed.is_a?(Hash)
 
-        envelope = T.let({}, AuthEnvelope)
-        parsed.each do |key, value|
-          raise RequestFailed, "Malformed WebSocket authentication response" unless key.is_a?(String) && (value.is_a?(String) || value.is_a?(Integer))
+        # Mattermost can send hello before the correlated acknowledgment, whose
+        # unrelated data field is a nested object. Only these fields prove auth.
+        return T.let({}, AuthEnvelope) unless parsed.key?("seq_reply")
 
-          envelope[key] = value
-        end
-        envelope
+        sequence = parsed["seq_reply"]
+        status = parsed["status"]
+        raise RequestFailed, "Malformed WebSocket authentication response" unless sequence.is_a?(Integer) && status.is_a?(String)
+
+        { "seq_reply" => sequence, "status" => status }
       end
 
       sig { params(json: String).returns(EventEnvelope) }
@@ -113,19 +127,31 @@ module Services
         parsed = JSON.parse(json)
         raise RequestFailed, "Malformed WebSocket event" unless parsed.is_a?(Hash)
 
-        envelope = T.let({}, EventEnvelope)
-        parsed.each do |key, value|
-          raise RequestFailed, "Malformed WebSocket event" unless key.is_a?(String) && event_value?(value)
+        kind = parsed["event"]
+        raise RequestFailed, "Malformed WebSocket event" unless kind.is_a?(String)
 
-          envelope[key] = value
+        envelope = T.let({ "event" => kind }, EventEnvelope)
+        return envelope unless Adapters::Mattermost::DeliveryVerifier::KINDS.include?(kind)
+
+        data = parsed["data"]
+        raise RequestFailed, "Malformed WebSocket event data" unless data.is_a?(Hash)
+
+        post = data["post"]
+        raise RequestFailed, "Malformed WebSocket event post" unless post.is_a?(String)
+
+        envelope["data"] = { "post" => post }
+        broadcast = parsed["broadcast"]
+        unless broadcast.nil?
+          raise RequestFailed, "Malformed WebSocket broadcast" unless broadcast.is_a?(Hash)
+
+          channel = broadcast["channel_id"]
+          raise RequestFailed, "Malformed WebSocket broadcast channel" unless channel.nil? || channel.is_a?(String)
+
+          # Boolean/null broadcast metadata is not authority. Retain only the
+          # channel hint, which DeliveryVerifier checks against authenticated REST.
+          envelope["broadcast"] = { "channel_id" => channel } if channel
         end
         envelope
-      end
-
-      sig { params(value: Object).returns(T::Boolean) }
-      private def event_value?(value)
-        value.is_a?(String) || value.is_a?(Integer) ||
-          (value.is_a?(Hash) && value.all? { |key, item| key.is_a?(String) && item.is_a?(String) })
       end
     end
   end

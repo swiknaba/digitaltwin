@@ -1,10 +1,23 @@
+# typed: strict
+# frozen_string_literal: true
+
 require_relative "../spec_helper"
 RSpec.describe Adapters::Herdr::Client do
-  def socket_fixture(type: "agent_info", pane: "pane", wrong_id: false, agent: {}, extra: {})
+  extend T::Sig
+
+  sig do
+    params(type: String, pane: String, wrong_id: T::Boolean, agent: T::Hash[Symbol, Object], extra: T::Hash[Symbol, Object],
+           block: T.proc.params(client: Adapters::Herdr::Client, requests: T::Array[T::Hash[String, Object]]).void).void
+  end
+  def socket_fixture(type: "agent_info", pane: "pane", wrong_id: false, agent: {}, extra: {}, &block)
     Dir.mktmpdir do |dir|
       path = File.join(dir, "herdr.sock")
       server = UNIXServer.new(path)
-      requests = []
+      requests = T.let([], T::Array[T::Hash[String, Object]])
+      if type == "agent_started"
+        agent = { terminal_id: "terminal", name: "writer", agent: "codex", interactive_ready: true,
+                  agent_session: { source: "fixture", agent: "codex", kind: "id", value: "conversation" }, **agent }
+      end
       thread = Thread.new do
         socket = server.accept
         request = JSON.parse(socket.gets)
@@ -15,7 +28,7 @@ RSpec.describe Adapters::Herdr::Client do
         socket.close
       end
       begin
-        yield described_class.new(socket_path: path), requests
+        block.call(described_class.new(socket_path: path), requests)
       ensure
         thread.join
         server.close

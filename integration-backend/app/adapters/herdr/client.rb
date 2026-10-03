@@ -15,6 +15,7 @@ module Adapters
       JsonObject = T.type_alias { T::Hash[String, JsonValue] }
 
       MAX_LINE_BYTES = 1_048_576
+      STARTUP_TIMEOUT_SECONDS = 30
 
       sig { params(socket_path: String).void }
       def initialize(socket_path: "/run/herdr/herdr.sock")
@@ -33,7 +34,8 @@ module Adapters
 
       sig { params(pane_id: String, name: String, launch: Dto::LaunchSpec).returns(Dto::Pane) }
       def start(pane_id:, name:, launch:)
-        agent("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started", pane_id)
+        result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
+        await_start(value: object_field!(result, "agent"), pane_id: pane_id, name: name, kind: launch.cli)
       end
 
       sig { params(cwd: T.nilable(String), label: String, env: T::Hash[String, String]).returns(Dto::Workspace) }
@@ -57,13 +59,49 @@ module Adapters
 
       sig { params(operation: String, params: JsonObject, expected: String, pane_id: String).returns(Dto::Pane) }
       private def agent(operation, params, expected, pane_id)
-        value = object_field!(request(operation, params, expected), "agent")
+        pane_from(value: object_field!(request(operation, params, expected), "agent"), pane_id: pane_id)
+      end
+
+      sig { params(value: JsonObject, pane_id: String).returns(Dto::Pane) }
+      private def pane_from(value:, pane_id:)
         raise Errors::ProtocolViolation, "Herdr identity mismatch" unless string_field!(value, "pane_id") == pane_id
 
         Dto::Pane.new(pane_id: pane_id, name: optional_string_field!(value, "name"), cwd: optional_string_field!(value, "cwd"),
                       agent: optional_string_field!(value, "agent"), agent_status: agent_status!(value),
                       agent_session: agent_session!(value), interactive_ready: optional_boolean_field!(value, "interactive_ready"),
                       launch_pending: optional_boolean_field!(value, "launch_pending"))
+      end
+
+      # Socket agent.start acknowledges submission; the pinned CLI additionally
+      # waits for a detected, interactive conversation in the same terminal.
+      # Poll only the accepted launch. Never repeat its start effect on failure.
+      sig { params(value: JsonObject, pane_id: String, name: String, kind: String).returns(Dto::Pane) }
+      private def await_start(value:, pane_id:, name:, kind:)
+        terminal_id = string_field!(value, "terminal_id")
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + STARTUP_TIMEOUT_SECONDS
+        loop do
+          raise Errors::ProtocolViolation, "Herdr startup terminal replaced" unless string_field!(value, "terminal_id") == terminal_id
+
+          live = pane_from(value: value, pane_id: pane_id)
+          raise Errors::ProtocolViolation, "Herdr startup name replaced" unless live.name == name
+          raise Errors::ProtocolViolation, "Herdr startup kind mismatch" if live.agent && live.agent != kind
+          raise Errors::ProtocolViolation, "Herdr startup blocked" if live.agent_status == Dto::AgentStatus::Blocked
+
+          settled = live.agent_status == Dto::AgentStatus::Idle || live.agent_status == Dto::AgentStatus::Done
+          identity = live.agent_session
+          if settled && live.interactive_ready == true && live.launch_pending != true && identity && ConversationIdentity.proven?(identity)
+            raise Errors::ProtocolViolation, "Herdr conversation agent mismatch" unless identity.agent == kind
+
+            return live
+          end
+          if settled && live.launch_pending != true && live.interactive_ready != true
+            raise Errors::ProtocolViolation, "Herdr startup exited before interactive readiness"
+          end
+          raise Errors::ProtocolViolation, "Herdr startup readiness timed out" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+          sleep(0.1)
+          value = object_field!(request("agent.get", { "target" => pane_id }, "agent_info"), "agent")
+        end
       end
 
       sig { params(object: JsonObject).returns(Dto::AgentStatus) }

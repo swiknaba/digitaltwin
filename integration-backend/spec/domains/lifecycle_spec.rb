@@ -1,3 +1,6 @@
+# typed: strict
+# frozen_string_literal: true
+
 require_relative "../spec_helper"
 RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)" do
   let(:db) { Kirei::App.raw_db_connection }
@@ -218,7 +221,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(execute(op[:id])).to eq("complete")
     expect(db[:sessions][id: id][:runtime_identity]).to eq(identity)
     launch = Adapters::Herdr::Dto::LaunchSpec.new(cli: "codex", launch_args: ["--model", "fixture-gpt"])
-    expect(herdr).to have_received(:start).once.with(pane_id: "pane", name: "digitaltwin-#{id}", launch: launch)
+    expect(herdr).to have_received(:start).once.with(pane_id: "pane", name: Domains::Sessions::Registry.new.find(id: id).alias, launch: launch)
     expect(herdr).to have_received(:create_workspace).with(hash_including(env: hash_including("DIGITALTWIN_SESSION_GENERATION" => "1",
                                                                                               "DIGITALTWIN_SESSION_TOKEN_FILE" => File.join(@credential_root, "#{id}.token"))))
     expect(File.stat(File.join(@credential_root, "#{id}.token")).mode & 0777).to eq(0600)
@@ -422,7 +425,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} pane")
     allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     live = { "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
-             "name" => "digitaltwin-#{sid}", "cwd" => "/workspace/worktrees/workflow", "agent" => "codex" }
+             "name" => Domains::Sessions::Registry.new.find(id: sid).alias, "cwd" => "/workspace/worktrees/workflow", "agent" => "codex" }
     allow(herdr).to receive(:pane).and_return(herdr_pane(live.merge("name" => "different")))
     expect { reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "pane") }.to raise_error(ArgumentError)
     allow(herdr).to receive(:pane).and_return(herdr_pane(live))

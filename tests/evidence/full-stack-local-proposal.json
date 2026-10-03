@@ -1,0 +1,214 @@
+{
+  "baseline": "b6fee03810c1a2563a6136f3aeec03878823fe87",
+  "reviewed_backend": "5efa1ee5eec492d693598d599e2b04f9c13e9980",
+  "backend_owner_proposal_commits": [
+    "0aa202ea6b15c22048b4cc83db1fa65d90ccb61e",
+    "da783b0893f3037442bc0c4e5506b81d078effa5"
+  ],
+  "validation": {
+    "full_root_command": "scripts/test-full-stack",
+    "combined_run_before_final_fixture_correction": {
+      "total": 25,
+      "passed": 24,
+      "failed": 1
+    },
+    "corrected_chat_command": "DIGITALTWIN_RUN_FULL_STACK_TESTS=1 DIGITALTWIN_RUN_COMPOSE_TESTS=1 DIGITALTWIN_REVIEWED_BACKEND_REVISION=5efa1ee5eec492d693598d599e2b04f9c13e9980 python3 -m unittest discover -s tests -p test_full_stack.py -k test_real_chat_and_herdr_roundtrip -v",
+    "corrected_chat_result": {
+      "total": 1,
+      "passed": 1,
+      "duration_seconds": 63.45
+    },
+    "backend_bin_check": {
+      "examples": 253,
+      "failures": 0,
+      "rubocop": "passed",
+      "whole_project_sorbet": "passed",
+      "typed_fixture_classes_included": true
+    },
+    "final_all_at_once_root_run": {
+      "command": "scripts/test-full-stack",
+      "tested_commit": "3ff136a67e047f80aa95c6561369c029eef4ce7d",
+      "total": 25,
+      "passed": 25,
+      "failed": 0,
+      "duration_seconds": 127.415
+    },
+    "remote_ci": "pending pull-request workflow run after directly approved publication"
+  },
+  "raw_herdr_start_observations": [
+    {
+      "delay": 0,
+      "name": "wire-probe",
+      "error_code": null,
+      "result_type": "agent_started",
+      "state": "unknown",
+      "launch_pending": true,
+      "interactive_ready": null,
+      "has_session": false
+    },
+    {
+      "delay": 0.5,
+      "name": "wire-probe",
+      "error_code": null,
+      "result_type": "agent_started",
+      "state": "unknown",
+      "launch_pending": true,
+      "interactive_ready": null,
+      "has_session": false
+    },
+    {
+      "delay": 0,
+      "name": "digitaltwin-session_abCDEF123xyz",
+      "error_code": "invalid_agent_name",
+      "result_type": null,
+      "state": null,
+      "launch_pending": null,
+      "interactive_ready": null,
+      "has_session": false
+    }
+  ],
+  "live_verified": [
+    "core Compose boot",
+    "migrations and separate DB ownership",
+    "Falcon parallel HTTP/rejected JSON",
+    "durable jobs/restart",
+    "native Mattermost health/HTML",
+    "UID/socket/mount/capability restrictions",
+    "authenticated disposable Mattermost REST/WebSocket",
+    "real Herdr CLI/direct fixture prompt",
+    "real backend MCP HTTP through installed client",
+    "correct thread and bot replies",
+    "identical callback replay",
+    "history deduplication",
+    "backend restart same conversation"
+  ],
+  "only_fake_layer": "Pi agent process and its native hook reports; no backend/chat/Herdr/MCP transport substitutes",
+  "production_dispatch_policy": false,
+  "provider_acceptance": false,
+  "phase0_acceptance": false,
+  "own_resources_removed": true,
+  "files_sha256": {
+    "tests/test_full_stack.py": "4bebe477f9076c5e0097a39e38634a4aa577f2e08e169f57f4b07df1991c1294",
+    "scripts/test-full-stack": "32b9b0733f50a66a4eea6e4cc25618a6eb63b5c3c01e1da3493b4e0007234525",
+    ".github/workflows/full-stack.yml": "94f8dd5c68b65d969617ae4db205c590c9ea7945232013e47521f7f36b5d1814",
+    "tests/fixtures/full_stack/composition.rb": "2059b6bcba249b6e5f44fa85422cc86caa36a77acbc112a81bfb4a884204a037",
+    "tests/fixtures/full_stack/pi": "7d1e1d44963643a4e13b081a07847957086a1677292810b30a42c19a9522732c",
+    "tests/fixtures/full_stack/observed_herdr.rb": "3b068164da84ab03a5104be054689510d4b83a7d856d2aba9248107fbd22e1f6",
+    "tests/fixtures/full_stack/worker.rb": "3f8ace59c1124677fd33bc0c50a0f4a623f44042eae4e9a067a4946d26f2a563",
+    "tests/fixtures/full_stack/dispatch_policy.rb": "1117135a2df4c79614eea5b37f343e56d3e225c42cee776f2b4c1acede60184a"
+  },
+  "live_evidence": [
+    {
+      "authenticated_chat": false,
+      "container_security_socket_callback_hash_no_plugins": true,
+      "database_ownership_and_migrations": true,
+      "falcon_parallel_health_and_callback_auth_rejection": true,
+      "image_ids": {
+        "agent-runtime": "sha256:bebfb9b5bea68387fac2ea8a084e12f4f7f2980574481682b369dcc09600317e",
+        "backend-web": "sha256:323dd83bc2761704b0777031bbb723e7a29bf6532e5e33f51f376f720fb7309b",
+        "backend-worker": "sha256:323dd83bc2761704b0777031bbb723e7a29bf6532e5e33f51f376f720fb7309b",
+        "mattermost": "sha256:8e274708ea181f9282233a74f07db34f938f6e89dd42dbe3cfe00aa123befdff"
+      },
+      "live_local_containers": true,
+      "master_mcp": false,
+      "own_resources_removed": true,
+      "pending_migrations_rejected_pool_5_timeout_2": true,
+      "phase0_acceptance": false,
+      "provider_cli": false,
+      "reviewed_backend_revision": "5efa1ee5eec492d693598d599e2b04f9c13e9980",
+      "revision": "3ff136a67e047f80aa95c6561369c029eef4ce7d",
+      "synthetic_callbacks": true,
+      "synthetic_jobs_dedup_leases_uncertain_restart": true,
+      "synthetic_packaged_callback_two_threads_replay_changed_body": true
+    },
+    {
+      "authenticated_chat": false,
+      "authenticated_disposable_chat": true,
+      "backend_examples": 253,
+      "backend_failures": 0,
+      "backend_restart_same_conversation": true,
+      "correct_threads_and_bot": true,
+      "duplicate_one_effect": true,
+      "fixture_agent_only": true,
+      "full_backend_tests_rubocop_sorbet_with_fixture_classes": true,
+      "image_ids": {},
+      "live_local_containers": true,
+      "master_mcp": false,
+      "own_resources_removed": true,
+      "phase0_acceptance": false,
+      "production_dispatch_policy": false,
+      "provider_cli": false,
+      "real_backend_mcp_http_with_fixture_agent": true,
+      "real_chat_rest_and_websocket": true,
+      "real_herdr_fixture_agent": true,
+      "reviewed_backend_revision": "5efa1ee5eec492d693598d599e2b04f9c13e9980",
+      "revision": "3ff136a67e047f80aa95c6561369c029eef4ce7d",
+      "synthetic_callbacks": true
+    }
+  ],
+  "independent_review": {
+    "reviewer": "backend worker 01a0fb73",
+    "reviewed_head": "79343546b213e3691ecfadb87915f82880df77d5",
+    "result": "no material findings",
+    "source": "parent-relayed review"
+  },
+  "hosted_ci_history": [
+    {
+      "run": 37137915397,
+      "head": "592b03734d607b90bd4fcb9a76a8a113d32ebba5",
+      "result": "success",
+      "root_checks": 25,
+      "backend_examples": 253,
+      "tested_merge_revision": "716502e1a04d467ad0169197517ee06fbadf886f"
+    },
+    {
+      "run": 37138746258,
+      "head": "c4c772e961a4c0e82f35e6c2c8bb58e64deca391",
+      "result": "failure",
+      "failure": "chat reply timed out; backend checks passed"
+    },
+    {
+      "run": 37139546845,
+      "head": "de058d92766ecbc659c50abc1386122065e912c1",
+      "result": "failure",
+      "diagnosed_failure": "fixture recorded identical reply replay rejection; no second agent effect",
+      "source_inference": "Session capability pointer may rotate after completion; retaining it alone did not resolve the next hosted run."
+    },
+    {
+      "run": 37140262004,
+      "head": "03a48fdbf92f3e71d33385c31dbd714a1259604c",
+      "result": "failure",
+      "failure": "identical replay still rejected after retaining capability; controller Reply and Dispatch use fail-fast shared lock"
+    }
+  ],
+  "fixture_replay_correction": "Retain the actual current request capability in a mode-0600 NamedTemporaryFile for MCP, reply and identical replay; delete on exit. No credentials are manufactured, persisted outside owned volumes or logged.",
+  "fixture_replay_correction_local_validation": {
+    "command": "scripts/test-full-stack",
+    "base_head": "de058d92766ecbc659c50abc1386122065e912c1",
+    "working_tree_changes": "request capability snapshot in Pi fixture plus documentation evidence",
+    "root_checks": 25,
+    "seconds": 134.964,
+    "backend_examples": 253,
+    "backend_failures": 0,
+    "rubocop": "passed",
+    "whole_project_sorbet": "passed",
+    "own_resources_removed": true
+  },
+  "fixture_identical_replay": "Bounded retry of exact same request, text and retained capability only, per installed client instruction. Never repeat start/prompt; persistent rejection still fails; assert exactly one bot reply and one agent effect.",
+  "fixture_identical_replay_local_validation": {
+    "command": "scripts/test-full-stack",
+    "base_head": "03a48fdbf92f3e71d33385c31dbd714a1259604c",
+    "working_tree_changes": "bounded identical replay plus diagnostics/evidence",
+    "root_checks": 25,
+    "seconds": 135.28,
+    "backend_examples": 253,
+    "backend_failures": 0,
+    "rubocop": "passed",
+    "whole_project_sorbet": "passed",
+    "replay_attempts": [
+      1,
+      1
+    ],
+    "own_resources_removed": true
+  }
+}
