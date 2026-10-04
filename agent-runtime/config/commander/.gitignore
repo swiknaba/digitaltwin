@@ -1,8 +1,9 @@
 *
 !.gitignore
 !AGENTS.md
-!MEMORY.md
 !.hermes/
 .hermes/*
+!.hermes/memories/
+!.hermes/memories/**
 !.hermes/skills/
 !.hermes/skills/**

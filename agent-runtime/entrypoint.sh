@@ -13,6 +13,9 @@ for file in AGENTS.md .gitignore; do
     cp "/opt/runtime/config/commander/$file" "$commander_workspace/$file"
   fi
 done
+if [ ! -e "$hermes_home/config.yaml" ]; then
+  cp /opt/runtime/config/commander/hermes-config.yaml "$hermes_home/config.yaml"
+fi
 if [ ! -d "$commander_workspace/.git" ]; then
   git -C "$commander_workspace" init -q
   git -C "$commander_workspace" config user.name "Digitaltwin Commander"

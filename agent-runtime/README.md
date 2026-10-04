@@ -1,13 +1,13 @@
 # Agent Runtime
 
 Non-root Linux AMD64 image containing Herdr 0.9.3, Codex, Claude Code, OpenCode,
-Gemini CLI, Wagglebot, OpenSSH, Ruby for the standalone callback, and the required
+Gemini CLI, Hermes Agent, Wagglebot, OpenSSH, Ruby for the standalone callback, and the required
 shell/Python tools. This component owns image packaging and local runtime tests.
 Kirei owns session/workflow logic and callback/MCP source.
 
 ## Why this exists
 
-Herdr provides one terminal/session interface for four agent CLIs, while Wagglebot
+Herdr provides one terminal/session interface for the installed agent CLIs, while Wagglebot
 provisions their shared instructions. Keeping them in a separate deployable lets
 Kirei's web and job processes restart without discarding agent terminals or their
 persistent home. We could replace Herdr if another runtime proves the required
@@ -34,7 +34,7 @@ This is a component test, not Phase 0 acceptance or a production deployment.
 
 `bin/cli-startup-probe.py` runs **only in a disposable empty Runtime home**, with a
 running Herdr server and no provider credentials. It creates/closes test workspaces
-and starts the actual four CLIs. No prompt or authentication is submitted. The
+and starts the actual installed CLIs, including Hermes. No prompt or authentication is submitted. The
 recorded initial ready/idle states do not prove readiness after model work.
 
 ## Exact dependencies and Debian slim decision
@@ -125,7 +125,7 @@ Never copy a backend worktree or secret directory as the build context.
 capabilities authenticate callbacks; the separate current-request token file authenticates Commander tools
 and replies. `digitaltwin-mcp` bridges stdio to private Kirei HTTP with typed schemas and verified human
 request binding. Agents receive no Mattermost bot credentials. Packaging is implemented; actual selected
-Gemini MCP and CLI lifecycle/settled evidence remain open, and backend dispatch stays disabled.
+Hermes MCP and CLI lifecycle/settled evidence remain open, and backend dispatch stays disabled.
 
 ## Explicit provisioning and private terminal access
 

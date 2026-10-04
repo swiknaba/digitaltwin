@@ -14,7 +14,7 @@ def call(*args):
     return result
 
 
-for kind in ('codex', 'claude', 'opencode', 'gemini'):
+for kind in ('codex', 'claude', 'opencode', 'gemini', 'hermes'):
     created = call('workspace', 'create', '--label', 'unauthenticated-' + kind, '--cwd', '/home/runtime')
     workspace = json.loads(created.stdout)['result']
     pane = workspace['root_pane']['pane_id']

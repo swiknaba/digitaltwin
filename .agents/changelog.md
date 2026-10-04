@@ -229,3 +229,10 @@
 
 - Align Commander attribution prompt and tool-response contracts with verified routing metadata.
 - Serialize bounded concurrent Commander-memory writes through the scope lock.
+
+## 2026-10-04 — Hermes Commander completion
+
+- Require Hermes for Commander session reservation, dispatch, and recovery; keep Writer and Reviewer profiles independent.
+- Initialize Hermes with the request-scoped Kirei MCP allowlist and preserve Commander instructions, native Markdown memory, and skills in local Git.
+- Stop migration 010 when legacy Commander memory has data. Require export or explicit disposal before removal.
+- Add typed reversible-migration DSL support and deterministic Runtime persistence, Git-ignore, and backend migration coverage.

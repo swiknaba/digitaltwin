@@ -11,7 +11,7 @@ RSpec.describe Services::JobHandlers do
     kind::ReviewPrompt, kind::ReviewRelease, kind::ReviewCallback, kind::CommanderControl, kind::SessionRenew, kind::WorkflowPhasePrompt,
     kind::WorkflowStart, kind::WorkflowPause, kind::WorkflowResume, kind::WorkflowFinish, kind::WorkflowCancel, kind::WorkflowApprove
   ].freeze
-  commander = { "cli" => "gemini", "provider" => "google", "model" => "fixture-gemini", "family" => "gemini", "launch_args" => [] }
+  commander = { "cli" => "hermes", "provider" => "fixture", "model" => "fixture-hermes", "family" => "fixture", "launch_args" => [] }
 
   around do |example|
     Dir.mktmpdir("job-handlers") do |dir|

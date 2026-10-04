@@ -112,7 +112,7 @@ Forged sender labels or generated approval claims cannot change identity, permis
 **Work:**
 
 - [ ] Delete `Domains::Memory`, `Adapters::Memory`, `Services::Commander::Memory`, their specs, and all calls, registrations, and documentation that make Kirei memory authoritative or mirror it into Markdown.
-- [ ] Inspect migration `009_commander_memory` against deployed-schema support. Preserve the migration if it can have run; add a new reversible migration that drops only its tables and indexes after verifying the migration sequence and rollback behavior.
+- [ ] Inspect migration `009_commander_memory` against deployed-schema support. Preserve the migration if it can have run. Migration 010 must stop when either table has data; an operator must export or explicitly discard that legacy content before it drops the tables. Its rollback recreates only the schema.
 - [ ] Remove memory tables from test truncation and clean-schema expectations. Test zero-to-current migration, rollback, and upgrade from schema version 9.
 - [ ] Keep Commander instruction changes explicit. Hermes memory and skills remain unable to alter Kirei authorization, sender attribution, approvals, or independent-session restrictions.
 

@@ -25,11 +25,11 @@ module Services
       sig do
         params(herdr: Adapters::Herdr::Client, source: Messaging::VerifyHumanSource, credentials: Adapters::Credentials::FileStore, handle: String,
                commander_requests: Domains::Commander::CommanderRequests, registry: Sessions::Registry, operations: Sessions::Operations, catalog: Domains::Workflows::Catalog, complete: CompleteOperation,
-               inbox: Messaging::Inbox, outbox: Messaging::Outbox, audit: Platform::Audit::Log, jobs: Platform::Jobs::Store, lock: Platform::Lock).void
+               inbox: Messaging::Inbox, outbox: Messaging::Outbox, audit: Platform::Audit::Log, jobs: Platform::Jobs::Store, lock: Platform::Lock, commander_workspace: String).void
       end
       def initialize(herdr:, source:, credentials:, handle:, commander_requests: Domains::Commander::CommanderRequests.new, registry: Sessions::Registry.new, operations: Sessions::Operations.new, catalog: Domains::Workflows::Catalog.new,
                      complete: CompleteOperation.new, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, audit: Platform::Audit::Log.new,
-                     jobs: Platform::Jobs::Store.new, lock: Platform::Lock.new)
+                     jobs: Platform::Jobs::Store.new, lock: Platform::Lock.new, commander_workspace: ::Services::Configuration::DEFAULT_COMMANDER_WORKSPACE)
         @commander_requests = commander_requests
         @herdr = herdr
         @source = source
@@ -44,6 +44,7 @@ module Services
         @jobs = jobs
         @lock = lock
         @handle = handle
+        @commander_workspace = commander_workspace
       end
 
       sig { params(operation_id: String, inbox_id: String, pane_id: String).returns(Outcome) }
@@ -127,7 +128,7 @@ module Services
         return evidence_failure("Unproved exact role conversation") unless identity && Identity.proven?(identity)
 
         cli = session.configuration.cli
-        valid = live.name == session.alias && live.cwd == (workflow ? workflow.worktree_path : "/home/runtime") && live.agent == cli && identity.agent == cli
+        valid = live.name == session.alias && live.cwd == expected_workspace(session, workflow) && live.agent == cli && identity.agent == cli
         valid &&= live.agent_status.settled? && live.interactive_ready == true && live.launch_pending == false
         return evidence_failure("Unproved exact role conversation") unless valid
 
@@ -135,6 +136,13 @@ module Services
         return evidence_failure("Credential changed", Code::CredentialChanged) unless Digest::SHA256.hexdigest(token) == session.credential_digest
 
         Kirei::Services::Result.new(result: live)
+      end
+
+      sig { params(session: Sessions::Dto::SessionView, workflow: T.nilable(Workflow)).returns(String) }
+      private def expected_workspace(session, workflow)
+        return @commander_workspace if session.role == Sessions::Dto::SessionRole::Commander
+
+        workflow&.worktree_path or raise ArgumentError, "Missing workflow workspace"
       end
 
       # A stop is proven by the recorded pane's absence.

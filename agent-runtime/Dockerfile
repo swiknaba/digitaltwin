@@ -20,15 +20,23 @@ RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 RUN curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64 -o /usr/local/bin/herdr \
  && echo '18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7  /usr/local/bin/herdr' | sha256sum -c - \
  && chmod 755 /usr/local/bin/herdr
-# Hermes publishes dated stable release tags, not minor-line tags. Install the
-# selected current stable release in the final Runtime stage so its Python and
-# native dependencies match Debian Bookworm. A later rebuild may advance this
-# argument to the next upstream stable release without changing user data.
-RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes-install.sh \
- && HERMES_HOME=/opt/hermes-bootstrap HERMES_INSTALL_DIR=/opt/hermes-agent \
-    bash /tmp/hermes-install.sh --branch "$HERMES_REF" --dir /opt/hermes-agent --skip-setup --skip-browser --skip-computer-use \
+# Hermes publishes dated stable release tags, not minor-line tags. The current
+# installer targets newer source trees than v2026.9.24, so install this
+# selected stable source release with its own frozen uv lockfile. A later
+# Runtime rebuild may advance this argument to the next stable release.
+RUN curl -fsSL https://github.com/astral-sh/uv/releases/download/0.12.3/uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz \
+ && echo '600cf9a742aca00d292673b16b5acffaa7b8c269a364ad0c2e79498dcb1fe101  /tmp/uv.tar.gz' | sha256sum -c - \
+ && tar -xzf /tmp/uv.tar.gz -C /tmp \
+ && install -m 755 /tmp/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv \
+ && rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu
+RUN curl -fsSL "https://github.com/NousResearch/hermes-agent/archive/refs/tags/${HERMES_REF}.tar.gz" -o /tmp/hermes-agent.tar.gz \
+ && mkdir /opt/hermes-agent \
+ && tar -xzf /tmp/hermes-agent.tar.gz --strip-components=1 -C /opt/hermes-agent \
+ && cd /opt/hermes-agent \
+ && UV_CACHE_DIR=/opt/hermes-uv-cache UV_PYTHON_INSTALL_DIR=/opt/hermes-python uv sync --frozen --no-dev --python 3.13 \
  && ln -s /opt/hermes-agent/.venv/bin/hermes /usr/local/bin/hermes \
- && rm -rf /opt/hermes-bootstrap /tmp/hermes-install.sh
+ && chmod -R a+rX /opt/hermes-agent /opt/hermes-uv-cache /opt/hermes-python \
+ && rm -f /tmp/hermes-agent.tar.gz
 # 0.3.0's published workspace:* dependencies break npm installation. Its dist is
 # standalone; retain the package unmodified and resolve skills through NODE_PATH.
 RUN curl -fsSL https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.0.tgz -o /tmp/wagglebot.tgz \

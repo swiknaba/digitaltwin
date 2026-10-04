@@ -173,7 +173,10 @@ module Services
 
     sig { returns(Sessions::ReconcileOperation) }
     def reconcile_operation
-      @reconcile_operation ||= Sessions::ReconcileOperation.new(herdr: herdr, source: source, credentials: credentials, handle: @configuration.agent_handle)
+      @reconcile_operation ||= Sessions::ReconcileOperation.new(
+        herdr: herdr, source: source, credentials: credentials, handle: @configuration.agent_handle,
+        commander_workspace: @configuration.commander_workspace
+      )
     end
 
     sig { returns(Reviews::DispatchReview) }

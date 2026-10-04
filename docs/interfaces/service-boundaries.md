@@ -103,7 +103,7 @@ and repository origin. Supply these through a private operator overlay to web, l
 as needed; mount no provider state into Git/images. Only the worker mounts `/workspace` and
 `/run/herdr`; web has neither. Runtime packages backend-owned clients from a checksum manifest.
 No environment variable enables `dispatch_allowed?`; live evidence and reviewed policy code are
-still required. Gemini remains the specified Commander CLI; its actual launch/MCP profile is unproved.
+still required. Hermes is the required Commander CLI; authenticated launch and MCP behavior remain unproved.
 
 Bounded recovery commands and the minimum operator setup/evidence are recorded in
 [Commander routing setup](commander-routing-setup.md). Human follow-up outcome confirmation is explicitly

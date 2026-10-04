@@ -5,6 +5,8 @@
 # forward instead of rewriting history.
 Sequel.migration do
   up do
+    raise "Commander memory contains data; export or explicitly discard it before migration 010" unless self[:memory_entries].empty? && self[:memory_operations].empty?
+
     drop_table(:memory_operations)
     drop_table(:memory_entries)
   end

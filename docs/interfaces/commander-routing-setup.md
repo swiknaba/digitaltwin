@@ -2,9 +2,9 @@
 
 Current commands below match the installed implementation.
 
-Gemini was already the specified Commander default on main `f01b846` (§17 of the specification).
-This feature did not select another runtime or configure/authenticate Gemini. Runtime packages
-Gemini CLI 0.62.0; the actual operator role/model/launch profile remains to be supplied and validated.
+Commander runs through Hermes. Runtime packages the latest supported Hermes stable release during
+its normal image build. Hermes provider setup remains private operator configuration and is not
+authenticated or validated by this repository.
 
 ## Feature boundary
 
@@ -50,10 +50,10 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    goes to Runtime. Activate only the disposable chat-validation listener/worker transport for acceptance;
    `CHAT_VALIDATION_MODE=1` does not enable Herdr effects.
 3. Supply `ROLE_CONFIG_FILE` to web and worker: a trusted Commander entry; Writer/Reviewer
-   entries are additionally required when creating workflows or running review. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). Commander remains
-   Gemini unless the operator explicitly chooses otherwise. Writer/Reviewer must differ in provider
+   entries are additionally required when creating workflows or running review. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). The Commander entry must use
+   `"cli": "hermes"`. Writer/Reviewer must differ in provider
    and family. Use the actual already authorized models/login setup in Runtime; do not pass provider
-   credentials as launch arguments. The neutral Commander directory is `/home/runtime`.
+   credentials as launch arguments. The persistent Commander directory is `/workspace/commander`.
 4. Retain a verified `projects` row binding the project channel to its repository slug/origin and
    `/workspace/repos/owner/repo`. Repository origin must match; branches/worktrees are verified.
    For existing-session acceptance, bind Writer's actual Herdr pane, alias, cwd, CLI, opaque
@@ -61,29 +61,32 @@ writing/review phases; PR delivery only determines when later `finish` can archi
 5. Set `DIGITALTWIN_CALLBACK_URL=http://backend-web:3000` for the worker's session environment.
    Herdr workspace creation supplies the generated session-token file, generation and current
   Commander-request token-file path; the operator does not create or transmit their values.
-6. In the operator-owned Runtime Gemini user settings (`/home/runtime/.gemini/settings.json`),
-   merge this server entry without replacing other settings or login state:
+6. Runtime initializes `/workspace/commander/.hermes/config.yaml` when it does not exist. It registers
+   the private Kirei MCP server below without replacing an existing Hermes profile or provider configuration:
 
-```json
-{
-  "mcpServers": {
-    "digitaltwin": {
-      "command": "/usr/local/bin/digitaltwin-mcp",
-      "env": {
-        "DIGITALTWIN_CALLBACK_URL": "$DIGITALTWIN_CALLBACK_URL",
-        "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE": "$DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE"
-      }
-    }
-  }
-}
+```yaml
+mcp_servers:
+   digitaltwin:
+     command: /usr/local/bin/digitaltwin-mcp
+     args: []
+     env:
+       DIGITALTWIN_CALLBACK_URL: ${DIGITALTWIN_CALLBACK_URL}
+       DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE: ${DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE}
+     tools:
+       include:
+         - list_projects
+         - list_workflows
+         - read_context
+         - workflow_status
+         - start_workflow
+         - send_prompt
+         - workflow_control
 ```
 
-Gemini sanitizes inherited `*TOKEN*` variables; this explicit `env` passes the file path, not a token.
-Approve only the reviewed Digitaltwin MCP tool policy in the operator's existing CLI confirmation
-settings so normal typed calls can proceed. Keep other permissions unchanged. The pinned package's
-`mcpServers` shape was inspected offline; the current [official MCP configuration documentation](https://geminicli.com/docs/tools/mcp-server/)
-confirms command/env expansion and explicit environment overrides. Configuration inspection is
-not proof that authenticated Gemini startup, tool discovery and tools/call succeed.
+The explicit environment passes a capability-file path, not a token. Keep other Hermes permissions
+unchanged. The tool allowlist is the typed Kirei manifest. Runtime tests check profile creation,
+restart persistence, and the packaged MCP bridge. They do not prove authenticated Hermes startup,
+tool discovery, or tool calls.
 
 ## Minimum evidence before enabling dispatch
 
@@ -91,7 +94,7 @@ Capture sanitized artifact/version/schema identities, state transitions and opaq
 
 - Actual chat human/bot identities, both memberships, ordinary Commander posts, project root/replies,
   and reconnect/refetch behavior on the selected server.
-- Actual Gemini start through Herdr, exact conversation identity and settled/readiness fields;
+- Actual Hermes start through Herdr, exact conversation identity and settled/readiness fields;
   installed MCP initialize/list/read-context/tool-call for the verified human request. Wrong or
   expired capabilities must fail; no provider value/token appears in evidence.
 - Actual Writer start/get/prompt/settled on the same conversation and a source-thread callback.

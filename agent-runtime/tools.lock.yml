@@ -40,7 +40,7 @@ packages:
 hermes:
   release: "v2026.9.24"
   source: https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.24
-  install: official_installer_in_runtime_final_stage
+  install: release_source_with_frozen_uv_lock_in_runtime_final_stage
   update_policy: advance_to_next_upstream_stable_release_on_deliberate_runtime_rebuild
 wagglebot:
   version: "0.3.0"

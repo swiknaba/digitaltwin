@@ -46,6 +46,17 @@ RSpec.describe "Clean application migration entrypoint" do
     output, status = Open3.capture2e(env, "bundle", "exec", "rake", "db:migrate", chdir: root)
     expect(status.success?).to be(true), output
     expect(db[:schema_info].get(:version)).to eq(10)
+    output, status = Open3.capture2e(env.merge("STEPS" => "1"), "bundle", "exec", "rake", "db:rollback", chdir: root)
+    expect(status.success?).to be(true), output
+    expect(db[:schema_info].get(:version)).to eq(9)
+    db[:memory_entries].insert(id: "legacy-memory", scope: "global", content: "legacy", source: "fixture")
+    output, status = Open3.capture2e(env, "bundle", "exec", "rake", "db:migrate", chdir: root)
+    expect(status.success?).to be(false)
+    expect(output).to include("Commander memory contains data")
+    db[:memory_entries].delete
+    output, status = Open3.capture2e(env, "bundle", "exec", "rake", "db:migrate", chdir: root)
+    expect(status.success?).to be(true), output
+    expect(db[:schema_info].get(:version)).to eq(10)
   ensure
     db&.disconnect
   end
