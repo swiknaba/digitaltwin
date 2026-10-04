@@ -97,7 +97,7 @@ module Adapters
       # A just-created pane can briefly reject both start and get requests.
       # Do not retry the start until a later correlated get proves this is still
       # the untouched shell; any accepted launch state remains non-retryable.
-      sig { params(pane_id: String, deadline: Float).returns(T::Boolean) }
+      sig { params(pane_id: String, deadline: T.any(Float, Integer)).returns(T::Boolean) }
       private def initial_shell_for_retry?(pane_id:, deadline:)
         loop do
           begin
