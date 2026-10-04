@@ -28,16 +28,17 @@ module Services
 
       sig do
         params(source: Domains::Messaging::VerifyHumanSource, authorize: AuthorizeRequest, request_start: Workflows::RequestStart, route: RouteFollowup,
-               directory: Domains::Projects::Directory, catalog: Domains::Workflows::Catalog, inbox: Domains::Messaging::Inbox, jobs: Platform::Jobs::Store).void
+               directory: Domains::Projects::Directory, catalog: Domains::Workflows::Catalog, status: WorkflowStatus, inbox: Domains::Messaging::Inbox, jobs: Platform::Jobs::Store).void
       end
       def initialize(source:, authorize:, request_start:, route:, directory: Domains::Projects::Directory.new, catalog: Domains::Workflows::Catalog.new,
-                     inbox: Domains::Messaging::Inbox.new, jobs: Platform::Jobs::Store.new)
+                     status: WorkflowStatus.new(source: source), inbox: Domains::Messaging::Inbox.new, jobs: Platform::Jobs::Store.new)
         @source = source
         @authorize = authorize
         @request_start = request_start
         @route = route
         @directory = directory
         @catalog = catalog
+        @status = status
         @inbox = inbox
         @jobs = jobs
       end
@@ -71,6 +72,8 @@ module Services
           success(Dto::WorkflowList.new(workflows: @catalog.active.select { |workflow| visible?(request, workflow.channel_id) }))
         when Name::ReadContext
           success(Dto::ContextList.new(entries: @inbox.recent(since: Time.now - CONTEXT_SECONDS, limit: CONTEXT_LIMIT).filter_map { |record| context(request, record) }))
+        when Name::WorkflowStatus
+          success(@status.call(request: request))
         when Name::StartWorkflow
           start(arguments, request)
         when Name::SendPrompt
