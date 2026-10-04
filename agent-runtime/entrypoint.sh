@@ -24,8 +24,7 @@ if ! grep -Fqx '    - /home/runtime/.agents/skills' "$hermes_home/config.yaml"; 
   elif grep -q '^skills:$' "$hermes_home/config.yaml"; then
     sed -i '/^skills:$/a\  external_dirs:\n    - /home/runtime/.agents/skills' "$hermes_home/config.yaml"
   else
-    echo 'Commander Hermes config has no skills section; cannot add shared skill library' >&2
-    exit 1
+    printf '\nskills:\n  external_dirs:\n    - /home/runtime/.agents/skills\n' >> "$hermes_home/config.yaml"
   fi
 fi
 if [ ! -d "$commander_workspace/.git" ]; then
