@@ -1,7 +1,10 @@
 skills:
-  # Keep agent-authored, mutable procedure knowledge apart from any curated
-  # baseline installed into skills/. Both locations remain Commander-local.
+  # Agent-authored, mutable procedure knowledge stays separate from the
+  # read-only Commander baseline packaged with the selected Hermes release.
   create_dir: learned-skills
+  external_dirs:
+    - /opt/hermes-agent/skills/productivity/weekly-review-planning
+    - /opt/hermes-agent/skills/research/grounded-citations
 
 mcp_servers:
   digitaltwin:
