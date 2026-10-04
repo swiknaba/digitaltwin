@@ -96,7 +96,7 @@ module Services
       sig { params(arguments: Arguments, request: Request).returns(Outcome) }
       private def send_prompt(arguments, request)
         interpretation = Domains::Commander::Dto::RoutingInterpretation.new(workflow_id: T.must(arguments.workflow_id), evidence_inbox_ids: T.must(evidence_ids(arguments)))
-        routed = @route.call(inbox_id: request.inbox_id, interpretation: interpretation)
+        routed = @route.call(inbox_id: request.inbox_id, interpretation: interpretation, forwarded: true)
         return Kirei::Services::Result.new(errors: routed.errors) if routed.failed?
 
         success(routed.result)
