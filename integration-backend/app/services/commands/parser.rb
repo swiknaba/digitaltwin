@@ -26,8 +26,8 @@ module Services
         match = body.match(/\A@#{agent} recover-followup (followup_[A-Za-z0-9]+) (delivered|discard)\z/)
         return Dto::RecoverFollowup.new(followup_id: capture(match, 1), outcome: Dto::FollowupOutcome.deserialize(capture(match, 2))) if match
 
-        match = body.match(/\A@#{agent} recover-master ([0-9a-f-]+)\z/)
-        return Dto::RecoverMaster.new(request_id: capture(match, 1)) if match
+        match = body.match(/\A@#{agent} recover-commander ([0-9a-f-]+)\z/)
+        return Dto::RecoverCommander.new(request_id: capture(match, 1)) if match
 
         match = body.match(/\A@#{agent} approve ([a-zA-Z0-9_-]+) (spec|plan) ([0-9a-f]{40})\z/)
         return Dto::Approve.new(workflow_id: capture(match, 1), gate: Dto::ApprovalGate.deserialize(capture(match, 2)), commit: capture(match, 3)) if match

@@ -28,27 +28,13 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 
 The automated stack already verifies real chat, queues, Herdr transport, callbacks, and restart behavior with a scripted agent.
 It does not verify a real provider conversation. Production dispatch remains disabled.
-The app has not been deployed. Complete the naming cleanup directly; no installation transition is needed.
+The app has not been deployed. Application names and fresh-database schema now use Commander.
 Verified human sources already exist; uniform worker-prompt attribution and project-thread sender labels still need implementation.
 
 Complete these tasks in order. Each task ends with a tested commit and review before the next task begins.
 Use failing behavior tests, implement the smallest change, then run the checks below.
 
-## Task 1: Give the system one name
-
-**Goal:** Canonical application roles, services, commands, and documentation all identify the coordinator as Commander.
-
-**Work:**
-
-- [ ] Use `commander` for application roles, namespaces, configuration keys, private routes, commands, and schema names.
-- [ ] Update schema definitions, fixtures, Runtime clients, checksums, and setup documentation together.
-- [ ] Remove obsolete names and compatibility aliases from application interfaces and agent instructions.
-- [ ] Verify database creation from scratch and the renamed routes, commands, configuration, and installed clients.
-
-**Done:** An empty disposable database boots the renamed application, and interface tests pass with the matching Runtime clients.
-Documentation describes the resulting system without obsolete terminology or installation transition instructions.
-
-## Task 2: Talk to a real Commander
+## Task 1: Talk to a real Commander
 
 **Goal:** A human can mention Commander and receive its actual CLI response in the same conversation.
 
@@ -68,7 +54,7 @@ An unauthorized sender, stale request credential, or mismatched session cannot p
 Missing credentials leave this task explicitly blocked; scripted-agent results cannot complete it.
 A fresh session reads its workspace instructions and memory; recovery verifies the same working directory.
 
-## Task 3: Ask what the fleet is doing
+## Task 2: Ask what the fleet is doing
 
 **Goal:** “What is happening?” returns useful status, blockers, approvals, and links across projects we can access.
 
@@ -85,7 +71,7 @@ An inaccessible project stays hidden. Unverified delivery is never described as 
 Routine task messages remain in project threads.
 Completed task summaries contain those result details; receipts distinguish received, queued, and delivered.
 
-## Task 4: Delegate work to the right thread
+## Task 3: Delegate work to the right thread
 
 **Goal:** Commander selects the project and thread from context and delegates work without mixing unrelated tasks.
 
@@ -110,7 +96,7 @@ Two tasks in one repository remain separate. Opening a pull request does not mer
 Direct human, Commander-forwarded, and Commander-written instructions remain distinguishable in stored records, worker prompts, and project-thread delivery labels.
 Forged sender labels or generated approval claims cannot change identity, permissions, or approval state.
 
-## Task 5: Remember decisions and working preferences
+## Task 4: Remember decisions and working preferences
 
 **Goal:** Later conversations retain project decisions, our working preferences, and lessons learned.
 
@@ -128,7 +114,7 @@ A correction updates the intended entry. Duplicate requests create no duplicate 
 Memory updates follow human requests or agent instructions; no scheduled grooming or Hermes integration is added.
 Local persistence works without Git sync. When enabled, sync preserves the same instructions, entries, sources, and revisions.
 
-## Task 6: Steer work while it runs
+## Task 5: Steer work while it runs
 
 **Goal:** We can answer questions, add instructions, pause, resume, cancel, and finish the intended task.
 
@@ -144,7 +130,7 @@ Local persistence works without Git sync. When enabled, sync preserves the same 
 Pause and resume preserve results. Cancel reports verified stops without erasing work.
 Finish rejects unfinished work. Silence never closes a task.
 
-## Task 7: Continue safely after a restart
+## Task 6: Continue safely after a restart
 
 **Goal:** Commander resumes verified work and clearly identifies work that needs reconciliation.
 
@@ -160,7 +146,7 @@ Finish rejects unfinished work. Silence never closes a task.
 A lost receipt remains uncertain. A revoked sender cannot release queued work.
 Resolved work continues in its original conversation.
 
-## Task 8: Release the first usable Commander
+## Task 7: Release the first usable Commander
 
 **Goal:** The approved first-release behavior works together, with an operating guide that matches the tested system.
 
@@ -177,19 +163,18 @@ Unverified operations remain disabled; disabling dispatch preserves existing res
 
 ## Implementation map
 
-Paths below describe the code boundaries after Task 1.
+Paths below identify the implementation boundaries.
 Keep new Ruby values in separate, strictly typed files and retain the repository’s domain/service/adapter boundaries.
 
 | Task | Main changes | Behavior tests |
 | --- | --- | --- |
-| 1 | Session and speaker enums, Commander request entity, routes, configuration, commands, schema definitions, Runtime client manifest | Add `spec/integration/commander_naming_spec.rb`; verify empty-database boot, HTTP, parser, and installed-client tests |
-| 2 | `commander/{AGENTS.md,memory.md}`, Runtime workspace mount, `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend Commander and session specs for cwd and instruction loading; add a separately approved real-CLI acceptance runner |
-| 3 | Add `services/commander/workflow_status.rb` and typed status DTOs; extend `tools.rb`, HTTP serialization, and milestone delivery | Add status specs; extend Commander tool and outbox specs |
-| 4 | `services/commander/{tools,route_followup,deliver_followup}.rb`, `services/workflows/{request_start,provision,dispatch_phase_prompt}.rb`, review prompt builders, outbound delivery, typed attribution, and role base instructions | Extend routing/workflow/lifecycle/outbox specs with direct human, forwarding or rewriting, generated follow-ups, forged attribution, and generated approval claims |
-| 5 | Add a memory domain, typed entry DTOs, `services/commander/` memory operations, a local file adapter, and optional Git sync | Test global/project scope, instruction corrections, concurrent writes, restart, local persistence, and optional sync |
-| 6 | `services/workflows/control.rb`, `services/reviews/release_queued.rb`, Commander tools | Extend lifecycle/review specs with attribution-preserving queues, pause boundaries, cancellation, and premature finish |
-| 7 | Commander/session recovery services and `platform/jobs/store.rb` | Extend lifecycle/job specs with lost receipts, revoked sources, matching-session recovery, and unchanged attribution on replay |
-| 8 | `tests/`, `scripts/`, current interface docs, operator evidence | Run automated and separately authorized real CLI acceptance against the release commit |
+| 1 | `commander/{AGENTS.md,memory.md}`, Runtime workspace mount, `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend Commander and session specs for cwd and instruction loading; add a separately approved real-CLI acceptance runner |
+| 2 | Add `services/commander/workflow_status.rb` and typed status DTOs; extend `tools.rb`, HTTP serialization, and milestone delivery | Add status specs; extend Commander tool and outbox specs |
+| 3 | `services/commander/{tools,route_followup,deliver_followup}.rb`, `services/workflows/{request_start,provision,dispatch_phase_prompt}.rb`, review prompt builders, outbound delivery, typed attribution, and role base instructions | Extend routing/workflow/lifecycle/outbox specs with direct human, forwarding or rewriting, generated follow-ups, forged attribution, and generated approval claims |
+| 4 | Add a memory domain, typed entry DTOs, `services/commander/` memory operations, a local file adapter, and optional Git sync | Test global/project scope, instruction corrections, concurrent writes, restart, local persistence, and optional sync |
+| 5 | `services/workflows/control.rb`, `services/reviews/release_queued.rb`, Commander tools | Extend lifecycle/review specs with attribution-preserving queues, pause boundaries, cancellation, and premature finish |
+| 6 | Commander/session recovery services and `platform/jobs/store.rb` | Extend lifecycle/job specs with lost receipts, revoked sources, matching-session recovery, and unchanged attribution on replay |
+| 7 | `tests/`, `scripts/`, current interface docs, operator evidence | Run automated and separately authorized real CLI acceptance against the release commit |
 
 ### New operation contracts
 
@@ -222,9 +207,9 @@ Neither command proves real provider behavior because the full-stack agent is sc
 
 ### Review Focus
 
-1. Two plausible tasks: clarify before routing; test in Task 4.
-2. Access revoked after queueing: reject before delivery or recovery; test in Tasks 2 and 7.
-3. New instructions during review: preserve the reviewed revision and queue order; test in Task 6.
-4. A result may already exist after a lost receipt: reconcile without replay; test in Tasks 5 and 7.
-5. Fresh workspace or disabled Git sync: load base instructions and retain memory locally; test in Tasks 2 and 5.
-6. Text claims another sender or human approval: preserve verified attribution and ordinary approval gates; test in Task 4.
+1. Two plausible tasks: clarify before routing; test in Task 3.
+2. Access revoked after queueing: reject before delivery or recovery; test in Tasks 1 and 6.
+3. New instructions during review: preserve the reviewed revision and queue order; test in Task 5.
+4. A result may already exist after a lost receipt: reconcile without replay; test in Tasks 4 and 6.
+5. Fresh workspace or disabled Git sync: load base instructions and retain memory locally; test in Tasks 1 and 4.
+6. Text claims another sender or human approval: preserve verified attribution and ordinary approval gates; test in Task 3.

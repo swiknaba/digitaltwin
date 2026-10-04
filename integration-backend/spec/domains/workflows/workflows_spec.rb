@@ -10,7 +10,7 @@ RSpec.describe "Workflows domain" do
     { "writer" => { "cli" => "codex", "provider" => "openai", "model" => "fixture-gpt", "family" => "gpt", "launch_args" => ["--model", "fixture-gpt"] },
       "reviewer" => { "cli" => "claude", "provider" => "anthropic", "model" => "fixture-claude", "family" => "claude", "launch_args" => ["--model", "fixture-claude"] } }
   }
-  let(:controller) { { "cli" => "gemini", "provider" => "google", "model" => "fixture-gemini", "family" => "gemini", "launch_args" => [] } }
+  let(:commander) { { "cli" => "gemini", "provider" => "google", "model" => "fixture-gemini", "family" => "gemini", "launch_args" => [] } }
 
   before do
     db[:projects].insert(id: "project", channel_id: channel, slug: "owner/repo", remote_identity: "github.com/owner/repo", workspace: "/tmp/repo")
@@ -111,7 +111,7 @@ RSpec.describe "Workflows domain" do
         roles.merge("writer" => roles.fetch("writer").merge("unknown" => "x")),
         roles.merge("writer" => roles.fetch("writer").merge("launch_args" => [1])),
         roles.merge("writer" => roles.fetch("writer").merge("cli" => 1)),
-        roles.merge("observer" => controller)
+        roles.merge("observer" => commander)
       ]
       malformed.each do |value|
         db[:workflows].delete
@@ -128,10 +128,10 @@ RSpec.describe "Workflows domain" do
       end
     end
 
-    it "persists role_configurations as the full role file, including the controller entry" do
-      file = roles.merge("controller" => controller)
+    it "persists role_configurations as the full role file, including the commander entry" do
+      file = roles.merge("commander" => commander)
       assignments = T.must(Domains::Workflows::Records.role_file_from_json(JSON.generate(file)).assignments)
-      expect(assignments.controller&.cli).to eq("gemini")
+      expect(assignments.commander&.cli).to eq("gemini")
       id, = inbox("p" * 26)
       parameters = dto::RequestParameters.new(title: "Project work", existing_thread: nil, roles: assignments)
       request = Domains::Workflows::Requests.new.create(inbox_id: id, project_id: "project", digest: "d", parameters: parameters, thread_id: nil).result
@@ -148,18 +148,18 @@ RSpec.describe "Workflows domain" do
     it "parses ROLE_CONFIG_FILE strictly" do
       parse = ->(json) { Domains::Workflows::Records.role_file_from_json(json) }
       expect { parse.call("{") }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
-      expect { parse.call(JSON.generate(roles.merge("observer" => controller))) }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
-      expect { parse.call(JSON.generate("controller" => controller.except("model"))) }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
+      expect { parse.call(JSON.generate(roles.merge("observer" => commander))) }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
+      expect { parse.call(JSON.generate("commander" => commander.except("model"))) }.to raise_error(Domains::Workflows::Errors::MalformedRecord)
       expect(parse.call(JSON.generate(roles)).serialize).to eq(roles)
       expect(parse.call(JSON.generate(roles.except("reviewer"))).assignments).to be_nil
-      controller_only = parse.call(JSON.generate("controller" => controller))
-      expect([controller_only.assignments, controller_only.controller&.cli]).to eq([nil, "gemini"])
+      commander_only = parse.call(JSON.generate("commander" => commander))
+      expect([commander_only.assignments, commander_only.commander&.cli]).to eq([nil, "gemini"])
     end
 
-    it "boots with a controller-only role file and fails a start with RolesMissing" do
+    it "boots with a commander-only role file and fails a start with RolesMissing" do
       Dir.mktmpdir do |dir|
         # Configuration.from_env parses the file this way; its other inputs are clients and paths.
-        file = Domains::Workflows::Records.role_file_from_json(JSON.generate("controller" => controller))
+        file = Domains::Workflows::Records.role_file_from_json(JSON.generate("commander" => commander))
         configuration = Services::Configuration.new(roles: file, mattermost_url: "http://mattermost.test", mattermost_local_bot_ids: [],
                                                     mattermost_listener_token_file: File.join(dir, "listener-token"))
         services = Services::Composition.new(configuration: configuration)
@@ -190,8 +190,8 @@ RSpec.describe "Workflows domain" do
       expect(row[:request_digest]).to eq("503e395f5389fbb211fddee7c159740370401841f1b692d46f9cdc6caf0950c8")
       expect(row[:parameters].to_hash).to eq("title" => "Project work", "existing_thread" => nil, "roles" => roles)
       expect(start("q" * 26, existing_thread: "t" * 26)[:request_digest]).to eq("b411fe0314b77bd94e3224a56fa1496cc33159acac4b9d8c5c82329ff2b39d3e")
-      with_controller = dto::RoleAssignments.from_hash(roles.merge("controller" => controller))
-      expect(start("s" * 26, roles: with_controller)[:request_digest]).to eq("c7d82467e97889d6285791aa77cc9d6134a6998ce0f914789961cc54e5f25e42")
+      with_commander = dto::RoleAssignments.from_hash(roles.merge("commander" => commander))
+      expect(start("s" * 26, roles: with_commander)[:request_digest]).to eq("c7d82467e97889d6285791aa77cc9d6134a6998ce0f914789961cc54e5f25e42")
     end
 
     it "fails without role configuration or for an unknown project" do

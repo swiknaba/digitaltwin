@@ -21,7 +21,7 @@ Lost effect receipts now have bounded recovery:
 | `@agent recover-followup ID delivered` or `discard` | Original human, destination membership, no live send lease, exact settled Writer conversation/generation. This records a human outcome, not an automatic socket receipt. Discard releases later queued instructions; a fresh human instruction is needed for any new send. |
 | `@agent recover-start REQUEST_ID THREAD_ID` | Original human; actual bot/channel/root/title/request correlation, undeleted root, no live creation lease. Continue against that root without posting another. |
 | `@agent recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Commander-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
-| `@agent recover-master REQUEST_ID` | Original human, settled same Commander (`controller` internally) and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
+| `@agent recover-commander REQUEST_ID` | Original human, settled same Commander and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
 
 IDs appear in queue/reservation receipts. Recovery is not proof of a send when the user selects
 `delivered`; the audit labels that as human confirmation. A missing conversation/receipt remains
@@ -42,7 +42,7 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    has neither Git workspaces nor the Herdr socket. Build clients with the checksum staging script.
 2. Provide existing authenticated chat identities through read-only token-file mounts. Listener
    needs `MATTERMOST_URL`, `MATTERMOST_LISTENER_TOKEN_FILE`, `MATTERMOST_LOCAL_BOT_IDS`,
-   `MATTERMOST_CHANNEL_IDS` (including Commander and project), and `MASTER_CHANNEL_ID`.
+   `MATTERMOST_CHANNEL_IDS` (including Commander and project), and `COMMANDER_CHANNEL_ID`.
    Worker additionally needs `MATTERMOST_WORKER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE`,
    both corresponding `*_BOT_ID` values, and the same local-bot IDs. Web's request-bound MCP
    services need the listener/Worker token-file references, Worker bot ID and chat/local-bot settings
@@ -71,7 +71,7 @@ writing/review phases; PR delivery only determines when later `finish` can archi
       "command": "/usr/local/bin/digitaltwin-mcp",
       "env": {
         "DIGITALTWIN_CALLBACK_URL": "$DIGITALTWIN_CALLBACK_URL",
-        "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE": "$DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE"
+        "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE": "$DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE"
       }
     }
   }

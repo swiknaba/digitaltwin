@@ -28,11 +28,11 @@ RSpec.describe Domains::Messaging::Outbox do
   end
 
   it "worker message without thread fails" do
-    [outgoing_message(thread_id: nil), outgoing_message(thread_id: ""), outgoing_message(role: Domains::Messaging::Dto::SpeakerRole::Controller)].each do |message|
+    [outgoing_message(thread_id: nil), outgoing_message(thread_id: ""), outgoing_message(role: Domains::Messaging::Dto::SpeakerRole::Commander)].each do |message|
       failure = outbox.enqueue(message: message).errors.first
       expect([failure&.code, failure&.detail]).to eq(["worker_message_requires_thread_and_role", "Worker messages require thread and role"])
     end
-    agent = outgoing_message(thread_id: nil, bot: Domains::Messaging::Dto::Bot::Agent, role: Domains::Messaging::Dto::SpeakerRole::Controller)
+    agent = outgoing_message(thread_id: nil, bot: Domains::Messaging::Dto::Bot::Agent, role: Domains::Messaging::Dto::SpeakerRole::Commander)
     expect(outbox.enqueue(message: agent).success?).to be(true)
     expect(db[:outbox].count).to eq(1)
   end

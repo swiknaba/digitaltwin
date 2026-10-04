@@ -19,8 +19,8 @@ fixture = Thread.new do
     body = headers["content-length"] ? JSON.parse(connection.read(headers["content-length"].to_i)) : nil
     requests << [method, path, headers["authorization"], body]
     result, status = case path
-                     when "/internal/master/manifest" then [{ "tools" => [{ "name" => "list_projects" }] }, 200]
-                     when "/internal/master/tools" then [{ "result" => [{ "id" => "fixture-project" }] }, 200]
+                     when "/internal/commander/manifest" then [{ "tools" => [{ "name" => "list_projects" }] }, 200]
+                     when "/internal/commander/tools" then [{ "result" => [{ "id" => "fixture-project" }] }, 200]
                      when "/internal/callbacks/artifact-ready" then [{ "status" => "callback_queued" }, 202]
                      else raise "Unexpected fixture path"
                      end
@@ -32,7 +32,7 @@ end
 Dir.mktmpdir do |root|
   token_file = File.join(root, "token")
   File.write(token_file, "fixture-only-capability")
-  env = { "DIGITALTWIN_CALLBACK_URL" => url, "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE" => token_file,
+  env = { "DIGITALTWIN_CALLBACK_URL" => url, "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE" => token_file,
           "DIGITALTWIN_SESSION_TOKEN_FILE" => token_file, "DIGITALTWIN_SESSION_GENERATION" => "1" }
   frames = [
     { jsonrpc: "2.0", id: 1, method: "initialize" },

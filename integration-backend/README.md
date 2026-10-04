@@ -21,13 +21,13 @@ routes the message, and posts the agent's result back to the thread it came from
 
 ## Chat commands
 
-The Commander bot displays as **Commander Shepard** and defaults to the configurable `@agent` handle; `@worker` remains the workflow handle (`AGENT_HANDLE`, `WORKER_HANDLE`). Each command is the whole message.
+The Commander bot displays as **Commander** and defaults to the configurable `@agent` handle; `@worker` remains the workflow handle (`AGENT_HANDLE`, `WORKER_HANDLE`). Each command is the whole message.
 
 | Command | Effect |
 | --- | --- |
 | `@agent approve WORKFLOW_ID spec\|plan COMMIT_SHA` | Approve a workflow gate at an exact 40-character commit. |
 | `@agent route WORKFLOW_ID` + newline + text | Send the text to that workflow's Writer session. |
-| `@agent recover-master REQUEST_ID` | Close an expired or uncertain Commander request. No prompt replay. |
+| `@agent recover-commander REQUEST_ID` | Close an expired or uncertain Commander request. No prompt replay. |
 | `@agent recover-start REQUEST_ID THREAD_ID` | Continue a thread start against the existing root post. |
 | `@agent recover-session OPERATION_ID PANE_ID` | Resolve an uncertain session start or stop. |
 | `@agent recover-followup FOLLOWUP_ID delivered\|discard` | Record the human outcome of a lost follow-up. |
@@ -37,7 +37,7 @@ The Commander bot displays as **Commander Shepard** and defaults to the configur
 | `@worker finish` | Close a delivered workflow and stop its sessions. |
 | `@worker cancel` | Cancel the workflow and stop its sessions. |
 
-Only the original human can run a recover command. Details: [Commander routing setup](../docs/interfaces/commander-routing-setup.md). `recover-master` remains the compatibility command name.
+Only the original human can run a recover command. Details: [Commander routing setup](../docs/interfaces/commander-routing-setup.md). `recover-commander` remains the compatibility command name.
 
 ## Run it
 
@@ -71,8 +71,8 @@ DATABASE_URL=... MIGRATION_TEST_DATABASE_URL=... bin/check   # specs, RuboCop, S
 | `MATTERMOST_LOCAL_BOT_IDS` | Bots excluded from human authority. Required by the listener. |
 | `MATTERMOST_PEER_BOT_IDS` | Other bots to exclude. Optional. |
 | `MATTERMOST_CHANNEL_IDS` | Monitored channels. Listed explicitly, never inferred. |
-| `MASTER_CHANNEL_ID` | Channel for Commander chat (technical compatibility name). |
-| `ROLE_CONFIG_FILE` | Trusted Commander (`controller` internally), Writer, and Reviewer profiles (CLI, provider, model). |
+| `COMMANDER_CHANNEL_ID` | Channel for Commander chat. |
+| `ROLE_CONFIG_FILE` | Trusted Commander, Writer, and Reviewer profiles (CLI, provider, model). |
 | `AGENT_HANDLE`, `WORKER_HANDLE` | Chat handles. Default `agent`, `worker`. |
 | `WORKSPACE_ROOT`, `WORKTREE_ROOT` | Shared repo and worktree mounts. Default `/workspace/repos`, `/workspace/worktrees`. |
 | `PORT`, `WEB_PROCESSES` | Web port and process count. Default `3000`, `1`. |
@@ -80,7 +80,7 @@ DATABASE_URL=... MIGRATION_TEST_DATABASE_URL=... bin/check   # specs, RuboCop, S
 | `HEARTBEAT_DIR` | Where worker and listener write heartbeats. Default `/tmp`. Stale after 60 seconds. |
 | `CHAT_VALIDATION_MODE` | `1` opens the listener and delivery for disposable chat checks only. |
 | `DIGITALTWIN_CALLBACK_URL` | Backend URL used by `bin/digitaltwin` and `bin/mcp` in Runtime. |
-| `DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE`, `DIGITALTWIN_SESSION_GENERATION` | Per-request Commander and per-session credentials for Runtime clients; the variable name is retained for compatibility. |
+| `DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE`, `DIGITALTWIN_SESSION_GENERATION` | Per-request Commander and per-session credentials for Runtime clients. |
 
 ## Operating rules
 

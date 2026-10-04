@@ -16,16 +16,16 @@ module Services
       Workflow = Domains::Workflows::Dto::WorkflowView
 
       sig do
-        params(agent_handle: String, worker_handle: String, master_channel_id: T.nilable(String),
+        params(agent_handle: String, worker_handle: String, commander_channel_id: T.nilable(String),
                record: Messaging::RecordDelivery, outbox: Messaging::Outbox, catalog: Domains::Workflows::Catalog,
                queued_messages: Domains::Workflows::QueuedMessages).void
       end
       def initialize(agent_handle:, worker_handle:,
-                     master_channel_id:, record: Messaging::RecordDelivery.new, outbox: Messaging::Outbox.new,
+                     commander_channel_id:, record: Messaging::RecordDelivery.new, outbox: Messaging::Outbox.new,
                      catalog: Domains::Workflows::Catalog.new, queued_messages: Domains::Workflows::QueuedMessages.new)
         @agent = T.let(valid_handle!(agent_handle), String)
         @worker = T.let(valid_handle!(worker_handle), String)
-        @master_channel = master_channel_id
+        @commander_channel = commander_channel_id
         @record = record
         @outbox = outbox
         @catalog = catalog
@@ -49,8 +49,8 @@ module Services
         command = command_for(delivery.body)
         return outcome(Status::Rejected, "Human action requires verified member") if command && (!delivery.actor.member || delivery.actor.bot)
 
-        if master_prompt?(delivery)
-          queue(Kind::MasterPrompt, delivery, inbox_id)
+        if commander_prompt?(delivery)
+          queue(Kind::CommanderPrompt, delivery, inbox_id)
         elsif command == "start"
           return outcome(Status::Rejected, "Start requires a new thread root") unless delivery.root_post && workflow.nil?
 
@@ -89,8 +89,8 @@ module Services
 
       # A mention anywhere in the body, not a command, so it stays out of the parser.
       sig { params(delivery: Messaging::Dto::VerifiedDelivery).returns(T::Boolean) }
-      private def master_prompt?(delivery)
-        (delivery.channel_id == @master_channel || delivery.body.match?(/(?:\A|\s)@#{Regexp.escape(@agent)}\b/)) &&
+      private def commander_prompt?(delivery)
+        (delivery.channel_id == @commander_channel || delivery.body.match?(/(?:\A|\s)@#{Regexp.escape(@agent)}\b/)) &&
           delivery.actor.member && !delivery.actor.bot
       end
 

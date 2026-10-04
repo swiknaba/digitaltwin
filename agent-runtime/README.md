@@ -112,7 +112,7 @@ are pinned; staging and image build both verify them. They use Ruby stdlib and n
 Run `scripts/prepare-callback-context` from the repository root before a combined build.
 Never copy a backend worktree or secret directory as the build context.
 
-`digitaltwin` accepts say/artifact-ready/review-ready/master-reply. Session token-file/generation
+`digitaltwin` accepts say/artifact-ready/review-ready/commander-reply. Session token-file/generation
 capabilities authenticate callbacks; the separate current-request token file authenticates Commander tools
 and replies. `digitaltwin-mcp` bridges stdio to private Kirei HTTP with typed schemas and verified human
 request binding. Agents receive no Mattermost bot credentials. Packaging is implemented; actual selected

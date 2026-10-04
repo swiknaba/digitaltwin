@@ -66,7 +66,7 @@ RSpec.describe "Async HTTP ownership and Worker execution (local transport fixtu
     Dir.mktmpdir do |dir|
       File.write("#{dir}/token", "disposable-fixture")
       input = JSON.generate(jsonrpc: "2.0", id: 1, method: "initialize") + "\n"
-      output, status = Open3.capture2e({ "DIGITALTWIN_CALLBACK_URL" => "http://127.0.0.1:9", "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE" => "#{dir}/token" },
+      output, status = Open3.capture2e({ "DIGITALTWIN_CALLBACK_URL" => "http://127.0.0.1:9", "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE" => "#{dir}/token" },
                                        "ruby", "bin/mcp", stdin_data: input)
       expect(status.success?).to be(true), output
       expect(JSON.parse(output.lines.last).dig("result", "serverInfo", "name")).to eq("digitaltwin")

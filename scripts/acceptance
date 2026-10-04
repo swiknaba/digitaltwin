@@ -115,7 +115,7 @@ def operator():
 3. Operator-authorized provider credentials and real Linux Herdr CLI handshake.
 4. Mention -> durable queued dispatch -> real CLI -> exactly one source-thread reply.
    Capture sanitized inbox/job/session/outbox identities and authenticated posts.
-5. Four-CLI start/prompt/state/stop, Writer settled state, selected Master MCP.
+5. Four-CLI start/prompt/state/stop, Writer settled state, selected Commander MCP.
 6. Separate operator gates: signed-device push, restore, production deployment.
 Dependency health, fixture tests, and offline builds clear none of gates 2-6.
 Never persist credentials in evidence, Git, or images. Never report fixtures as live.

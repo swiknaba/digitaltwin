@@ -8,7 +8,7 @@ RSpec.describe Services::Inbound::ChatListener do
   let(:api) { Adapters::Mattermost::Api.new(client: client) }
   let(:listener) do
     described_class.new(client: client, api: api, verifier: Adapters::Mattermost::DeliveryVerifier.new(api: api), channels: [],
-                        router: Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", master_channel_id: nil),
+                        router: Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", commander_channel_id: nil),
                         validation_mode: true, heartbeat_dir: "/tmp")
   end
 

@@ -4,7 +4,7 @@
 module Domains
   module Commander
     module Dto
-      # A Master proposal of the target workflow, grounded in cited inbox ids.
+      # A Commander proposal of the target workflow, grounded in cited inbox ids.
       class RoutingInterpretation < T::Struct
         include Kirei::Domain::ValueObject
 

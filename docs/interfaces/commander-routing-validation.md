@@ -3,7 +3,7 @@
 Baseline: local and freshly fetched remote `main` were
 `f01b84665b723caa3ad9a266fb9d949caf262904` on 2026-10-02.
 Both still used `agent-runtime`; no rename was present. This change leaves it untouched.
-Implementation uses an isolated `build/master-context-routing` worktree.
+Implementation uses an isolated `build/commander-context-routing` worktree.
 
 ## Implemented
 

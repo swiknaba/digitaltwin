@@ -100,7 +100,7 @@ class DisposableComposeTest(unittest.TestCase):
         cls.evidence = {"revision": cls.command(["git", "rev-parse", "HEAD"]).stdout.strip(),
                         "reviewed_backend_revision": revision, "live_local_containers": True,
                         "synthetic_callbacks": True, "authenticated_chat": False,
-                        "provider_cli": False, "master_mcp": False, "phase0_acceptance": False,
+                        "provider_cli": False, "commander_mcp": False, "phase0_acceptance": False,
                         "image_ids": {}}
 
     @classmethod

@@ -5,7 +5,7 @@ module Domains
   module Sessions
     # Durable session start and stop operations, and the session state that
     # their runtime effects prove. Callers hold the scope's Platform::Lock
-    # (workflow id, or "controller"). Each session has at most one operation
+    # (workflow id, or "commander"). Each session has at most one operation
     # per kind; the dispatch keys are "session:<kind>:<session id>".
     class Operations
       extend T::Sig
@@ -112,7 +112,7 @@ module Domains
 
       sig { params(workflow_id: T.nilable(String), role: Dto::SessionRole).returns(T::Boolean) }
       private def active_in_scope?(workflow_id, role)
-        return !@registry.active_controller.nil? unless workflow_id
+        return !@registry.active_commander.nil? unless workflow_id
 
         @registry.active(workflow_id: workflow_id, role: role).any?
       end

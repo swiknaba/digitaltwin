@@ -55,9 +55,9 @@ for line in sys.stdin:
         # Completing a reply permits the next request to rotate the session
         # pointer. Retain the actual current capability for an identical replay.
         with tempfile.NamedTemporaryFile(dir=Path.home(), prefix="fixture-request-") as capability:
-            capability.write(Path(os.environ["DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE"]).read_bytes())
+            capability.write(Path(os.environ["DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE"]).read_bytes())
             capability.flush()
-            capability_env = {**os.environ, "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE": capability.name}
+            capability_env = {**os.environ, "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE": capability.name}
             frames = "\n".join(json.dumps(row) for row in [
                 {"jsonrpc": "2.0", "id": 1, "method": "initialize"},
                 {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
@@ -79,15 +79,15 @@ for line in sys.stdin:
                 if time.monotonic() > deadline:
                     raise RuntimeError("Fixture MCP authorization did not become active")
                 time.sleep(0.1)
-            reply = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10, env=capability_env)
+            reply = subprocess.run(["digitaltwin", "commander-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10, env=capability_env)
             if reply.returncode:
                 raise RuntimeError("Fixture reply rejected")
-            # Reply and the next queued dispatch share a fail-fast controller lock.
+            # Reply and the next queued dispatch share a fail-fast commander lock.
             # The installed client permits retrying only the identical callback.
             deadline = time.monotonic() + 20
             while True:
                 replay_attempts += 1
-                replay = subprocess.run(["digitaltwin", "master-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10, env=capability_env)
+                replay = subprocess.run(["digitaltwin", "commander-reply", "--request-id", request_id, "--text", "E2E_REPLY=" + nonce], capture_output=True, timeout=10, env=capability_env)
                 if not replay.returncode:
                     break
                 if time.monotonic() > deadline:

@@ -7,7 +7,7 @@ module Domains
       # Role label of an outbox message; values are persisted in outbox.role.
       class SpeakerRole < T::Enum
         enums do
-          Controller = new("controller")
+          Commander = new("commander")
           Writer = new("writer")
           Reviewer = new("reviewer")
         end

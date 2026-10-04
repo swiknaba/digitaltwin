@@ -9,24 +9,24 @@
 - Revised Phase 0 routing so each verified Campfire thread owns one workflow and ordinary messages continue in an activated thread without repeat mentions.
 - Required explicit thread-scoped `@worker finish` to close a delivered workflow and archive its Herdr session metadata; inactivity cannot close work.
 - Aligned the specification and plan with Alpine-preferred images, Kirei CLI bootstrap, Ruby/Node pins, built-in health routes, and PostgreSQL jobs.
-- Bound artifact approvals to Git commits and document paths; made Master configuration selectable and rejected duplicate starts in active threads.
+- Bound artifact approvals to Git commits and document paths; made Commander configuration selectable and rejected duplicate starts in active threads.
 - Removed planning status and local session history from docs and README; aligned the Phase 1 voice reference.
 - Added workflow worktrees, an early integration spike, shared-type ordering, incremental schema constraints, and explicit correction/delivery transitions.
 - Clarified collaborator authority, raw terminal access, callback limits, review diff scope, queued-message acknowledgements, and durable recovery.
 - Planned a maintained Campfire Rails app with thread UI/API and authenticated events; added PostgreSQL search/schema/backup port and upstream maintenance checks.
 - Defined separate Campfire and Kirei databases/roles on one PostgreSQL server, three application images, and retained Campfire Redis dependencies pending a backend decision.
-- Clarified that Master operational chat and targeted emergency changes have no coding review cycle; ordinary project workflows retain their gates.
+- Clarified that Commander operational chat and targeted emergency changes have no coding review cycle; ordinary project workflows retain their gates.
 - Recorded the approved Campfire Redis sidecar, private service connectivity, persistence, and restart/restore checks.
 - Routed Worker interview/progress replies through a session-bound Kirei callback and durable outbox while retaining visible bot/role identity.
 - Defined thread-scoped pause as suppressing new dispatch while preserving current-step completion and callbacks; resume revalidates phase, revision, Runtime, and existing gates.
-- Confirmed shared Master conversational context and operational access across fleet rooms, with separate Master sessions and private control/runtime data for independent fleets.
-- Made Master-created workflow threads an optional Phase 0 convenience with verified/idempotent association; retained existing-thread starts and added a Phase 1 deferral path.
-- Kept detailed updates in project threads and routed important summaries/blockers to configured Master chat with source links and event/destination deduplication.
-- Defined worker sessions as LLM conversations, restricted reuse to the same workflow topic/role/configuration, and scoped fresh recovery to task state while retaining shared Master fleet context.
+- Confirmed shared Commander conversational context and operational access across fleet rooms, with separate Commander sessions and private control/runtime data for independent fleets.
+- Made Commander-created workflow threads an optional Phase 0 convenience with verified/idempotent association; retained existing-thread starts and added a Phase 1 deferral path.
+- Kept detailed updates in project threads and routed important summaries/blockers to configured Commander chat with source links and event/destination deduplication.
+- Defined worker sessions as LLM conversations, restricted reuse to the same workflow topic/role/configuration, and scoped fresh recovery to task state while retaining shared Commander fleet context.
 
 ## 2026-10-01 — Final peer session policy from review interview
 
-- Master alone initiates separately managed fleet sessions. Worker/peer requests need human approval and Master creation; harness-native subordinate agents remain allowed where supported.
+- Commander alone initiates separately managed fleet sessions. Worker/peer requests need human approval and Commander creation; harness-native subordinate agents remain allowed where supported.
 - Preserve human thread starts and the authorized Writer/Reviewer review/recovery lifecycle without repeated spawn approvals. Document Kirei bootstrap and the shared Runtime/raw-terminal limits.
 - Add a planned versioned peer-handoff contract and tests for authenticated context, replay, recipients, artifact bindings, rejected bot starts, and rejected autonomous chains; no automatic limits replace human approval.
 - Reconciled all 16 new review threads and the interview decisions across specification, plan, README, and Phase 1. Checked diff whitespace, Markdown links/fences/tables, 13 tasks, and all 32 acceptance criteria. No system implementation or runtime test claims.
@@ -163,7 +163,7 @@
 
 ## 2026-10-03
 
-- Refactored the backend into four Zeitwerk layers: `app/domains/` (bounded contexts with private `Kirei::Model` entities and public `dto/` and `errors/`), `app/services/` (use cases and job handlers), `app/adapters/` (Mattermost, Herdr, git, credential files, HTTP, MCP), and `app/platform/` (jobs, lock, transaction, audit, JSON boundary types). Public services return `Kirei::Services::Result`; `Services::Composition` is the composition root over `Services::Configuration` and `Services::JobHandlers`. `spec/contracts/architecture_boundaries_spec.rb` enforces the layer rules with an empty migration allowlist. The Master MCP manifest now types `evidence_inbox_ids` items as `"string"`.
+- Refactored the backend into four Zeitwerk layers: `app/domains/` (bounded contexts with private `Kirei::Model` entities and public `dto/` and `errors/`), `app/services/` (use cases and job handlers), `app/adapters/` (Mattermost, Herdr, git, credential files, HTTP, MCP), and `app/platform/` (jobs, lock, transaction, audit, JSON boundary types). Public services return `Kirei::Services::Result`; `Services::Composition` is the composition root over `Services::Configuration` and `Services::JobHandlers`. `spec/contracts/architecture_boundaries_spec.rb` enforces the layer rules with an empty migration allowlist. The Commander MCP manifest now types `evidence_inbox_ids` items as `"string"`.
 
 ## 2026-10-03 — Commander plan and terminology
 
@@ -177,3 +177,5 @@
 
 - Simplify the Commander plan for an undeployed app: direct naming cleanup, empty-database validation, and no installation transition strategy. Remove the obsolete naming audit and repeated terminology guidance.
 - Plan a persistent Commander workspace for base instructions and global learnings, with optional Git sync and separate project memory.
+
+- Complete the Commander application rename in PR26: services, domain values, session role, routes, commands, configuration, jobs, fresh schema, fixtures, and Runtime client contracts. Remove the deferred cleanup task from the plan.

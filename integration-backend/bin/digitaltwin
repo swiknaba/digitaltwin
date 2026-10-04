@@ -10,25 +10,25 @@ require "uri"
 
 begin
   command = ARGV.shift
-  raise ArgumentError, "Expected say/artifact-ready/review-ready/master-reply" unless %w[say artifact-ready review-ready master-reply].include?(command)
+  raise ArgumentError, "Expected say/artifact-ready/review-ready/commander-reply" unless %w[say artifact-ready review-ready commander-reply].include?(command)
 
   options = {}
   OptionParser.new do |parser|
     %w[text key kind commit verdict request-id].each { |field| parser.on("--#{field} VALUE") { |value| options[field] = value } }
   end.parse!(ARGV)
-  required = { "say" => %w[text key], "artifact-ready" => %w[kind commit], "review-ready" => %w[commit verdict], "master-reply" => %w[request-id text] }.fetch(command)
+  required = { "say" => %w[text key], "artifact-ready" => %w[kind commit], "review-ready" => %w[commit verdict], "commander-reply" => %w[request-id text] }.fetch(command)
   raise ArgumentError, "Invalid callback arguments" unless ARGV.empty? && options.keys.sort == required.sort
 
-  token_env = command == "master-reply" ? "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE" : "DIGITALTWIN_SESSION_TOKEN_FILE"
+  token_env = command == "commander-reply" ? "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE" : "DIGITALTWIN_SESSION_TOKEN_FILE"
   token = File.read(ENV.fetch(token_env)).strip
   raise ArgumentError, "Empty callback credential" if token.empty?
 
   base = URI(ENV.fetch("DIGITALTWIN_CALLBACK_URL"))
   raise ArgumentError, "Expected private HTTP(S) base URL" unless %w[http https].include?(base.scheme) && base.host && !base.userinfo && ["", "/"].include?(base.path) && !base.query && !base.fragment
 
-  path = command == "master-reply" ? "/internal/master/reply" : "/internal/callbacks/#{command}"
+  path = command == "commander-reply" ? "/internal/commander/reply" : "/internal/callbacks/#{command}"
   target = URI.join(base.to_s, path)
-  payload = if command == "master-reply"
+  payload = if command == "commander-reply"
               { request_id: options["request-id"], text: options["text"] }
             else
               options.merge("generation" => Integer(ENV.fetch("DIGITALTWIN_SESSION_GENERATION")))
@@ -38,7 +38,7 @@ begin
   response = Net::HTTP.start(target.host, target.port, use_ssl: target.scheme == "https", open_timeout: 5, read_timeout: 10, write_timeout: 10) { |http| http.request(request) }
   raise "Callback rejected (HTTP #{response.code})" unless response.code == "202"
 
-  puts(command == "say" || command == "master-reply" ? "Queued in bound thread" : "Callback recorded; dispatch remains subject to workflow gates")
+  puts(command == "say" || command == "commander-reply" ? "Queued in bound thread" : "Callback recorded; dispatch remains subject to workflow gates")
 rescue StandardError => e
   warn(e.is_a?(ArgumentError) ? e.message : "Callback failed or uncertain; retry only the identical callback")
   exit 1

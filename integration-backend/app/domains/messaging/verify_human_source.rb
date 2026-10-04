@@ -4,7 +4,7 @@
 module Domains
   module Messaging
     # Revalidates a persisted inbox record against chat REST before it becomes
-    # authority for a controller action. Verifier exceptions propagate.
+    # authority for a commander action. Verifier exceptions propagate.
     class VerifyHumanSource
       extend T::Sig
 

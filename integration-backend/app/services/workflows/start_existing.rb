@@ -45,7 +45,7 @@ module Services
         return failure(Code::StartRequired, "Human root start required") unless delivery.root_post && start
 
         project = @directory.for_channel(channel_id: delivery.channel_id)
-        return failure(Code::ProjectMappingRequired, "Use verified project mapping through Master") unless project
+        return failure(Code::ProjectMappingRequired, "Use verified project mapping through Commander") unless project
 
         @request_start.call(inbox_id: inbox_id, project_id: project.id, title: delivery.body, existing_thread: delivery.thread_id)
       end

@@ -7,9 +7,9 @@ module Platform
       # Persisted job kind strings; values are part of the durable queue contract.
       class JobKind < T::Enum
         enums do
-          MasterPrompt = new("master.prompt")
-          MasterDispatch = new("master.dispatch")
-          MasterControl = new("master.control")
+          CommanderPrompt = new("commander.prompt")
+          CommanderDispatch = new("commander.dispatch")
+          CommanderControl = new("commander.control")
           WorkflowPrompt = new("workflow.prompt")
           WorkflowStart = new("workflow.start")
           WorkflowApprove = new("workflow.approve")
