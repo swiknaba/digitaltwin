@@ -5,7 +5,7 @@ umask 077
 for path in "$HOME" /workspace /run/herdr; do
   [ -d "$path" ] && [ -w "$path" ] || { echo "Required volume is not writable: $path" >&2; exit 1; }
 done
-mkdir -p /workspace/repos /workspace/worktrees "$HOME/.config/herdr" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode"
+mkdir -p /workspace/commander /workspace/repos /workspace/worktrees "$HOME/.config/herdr" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode"
 if [ ! -e "$HOME/.config/herdr/config.toml" ]; then
   cp /opt/runtime/config/herdr.toml "$HOME/.config/herdr/config.toml"
 fi

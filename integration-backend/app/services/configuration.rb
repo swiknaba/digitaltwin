@@ -15,6 +15,7 @@ module Services
     DEFAULT_WORKER_HANDLE = "worker"
     DEFAULT_WORKSPACE_ROOT = "/workspace/repos"
     DEFAULT_WORKTREE_ROOT = "/workspace/worktrees"
+    DEFAULT_COMMANDER_WORKSPACE = "/workspace/commander"
     DEFAULT_HEARTBEAT_DIR = "/tmp"
 
     const :mattermost_url, T.nilable(String), default: nil
@@ -34,6 +35,7 @@ module Services
     const :worker_handle, String, default: DEFAULT_WORKER_HANDLE
     const :workspace_root, String, default: DEFAULT_WORKSPACE_ROOT
     const :worktree_root, String, default: DEFAULT_WORKTREE_ROOT
+    const :commander_workspace, String, default: DEFAULT_COMMANDER_WORKSPACE
     const :heartbeat_dir, String, default: DEFAULT_HEARTBEAT_DIR
     const :chat_validation_mode, T::Boolean, default: false
 
@@ -46,7 +48,8 @@ module Services
         mattermost_channel_ids: ENV["MATTERMOST_CHANNEL_IDS"]&.split(","), commander_channel_id: ENV["COMMANDER_CHANNEL_ID"], roles: roles_from_env,
         callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", DEFAULT_CALLBACK_URL), agent_handle: ENV.fetch("AGENT_HANDLE", DEFAULT_AGENT_HANDLE),
         worker_handle: ENV.fetch("WORKER_HANDLE", DEFAULT_WORKER_HANDLE), workspace_root: ENV.fetch("WORKSPACE_ROOT", DEFAULT_WORKSPACE_ROOT),
-        worktree_root: ENV.fetch("WORKTREE_ROOT", DEFAULT_WORKTREE_ROOT), heartbeat_dir: ENV.fetch("HEARTBEAT_DIR", DEFAULT_HEARTBEAT_DIR),
+        worktree_root: ENV.fetch("WORKTREE_ROOT", DEFAULT_WORKTREE_ROOT), commander_workspace: ENV.fetch("COMMANDER_WORKSPACE", DEFAULT_COMMANDER_WORKSPACE),
+        heartbeat_dir: ENV.fetch("HEARTBEAT_DIR", DEFAULT_HEARTBEAT_DIR),
         chat_validation_mode: ENV["CHAT_VALIDATION_MODE"] == "1"
       )
     end

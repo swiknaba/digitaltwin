@@ -31,7 +31,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   let(:renewals) { Domains::Sessions::Renewals.new }
   let(:reserve_session) { Services::Sessions::ReserveSession.new(source: source, credentials: credentials) }
   let(:bootstrap) { Services::Sessions::BootstrapCommander.new(credentials: credentials) }
-  let(:execute_operation) { Services::Sessions::ExecuteOperation.new(herdr: herdr, source: source, credentials: credentials, callback_url: "http://fixture.invalid", policy: policy) }
+  let(:execute_operation) { Services::Sessions::ExecuteOperation.new(herdr: herdr, source: source, credentials: credentials, callback_url: "http://fixture.invalid", commander_workspace: "/workspace/commander", policy: policy) }
   let(:renew_service) { Services::Sessions::Renew.new(herdr: herdr, source: source, credentials: credentials, policy: policy, renewals: renewals) }
   let(:reconcile_operation) { Services::Sessions::ReconcileOperation.new(herdr: herdr, source: source, credentials: credentials, handle: "agent") }
   let(:stop_sessions) { Services::Sessions::StopWorkflowSessions.new }
@@ -226,6 +226,17 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
                                                                                               "DIGITALTWIN_SESSION_TOKEN_FILE" => File.join(@credential_root, "#{id}.token"))))
     expect(File.stat(File.join(@credential_root, "#{id}.token")).mode & 0777).to eq(0600)
     expect { reserve("commander") }.to raise_error(ArgumentError)
+  end
+  it "starts Commander in its persistent workspace" do
+    commander = Domains::Workflows::Dto::RoleConfig.new(cli: "gemini", provider: "google", model: "fixture-gemini", family: "gemini", launch_args: [])
+    id = Platform::Unwrap.call(bootstrap.call(configuration: commander))
+    allow(herdr).to receive(:create_workspace).and_return(herdr_workspace(workspace_id: "commander-workspace", pane_id: "commander-pane"))
+    identity = { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "commander-conversation" }
+    allow(herdr).to receive(:start).and_return(herdr_pane("agent_session" => identity, "agent_status" => "idle"))
+
+    op = db[:session_operations][session_id: id]
+    expect(execute(op[:id])).to eq("complete")
+    expect(herdr).to have_received(:create_workspace).with(hash_including(cwd: "/workspace/commander"))
   end
   it "does not repeat an uncertain session start or create another conversation" do
     workflow(active_sessions: false)

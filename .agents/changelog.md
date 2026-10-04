@@ -195,3 +195,9 @@
 - Preserve only the verified `agent_pane_busy` socket error code for startup diagnostics. Redact all raw server text and unrecognized codes.
 - Verify correlation before reporting a Herdr error. Retry only a rejected `agent_pane_busy` on the same uninitialized pane for two seconds; never retry accepted or launched starts.
 - Carry the allowlisted error code as typed `ProtocolViolation` metadata rather than matching display text. Recheck the busy window immediately before another start and sleep no longer than its remaining duration.
+
+## 2026-10-04 — Commander persistent workspace
+
+- Reserve Commander Herdr workspaces at `/workspace/commander`, independently of worker worktrees.
+- Create that directory during Runtime startup and retain it through Runtime restart checks.
+- Add the persistent Commander memory scaffold. Provider dispatch remains disabled pending live operator evidence.
