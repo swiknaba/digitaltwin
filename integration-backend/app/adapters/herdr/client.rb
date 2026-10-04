@@ -46,6 +46,7 @@ module Adapters
           raise unless error.code == "agent_pane_busy"
 
           raise unless initial_shell?(pane(pane_id))
+
           remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
           raise Errors::ProtocolViolation, "Herdr startup pane remained busy" unless remaining.positive?
 
