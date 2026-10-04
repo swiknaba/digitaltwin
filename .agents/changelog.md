@@ -164,3 +164,7 @@
 ## 2026-10-03
 
 - Refactored the backend into four Zeitwerk layers: `app/domains/` (bounded contexts with private `Kirei::Model` entities and public `dto/` and `errors/`), `app/services/` (use cases and job handlers), `app/adapters/` (Mattermost, Herdr, git, credential files, HTTP, MCP), and `app/platform/` (jobs, lock, transaction, audit, JSON boundary types). Public services return `Kirei::Services::Result`; `Services::Composition` is the composition root over `Services::Configuration` and `Services::JobHandlers`. `spec/contracts/architecture_boundaries_spec.rb` enforces the layer rules with an empty migration allowlist. The Master MCP manifest now types `evidence_inbox_ids` items as `"string"`.
+
+## 2026-10-04 — AgentsView usage design
+
+- Add a reviewable Runtime usage specification and implementation plan. They define configurable timezone ranges, distinguish reported zero from unavailable cost, retain a one-tool Commander boundary, and leave the UI disabled by default.
