@@ -18,7 +18,7 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[Dto::ToolResponse] }
       CONTROLS = T.let(%w[pause resume finish cancel].freeze, T::Array[String])
       CONTEXT_SECONDS = 1800
-      CONTEXT_LIMIT = 10
+      CONTEXT_LIMIT = 50
       # The source check calls chat REST. Its expected and transport failures
       # hide the item instead of failing the whole listing.
       VISIBILITY_FAILURES = T.let(
