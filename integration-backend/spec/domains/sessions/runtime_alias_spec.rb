@@ -24,4 +24,11 @@ RSpec.describe Domains::Sessions::Operations do
     expect(session.id).to eq(session_id)
     expect(session.alias).to eq("digitaltwin-#{Digest::SHA256.hexdigest(session_id).slice(0, 20)}")
   end
+
+  it "keeps a valid lowercase hyphen-only durable ID readable" do
+    session_id = "sessionfirst"
+    result = described_class.new.reserve(session_id: session_id, workflow_id: nil, role: Domains::Sessions::Dto::SessionRole::Commander, configuration: configuration, credential_digest: "fixture-digest")
+    expect(result.failed?).to eq(false)
+    expect(Domains::Sessions::Registry.new.find(id: session_id).alias).to eq("digitaltwin-#{session_id}")
+  end
 end
