@@ -243,3 +243,4 @@
 - Keep Commander role instructions and native Hermes state local until Wagglebot supports Hermes provisioning.
 - Configure Hermes to read the provisioned shared library at `/home/runtime/.agents/skills`, with deterministic Runtime image coverage.
 - Hash underscore-bearing Kirei session aliases before starting Herdr, whose agent names accept hyphens but not underscores.
+- Keep the Wagglebot shared-worker baseline product-agnostic; Commander-local guidance now uses only its supplied coordination tools rather than backend implementation names.

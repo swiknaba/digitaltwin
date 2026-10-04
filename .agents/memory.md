@@ -8,3 +8,4 @@
 - Commander knowledge is Hermes-native: Markdown memory, SQLite history, and learned skills live in the Commander profile. Kirei remains authoritative only for orchestration, sender provenance, authorization, sessions, jobs, routing, and approvals; it does not mirror Commander memory.
 - Hermes reads the Wagglebot-provisioned shared worker library at `/home/runtime/.agents/skills`. This is separate from the Commander profile's memory, history, and learned skills.
 - Herdr agent names must use lowercase letters, digits, and hyphens. Preserve a durable Kirei session id unchanged and use its deterministic hash as the runtime alias whenever the usual `digitaltwin-<session-id>` form is invalid.
+- Reusable Wagglebot worker instructions must not name Digitaltwin, Kirei, Commander, or Hermes. Product enforcement stays in trusted backend dispatch; Commander-local instructions describe only its role and supplied coordination tools.
