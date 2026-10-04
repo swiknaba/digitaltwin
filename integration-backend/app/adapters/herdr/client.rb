@@ -37,7 +37,7 @@ module Adapters
       sig { params(pane_id: String, name: String, launch: Dto::LaunchSpec).returns(Dto::Pane) }
       def start(pane_id:, name:, launch:)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + INITIAL_SHELL_RETRY_SECONDS
-        retrying_initial_shell = false
+        retrying_initial_shell = T.let(false, T::Boolean)
         begin
           raise Errors::ProtocolViolation, "Herdr startup pane remained busy" if retrying_initial_shell && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
