@@ -1,3 +1,8 @@
+skills:
+  # Keep agent-authored, mutable procedure knowledge apart from any curated
+  # baseline installed into skills/. Both locations remain Commander-local.
+  create_dir: learned-skills
+
 mcp_servers:
   digitaltwin:
     command: /usr/local/bin/digitaltwin-mcp
