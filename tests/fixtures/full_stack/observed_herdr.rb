@@ -6,6 +6,15 @@ module FullStackFixture
   class ObservedHerdr < Adapters::Herdr::Client
     extend T::Sig
 
+    # Test-only startup diagnostics retain a schema-shaped code but never the
+    # server message. Production continues to expose only allowlisted codes.
+    private def response_from(line, correlation_id)
+      parsed = JSON.parse(line)
+      code = parsed.dig("error", "code") if parsed.is_a?(Hash)
+      warn "Fixture Herdr raw rejection code: #{code}" if code.is_a?(String) && /\A[a-z0-9_]+\z/.match?(code)
+      super
+    end
+
     sig { override.params(pane_id: String, name: String, launch: Adapters::Herdr::Dto::LaunchSpec).returns(Adapters::Herdr::Dto::Pane) }
     def start(pane_id:, name:, launch:)
       super
