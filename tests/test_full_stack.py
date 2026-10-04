@@ -120,7 +120,8 @@ class FullStackChatTest(core.DisposableComposeTest):
                 "backend-worker": {"environment": {**environment, "RACK_ENV": "test", "CHAT_VALIDATION_MODE": "1", "DIGITALTWIN_DISPOSABLE_TEST_PROJECT": self.project},
                                    "volumes": ["e2e-auth:/auth", str(fixture) + ":/e2e:ro"], "command": ["bundle", "exec", "ruby", "/e2e/worker.rb"]},
                 "backend-chat-listener": {"image": self.project + "-backend:check", "environment": environment, "volumes": ["e2e-auth:/auth:ro"]},
-                "agent-runtime": {"volumes": [str(fixture / "pi") + ":/usr/local/bin/pi:ro"]},
+                "agent-runtime": {"volumes": [str(fixture / "pi") + ":/usr/local/bin/pi:ro",
+                                              str(fixture / "pi") + ":/usr/local/bin/hermes:ro"]},
             },
             "volumes": {"e2e-auth": {}},
         }
@@ -161,7 +162,7 @@ class FullStackChatTest(core.DisposableComposeTest):
         for service in ["backend-web", "backend-worker", "backend-chat-listener"]:
             override["services"][service]["environment"].update(environment)
         path.write_text(json.dumps(override))
-        role = {"cli": "pi", "provider": "fixture", "model": "deterministic", "family": "fixture", "launch_args": []}
+        role = {"cli": "hermes", "provider": "fixture", "model": "deterministic", "family": "fixture", "launch_args": []}
         files = {**{name + ".token": value for name, value in tokens.items()}, "roles.json": json.dumps({"commander": role}), "ready": self.project}
         # Ruby has no app bootstrap here: write secret values from stdin, never argv/env/logs.
         self.compose(["run", "--rm", "--no-deps", "-T", "--entrypoint", "ruby", "backend-worker", "-rjson", "-e",
