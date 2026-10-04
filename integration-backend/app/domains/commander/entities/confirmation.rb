@@ -13,7 +13,7 @@
 #  expires_at          :timestamp without time zone, not null
 #  consumed_at         :timestamp without time zone, null
 #  confirming_user_id  :text                null
-#  confirming_post_id  :text                null, unique
+#  confirming_post_id  :text                null
 #
 
 module Domains

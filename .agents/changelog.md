@@ -205,3 +205,7 @@
 ## 2026-10-04 — Commander workflow status
 
 - Add the request-bound `workflow_status` MCP operation. It filters workflows by authenticated channel access and reports durable workflow, review, approval, artifact, and last-verified session state without asserting live Runtime or delivery success.
+
+## 2026-10-04 — Migration annotation stability
+
+- Synchronize generated entity schema annotations and verify that the clean migration entrypoint does not rewrite them.
