@@ -80,20 +80,20 @@ module Services
         revision = git_revision
         current_commit = ->(worktree) { revision.call(worktree_path: worktree.worktree_path, branch: worktree.branch) }
         Commander::RecordApproval.new(resolver: verifier, membership: listener_api, current_commit: current_commit, handle: @configuration.agent_handle,
-                                   worker_handle: @configuration.worker_handle, evidence: evidence)
+                                      worker_handle: @configuration.worker_handle, evidence: evidence)
       end
     end
 
     sig { returns(Commander::RouteFollowup) }
     def route_followup
       @route_followup ||= Commander::RouteFollowup.new(resolver: verifier, membership: listener_api, handle: @configuration.agent_handle,
-                                                    commander_channel_id: @configuration.commander_channel_id)
+                                                       commander_channel_id: @configuration.commander_channel_id)
     end
 
     sig { returns(Commander::HandleWorkflowPrompt) }
     def handle_workflow_prompt
       @handle_workflow_prompt ||= Commander::HandleWorkflowPrompt.new(route: route_followup, approvals: approvals, handle: @configuration.agent_handle,
-                                                                   worker_handle: @configuration.worker_handle)
+                                                                      worker_handle: @configuration.worker_handle)
     end
 
     sig { returns(Commander::HandleCommanderPrompt) }
@@ -108,7 +108,7 @@ module Services
     sig { returns(Commander::DeliverFollowup) }
     def deliver_followup
       @deliver_followup ||= Commander::DeliverFollowup.new(herdr: herdr, resolver: verifier, membership: listener_api, handle: @configuration.agent_handle,
-                                                        policy: policy)
+                                                           policy: policy)
     end
 
     sig { returns(Commander::ReconcileFollowup) }
@@ -136,7 +136,7 @@ module Services
       return nil unless role
 
       @ingest_prompt ||= Commander::IngestPrompt.new(source: source, bootstrap: Sessions::BootstrapCommander.new(credentials: credentials),
-                                                  configuration: role, credentials: credentials)
+                                                     configuration: role, credentials: credentials)
     end
 
     # Nil unless ROLE_CONFIG_FILE configures a commander role.

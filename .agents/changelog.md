@@ -43,7 +43,7 @@
 - Replace the planned Campfire server fork/SQLite-to-PostgreSQL port/Redis sidecar with the official unmodified Mattermost Team Edition artifact and external Kirei bot REST/WebSocket integration. Use explicit channel mappings, verified root posts, durable event identities, and reconnect backfill.
 - Plan our signed mobile builds and the existing self-hosted Mattermost push proxy/APNs/FCM path, with human-owned enrollment/credentials/distribution and upstream security maintenance. Keep push outside Kirei.
 - Distinguish official compiled-server MIT licensing from mixed server-source licensing. Audit exact artifacts, bundled plugins, dependencies, outputs, notices, and branding; exclude commercial components and required Calls/Agents plugins rather than bypass licensing checks.
-- Replace Phase 1 voice transport with independent self-hosted LiveKit group calls and AI voice. Require native client/background/device integration checks; preserve existing controller authority and coding gates.
+- Replace Phase 1 voice transport with independent self-hosted LiveKit group calls and AI voice. Require native client/background/device integration checks; preserve existing Commander authority and coding gates.
 - Link issue #4 for the post-Phase 2 LiteLLM/MCP direction; add no current-phase rollout or chat-plugin MCP requirement.
 - Validate Markdown/local links/tables/fences, 13 tasks, 27 spec sections, all 32 acceptance criteria and matrix coverage, obsolete-path removal, and preservation of existing workflow/runtime/peer policies. This remains documentation only.
 
@@ -147,7 +147,7 @@
 ## 2026-10-02 — Backend domain-only layout
 
 - Move HTTP controllers, DTOs, and errors from `app/controllers/` to `app/domains/orchestration/http/` (`Domains::Orchestration::Http`). Rename `requests/` to `dto/`.
-- Rename the `controller` domain to `orchestration` (`Domains::Orchestration`), including its spec, bin scripts, and contract paths.
+- Rename the coordination domain to `orchestration` (`Domains::Orchestration`), including its spec, bin scripts, and contract paths.
 - Verify whole-project Sorbet check passes. Six RSpec failures (migration tasks, projects) also fail on the original commit.
 - Rename the `orchestration` domain to `commander` (`Domains::Commander`).
 - Rename the `forge` domain to `git_repos` (`Domains::GitRepos`) and the `Projects::Enroll` `forge:` argument to `git_repos:`.

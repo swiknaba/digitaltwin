@@ -319,7 +319,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     commit = "a" * 40
     db[:reviews].insert(id: "review_1", workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: session_configuration)
     service = Services::Commander::RecordApproval.new(resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit }, handle: "agent",
-                                                   worker_handle: "worker")
+                                                      worker_handle: "worker")
     approvals = Struct.new(:service) do
       def record(gate:, **args)
         result = service.call(gate: Domains::Workflows::Dto::Gate.deserialize(gate), **args)

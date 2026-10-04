@@ -43,7 +43,7 @@ RSpec.describe "POST /internal/commander/tools wire format" do
     db[:sessions].insert(id: "commander", role: "commander", pane_id: "pane", alias: "commander", generation: 1, credential_digest: "session-digest",
                          credential_expires_at: Time.now + 3600, configuration: session_configuration("commander"))
     db[:commander_requests].insert(id: "request", inbox_id: "inbox_1", session_id: "commander", state: "active",
-                                credential_digest: Digest::SHA256.hexdigest("request-token"), expires_at: Time.now + 1800)
+                                   credential_digest: Digest::SHA256.hexdigest("request-token"), expires_at: Time.now + 1800)
     db[:projects].insert(id: "p1", channel_id: workflow_channel, slug: "owner/repo", remote_identity: "github.com/owner/repo", workspace: "/tmp/p1")
     db[:projects].insert(id: "p2", channel_id: "hidden-channel", slug: "owner/hidden", remote_identity: "github.com/owner/hidden", workspace: "/tmp/p2")
     db[:projects].insert(id: "p3", channel_id: "raising-channel", slug: "owner/raising", remote_identity: "github.com/owner/raising", workspace: "/tmp/p3")
@@ -59,7 +59,7 @@ RSpec.describe "POST /internal/commander/tools wire format" do
   def stub_commander_tools
     route = Services::Commander::RouteFollowup.new(resolver: resolver, membership: membership, handle: "agent", commander_channel_id: nil)
     tools = Services::Commander::Tools.new(source: source, authorize: Services::Commander::AuthorizeRequest.new(source: source), route: route,
-                                        request_start: double(call: Kirei::Services::Result.new(result: "workflow_request_1")))
+                                           request_start: double(call: Kirei::Services::Result.new(result: "workflow_request_1")))
     allow(Services::Composition).to receive(:instance).and_return(double(tools: tools))
   end
 

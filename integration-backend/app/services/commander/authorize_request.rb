@@ -10,7 +10,7 @@ module Services
       extend T::Sig
 
       Commander = Domains::Commander
-      Commander = Domains::Sessions::Dto::SessionRole::Commander
+      Role = Domains::Sessions::Dto::SessionRole::Commander
       Outcome = T.type_alias { Kirei::Services::Result[Commander::Dto::CommanderRequestView] }
 
       sig { params(source: Domains::Messaging::VerifyHumanSource, requests: Commander::CommanderRequests, registry: Domains::Sessions::Registry).void }
@@ -29,8 +29,8 @@ module Services
 
           request = authorized.result
           session = @registry.find(id: request.session_id)
-          latest = @registry.latest_generation(workflow_id: nil, role: Commander)
-          valid = session && session.role == Commander && session.active && session.credential_expires_at > now && session.generation == latest
+          latest = @registry.latest_generation(workflow_id: nil, role: Role)
+          valid = session && session.role == Role && session.active && session.credential_expires_at > now && session.generation == latest
           next rejected unless valid
 
           verified = @source.call(inbox_id: request.inbox_id)

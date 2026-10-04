@@ -191,7 +191,7 @@ RSpec.describe "Workflows domain" do
       expect(row[:parameters].to_hash).to eq("title" => "Project work", "existing_thread" => nil, "roles" => roles)
       expect(start("q" * 26, existing_thread: "t" * 26)[:request_digest]).to eq("b411fe0314b77bd94e3224a56fa1496cc33159acac4b9d8c5c82329ff2b39d3e")
       with_commander = dto::RoleAssignments.from_hash(roles.merge("commander" => commander))
-      expect(start("s" * 26, roles: with_commander)[:request_digest]).to eq("c7d82467e97889d6285791aa77cc9d6134a6998ce0f914789961cc54e5f25e42")
+      expect(start("s" * 26, roles: with_commander)[:request_digest]).to eq("05ea5b49fe082a7ecc708c744f036d78ed633e1368bded9341816ad552f7fe52")
     end
 
     it "fails without role configuration or for an unknown project" do

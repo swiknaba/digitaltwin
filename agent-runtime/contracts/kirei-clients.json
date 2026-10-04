@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_revision": "5efa1ee5eec492d693598d599e2b04f9c13e9980",
+  "source_revision": "43a1b5a818fe51ba9c6df7b0aec20279ef64b38b",
   "validation": "isolated_fixtures_passed_live_dispatch_gated",
   "files": {
     "digitaltwin": {

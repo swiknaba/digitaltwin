@@ -20,7 +20,7 @@ module Domains
         return Kirei::Services::Result.new(result: existing) if existing
 
         entity = Entities::CommanderRequest.create(id: SecureRandom.uuid, inbox_id: inbox_id, session_id: session_id, credential_digest: credential_digest,
-                                                expires_at: expires_at, state: State::Queued.serialize)
+                                                   expires_at: expires_at, state: State::Queued.serialize)
         Kirei::Services::Result.new(result: view(entity))
       end
 
@@ -80,7 +80,7 @@ module Domains
       sig { params(entity: Entities::CommanderRequest).returns(Dto::CommanderRequestView) }
       private def view(entity)
         Dto::CommanderRequestView.new(id: entity.id, inbox_id: entity.inbox_id, session_id: entity.session_id, credential_digest: entity.credential_digest,
-                                   expires_at: entity.expires_at, state: entity.state, reason: entity.reason)
+                                      expires_at: entity.expires_at, state: entity.state, reason: entity.reason)
       end
 
       # from_hash raises RuntimeError for missing or unknown props and KeyError

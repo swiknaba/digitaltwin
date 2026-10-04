@@ -229,7 +229,7 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
 - [ ] **Step 3: Implement.**
   - Move files and update callers.
   - Callers receive DTOs, so translate `["agent_status"]`-style reads to DTO fields.
-  - Commanders keep identical JSON bodies and status codes.
+  - HTTP adapters keep identical JSON bodies and status codes.
   - Replace inline regexes with parser calls.
 - [ ] **Step 4: Verify.** Run `srb tc`, the full RSpec suite and the architecture spec. Expected: baseline, with the adapter files gone from the allowlist.
 - [ ] **Step 5: Commit.** Message: `refactor: extract adapters and command parser`.

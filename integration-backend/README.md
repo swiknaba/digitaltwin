@@ -37,7 +37,7 @@ The Commander bot displays as **Commander** and defaults to the configurable `@a
 | `@worker finish` | Close a delivered workflow and stop its sessions. |
 | `@worker cancel` | Cancel the workflow and stop its sessions. |
 
-Only the original human can run a recover command. Details: [Commander routing setup](../docs/interfaces/commander-routing-setup.md). `recover-commander` remains the compatibility command name.
+Only the original human can run a recover command. Details: [Commander routing setup](../docs/interfaces/commander-routing-setup.md).
 
 ## Run it
 
