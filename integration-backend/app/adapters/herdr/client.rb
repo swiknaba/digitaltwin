@@ -42,7 +42,7 @@ module Adapters
           raise Errors::ProtocolViolation, "Herdr startup pane remained busy" if retrying_initial_shell && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
           result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
-        rescue Errors::ProtocolViolation => error
+        rescue Errors::ProtocolViolation
           raise unless initial_shell?(pane(pane_id))
 
           remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
