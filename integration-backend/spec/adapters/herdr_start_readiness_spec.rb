@@ -23,18 +23,23 @@ RSpec.describe Adapters::Herdr::Client do
       server = UNIXServer.new(path)
       methods = T.let([], T::Array[String])
       thread = Thread.new do
-        frames.each_with_index do |frame, index|
+        frames.each_with_index do |frame, _index|
           socket = server.accept
           request = JSON.parse(socket.gets)
           methods << request.fetch("method")
-          socket.puts(JSON.generate(id: request.fetch("id"), result: { type: index.zero? ? "agent_started" : "agent_info", agent: frame }))
+          if frame.key?(:error_code)
+            socket.puts(JSON.generate(id: request.fetch("id"), error: { code: frame.fetch(:error_code), message: "fixture detail" }))
+          else
+            socket.puts(JSON.generate(id: request.fetch("id"), result: { type: request.fetch("method") == "agent.start" ? "agent_started" : "agent_info", agent: frame }))
+          end
           socket.close
         end
       end
       begin
         block.call(described_class.new(socket_path: path), methods)
       ensure
-        thread.join
+        thread.join(1)
+        thread.kill if thread.alive?
         server.close
       end
     end
@@ -44,6 +49,21 @@ RSpec.describe Adapters::Herdr::Client do
     startup_socket(frames: [pending, ready]) do |client, methods|
       live = client.start(pane_id: "pane", name: "fixture", launch: launch)
       expect(live.agent_session&.value).to eq("conversation")
+      expect(methods).to eq(["agent.start", "agent.get"])
+    end
+  end
+
+  it "retries a rejected busy start only while the same pane is an uninitialized shell" do
+    initial_shell = { pane_id: "pane", agent_status: "unknown" }
+    startup_socket(frames: [{ error_code: "agent_pane_busy" }, initial_shell, pending, ready]) do |client, methods|
+      expect(client.start(pane_id: "pane", name: "fixture", launch: launch).agent_session&.value).to eq("conversation")
+      expect(methods).to eq(["agent.start", "agent.get", "agent.start", "agent.get"])
+    end
+  end
+
+  it "does not retry a busy start after the pane has a launch state" do
+    startup_socket(frames: [{ error_code: "agent_pane_busy" }, pending]) do |client, methods|
+      expect { client.start(pane_id: "pane", name: "fixture", launch: launch) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: agent_pane_busy")
       expect(methods).to eq(["agent.start", "agent.get"])
     end
   end

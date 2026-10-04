@@ -16,6 +16,7 @@ module Adapters
 
       MAX_LINE_BYTES = 1_048_576
       STARTUP_TIMEOUT_SECONDS = 30
+      INITIAL_SHELL_RETRY_SECONDS = 2
       SAFE_ERROR_CODES = T.let(["agent_pane_busy"].freeze, T::Array[String])
 
       sig { params(socket_path: String).void }
@@ -35,7 +36,17 @@ module Adapters
 
       sig { params(pane_id: String, name: String, launch: Dto::LaunchSpec).returns(Dto::Pane) }
       def start(pane_id:, name:, launch:)
-        result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + INITIAL_SHELL_RETRY_SECONDS
+        begin
+          result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
+        rescue Errors::ProtocolViolation => error
+          raise unless error.message == "Herdr rejected operation: agent_pane_busy"
+          raise unless initial_shell?(pane(pane_id))
+          raise Errors::ProtocolViolation, "Herdr startup pane remained busy" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+          sleep(0.1)
+          retry
+        end
         await_start(value: object_field!(result, "agent"), pane_id: pane_id, name: name, kind: launch.cli)
       end
 
@@ -71,6 +82,11 @@ module Adapters
                       agent: optional_string_field!(value, "agent"), agent_status: agent_status!(value),
                       agent_session: agent_session!(value), interactive_ready: optional_boolean_field!(value, "interactive_ready"),
                       launch_pending: optional_boolean_field!(value, "launch_pending"))
+      end
+
+      sig { params(pane: Dto::Pane).returns(T::Boolean) }
+      private def initial_shell?(pane)
+        pane.agent_status == Dto::AgentStatus::Unknown && pane.name.nil? && pane.agent.nil? && pane.agent_session.nil? && pane.interactive_ready.nil? && pane.launch_pending.nil?
       end
 
       # Socket agent.start acknowledges submission; the pinned CLI additionally

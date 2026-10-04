@@ -193,4 +193,4 @@
 ## 2026-10-04 — Herdr startup diagnostic hardening
 
 - Preserve only the verified `agent_pane_busy` socket error code for startup diagnostics. Redact all raw server text and unrecognized codes.
-- Verify correlation before reporting a Herdr error. Add socket regressions for accepted, redacted, and wrong-ID error responses; retain no automatic start retry.
+- Verify correlation before reporting a Herdr error. Retry only a rejected `agent_pane_busy` on the same uninitialized pane for two seconds; never retry accepted or launched starts.
