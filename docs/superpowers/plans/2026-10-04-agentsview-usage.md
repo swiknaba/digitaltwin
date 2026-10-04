@@ -4,18 +4,18 @@
 
 **Goal:** Provide scoped Runtime token and cost reports through SSH and Commander without exposing transcripts or arbitrary commands.
 
-**Architecture:** Package the pinned AgentsView binary only after its Alpine compatibility probe passes. Use its native usage/activity reports and one backend-owned stdio MCP adapter to enforce the shared range, timezone, source, and cost-status contract.
+**Architecture:** This document is the implementation plan for a fresh post-merge feature PR. PR27 moves the Runtime to Debian Bookworm slim because the approved upstream archive requires glibc; it does not package or expose AgentsView. The follow-up uses its native usage/activity reports and one backend-owned stdio MCP adapter to enforce the shared range, timezone, source, and cost-status contract.
 
-**Tech Stack:** Alpine Linux AMD64, AgentsView v0.44.0, Python 3 standard library, Ruby 3.4/Sorbet standalone MCP client, Docker.
+**Tech Stack:** Debian Bookworm slim Linux AMD64, AgentsView v0.44.0, Python 3 standard library, Ruby >=3.1/Sorbet standalone MCP client, Docker.
 
 **Spec:** `docs/superpowers/specs/2026-10-04-agentsview-usage-design.md`
 
 ## Global Constraints
 
-- Start from the exact resolved `origin/main` head and use an isolated worktree.
+- Start the feature branch from the merged PR27 head and use an isolated worktree.
 - Download and execute AgentsView only under the recorded 2026-10-04 action-time approval; repeat verification in the disposable Runtime image.
 - Pin `v0.44.0` and verify SHA-256 `037ea7a46d52e06b20363b4aa7cd7f28e32f31d8215803d6e9a0c96bac5818e3`.
-- The pinned archive has been verified to require glibc: it runs in Debian Bookworm but fails before startup in Alpine 3.23. Do not implement the Dockerfile task until the user reviews and selects a musl-compatible artifact/build or a Runtime-base change.
+- The pinned archive has been verified to require glibc: it runs in Debian Bookworm but fails before startup in Alpine 3.23. PR27 supplies the reviewed Debian Bookworm slim base; re-run the isolated checksum and offline checks before adding the artifact.
 - Read only the four declared Runtime session roots and synthetic fixtures in tests.
 - Default `RUNTIME_USAGE_TIMEZONE` to `UTC`; validate operator-supplied IANA timezones.
 - Expose no arbitrary command, session-content, remote-sync, credential, UI, or public-network capability.

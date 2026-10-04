@@ -6,7 +6,7 @@ Add local token-usage reporting to the Runtime. Support safe SSH and Commander q
 
 ## Scope
 
-- Package one pinned AgentsView release in the Runtime image.
+- Define the future pinned AgentsView release and its Runtime integration boundary.
 - Read only the Runtime user's configured CLI session roots.
 - Report token totals and cost provenance through SSH CLI and one read-only Commander MCP tool.
 - Keep the UI disabled by default.
@@ -40,14 +40,14 @@ The response includes input, output, cache-creation, and cache-read tokens. It r
 
 ## Architecture
 
-AgentsView remains the parser, archive, and calculator. The Runtime uses the pinned `agentsview` binary with `AGENTSVIEW_DATA_DIR=/home/runtime/.agentsview` and only these roots:
+AgentsView remains the parser, archive, and calculator. A **future, separate feature PR** may add the pinned `agentsview` binary with `AGENTSVIEW_DATA_DIR=/home/runtime/.agentsview` and only these roots:
 
 - Codex: `/home/runtime/.codex/sessions`
 - Claude Code: `/home/runtime/.claude/projects`
 - Gemini: `/home/runtime/.gemini`
 - OpenCode: `/home/runtime/.local/share/opencode`
 
-The SSH command invokes upstream `agentsview sync` and `agentsview usage daily --json --timezone <configured>` for calendar ranges. It reads only those declared roots but creates a local archive in the persistent Runtime home.
+That future SSH command invokes upstream `agentsview sync` and `agentsview usage daily --json --timezone <configured>` for calendar ranges. It reads only those declared roots but creates a local archive in the persistent Runtime home.
 
 Upstream `agentsview mcp` is not registered directly with Commander. Its `get_usage_summary` tool accepts only dates and defaults to UTC, while the same server also exposes transcript/content tools. The existing `digitaltwin-mcp` stdio server dynamically retrieves Kirei's tool definitions from `/internal/master/manifest` and forwards calls to `/internal/master/tools`; it has no external-MCP allowlist/proxy feature. A small typed local `get_usage` gateway therefore reuses that server's JSON-RPC protocol and checksum-packaging path, but adds only one fixed tool rather than a second protocol or the upstream server's discovery surface. It validates the range and agent enum, starts no arbitrary command, invokes only the fixed AgentsView commands, and returns the normalized result.
 
@@ -59,7 +59,7 @@ Session roots and the AgentsView archive can contain prompts, responses, tool ou
 
 ## Compatibility and release control
 
-The candidate release is AgentsView `v0.44.0`, Linux AMD64 archive SHA-256 `037ea7a46d52e06b20363b4aa7cd7f28e32f31d8215803d6e9a0c96bac5818e3`. The verified artifact runs `--version` and `--help` in disposable Debian Bookworm, but fails before startup in disposable Alpine 3.23 because it requests glibc's `/lib64/ld-linux-x86-64.so.2`. The Runtime uses Alpine/musl, so this release cannot be installed there as-is. A compatibility failure blocks release; it does not add an unreviewed libc shim or sidecar. The subsequent design decision must choose a provenance-reviewed musl-compatible upstream artifact, a reviewed reproducible musl build, or a Runtime base-image change.
+The candidate release is AgentsView `v0.44.0`, Linux AMD64 archive SHA-256 `037ea7a46d52e06b20363b4aa7cd7f28e32f31d8215803d6e9a0c96bac5818e3`. The verified artifact runs `--version` and `--help` in disposable Debian Bookworm, but fails before startup in Alpine 3.23 because it requests glibc's `/lib64/ld-linux-x86-64.so.2`. PR27 changes the Runtime base to Debian Bookworm slim but intentionally does **not** install AgentsView. The follow-up feature PR must repeat checksum, license/provenance, offline-fixture, and no-listener checks before packaging it; it does not gain an unreviewed libc shim or sidecar.
 
 The one user-approved macOS aggregate validation used the local archive after `sync` without `--host`, then queried with `--agent codex`. It therefore proves neither all harnesses nor fleet-wide usage: the filter intentionally excludes non-Codex rows, and upstream can fan out to configured `remote_hosts` when no host is supplied. Private configuration was not inspected. Production Runtime configuration remains limited to the four declared roots and must use explicit local-only sync settings.
 

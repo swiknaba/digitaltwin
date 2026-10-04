@@ -168,3 +168,4 @@
 ## 2026-10-04 — AgentsView usage design
 
 - Add a reviewable Runtime usage specification and implementation plan. They define configurable timezone ranges, distinguish reported zero from unavailable cost, retain a one-tool Commander boundary, and leave the UI disabled by default.
+- Change the Runtime base from Alpine 3.23 to the official `node:22.23.2-bookworm-slim` release tag after the verified AgentsView Linux artifact required glibc. Preserve the non-root, persistent-volume, Herdr, four-CLI, Wagglebot, Ruby callback, SSH, and shell-tool contracts. AgentsView packaging itself remains deferred to the post-merge feature PR.

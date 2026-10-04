@@ -1,9 +1,11 @@
 # Build context: agent-runtime/. Callback artifact is supplied as a named context.
-FROM node:22.23.2-alpine3.23 AS runtime
+FROM node:22.23.2-bookworm-slim AS runtime
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
-COPY apk-packages.lock /opt/runtime/apk-packages.lock
-RUN xargs apk add --no-cache < /opt/runtime/apk-packages.lock
+COPY apt-packages.lock /opt/runtime/apt-packages.lock
+RUN apt-get update \
+ && xargs -r apt-get install -y --no-install-recommends < /opt/runtime/apt-packages.lock \
+ && rm -rf /var/lib/apt/lists/*
 # Callback MCP sources are strict Sorbet Ruby and run standalone in this image.
 # Download the exact runtime gem, verify it before installation, then install
 # locally so the build never trusts an unverified registry response.
@@ -24,8 +26,9 @@ RUN curl -fsSL https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.0.tgz -o /tm
  && mkdir /opt/wagglebot && tar -xzf /tmp/wagglebot.tgz --strip-components=1 -C /opt/wagglebot \
  && chmod 755 /opt/wagglebot/bin/wagglebot.js \
  && ln -s /opt/wagglebot/bin/wagglebot.js /usr/local/bin/wagglebot && rm /tmp/wagglebot.tgz
-RUN addgroup -g 10001 runtime && adduser -D -u 10001 -G runtime -s /bin/bash runtime \
+RUN groupadd --gid 10001 runtime && useradd --uid 10001 --gid 10001 --create-home --shell /bin/bash runtime \
  && mkdir -p /workspace/repos /workspace/worktrees /run/herdr /home/runtime/.cache /home/runtime/.local/share \
+ && ln -s /usr/bin/fdfind /usr/local/bin/fd \
  && chown -R 10001:10001 /workspace /run/herdr /home/runtime
 ENV HOME=/home/runtime SHELL=/bin/bash \
  PATH=/opt/runtime/bin:/opt/runtime/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
@@ -38,12 +41,12 @@ COPY config/runtime-shell.sh /etc/profile.d/runtime.sh
 COPY bin /opt/runtime/bin
 COPY entrypoint.sh /opt/runtime/entrypoint.sh
 RUN chmod 755 /opt/runtime/entrypoint.sh /opt/runtime/bin/* \
- && apk info -v | sort > /opt/runtime/installed-apk.txt
+ && dpkg-query --show --showformat='${binary:Package}=${Version}\n' | sort > /opt/runtime/installed-apt.txt
 USER 10001:10001
 WORKDIR /home/runtime
 VOLUME ["/home/runtime", "/workspace", "/run/herdr"]
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 CMD ["/opt/runtime/bin/runtime-health"]
-ENTRYPOINT ["/sbin/tini", "--", "/opt/runtime/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/runtime/entrypoint.sh"]
 CMD ["herdr", "server"]
 
 # Only use after the backend owner publishes its standalone stdlib client.

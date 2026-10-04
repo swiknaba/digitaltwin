@@ -37,20 +37,29 @@ running Herdr server and no provider credentials. It creates/closes test workspa
 and starts the actual four CLIs. No prompt or authentication is submitted. The
 recorded initial ready/idle states do not prove readiness after model work.
 
-## Exact dependencies and Alpine decision
+## Exact dependencies and Debian slim decision
 
-`tools.lock.yml`, `.nvmrc`, `apk-packages.lock` and `package-lock.json` record exact
-versions, source revisions, checksums/integrities and the base digest. Only Alpine
-3.23 main/community packages are used. Package revisions may disappear from the
-stable mirrors; refresh the manifest deliberately after checks, never fall back to
-floating versions. `installed-apk.txt` inside the image records the resolved set.
+`tools.lock.yml`, `apt-packages.lock` and `package-lock.json` record the selected
+runtime release, package set, source revisions, and checksums/integrities. The base
+is the official semver tag `node:22.23.2-bookworm-slim`; image references follow
+the project's release-tag policy rather than requiring a digest in `FROM`. The
+build records its resolved Debian package set in `installed-apt.txt` inside the
+image. Refresh that evidence deliberately after checks; never substitute floating
+application dependencies.
 
-The checksum-verified Linux Herdr binary and all four real CLI version/startup
-checks pass on musl. Alpine's login profile resets PATH, so the image installs
-`/etc/profile.d/runtime.sh` to give both roles the pinned tools. Claude uses system
-ripgrep (`USE_BUILTIN_RIPGREP=0`) and pinned libgcc/libstdc++. No glibc fallback is
-required by the tested offline commands. Live provider shell checks remain open.
-The measured image is about 2.16 GB uncompressed: native CLI packages dominate it.
+AgentsView v0.44.0's verified Linux AMD64 artifact requires glibc: it runs in
+disposable Debian Bookworm and fails before startup in Alpine 3.23. The Runtime
+therefore uses Debian Bookworm slim, which also keeps the exact Node 22.23.2 base
+and standard Debian tooling. The image remains non-root and does not install
+AgentsView yet; that usage feature is deliberately deferred to its own post-merge
+PR. The checksum-verified Linux Herdr binary and all four real CLI version/startup
+checks must pass again on this base. Claude continues to use system ripgrep
+(`USE_BUILTIN_RIPGREP=0`). Live provider shell checks remain open.
+
+The previous Alpine image measured about 2.16 GB uncompressed; native CLI packages
+dominated it. The post-build evidence records the replacement image's compressed
+and uncompressed sizes separately. Neither value is inferred from the slim base
+image alone.
 
 Wagglebot 0.3.0's published npm manifest contains `workspace:*` dependencies and
 ordinary `npm install wagglebot@0.3.0` fails with `EUNSUPPORTEDPROTOCOL`. The image
@@ -60,8 +69,8 @@ through NODE_PATH. Version/help checks pass. Company provisioning against a real
 operator repository remains open; no company configuration is invented or fetched
 at startup. Revisit this packaging workaround after upstream repairs its release.
 
-The callback interpreter is Alpine Ruby 3.4.9, satisfying the coordinated stdlib
-client minimum >=3.1. It does not replace Kirei's backend-owned Ruby 4.0.7 pin.
+The callback interpreter is Debian Ruby, satisfying the coordinated stdlib client
+minimum >=3.1. It does not replace Kirei's backend-owned Ruby 4.0.7 pin.
 Herdr is Apache-2.0, Codex/Gemini Apache-2.0, OpenCode/Wagglebot MIT. Claude Code is
 an explicitly required proprietary upstream CLI; its package terms must be retained
 and reviewed for distribution. The npm lock records the complete dependency set;
