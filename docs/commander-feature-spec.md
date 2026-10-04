@@ -62,13 +62,15 @@ We can ask for status, add instructions, pause, resume, cancel unfinished work, 
 
 During review, new Writer instructions wait. They cannot change the reviewed version or start a competing Writer. Commander explains the wait and releases instructions when work may continue.
 
-## Memory, failures, and restarts
+## Hermes memory, skills, failures, and restarts
 
-Durable memory should retain project decisions, our working preferences, and lessons learned beyond a conversation. The project scaffolds a persistent `commander/` folder containing its base instructions in `AGENTS.md` and global preferences and learnings in `memory.md`.
-Commander’s Herdr CLI session runs from that folder and reads it on a fresh conversation.
-Git sync for this folder is optional; local persistence does not depend on it.
-Project decisions stay in each project’s `.agents/memory.md`.
-Explicit steering requests update base instructions; memory updates follow human requests or agent instructions, with no scheduled grooming job. Hermes is not integrated or required.
+Commander runs through the pinned Hermes Agent harness. Hermes owns Commander-native Markdown memory, SQLite conversation history and search, and reusable skills. Its persistent profile and workspace stay on the Runtime volume. Hermes reads Commander instructions and memory on a new conversation.
+
+Kirei does not store Commander knowledge, mirror memory into Markdown, or adapt an external memory provider. Mattermost retains chat transcripts in PostgreSQL for chat delivery and audit. Hermes history serves Commander recall. These stores have different purposes.
+
+Kirei remains authoritative for verified sender provenance, authorization, project membership, workflow state, sessions, jobs, approvals, routing, delivery receipts, and recovery. Hermes-provided memory or skill content cannot grant permission, identify a sender, approve a change, or start an independent fleet session.
+
+Explicit steering changes Commander instructions. Hermes learns through its native memory and skills mechanisms. No Kirei memory grooming or Git synchronization is required.
 
 After restart, Commander restores verified task state and reuses healthy matching conversations. Missing conversations or actions with uncertain outcomes are reported for reconciliation. It never invents success, repeats a potentially completed action, or creates replacement work to clear an error.
 
@@ -80,4 +82,4 @@ Real service connections, replies, duplicate handling, and restart recovery pass
 
 The first enabled version focuses on conversation, status, and routing for existing projects. Project enrollment and emergency tools come afterward.
 
-Commander selects the correct thread from context itself, with clarification only when needed. Durable memory includes working preferences and lessons learned alongside project decisions.
+Commander selects the correct thread from context itself, with clarification only when needed. Hermes retains Commander memory, conversation history, and skills; Kirei retains the durable orchestration record.

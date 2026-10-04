@@ -217,6 +217,11 @@
 
 - Add bounded, source-attributed global and project Commander memory with optimistic corrections, idempotent requests, scope serialization, and atomic local Markdown rendering.
 - Add the durable memory schema and clean-migration coverage. Optional Git synchronization remains unimplemented and disabled because no configured repository or operator credentials are available.
+
+## 2026-10-04 — Commander Hermes architecture
+
+- Revise the Commander specification and implementation plan to use Hermes-native Markdown memory, SQLite history, and skills.
+- Plan removal of the Kirei Commander memory subsystem with a forward migration. Preserve Kirei authority for orchestration and verified approvals.
 # 2026-10-04
 
 - Align Commander attribution prompt and tool-response contracts with verified routing metadata.
