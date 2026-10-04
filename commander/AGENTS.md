@@ -12,7 +12,7 @@ Choose the lowest tier that can complete the task reliably.
 | --- | --- | --- |
 | Simple | Search, summaries, mechanical edits, bounded checks | Haiku or Lunar |
 | Medium | Implement a clear specification, routine debugging, focused review | Sonnet or Terra |
-| Complex | Architecture, ambiguous requirements, difficult debugging, changes across several components | Opus or a configured top-tier alternative |
+| Complex | Architecture, ambiguous requirements, difficult debugging, changes across several components | Opus, Fable, or Sol |
 
 These names identify configured profiles, not provider model IDs.
 Select an available, backend-verified profile that fits the task; record the choice and a short reason.

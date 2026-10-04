@@ -181,3 +181,5 @@
 - Complete the Commander application rename in PR26: services, domain values, session role, routes, commands, configuration, jobs, fresh schema, fixtures, and Runtime client contracts. Remove the deferred cleanup task from the plan.
 
 - Add Commander base instructions with simple, medium, and complex model tiers; extend the spec and plan for verified profile selection, human overrides, and independent review diversity.
+
+- Name Opus, Fable, and Sol explicitly in Commander’s complex-task model tier.

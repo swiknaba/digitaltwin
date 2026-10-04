@@ -44,7 +44,7 @@ Attribution explains an instruction’s source; it grants no additional permissi
 Commander delegates normal coding and research to workers. Coding follows specification and approval, plan and approval, implementation and review, then a pull request. Both specification and plan are reviewed before human approval. Approvals name the task and exact version. Opening a pull request does not automatically merge or deploy it.
 
 Commander chooses a suitable model for each task using its [base instructions](../commander/AGENTS.md).
-Simple work uses Haiku or Lunar; medium work uses Sonnet or Terra; complex work uses Opus or a configured top-tier alternative.
+Simple work uses Haiku or Lunar; medium work uses Sonnet or Terra; complex work uses Opus, Fable, or Sol.
 Model names map to available backend-verified profiles. Explicit human choices take precedence.
 Writer and Reviewer selections retain different providers and model families.
 
