@@ -16,6 +16,8 @@ module Adapters
 
       MAX_LINE_BYTES = 1_048_576
       STARTUP_TIMEOUT_SECONDS = 30
+      INITIAL_SHELL_RETRY_SECONDS = 2
+      SAFE_ERROR_CODES = T.let(["agent_pane_busy"].freeze, T::Array[String])
 
       sig { params(socket_path: String).void }
       def initialize(socket_path: "/run/herdr/herdr.sock")
@@ -34,7 +36,24 @@ module Adapters
 
       sig { params(pane_id: String, name: String, launch: Dto::LaunchSpec).returns(Dto::Pane) }
       def start(pane_id:, name:, launch:)
-        result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + INITIAL_SHELL_RETRY_SECONDS
+        retrying_initial_shell = T.let(false, T::Boolean)
+        begin
+          raise Errors::ProtocolViolation, "Herdr startup pane remained busy" if retrying_initial_shell && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+          result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
+        rescue Errors::ProtocolViolation => error
+          raise unless error.code == "agent_pane_busy"
+
+          raise unless initial_shell?(pane(pane_id))
+
+          remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          raise Errors::ProtocolViolation, "Herdr startup pane remained busy" unless remaining.positive?
+
+          sleep([0.1, remaining].min)
+          retrying_initial_shell = true
+          retry
+        end
         await_start(value: object_field!(result, "agent"), pane_id: pane_id, name: name, kind: launch.cli)
       end
 
@@ -70,6 +89,11 @@ module Adapters
                       agent: optional_string_field!(value, "agent"), agent_status: agent_status!(value),
                       agent_session: agent_session!(value), interactive_ready: optional_boolean_field!(value, "interactive_ready"),
                       launch_pending: optional_boolean_field!(value, "launch_pending"))
+      end
+
+      sig { params(pane: Dto::Pane).returns(T::Boolean) }
+      private def initial_shell?(pane)
+        pane.agent_status == Dto::AgentStatus::Unknown && pane.name.nil? && pane.agent.nil? && pane.agent_session.nil? && pane.interactive_ready.nil? && pane.launch_pending.nil?
       end
 
       # Socket agent.start acknowledges submission; the pinned CLI additionally
@@ -131,8 +155,7 @@ module Adapters
           line = socket.gets("\n", MAX_LINE_BYTES + 1)
           raise Errors::ProtocolViolation, "Invalid Herdr response" unless line&.end_with?("\n") && line.bytesize <= MAX_LINE_BYTES
 
-          response = response_from(line)
-          raise Errors::ProtocolViolation, "Herdr correlation mismatch" unless response.id == correlation_id
+          response = response_from(line, correlation_id)
           raise Errors::ProtocolViolation, "Herdr result mismatch" unless response.result_type == expected
 
           response.payload
@@ -141,13 +164,20 @@ module Adapters
         end
       end
 
-      sig { params(line: String).returns(Response) }
-      private def response_from(line)
+      sig { params(line: String, correlation_id: String).returns(Response) }
+      private def response_from(line, correlation_id)
         response = json_object!(JSON.parse(line))
-        raise Errors::ProtocolViolation, "Herdr rejected operation" if response.key?("error")
+        id = string_field!(response, "id")
+        raise Errors::ProtocolViolation, "Herdr correlation mismatch" unless id == correlation_id
+
+        if response.key?("error")
+          error = object_field!(response, "error")
+          code = safe_error_code(error)
+          raise Errors::ProtocolViolation.new("Herdr rejected operation: #{code}", code: code)
+        end
 
         result = object_field!(response, "result")
-        Response.new(id: string_field!(response, "id"), result_type: string_field!(result, "type"), payload: result)
+        Response.new(id: id, result_type: string_field!(result, "type"), payload: result)
       rescue JSON::ParserError
         raise Errors::ProtocolViolation, "Invalid Herdr response"
       end
@@ -185,6 +215,12 @@ module Adapters
         raise Errors::ProtocolViolation, "Invalid Herdr response" unless value.is_a?(String)
 
         value
+      end
+
+      sig { params(error: JsonObject).returns(String) }
+      private def safe_error_code(error)
+        code = string_field!(error, "code")
+        SAFE_ERROR_CODES.include?(code) ? code : "unknown"
       end
 
       sig { params(object: JsonObject, key: String).returns(T.nilable(String)) }

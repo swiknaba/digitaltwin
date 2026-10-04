@@ -184,4 +184,14 @@
 
 - Name Opus, Fable, and Sol explicitly in Commander’s complex-task model tier.
 
+## 2026-10-04 — AgentsView usage design
+
+- Add a reviewable Runtime usage specification and implementation plan. They define configurable timezone ranges, distinguish reported zero from unavailable cost, retain a one-tool Commander boundary, and leave the UI disabled by default.
+- Change the Runtime base from Alpine 3.23 to the official `node:22.23.2-bookworm-slim` release tag after the verified AgentsView Linux artifact required glibc. Preserve the non-root, persistent-volume, Herdr, four-CLI, Wagglebot, Ruby callback, SSH, and shell-tool contracts. AgentsView packaging itself remains deferred to the post-merge feature PR.
 - Pin Runtime client provenance to the retained merged-main revision without changing client bytes or checksums. Add a regression check requiring the source pin to be an ancestor of the checked-out history.
+
+## 2026-10-04 — Herdr startup diagnostic hardening
+
+- Preserve only the verified `agent_pane_busy` socket error code for startup diagnostics. Redact all raw server text and unrecognized codes.
+- Verify correlation before reporting a Herdr error. Retry only a rejected `agent_pane_busy` on the same uninitialized pane for two seconds; never retry accepted or launched starts.
+- Carry the allowlisted error code as typed `ProtocolViolation` metadata rather than matching display text. Recheck the busy window immediately before another start and sleep no longer than its remaining duration.

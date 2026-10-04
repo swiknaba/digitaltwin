@@ -6,10 +6,10 @@ RSpec.describe Adapters::Herdr::Client do
   extend T::Sig
 
   sig do
-    params(type: String, pane: String, wrong_id: T::Boolean, agent: T::Hash[Symbol, Object], extra: T::Hash[Symbol, Object],
+    params(type: String, pane: String, wrong_id: T::Boolean, agent: T::Hash[Symbol, Object], extra: T::Hash[Symbol, Object], error: T.nilable(T::Hash[String, Object]),
            block: T.proc.params(client: Adapters::Herdr::Client, requests: T::Array[T::Hash[String, Object]]).void).void
   end
-  def socket_fixture(type: "agent_info", pane: "pane", wrong_id: false, agent: {}, extra: {}, &block)
+  def socket_fixture(type: "agent_info", pane: "pane", wrong_id: false, agent: {}, extra: {}, error: nil, &block)
     Dir.mktmpdir do |dir|
       path = File.join(dir, "herdr.sock")
       server = UNIXServer.new(path)
@@ -22,9 +22,12 @@ RSpec.describe Adapters::Herdr::Client do
         socket = server.accept
         request = JSON.parse(socket.gets)
         requests << request
-        socket.puts(JSON.generate(id: wrong_id ? "wrong" : request["id"], result: {
-                                    type: type, agent: { pane_id: pane, agent_status: "idle", **agent }, **extra
-                                  }))
+        response = if error
+                     { id: wrong_id ? "wrong" : request["id"], error: error }
+                   else
+                     { id: wrong_id ? "wrong" : request["id"], result: { type: type, agent: { pane_id: pane, agent_status: "idle", **agent }, **extra } }
+                   end
+        socket.puts(JSON.generate(response))
         socket.close
       end
       begin
@@ -65,6 +68,25 @@ RSpec.describe Adapters::Herdr::Client do
     socket_fixture(agent: { agent_status: "sleeping" }) { |client, _| expect { client.pane("pane") }.to raise_error(violation, "Herdr status invalid") }
     socket_fixture(agent: { agent_session: { value: "partial" } }) { |client, _| expect { client.pane("pane") }.to raise_error(violation) }
     socket_fixture(agent: { interactive_ready: "yes" }) { |client, _| expect { client.pane("pane") }.to raise_error(violation) }
+  end
+  it "retains the server error code without exposing its raw error message" do
+    socket_fixture(error: { "code" => "agent_pane_busy", "message" => "private server detail" }) do |client, _|
+      expect { client.pane("pane") }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: agent_pane_busy") do |error|
+        expect(error.code).to eq("agent_pane_busy")
+      end
+    end
+  end
+  it "rejects a wrong-id error response before exposing its code" do
+    socket_fixture(wrong_id: true, error: { "code" => "agent_pane_busy", "message" => "private server detail" }) do |client, _|
+      expect { client.pane("pane") }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr correlation mismatch")
+    end
+  end
+  it "redacts an unrecognized server error code" do
+    socket_fixture(error: { "code" => "private server detail", "message" => "another private detail" }) do |client, _|
+      expect { client.pane("pane") }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: unknown") do |error|
+        expect(error.code).to eq("unknown")
+      end
+    end
   end
   it "maps start, workspace creation and close to captured lifecycle operations on a Unix socket" do
     socket_fixture(type: "agent_started") do |client, requests|

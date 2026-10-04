@@ -16,7 +16,7 @@ herdr:
     url: https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-macos-aarch64
     sha256: 5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157
 base:
-  image: node:22.23.2-alpine3.23
+  image: node:22.23.2-bookworm-slim
   architecture: linux/amd64
 node: "22.23.2"
 npm: "10.9.8"
@@ -30,7 +30,7 @@ ruby:
     sha256: a36469f5b45c3493721ff62fb1ff27186b7c228fe70894464f680056c66e8cf8
     purpose: executes strict standalone callback MCP sources
 packages:
-  distro_lock: apk-packages.lock
+  distro_lock: apt-packages.lock
   npm_lock: package-lock.json
   codex: "0.160.0"
   claude_code: "2.1.287"

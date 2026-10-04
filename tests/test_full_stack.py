@@ -49,6 +49,8 @@ class FullStackChatTest(core.DisposableComposeTest):
                                                          "from pathlib import Path; p=Path.home()/'fixture-errors.jsonl'; print(p.read_text() if p.exists() else '')"], check=False).stdout
             diagnostic["raw_start_probe"] = getattr(self, "raw_start_probe", None)
             diagnostic["herdr_panes"] = self.compose(["exec", "-T", "agent-runtime", "herdr", "pane", "list"], check=False).stdout
+            diagnostic["herdr_server_log"] = self.compose(["exec", "-T", "agent-runtime", "sh", "-ec",
+                                                            "tail -n 200 /home/runtime/.config/herdr/herdr-server.log"], check=False).stdout[-12000:]
             diagnostic["job_outcomes"] = self.compose(["exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "digitaltwin_development", "-c",
                                                        "SELECT kind,status,last_error FROM jobs ORDER BY available_at LIMIT 30"], check=False).stdout
             diagnostic["session_operations"] = self.ruby('r=Domains::Sessions::Registry.new; sessions=r.all_active+r.pending_starts(workflow_id:nil,role:Domains::Sessions::Dto::SessionRole::Commander); puts JSON.generate(sessions.map{|s| o=Domains::Sessions::Operations.new.for_session(session_id:s.id,kind:Domains::Sessions::Dto::OperationKind::Start); {id:s.id,pane:s.pane_id,active:s.active,state:s.state.serialize,operation_state:o&.state&.serialize,operation_reason:o&.reason}})', check=False).stdout
@@ -226,6 +228,14 @@ for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-ses
                              'interactive_ready': agent.get('interactive_ready'), 'has_session': bool(agent.get('agent_session'))})
     finally:
         call('workspace.close', {'workspace_id': created['workspace']['workspace_id']})
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            panes = call('pane.list', {})['result']['panes']
+            if all(pane['workspace_id'] != created['workspace']['workspace_id'] for pane in panes):
+                break
+            time.sleep(0.1)
+        else:
+            raise RuntimeError('raw start probe workspace did not close')
 print(json.dumps(observations))
 """
         self.raw_start_probe = json.loads(self.compose(["exec", "-T", "agent-runtime", "python3", "-c", probe]).stdout)
