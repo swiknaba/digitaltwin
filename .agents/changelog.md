@@ -209,3 +209,7 @@
 ## 2026-10-04 — Migration annotation stability
 
 - Synchronize generated entity schema annotations and verify that the clean migration entrypoint does not rewrite them.
+
+## 2026-10-04 — Commander context window
+
+- Extend the bounded readable Commander context from 10 to 50 accessible recent messages for project and task routing.
