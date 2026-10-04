@@ -86,12 +86,19 @@ module Domains
           interpretation = stored.interpretation
           Dto::RoutingEvidence.new(
             selection: stored.selection, direct_thread: stored.direct_thread, recent_binding: stored.recent_binding, source_inbox_id: stored.source_inbox_id,
-            interpretation: interpretation && Dto::RoutingInterpretation.new(workflow_id: interpretation.workflow_id, evidence_inbox_ids: interpretation.evidence_inbox_ids)
+            interpretation: interpretation && Dto::RoutingInterpretation.new(workflow_id: interpretation.workflow_id, evidence_inbox_ids: interpretation.evidence_inbox_ids),
+            attribution: attribution(stored.attribution)
           )
         end
         raise Errors::MalformedRecord, MALFORMED unless rebuilt.serialize == stored.serialize
 
         rebuilt
+      end
+
+      sig { params(stored: T.nilable(Dto::InstructionAttribution)).returns(T.nilable(Dto::InstructionAttribution)) }
+      private def attribution(stored)
+        stored && Dto::InstructionAttribution.new(effective_sender: stored.effective_sender, origin_inbox_id: stored.origin_inbox_id,
+                                                  origin_user_id: stored.origin_user_id, mode: stored.mode)
       end
 
       # from_hash raises RuntimeError for missing or unknown props and KeyError
