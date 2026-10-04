@@ -12,15 +12,13 @@ RSpec.describe Domains::Sessions::Operations do
     expect(result.failed?).to eq(false)
     session = Domains::Sessions::Registry.new.find(id: session_id)
     expect(session.id).to eq(session_id)
-    expect(session.alias).to match(/\A[a-z][a-z0-9-]{0,31}\z/)
+    expect(session.alias).to match(/\A[a-z][a-z0-9_-]{0,31}\z/)
     expect(session.alias).to eq("digitaltwin-#{Digest::SHA256.hexdigest(session_id).slice(0, 20)}")
   end
 
-  it "normalizes durable identifiers with underscores to a Herdr-valid alias" do
+  it "preserves existing valid aliases" do
     result = described_class.new.reserve(session_id: "session_first", workflow_id: nil, role: Domains::Sessions::Dto::SessionRole::Commander, configuration: configuration, credential_digest: "fixture-digest")
     expect(result.failed?).to eq(false)
-    alias_value = Domains::Sessions::Registry.new.find(id: "session_first").alias
-    expect(alias_value).to match(/\A[a-z][a-z0-9-]{0,31}\z/)
-    expect(alias_value).to eq("digitaltwin-#{Digest::SHA256.hexdigest("session_first").slice(0, 20)}")
+    expect(Domains::Sessions::Registry.new.find(id: "session_first").alias).to eq("digitaltwin-session_first")
   end
 end

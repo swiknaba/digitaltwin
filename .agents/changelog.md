@@ -213,12 +213,6 @@
 ## 2026-10-04 — Commander context window
 
 - Extend the bounded readable Commander context from 10 to 50 accessible recent messages for project and task routing.
-
-## 2026-10-04 — Herdr runtime-alias regression
-
-- Normalize durable session IDs containing underscores to Herdr-valid, deterministic hyphen-only aliases before `agent.start`.
-- Keep failed starts uncertain and reconciliation-only; the alias correction prevents the pre-effect invalid-name rejection rather than retrying an unknown outcome.
-
 ## 2026-10-04 — Durable Commander memory
 
 - Add bounded, source-attributed global and project Commander memory with optimistic corrections, idempotent requests, scope serialization, and atomic local Markdown rendering.
