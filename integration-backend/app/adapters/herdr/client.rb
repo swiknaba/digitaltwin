@@ -43,7 +43,7 @@ module Adapters
 
           result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
         rescue Errors::ProtocolViolation
-          raise unless initial_shell?(pane(pane_id))
+          raise unless initial_shell_for_retry?(pane_id: pane_id, deadline: deadline)
 
           remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
           raise Errors::ProtocolViolation, "Herdr startup pane remained busy" unless remaining.positive?
@@ -92,6 +92,22 @@ module Adapters
       sig { params(pane: Dto::Pane).returns(T::Boolean) }
       private def initial_shell?(pane)
         pane.agent_status == Dto::AgentStatus::Unknown && pane.name.nil? && pane.agent.nil? && pane.agent_session.nil? && pane.interactive_ready.nil? && pane.launch_pending.nil?
+      end
+
+      # A just-created pane can briefly reject both start and get requests.
+      # Do not retry the start until a later correlated get proves this is still
+      # the untouched shell; any accepted launch state remains non-retryable.
+      sig { params(pane_id: String, deadline: Float).returns(T::Boolean) }
+      private def initial_shell_for_retry?(pane_id:, deadline:)
+        loop do
+          begin
+            return initial_shell?(pane(pane_id))
+          rescue Errors::ProtocolViolation
+            raise if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+            sleep(0.1)
+          end
+        end
       end
 
       # Socket agent.start acknowledges submission; the pinned CLI additionally

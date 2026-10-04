@@ -63,9 +63,9 @@ RSpec.describe Adapters::Herdr::Client do
 
   it "retries a redacted transient start error only while the same pane is an uninitialized shell" do
     initial_shell = { pane_id: "pane", agent_status: "unknown" }
-    startup_socket(frames: [{ error_code: "not_ready_yet" }, initial_shell, pending, ready]) do |client, methods|
+    startup_socket(frames: [{ error_code: "not_ready_yet" }, { error_code: "not_ready_yet" }, initial_shell, pending, ready]) do |client, methods|
       expect(client.start(pane_id: "pane", name: "fixture", launch: launch).agent_session&.value).to eq("conversation")
-      expect(methods).to eq(["agent.start", "agent.get", "agent.start", "agent.get"])
+      expect(methods).to eq(["agent.start", "agent.get", "agent.get", "agent.start", "agent.get"])
     end
   end
 
