@@ -3,6 +3,9 @@ skills:
   # read-only Commander baseline packaged with the selected Hermes release.
   create_dir: learned-skills
   external_dirs:
+    # Wagglebot provisions shared worker skills here. Hermes reads them but keeps
+    # Commander memory, history, and learned skills under .hermes.
+    - /home/runtime/.agents/skills
     - /opt/hermes-agent/skills/productivity/weekly-review-planning
     - /opt/hermes-agent/skills/research/grounded-citations
 

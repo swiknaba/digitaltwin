@@ -5,4 +5,5 @@
 - The backend test suite uses one fixed database, `digitaltwin_backend_test`, and truncates all tables before each example. Never run two RSpec processes against it at once.
 - Kirei has no advisory-lock or multi-model transaction API. `Platform::Lock` and `Platform::Transaction` are the only allowed users of `Kirei::App.raw_db_connection`.
 - AgentsView's upstream MCP usage summary accepts date bounds but uses UTC and also exposes transcript tools. The planned Runtime integration therefore needs a narrow, backend-owned usage adapter for configurable local-time ranges.
-- Commander memory is database-authoritative and mirrors bounded, source-attributed entries into managed Markdown sections. Global entries render to `commander/memory.md`; project entries render to the enrolled workspace's `.agents/memory.md`.
+- Commander knowledge is Hermes-native: Markdown memory, SQLite history, and learned skills live in the Commander profile. Kirei remains authoritative only for orchestration, sender provenance, authorization, sessions, jobs, routing, and approvals; it does not mirror Commander memory.
+- Hermes reads the Wagglebot-provisioned shared worker library at `/home/runtime/.agents/skills`. This is separate from the Commander profile's memory, history, and learned skills.

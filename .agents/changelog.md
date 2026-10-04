@@ -241,3 +241,4 @@
 
 - Reference Wagglebot's shared worker setup from Commander documentation.
 - Keep Commander role instructions and native Hermes state local until Wagglebot supports Hermes provisioning.
+- Configure Hermes to read the provisioned shared library at `/home/runtime/.agents/skills`, with deterministic Runtime image coverage.

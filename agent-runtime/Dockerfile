@@ -51,6 +51,7 @@ RUN groupadd --gid 10001 runtime && useradd --uid 10001 --gid 10001 --create-hom
 ENV HOME=/home/runtime SHELL=/bin/bash \
  PATH=/opt/runtime/bin:/opt/runtime/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
  NODE_PATH=/opt/runtime/node_modules \
+ HERMES_HOME=/workspace/commander/.hermes \
  HERDR_SOCKET_PATH=/run/herdr/herdr.sock PYTHONDONTWRITEBYTECODE=1 \
  USE_BUILTIN_RIPGREP=0
 COPY contracts /opt/runtime/contracts

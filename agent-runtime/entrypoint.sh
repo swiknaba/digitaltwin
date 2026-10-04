@@ -7,7 +7,7 @@ for path in "$HOME" /workspace /run/herdr; do
 done
 commander_workspace=/workspace/commander
 hermes_home="$commander_workspace/.hermes"
-mkdir -p "$commander_workspace" "$hermes_home" /workspace/repos /workspace/worktrees "$HOME/.config/herdr" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode"
+mkdir -p "$commander_workspace" "$hermes_home" /workspace/repos /workspace/worktrees "$HOME/.agents/skills" "$HOME/.config/herdr" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode"
 for file in AGENTS.md SOUL.md .gitignore; do
   if [ ! -e "$commander_workspace/$file" ]; then
     cp "/opt/runtime/config/commander/$file" "$commander_workspace/$file"
