@@ -8,6 +8,7 @@ module FullStackFixture
 
     # Test-only startup diagnostics retain a schema-shaped code but never the
     # server message. Production continues to expose only allowlisted codes.
+    sig { override.params(line: String, correlation_id: String).returns(Adapters::Herdr::Client::Response) }
     private def response_from(line, correlation_id)
       parsed = JSON.parse(line)
       code = parsed.dig("error", "code") if parsed.is_a?(Hash)
