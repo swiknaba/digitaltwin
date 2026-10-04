@@ -44,6 +44,7 @@ module Adapters
           result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
         rescue Errors::ProtocolViolation => error
           raise unless error.code == "agent_pane_busy"
+
           raise unless initial_shell?(pane(pane_id))
           remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
           raise Errors::ProtocolViolation, "Herdr startup pane remained busy" unless remaining.positive?
