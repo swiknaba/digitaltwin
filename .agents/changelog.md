@@ -183,3 +183,5 @@
 - Add Commander base instructions with simple, medium, and complex model tiers; extend the spec and plan for verified profile selection, human overrides, and independent review diversity.
 
 - Name Opus, Fable, and Sol explicitly in Commander’s complex-task model tier.
+
+- Pin Runtime client provenance to the retained merged-main revision without changing client bytes or checksums. Add a regression check requiring the source pin to be an ancestor of the checked-out history.
