@@ -1,6 +1,7 @@
 *
 !.gitignore
 !AGENTS.md
+!hermes-config.yaml
 !.hermes/
 .hermes/*
 !.hermes/memories/

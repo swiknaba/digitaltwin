@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import runpy
+import subprocess
 from types import SimpleNamespace
 import unittest
 
@@ -105,6 +106,13 @@ class CombinedRootContractTest(unittest.TestCase):
         self.assertTrue(all(volume["type"] == "volume" for volume in runtime["volumes"]))
         self.assertEqual(runtime["build"]["target"], "with-callback")
         self.assertIn("kirei-clients", runtime["build"]["additional_contexts"])
+
+    def test_hermes_mcp_template_is_tracked(self):
+        template = "agent-runtime/config/commander/hermes-config.yaml"
+        subprocess.run(["git", "ls-files", "--error-unmatch", template], cwd=ROOT, check=True,
+                       stdout=subprocess.DEVNULL)
+        configuration = (ROOT / template).read_text()
+        self.assertIn("digitaltwin-mcp", configuration)
 
     def test_worker_and_listener_wait_for_dependencies(self):
         self.assertEqual(self.services["backend-worker"]["depends_on"]["agent-runtime"]["condition"], "service_healthy")

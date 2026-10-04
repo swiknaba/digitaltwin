@@ -1,0 +1,16 @@
+mcp_servers:
+  digitaltwin:
+    command: /usr/local/bin/digitaltwin-mcp
+    args: []
+    env:
+      DIGITALTWIN_CALLBACK_URL: ${DIGITALTWIN_CALLBACK_URL}
+      DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE: ${DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE}
+    tools:
+      include:
+        - list_projects
+        - list_workflows
+        - read_context
+        - workflow_status
+        - start_workflow
+        - send_prompt
+        - workflow_control
