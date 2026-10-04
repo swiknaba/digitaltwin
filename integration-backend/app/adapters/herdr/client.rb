@@ -19,7 +19,7 @@ module Adapters
       # A new Herdr pane can take several seconds before it answers a correlated
       # get request. This remains pre-launch observation only: no second start
       # is issued until that get proves the pane is still the untouched shell.
-      INITIAL_SHELL_RETRY_SECONDS = 5
+      INITIAL_SHELL_RETRY_SECONDS = 15
       SAFE_ERROR_CODES = T.let(["agent_pane_busy"].freeze, T::Array[String])
 
       sig { params(socket_path: String).void }
