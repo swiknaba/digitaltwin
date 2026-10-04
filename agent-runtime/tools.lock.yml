@@ -37,6 +37,11 @@ packages:
   opencode: "1.18.34"
   gemini_cli: "0.62.0"
   skills: "1.5.23"
+hermes:
+  release: "v2026.9.24"
+  source: https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.24
+  install: official_installer_in_runtime_final_stage
+  update_policy: advance_to_next_upstream_stable_release_on_deliberate_runtime_rebuild
 wagglebot:
   version: "0.3.0"
   source_revision: d11c200202121563e34b92e28be92de1ed497ce0

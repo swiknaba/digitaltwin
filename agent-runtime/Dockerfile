@@ -1,6 +1,7 @@
 # Build context: agent-runtime/. Callback artifact is supplied as a named context.
 FROM node:22.23.2-bookworm-slim AS runtime
 ARG TARGETARCH
+ARG HERMES_REF=v2026.9.24
 RUN test "$TARGETARCH" = amd64
 COPY apt-packages.lock /opt/runtime/apt-packages.lock
 RUN apt-get update \
@@ -19,6 +20,15 @@ RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 RUN curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64 -o /usr/local/bin/herdr \
  && echo '18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7  /usr/local/bin/herdr' | sha256sum -c - \
  && chmod 755 /usr/local/bin/herdr
+# Hermes publishes dated stable release tags, not minor-line tags. Install the
+# selected current stable release in the final Runtime stage so its Python and
+# native dependencies match Debian Bookworm. A later rebuild may advance this
+# argument to the next upstream stable release without changing user data.
+RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes-install.sh \
+ && HERMES_HOME=/opt/hermes-bootstrap HERMES_INSTALL_DIR=/opt/hermes-agent \
+    bash /tmp/hermes-install.sh --branch "$HERMES_REF" --dir /opt/hermes-agent --skip-setup --skip-browser --skip-computer-use \
+ && ln -s /opt/hermes-agent/.venv/bin/hermes /usr/local/bin/hermes \
+ && rm -rf /opt/hermes-bootstrap /tmp/hermes-install.sh
 # 0.3.0's published workspace:* dependencies break npm installation. Its dist is
 # standalone; retain the package unmodified and resolve skills through NODE_PATH.
 RUN curl -fsSL https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.0.tgz -o /tmp/wagglebot.tgz \

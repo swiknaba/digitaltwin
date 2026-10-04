@@ -23,7 +23,7 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 - Keep instruction sender, originating human request, and backend workflow instructions distinct. Attribution never grants additional authority.
 - Do not merge, deploy, create credentials, or make paid provider calls through plan approval alone.
 - Keep dispatch disabled until the relevant real CLI checks pass and activation receives approval.
-- Use the latest supported Hermes minor release and allow patch updates on normal Runtime rebuilds. Record the resolved release, source URL, and image artifact digest in build evidence.
+- Use the latest supported Hermes stable release. Hermes publishes dated stable tags, not minor-line tags. Advance on a normal Runtime rebuild and record the resolved release, source URL, and image artifact digest in build evidence.
 - Hermes native Markdown memory, SQLite history, and skills are Commander-local. Do not create a Kirei memory adapter, Commander knowledge tables, or Markdown mirrors.
 - Mattermost PostgreSQL chat storage and Hermes SQLite history coexist. Neither replaces Kirei's orchestration records.
 
@@ -44,7 +44,7 @@ Use failing behavior tests, implement the smallest change, then run the checks b
 
 **Work:**
 
-- [ ] Install the latest supported Hermes minor release. Allow patch updates; record each resolved release, source URL, image artifact digest, and supported CLI profile configuration in sanitized evidence.
+- [ ] Install the latest supported Hermes stable release. Record each resolved release, source URL, image artifact digest, and supported CLI profile configuration in sanitized evidence.
 - [ ] Install Hermes in the Runtime Dockerfile final image stage. Run it as the unprivileged Runtime user with a persistent, Commander-only profile and workspace.
 - [ ] Configure the Commander model and private Kirei MCP server through private operator files. Do not store credentials in the image or repository.
 - [ ] Map Hermes context files to `commander/AGENTS.md` and Hermes-native Markdown memory. Let Hermes retain SQLite history and skills in its profile storage.

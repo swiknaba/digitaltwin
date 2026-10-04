@@ -222,7 +222,9 @@
 
 - Revise the Commander specification and implementation plan to use Hermes-native Markdown memory, SQLite history, and skills.
 - Plan removal of the Kirei Commander memory subsystem with a forward migration. Preserve Kirei authority for orchestration and verified approvals.
-- Use the current supported Hermes minor line with patch updates, not an immutable source pin. Initialize a local Commander Git repository for portable files only; defer automated commits and remote backup.
+- Use the latest Hermes stable release; upstream publishes dated stable tags, not minor-line tags. Initialize a local Commander Git repository for portable files only; defer automated commits and remote backup.
+- Install Hermes in the Runtime final image stage and initialize its persistent Commander workspace as a local repository. Ignore SQLite history, credentials, and runtime state.
+- Remove the Kirei Commander-memory implementation and add migration 010 to drop schema-9 memory tables without rewriting migration history.
 # 2026-10-04
 
 - Align Commander attribution prompt and tool-response contracts with verified routing metadata.

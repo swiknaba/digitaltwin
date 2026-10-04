@@ -64,7 +64,7 @@ During review, new Writer instructions wait. They cannot change the reviewed ver
 
 ## Hermes memory, skills, failures, and restarts
 
-Commander runs through the latest supported Hermes Agent minor release. Patch releases update with the normal Runtime rebuild. Hermes owns Commander-native Markdown memory, SQLite conversation history and search, and reusable skills. Its persistent profile and workspace stay on the Runtime volume. Hermes reads Commander instructions and memory on a new conversation.
+Commander runs through the latest supported Hermes Agent stable release. Hermes publishes dated stable tags, not minor-line tags. A normal Runtime rebuild can advance to the next stable release. Hermes owns Commander-native Markdown memory, SQLite conversation history and search, and reusable skills. Its persistent profile and workspace stay on the Runtime volume. Hermes reads Commander instructions and memory on a new conversation.
 
 Kirei does not store Commander knowledge, mirror memory into Markdown, or adapt an external memory provider. Mattermost retains chat transcripts in PostgreSQL for chat delivery and audit. Hermes history serves Commander recall. These stores have different purposes.
 

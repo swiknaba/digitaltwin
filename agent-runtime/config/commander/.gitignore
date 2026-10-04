@@ -1,0 +1,8 @@
+*
+!.gitignore
+!AGENTS.md
+!MEMORY.md
+!.hermes/
+.hermes/*
+!.hermes/skills/
+!.hermes/skills/**
