@@ -218,3 +218,8 @@
 
 - Normalize durable session IDs containing underscores to Herdr-valid, deterministic hyphen-only aliases before `agent.start`.
 - Keep failed starts uncertain and reconciliation-only; the alias correction prevents the pre-effect invalid-name rejection rather than retrying an unknown outcome.
+
+## 2026-10-04 — Durable Commander memory
+
+- Add bounded, source-attributed global and project Commander memory with optimistic corrections, idempotent requests, scope serialization, and atomic local Markdown rendering.
+- Add the durable memory schema and clean-migration coverage. Optional Git synchronization remains unimplemented and disabled because no configured repository or operator credentials are available.
