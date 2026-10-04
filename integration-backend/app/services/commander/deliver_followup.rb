@@ -77,6 +77,7 @@ module Services
         row = T.must(@followups.find(id: id))
         return row.status unless row.status == Status::Queued
         return Status::Queued unless @policy.dispatch_allowed?
+        return block(id, "Attribution reconciliation required") unless row.evidence.attribution
 
         w = T.must(@catalog.find(id: row.workflow_id))
         phase = w.phase
