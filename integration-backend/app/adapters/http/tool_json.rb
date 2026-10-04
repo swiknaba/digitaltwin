@@ -3,12 +3,12 @@
 
 module Adapters
   module Http
-    # Serializes a typed Master tool response to the tool's JSON value. Field
-    # names, order and nulls are the wire contract of /internal/master/tools.
+    # Serializes a typed Commander tool response to the tool's JSON value. Field
+    # names, order and nulls are the wire contract of /internal/commander/tools.
     class ToolJson
       extend T::Sig
 
-      Responses = Services::Master::Dto
+      Responses = Services::Commander::Dto
       JsonObject = T.type_alias { T::Hash[String, Object] }
       JsonValue = T.type_alias { T.any(JsonObject, T::Array[JsonObject]) }
 

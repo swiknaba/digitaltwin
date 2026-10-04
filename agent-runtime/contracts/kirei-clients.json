@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "source_revision": "5efa1ee5eec492d693598d599e2b04f9c13e9980",
+  "source_revision": "43a1b5a818fe51ba9c6df7b0aec20279ef64b38b",
   "validation": "isolated_fixtures_passed_live_dispatch_gated",
   "files": {
     "digitaltwin": {
       "source": "integration-backend/bin/digitaltwin",
-      "sha256": "6062994ea169e8d9f2137063e3b61113baa22709766efe381dc2587d5ae55a95"
+      "sha256": "889248ea9a0f4d19dd6cfee3a54aceaee9e02ca7b566c42c160d2ad80bef47e9"
     },
     "digitaltwin-mcp": {
       "source": "integration-backend/bin/mcp",
-      "sha256": "6408102ae1a9ee3a76a4606007c6b8609f9d9154ba0cebb459d7a0542c4d0ea7"
+      "sha256": "542ca58fc306f0b46f7cc99bc9ef5040297324c70767e2ff3d1724fadeabf099"
     },
     "mcp.rb": {
       "source": "integration-backend/app/adapters/mcp/server.rb",
@@ -17,7 +17,7 @@
     },
     "http_tools.rb": {
       "source": "integration-backend/app/adapters/mcp/http_tools.rb",
-      "sha256": "cecbe55e68ad4535266ed1d7718fb7c485a5eb600d2ef4ed7fc8c740db66f0e4"
+      "sha256": "633326e1207c318a58c236b5117cd4bae6318f44c409f9e697113b361d6be83d"
     }
   }
 }

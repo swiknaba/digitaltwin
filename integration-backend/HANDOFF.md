@@ -60,7 +60,7 @@ The lint claim covers Layout/Lint/Security only, not every default style/metrics
 - Frozen callback SHA256: `cd7dd6f80e050b91387c92fa285964f19ed089bb84b44c8dbb0dd5caf8478054`.
 - Private `POST /internal/callbacks/say`: Bearer session credential; JSON generation/key/text only; success 202.
 - Runtime receives file references/environment, never Mattermost credentials. No live credentials are minted by this foundation.
-- `CHAT_VALIDATION_MODE=1` permits disposable Mattermost listener/outbox checks only. Every workflow/Master job remains blocked.
+- `CHAT_VALIDATION_MODE=1` permits disposable Mattermost listener/outbox checks only. Every workflow/Commander job remains blocked.
 - Root Compose/env/contracts and root acceptance tests remain integrator-owned; proposed ENV/health contract is in README.
 
 ## Open evidence and implementation
@@ -73,8 +73,8 @@ Live deletion visibility and channel-discovery/backfill completeness remain acce
 
 Required operator input: disposable listener/bot accounts and their mounted token files; verified bot/channel IDs and memberships; authorized provider test access.
 Prove the real mention → queued dispatch → Herdr CLI → source-thread reply slice before enabling production Tasks 3-5.
-Tasks 6-10 still require authenticated chat/thread evidence, four CLI prompt/state/stop contracts, Writer settled, and selected Master MCP round trip.
-Sessions, review coordinator, state transitions/approvals, Master MCP, artifact/review callbacks, PR delivery, peer and memory flows remain unimplemented behind those gates.
+Tasks 6-10 still require authenticated chat/thread evidence, four CLI prompt/state/stop contracts, Writer settled, and selected Commander MCP round trip.
+Sessions, review coordinator, state transitions/approvals, Commander MCP, artifact/review callbacks, PR delivery, peer and memory flows remain unimplemented behind those gates.
 Prepared tables and pure policy checks do not clear those gates.
 GitHub private creation requires operator-supplied `gh` and authentication; neither is installed/validated in this image.
 No signed mobile push, full Phase 0 acceptance, published OCI artifact, or production deployment is claimed.

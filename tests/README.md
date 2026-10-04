@@ -49,7 +49,7 @@ The callback markers are public synthetic strings with short database expiry and
 the file is removed and fixture sessions invalidated after the test. The credential-free core suite creates no provider/chat accounts or login state.
 
 JSON evidence identifies the tested Git/backend revisions and explicitly labels authenticated chat,
-provider CLI, Master MCP, and full Phase 0 acceptance as untested. Startup failures retain bounded, sanitized logs from the disposable services and captured Compose progress.
+provider CLI, Commander MCP, and full Phase 0 acceptance as untested. Startup failures retain bounded, sanitized logs from the disposable services and captured Compose progress.
 Without the explicit opt-in, normal discovery skips the live suite and runs configuration tests only.
 
 | Phase 0 criterion | Scope of this suite; remaining evidence |
@@ -61,10 +61,10 @@ Without the explicit opt-in, normal discovery skips the live suite and runs conf
 | 5-6 | Real local UIDs, mounts, capability and socket restrictions |
 | 7 | Container restart and durable job state; full host/login/workspace recovery untested |
 | 8-10 | Blocked: four real CLIs, Tailnet attachment and external SSH test |
-| 11-16 | Synthetic callback two-thread binding only; Master, role sessions and enrollment acceptance open |
+| 11-16 | Synthetic callback two-thread binding only; Commander, role sessions and enrollment acceptance open |
 | 17-24 | Blocked: actual approval/review coordination and settled Writer evidence |
 | 25-26 | Blocked: verified PR delivery and automatic-merge exclusion |
-| 27-28 | Blocked: Master reconstruction and independent peer fleet |
+| 27-28 | Blocked: Commander reconstruction and independent peer fleet |
 | 29-30 | Blocked: encrypted restore, authenticated ordinary chat, signed mobile push/deep links |
 | 31-32 | Blocked: research and pushed configured memory repository |
 
@@ -81,7 +81,7 @@ Separate backend `bin/check` passed 243 examples, RuboCop, and the whole-project
 Installed MCP/callback clients passed synthetic HTTP fixtures; real unauthenticated Claude print mode
 returned the expected login-required result. Interactive Claude startup on the network-disabled probe
 returned to the shell after its connection failure; Herdr's initial readiness response alone does not
-prove a settled provider session. No authenticated chat, model response, or live Master MCP is claimed.
+prove a settled provider session. No authenticated chat, model response, or live Commander MCP is claimed.
 
 Before Docker Desktop was restarted by the operator, even a native arm64 `/bin/true` container
 remained `Created` with PID 0. Both initial suites timed out before application execution.
@@ -138,5 +138,5 @@ interactive conversation without repeating the start. Independent backend review
 `3ff136a67e047f80aa95c6561369c029eef4ce7d` in 127.415 seconds, including all 253
 backend examples, RuboCop and whole-project Sorbet. Both disposable stacks were
 removed. Independent review by backend worker `01a0fb73` reported no material findings.
-The branch is published following direct user approval. Hosted CI passed once, then exposed a fixture replay race: completing a reply permits the next real queued dispatch to rotate the session token pointer. The fixture retains the actual current request capability in a temporary mode-0600 file for MCP/reply/replay and deletes it on exit. Reply and dispatch share a fail-fast controller lock; the fixture retries only the identical replay within a bounded deadline, as the installed client instructs. Persistent rejection still fails and exactly one reply is required. Final hosted validation is pending. `evidence/full-stack-local-proposal.json` records
+The branch is published following direct user approval. Hosted CI passed once, then exposed a fixture replay race: completing a reply permits the next real queued dispatch to rotate the session token pointer. The fixture retains the actual current request capability in a temporary mode-0600 file for MCP/reply/replay and deletes it on exit. Reply and dispatch share a fail-fast commander lock; the fixture retries only the identical replay within a bounded deadline, as the installed client instructs. Persistent rejection still fails and exactly one reply is required. Final hosted validation is pending. `evidence/full-stack-local-proposal.json` records
 exact revisions, image IDs and the actual/fake boundary.

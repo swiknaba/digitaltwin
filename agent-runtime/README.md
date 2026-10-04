@@ -112,8 +112,8 @@ are pinned; staging and image build both verify them. They use Ruby stdlib and n
 Run `scripts/prepare-callback-context` from the repository root before a combined build.
 Never copy a backend worktree or secret directory as the build context.
 
-`digitaltwin` accepts say/artifact-ready/review-ready/master-reply. Session token-file/generation
-capabilities authenticate callbacks; the separate current-request token file authenticates Master tools
+`digitaltwin` accepts say/artifact-ready/review-ready/commander-reply. Session token-file/generation
+capabilities authenticate callbacks; the separate current-request token file authenticates Commander tools
 and replies. `digitaltwin-mcp` bridges stdio to private Kirei HTTP with typed schemas and verified human
 request binding. Agents receive no Mattermost bot credentials. Packaging is implemented; actual selected
 Gemini MCP and CLI lifecycle/settled evidence remain open, and backend dispatch stays disabled.
@@ -145,7 +145,7 @@ initial welcome/configuration UI. No model calls occurred.
 
 Still required: authenticated four-CLI prompt/state/stop and crash/timeout checks;
 Writer artifact-ready then truly settled handshake; actual Writer/Reviewer tool
-execution; selected Master MCP round trip with verified source channel; full source-thread callback delivery; company provisioning; provider login
+execution; selected Commander MCP round trip with verified source channel; full source-thread callback delivery; company provisioning; provider login
 persistence; private SSH; complete license audit. The required Task 1 evidence still
 blocks dependent Tasks 6-10 and is not cleared by these component checks. LiveKit
 stays in Phase 1; future LiteLLM/review frameworks are excluded.

@@ -39,7 +39,7 @@ Sequel.migration do
       constraint(:session_operation_state, state: %w[queued sending uncertain complete blocked])
       unique [:session_id, :kind]
     end
-    create_table(:master_requests) do
+    create_table(:commander_requests) do
       String :id, primary_key: true
       foreign_key :inbox_id, :inbox, type: String, null: false, unique: true
       foreign_key :session_id, :sessions, type: String, null: false
@@ -47,7 +47,7 @@ Sequel.migration do
       DateTime :expires_at, null: false
       String :state, null: false, default: "queued"
       String :reason
-      constraint(:master_request_state, state: %w[queued active complete uncertain])
+      constraint(:commander_request_state, state: %w[queued active complete uncertain])
       index :session_id, unique: true, where: { state: "active" }
     end
   end

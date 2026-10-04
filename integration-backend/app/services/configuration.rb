@@ -25,8 +25,8 @@ module Services
     const :mattermost_local_bot_ids, T.nilable(T::Array[String]), default: nil
     const :mattermost_peer_bot_ids, T::Array[String], default: []
     const :mattermost_channel_ids, T.nilable(T::Array[String]), default: nil
-    const :master_channel_id, T.nilable(String), default: nil
-    # Parsed once; a malformed file fails startup. A controller-only file is
+    const :commander_channel_id, T.nilable(String), default: nil
+    # Parsed once; a malformed file fails startup. A commander-only file is
     # valid; starts then fail with RolesMissing.
     const :roles, T.nilable(Domains::Workflows::Dto::RoleFile), default: nil
     const :callback_url, String, default: DEFAULT_CALLBACK_URL
@@ -43,7 +43,7 @@ module Services
         mattermost_url: ENV["MATTERMOST_URL"], mattermost_listener_token_file: ENV["MATTERMOST_LISTENER_TOKEN_FILE"],
         mattermost_bot_token_files: per_bot("TOKEN_FILE"), mattermost_bot_ids: per_bot("BOT_ID"),
         mattermost_local_bot_ids: ENV["MATTERMOST_LOCAL_BOT_IDS"]&.split(","), mattermost_peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","),
-        mattermost_channel_ids: ENV["MATTERMOST_CHANNEL_IDS"]&.split(","), master_channel_id: ENV["MASTER_CHANNEL_ID"], roles: roles_from_env,
+        mattermost_channel_ids: ENV["MATTERMOST_CHANNEL_IDS"]&.split(","), commander_channel_id: ENV["COMMANDER_CHANNEL_ID"], roles: roles_from_env,
         callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", DEFAULT_CALLBACK_URL), agent_handle: ENV.fetch("AGENT_HANDLE", DEFAULT_AGENT_HANDLE),
         worker_handle: ENV.fetch("WORKER_HANDLE", DEFAULT_WORKER_HANDLE), workspace_root: ENV.fetch("WORKSPACE_ROOT", DEFAULT_WORKSPACE_ROOT),
         worktree_root: ENV.fetch("WORKTREE_ROOT", DEFAULT_WORKTREE_ROOT), heartbeat_dir: ENV.fetch("HEARTBEAT_DIR", DEFAULT_HEARTBEAT_DIR),

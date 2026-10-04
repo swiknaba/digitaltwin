@@ -5,7 +5,7 @@ module Services
   module Commands
     module Dto
       # Starts with `@<agent> approve` or `@<agent> route` but matches neither exact
-      # grammar. Routing handles it deterministically instead of the Master model.
+      # grammar. Routing handles it deterministically instead of the Commander model.
       class MalformedDirective < T::Struct
         include Kirei::Domain::ValueObject
       end

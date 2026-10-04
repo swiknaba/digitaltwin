@@ -26,18 +26,18 @@ The following values and limits come from the spec; all tasks must comply with t
 - Each workflow uses a separate Git worktree under `/workspace/worktrees/<workflow-uuid>`. Its Writer and Reviewer share that worktree and branch.
 - Bots: `@agent` and `@worker`, configurable. Writer and Reviewer share the Worker bot identity.
 - Kirei posts Worker questions/progress through its durable outbox. Session-bound callbacks preserve verified thread routing and visible role identity.
-- Detailed updates stay in project threads. Important summaries/blockers also reach the configured Master chat with source/workflow links; do not mirror full streams.
+- Detailed updates stay in project threads. Important summaries/blockers also reach the configured Commander chat with source/workflow links; do not mirror full streams.
 - Writer/Reviewer require different underlying providers **and** base model families; default Codex/Claude Code.
 - A worker session is an LLM conversation/context. Reuse only within the same workflow topic, role, and configuration; unrelated work starts fresh.
 - Every project workflow requires a spec, plan, reviews, and human approvals of the exact revisions.
 - Three unsuccessful review rounds per gate block; Reviewer changes only the shared review Markdown file.
 - One workflow branch, one final PR; no automatic merge and no automatic post-merge synchronization.
 - All human channel members are trusted collaborators with full capabilities, including approvals and destructive-operation confirmations. Configured local/peer bots cannot act as humans.
-- Master: configurable `RoleConfig(cli, provider, model, family)` through Herdr and a local MCP bridge; Gemini CLI is the default. No direct provider API call or login through Mattermost.
-- Master chat handles operational conversation, status, coordination, and targeted emergency changes. It has no coding review/approval cycle; ordinary coding uses Writer/Reviewer workflows.
-- Master context and operational access are shared across its fleet's channels. Independent fleets retain separate Master sessions and private runtime/control data.
-- Only Master initiates separately managed agent sessions. Workers/peers request human approval for another session; no autonomous peer chains. Harness-native subagents are allowed where supported.
-- Master-created workflow threads are optional in Phase 0. Keep existing-thread starts available; defer complex creation integration to Phase 1.
+- Commander: configurable `RoleConfig(cli, provider, model, family)` through Herdr and a local MCP bridge; Gemini CLI is the default. No direct provider API call or login through Mattermost.
+- Commander chat handles operational conversation, status, coordination, and targeted emergency changes. It has no coding review/approval cycle; ordinary coding uses Writer/Reviewer workflows.
+- Commander context and operational access are shared across its fleet's channels. Independent fleets retain separate Commander sessions and private runtime/control data.
+- Only Commander initiates separately managed agent sessions. Workers/peers request human approval for another session; no autonomous peer chains. Harness-native subagents are allowed where supported.
+- Commander-created workflow threads are optional in Phase 0. Keep existing-thread starts available; defer complex creation integration to Phase 1.
 - Memory only manually through `@agent`/base instructions; no cron, no required maintenance after each session.
 - GitHub remains the selected Git host. Headscale/Tailscale remain the selected private access base.
 - One shared Runtime trust domain; do not claim process or project isolation against malicious agents.
@@ -65,7 +65,7 @@ The following values and limits come from the spec; all tasks must comply with t
 - Approval binds the exact reported artifact commit and expected Markdown path in its Git tree. Review commits do not replace the target commit. Every new artifact-ready report requires renewed review/human approval.
 - Messages during review are stored but not sent to the Writer. Immediately acknowledge the queue through the deduplicated outbox. After review, deliver them after revision/phase checks.
 - Pause blocks new step dispatches while the current step finishes. Persist verified completion results; resume revalidates the saved phase, revision, and gates.
-- Destructive or irreversible Master operations use one-time, time-limited confirmations bound to sender, channel, action, and parameter hash.
+- Destructive or irreversible Commander operations use one-time, time-limited confirmations bound to sender, channel, action, and parameter hash.
 - Job defaults: 30-second lease, heartbeat every 10 seconds, at most five attempts, backoff of 1/5/15/60 seconds. Task 3 checks the effects of slow calls.
 - Stale status after 60 seconds without a successful Herdr check; uncertain states remain explicitly uncertain.
 - External calls without proof of idempotency are not blindly retried after an unknown result. Reconciliation or human decision resolves the state.
@@ -87,7 +87,7 @@ Cross-deployable acceptance, recovery, and image-contract tests belong in root `
 | `integration-backend/{Gemfile,Gemfile.lock,.ruby-version}`, `agent-runtime/.nvmrc`, component test setup | Reproducible Ruby and Node dependencies; runtime and local pins agree |
 | `agent-runtime/tools.lock.yml`, `integration-backend/config/deployment.example.yml` | Exact pins, non-secret configuration, bot/model identities |
 | `integration-backend/db/migrate/001_jobs.rb` through `006_confirmations.rb` | Incremental migrations: jobs/inbox/outbox/audit (3), projects (5), sessions (6), workflows/approvals (7), reviews (8), confirmations (9) |
-| `integration-backend/app/{domains,services,adapters,platform}/` | Typed entities, services, thin controllers, and adapters per domain |
+| `integration-backend/app/{domains,services,adapters,platform}/` | Typed entities, services, thin commanders, and adapters per domain |
 | `integration-backend/bin/{web,worker,chat-listener,digitaltwin,mcp}` | Process entry points and controlled operations |
 | `integration-backend/Dockerfile`, `agent-runtime/Dockerfile`, component `.dockerignore`, root `compose.yml`/`.env.example` | Kirei/Runtime builds and pinned upstream chat/push services for local integration |
 | `mobile-apps/` | Planned custom Mattermost mobile builds, upstream pin/patch inventory, signing/distribution configuration, tests |
@@ -102,7 +102,7 @@ Shared types in `app/domains/{workflows,messaging}/dto/`:
 - `Actor(user_id: String, channel_id: String, member: Boolean, bot: Boolean)`; from verified Mattermost context, never set freely by the model.
 - `RoleConfig(cli: String, provider: String, model: String, family: String)`; the Writer/Reviewer pair checks both differences.
 - `ArtifactRef(kind: spec|plan|implementation|review, commit: String, path: String?)`; `path` is required for specification, plan, and review Markdown. Implementation uses `path: nil` with an exact target commit and frozen merge-base.
-- `SessionRef(workflow_id: String?, generation: Integer, role: writer|reviewer|controller, pane_id: String, alias: String)`; writer/reviewer require a workflow ID, while controller has none. Pane/alias identify Runtime execution; they do not prove LLM conversation identity or safe reuse.
+- `SessionRef(workflow_id: String?, generation: Integer, role: writer|reviewer|commander, pane_id: String, alias: String)`; writer/reviewer require a workflow ID, while commander has none. Pane/alias identify Runtime execution; they do not prove LLM conversation identity or safe reuse.
 - `Outcome(status: accepted|blocked|rejected|confirmation_required, reason: String, links: Array[String])`.
 - Workflow states: `spec_writing → spec_review → spec_human_approval → plan_writing → plan_review → plan_human_approval → implementation → implementation_review → pr_ready → done → closed`; additionally `blocked`, `paused`, `cancelled` with the previous state stored.
 - `done` means verified delivery of an open PR/research result, not a merge. `closed` follows only explicit thread-specific `@worker finish` and archives Herdr session metadata. Revisions and approvals remain traceable in the audit.
@@ -164,7 +164,7 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 - [ ] Validate post `id`, `root_id`, `channel_id`, sender identity, membership, and thread retrieval against REST responses.
 - [ ] Persist durable inbox identities/checkpoints; test REST backfill after disconnect, overlap deduplication, edits/deletions, and revoked membership.
 - [ ] Test two simultaneous threads, correct bot replies, uncertain post reconciliation, and local-bot suppression.
-- [ ] Assess optional Master root-post creation with verified association and stable-request reconciliation. Defer complex integration to Phase 1.
+- [ ] Assess optional Commander root-post creation with verified association and stable-request reconciliation. Defer complex integration to Phase 1.
 - [ ] Pin the Apache 2.0 mobile source. Define application IDs, branding, signing, distribution, update pipeline, and license/NOTICE retention.
 - [ ] Use Mattermost's existing push proxy with matching APNs/FCM configuration; do not implement a push gateway inside Kirei.
 - [ ] Document future human Apple/Google enrollment, signing/push credentials, distribution choice, rotation, and recovery; store no secrets in Git.
@@ -175,15 +175,15 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 ### Runtime and Chat Contract Evidence
 
 - [ ] Check selected releases against official documentation and installed artifacts. Record exact versions, origin, and digests/checksums. Select an exact supported Node release ≥22.20.0 for `.nvmrc`.
-- [ ] Write contract tests `starts_four_clis`, `writer_settles_after_ready`, `unknown_is_not_idle`, `selected_master_calls_local_mcp`, `mattermost_verifies_event_and_sender`.
+- [ ] Write contract tests `starts_four_clis`, `writer_settles_after_ready`, `unknown_is_not_idle`, `selected_commander_calls_local_mcp`, `mattermost_verifies_event_and_sender`.
 - [ ] Verify authenticated event delivery for ordinary human replies without repeated mentions. Record server-authenticated thread/root identity and bot reply placement.
 - [ ] Prove an early disposable slice: Mattermost mention → queued dispatch → one CLI through Herdr → bot reply in the source thread.
 - [ ] Record slice commands and sanitized evidence before Tasks 3-5. Use temporary spike fixtures, not production workflow code or real project changes.
 - [ ] Start all four CLIs with test credentials through Herdr. Record ready→idle/done, crash, timeout, and Gemini-specific screen state, without real project changes.
-- [ ] Check the selected Master CLI's MCP round trip with `list_projects` and source channel context. Check a fresh session with the same configuration.
+- [ ] Check the selected Commander CLI's MCP round trip with `list_projects` and source channel context. Check a fresh session with the same configuration.
 - [ ] Save sanitized request/response fixtures and reproducible commands. Expect start, prompt, status, and stop evidence for each CLI.
 - [ ] After Task 2, run `bundle exec rspec spec/contracts`; expect PASS against the validated fixtures. Task 1 provides recorded live checks before that.
-- [ ] Block Tasks 6-10 if the API, idle handshake, event authentication, verified thread identity, or selected Master CLI's MCP is missing. Document a concrete alternative instead of inventing socket methods.
+- [ ] Block Tasks 6-10 if the API, idle handshake, event authentication, verified thread identity, or selected Commander CLI's MCP is missing. Document a concrete alternative instead of inventing socket methods.
 - [ ] After review, commit: `docs: validate pinned runtime and chat contracts`.
 
 ## Task 2: Kirei Foundation and Local Images
@@ -229,16 +229,16 @@ These keys prevent duplicate application effects; they do not guarantee exactly-
 Runtime command: `digitaltwin say --text <text> --key <stable-message-key>` through the private Kirei endpoint.
 Kirei derives channel/thread, active role, and Worker bot identity from its session mapping. Callback parameters cannot supply another destination.
 Deduplicate `(session, generation, key)` and reject a reused key with changed body. Audit the mapping and enqueue delivery transactionally.
-Workflow notices require a verified thread; Master replies may use source-channel context without a project thread.
+Workflow notices require a verified thread; Commander replies may use source-channel context without a project thread.
 
 - [ ] Write tests for invalid events, own bots, peer bots, channel membership, replay, duplicate delivery, disconnect/backfill, and edits/deletions.
 - [ ] Write `worker_question_reaches_bound_thread`, `worker_role_visible`, `callback_retry_posts_once`, `callback_changed_body_rejected`, and `cross_workflow_destination_rejected`.
-- [ ] Keep detailed Worker updates in their bound thread. Master summaries use the configured verified destination and Agent bot identity.
+- [ ] Keep detailed Worker updates in their bound thread. Commander summaries use the configured verified destination and Agent bot identity.
 - [ ] Validate session credential/generation and active role before enqueueing Worker output. Keep Mattermost credentials in Kirei, outside model output and Runtime callbacks.
 - [ ] Reuse Task 8's callback authentication mechanism when integrated. Its credentials prevent accidental mix-ups within the shared Runtime, not malicious isolation.
 - [ ] Check `agent_any_channel_preserves_source`, `worker_unactivated_thread_does_not_start`, `worker_thread_routes_without_repeat_mention`, and `worker_thread_cannot_route_to_another_workflow`; ordinary messages expose no internal workflow IDs.
 - [ ] Run `bundle exec rspec spec/adapters/mattermost_delivery_verifier_spec.rb`; expect missing router.
-- [ ] Implement `@agent` to Master and thread-specific `@worker start`/`approve`/`pause`/`resume`/`finish`/`cancel`/ordinary message to the active project phase. Activate only the thread root with `@worker start`; route later human thread messages without a repeated mention. Store inbox before dispatch.
+- [ ] Implement `@agent` to Commander and thread-specific `@worker start`/`approve`/`pause`/`resume`/`finish`/`cancel`/ordinary message to the active project phase. Activate only the thread root with `@worker start`; route later human thread messages without a repeated mention. Store inbox before dispatch.
 - [ ] Persist messages received while paused. On resume, dispatch them only after phase/revision checks and normal workflow gates.
 - [ ] Resolve server `is_bot` and configured bot identities through Mattermost. Neither unconfigured bots nor forged fields can grant human authority.
 - [ ] Require migrated database state before `bin/chat-listener` ingests events. Keep its connection lifecycle separate from bounded job execution.
@@ -269,13 +269,13 @@ Validate UUID, branch ownership, remote identity, and realpath containment under
 
 **Files:** Create `db/migrate/003_sessions.rb`, `agent-runtime/Dockerfile`, `agent-runtime/entrypoint.sh`, `app/domains/runtime/{herdr_client,sessions,reconcile}.rb`, `agent-runtime/bin/runtime-smoke`, `spec/{domains/runtime_spec.rb,integration/runtime_spec.rb}`.
 
-**Interfaces:** `Sessions.start(workflow_id: String?, generation:, role:, config: RoleConfig, repo: String?) -> SessionRef`; `send_prompt(session:, text:, dispatch_key:)`; `state(session:) -> idle|done|working|unknown|missing`; `stop(session:)`. Writer/reviewer require non-null workflow ID and repo; controller requires both null and starts in the neutral Runtime home.
+**Interfaces:** `Sessions.start(workflow_id: String?, generation:, role:, config: RoleConfig, repo: String?) -> SessionRef`; `send_prompt(session:, text:, dispatch_key:)`; `state(session:) -> idle|done|working|unknown|missing`; `stop(session:)`. Writer/reviewer require non-null workflow ID and repo; commander requires both null and starts in the neutral Runtime home.
 
 - [ ] Write runtime checks: UID ≠ 0, all four CLIs exist, no forbidden mounts/capabilities, socket only on the shared worker volume.
 - [ ] Write `unknown_never_completes`, `old_generation_cannot_receive_prompt`, `restart_reconciles_panes` using Task 1 fixtures.
-- [ ] Guard session creation through Master-authorized dispatch. Kirei bootstraps/restores the configured Master; authorized workflow role/recovery dispatches cannot create unrelated work. Workers and peer bots cannot invoke independent starts.
-- [ ] Test `worker_cannot_start_independent_session`, `peer_start_requires_human_then_master`, `authorized_review_recovery_keeps_workflow_scope`, and `harness_subagent_is_not_fleet_session`.
-- [ ] Test `Sessions.start` rejects missing workflow ID or repo for writer/reviewer and rejects either value for controller. Check controller working directory is the neutral Runtime home.
+- [ ] Guard session creation through Commander-authorized dispatch. Kirei bootstraps/restores the configured Commander; authorized workflow role/recovery dispatches cannot create unrelated work. Workers and peer bots cannot invoke independent starts.
+- [ ] Test `worker_cannot_start_independent_session`, `peer_start_requires_human_then_commander`, `authorized_review_recovery_keeps_workflow_scope`, and `harness_subagent_is_not_fleet_session`.
+- [ ] Test `Sessions.start` rejects missing workflow ID or repo for writer/reviewer and rejects either value for commander. Check commander working directory is the neutral Runtime home.
 - [ ] Verify each CLI's conversation identity and resume behavior against Task 1. Reuse requires matching workflow topic, role/configuration, and current generation.
 - [ ] Test `same_workflow_role_reuses_healthy_context`, `unrelated_topic_starts_fresh_context`, `writer_reviewer_contexts_separate`, and `new_workflow_never_reuses_old_context`.
 - [ ] Pass the verified workflow worktree as `repo` for Writer/Reviewer. Persist it across session generations and revalidate it after restart.
@@ -376,7 +376,7 @@ These sources validate names and compatibility considerations; Task 1 still sele
 - [ ] Run `bundle exec rspec spec/domains/workflows_spec.rb`; expect missing state machine.
 - [ ] Implement state changes with workflow lock/version and audit. Contextual approval binds the presented revision on receipt, not a later moved HEAD.
 - [ ] Check approval rejects a missing specification/plan path in the reported commit tree, a changed target commit, and a dirty worktree. Do not add file upload or blob storage.
-- [ ] Route verified human `@worker start` through Master-authorized creation without a second approval or separate Master-chat interaction. Bot starts are rejected; the authorized workflow includes its gated Writer/Reviewer lifecycle.
+- [ ] Route verified human `@worker start` through Commander-authorized creation without a second approval or separate Commander-chat interaction. Bot starts are rejected; the authorized workflow includes its gated Writer/Reviewer lifecycle.
 - [ ] A thread-specific start creates fresh Writer/Reviewer sessions on one branch in its workflow worktree. Another thread uses its own worktree.
 - [ ] Reserve the active thread transactionally before creating sessions. Reject duplicate starts; uncertain creation remains reserved until reconciled.
 - [ ] Keep pause/resume/cancel/finish orthogonal to approvals. `finish` closes only a delivered workflow after an explicit command and stops/archives its sessions. Resume must not skip gates; idle chat does not end or start anything automatically.
@@ -405,24 +405,24 @@ These sources validate names and compatibility considerations; Task 1 still sele
 - [ ] Check that all three gates use the same rules and bot/prompt instructions cannot bypass the lock.
 - [ ] After review, commit: `feat: coordinate immutable artifact review rounds`.
 
-## Master-first routing increment (2026-10-02)
+## Commander-first routing increment (2026-10-02)
 
 1. Add durable contextual bindings and follow-up delivery state after migration 006.
-2. Route ordinary verified human Master-chat messages through a configured destination.
+2. Route ordinary verified human Commander-chat messages through a configured destination.
    Reuse existing workflow/session identity; clarify conflicts and parallel-session ambiguity.
 3. Queue review/pause instructions with source-bound acknowledgment. Serialize sends and
    persist an uncertain state before any retry could repeat a socket effect.
 4. Implement the captured Herdr 0.9.3 `agent.get`/`agent.prompt` interface with strict identity
    and response checks. Test Unix-socket fixtures and real PostgreSQL concurrency.
-5. Bind Master-chat approval to exact workflow/gate/revision plus destination membership.
-6. Keep provider dispatch disabled until authenticated chat, selected Master MCP and real
+5. Bind Commander-chat approval to exact workflow/gate/revision plus destination membership.
+6. Keep provider dispatch disabled until authenticated chat, selected Commander MCP and real
    CLI prompt/settled evidence pass.
-7. Add migration 008 for workflow requests, role lifecycle receipts and request-bound Master
+7. Add migration 008 for workflow requests, role lifecycle receipts and request-bound Commander
    capabilities. Provision verified bot roots, isolated worktrees and trusted role profiles.
 8. Queue authenticated artifact/review callbacks for the worker. Freeze exact targets, require
    append-only review evidence and diverse roles, and durably release corrective follow-ups.
 9. Implement typed stdio MCP over private HTTP: project/workflow/context reads, workflow
-   starts, evidence-grounded follow-ups and version-bound controls. Master reply receipts
+   starts, evidence-grounded follow-ups and version-bound controls. Commander reply receipts
    complete one request before the next dispatch. Expired/uncertain requests require an exact
    same-human recovery command; no replay of uncertain external effects.
 10. Renew credentials against the same authoritative runtime conversation, source and token
@@ -435,39 +435,39 @@ increment: new project enrollment through MCP, provider login,
 verified PR delivery/done transition, operational Git/deployment/destructive tools and live
 acceptance. These remain Task 6-10 work, not completed features.
 
-## Task 9: Master and Local MCP Bridge
+## Task 9: Commander and Local MCP Bridge
 
-**Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/commander/{tools,confirmations,master}.rb`, `bin/mcp`, `spec/domains/commander_spec.rb`; update `docs/phase-1-voice-controller.md` if thread creation is deferred.
+**Files:** Create `db/migrate/006_confirmations.rb`, `app/domains/commander/{tools,confirmations,commander}.rb`, `bin/mcp`, `spec/domains/commander_spec.rb`; update `docs/phase-1-voice-commander.md` if thread creation is deferred.
 
-**Interfaces:** Master `RoleConfig(cli: String, provider: String, model: String, family: String)` reaches `Sessions.start(workflow_id: nil, generation:, role: controller, config:, repo: nil)` unchanged. MCP tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `finish_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials` receive server-side Actor/Channel/Thread context.
+**Interfaces:** Commander `RoleConfig(cli: String, provider: String, model: String, family: String)` reaches `Sessions.start(workflow_id: nil, generation:, role: commander, config:, repo: nil)` unchanged. MCP tools `list_projects`, `list_workflows`, `get_workflow`, `enroll_project`, `start_workflow`, `send_prompt`, `pause_workflow`, `resume_workflow`, `finish_workflow`, `cancel_workflow`, `git_action`, `deployment_action`, `delete_resource`, `change_credentials` receive server-side Actor/Channel/Thread context.
 
-Master conversation and targeted emergency operations do not enter the project specification, plan, review, or approval cycle.
+Commander conversation and targeted emergency operations do not enter the project specification, plan, review, or approval cycle.
 Starting or prompting a coding workflow is coordination; the target workflow retains its own gates.
-Master owns creation of separately managed sessions. Workers/peers request human approval and Master executes the authorized creation; they cannot start sessions or peer chains autonomously.
+Commander owns creation of separately managed sessions. Workers/peers request human approval and Commander executes the authorized creation; they cannot start sessions or peer chains autonomously.
 Harness-native subagents are allowed where supported and stay subordinate to the invoking session.
 Emergency operations use available typed tools. Keep existing destructive/irreversible confirmations; add no emergency-specific approval gate.
 `start_workflow` requires a verified thread in the selected project channel.
 If optional creation is enabled, Kirei first creates/reconciles the thread and records its association before calling the same workflow-start service.
-Keep source actor/context verified; preserve normal coding gates. The Master resolves relevant verified conversation/task context; unrelated channel messages are not target evidence.
+Keep source actor/context verified; preserve normal coding gates. The Commander resolves relevant verified conversation/task context; unrelated channel messages are not target evidence.
 
-- [ ] Write `selected_master_config_reaches_sessions_start`: assert controller role, `workflow_id: nil`, `repo: nil`, and unchanged CLI/provider/model/family. Assert another Task 1-validated CLI/provider reaches the same interface unchanged.
+- [ ] Write `selected_commander_config_reaches_sessions_start`: assert commander role, `workflow_id: nil`, `repo: nil`, and unchanged CLI/provider/model/family. Assert another Task 1-validated CLI/provider reaches the same interface unchanged.
 - [ ] Write `channel_context_survives_tool_call`, `restart_creates_fresh_session_with_same_config`, `secret_values_never_returned`. Assert restart uses the same config in neutral Runtime home, reconstructs PostgreSQL status, and preserves sender/context checks.
-- [ ] Add `channels_share_master_context` and `peer_private_context_unavailable`. Preserve source/sender checks while allowing fleet-wide context and operations.
+- [ ] Add `channels_share_commander_context` and `peer_private_context_unavailable`. Preserve source/sender checks while allowing fleet-wide context and operations.
 - [ ] Add `bot_cannot_confirm`, `confirmation_replay_rejected`, `changed_parameters_require_confirmation`, `unconfigured_deployment_tool_rejected`.
-- [ ] Test `master_status_needs_no_workflow` and `master_emergency_operation_needs_no_coding_cycle`. Ordinary coding still requires approved workflow revisions.
-- [ ] Test `master_starts_in_verified_existing_thread` independently of optional thread creation.
+- [ ] Test `commander_status_needs_no_workflow` and `commander_emergency_operation_needs_no_coding_cycle`. Ordinary coding still requires approved workflow revisions.
+- [ ] Test `commander_starts_in_verified_existing_thread` independently of optional thread creation.
 - [ ] If Task 1 confirms straightforward creation, test verified association, duplicate requests, and uncertain-result reconciliation before enabling it.
 - [ ] Otherwise record deferral and keep existing-thread starts. Do not block Phase 0 acceptance on automatic thread creation.
-- [ ] Run `bundle exec rspec spec/domains/commander_spec.rb`; expect missing Master/MCP server.
+- [ ] Run `bundle exec rspec spec/domains/commander_spec.rb`; expect missing Commander/MCP server.
 - [ ] Implement the stdio MCP bridge against the same application services, with no raw shell or credential-read tools.
-- [ ] Route MCP `send_prompt` through the same review lock and queue as chat. Test that a Master request cannot bypass Writer exclusion.
-- [ ] Serialize requests to one logical Master session with shared fleet context and access. Pass verified source context through a request-bound capability.
-- [ ] Keep independent fleets' Master sessions and private control/runtime data separate. Peer collaboration uses only shared Mattermost and Git interfaces.
+- [ ] Route MCP `send_prompt` through the same review lock and queue as chat. Test that a Commander request cannot bypass Writer exclusion.
+- [ ] Serialize requests to one logical Commander session with shared fleet context and access. Pass verified source context through a request-bound capability.
+- [ ] Keep independent fleets' Commander sessions and private control/runtime data separate. Peer collaboration uses only shared Mattermost and Git interfaces.
 - [ ] Require a second human confirmation before destructive/irreversible operations. The confirmation window is ten minutes; audit includes the parameter hash, never secret values.
 - [ ] Accept confirmation from any verified human channel member. Add `collaborator_can_confirm`; do not introduce an owner-only ID or human allowlist.
-- [ ] Check the selected Master CLI's real MCP round trip from Task 1. After restart, PostgreSQL/tool status is authoritative, not the old conversation.
-- [ ] Configure and verify the Master chat destination. Summaries link to source project threads and artifacts without exposing internal workflow IDs.
-- [ ] After review, commit: `feat: add authorized master operations`.
+- [ ] Check the selected Commander CLI's real MCP round trip from Task 1. After restart, PostgreSQL/tool status is authoritative, not the old conversation.
+- [ ] Configure and verify the Commander chat destination. Summaries link to source project threads and artifacts without exposing internal workflow IDs.
+- [ ] After review, commit: `feat: add authorized commander operations`.
 
 ## Task 10: Verified Delivery, Research, Memory, and Peer Handoffs
 
@@ -478,7 +478,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master res
 - [ ] Write `one_branch_one_pr`, `research_requires_sources_and_uncertainty`, `no_automatic_merge_or_pull`, `failed_push_not_delivered`.
 - [ ] Add configurable memory slug, additive default-branch change, and reorganization only by branch/PR; a workflow may finish without memory needs.
 - [ ] Document the initial versioned peer envelope: protocol version, stable request key, recipient, source message identity, requested action, existing workflow thread, repository slug, and branch/commit/PR reference. Verify sender, membership, target, and artifact with the receiving fleet's own credentials.
-- [ ] Test unsupported versions, wrong recipients, duplicate requests, unverified revisions, bot `@worker start`, autonomous onward chains, and requests requiring human approval followed by Master creation.
+- [ ] Test unsupported versions, wrong recipients, duplicate requests, unverified revisions, bot `@worker start`, autonomous onward chains, and requests requiring human approval followed by Commander creation.
 - [ ] Permit handoffs only to existing workflows; never treat a peer message as human authorization. Do not add automatic hop/rate limits as an approval substitute.
 - [ ] Check peer with its own Git identity: verified remote/revision, no access to private paths/API, and no self-bot loop.
 - [ ] Run `bundle exec rspec spec/domains/delivery_spec.rb`; expect missing delivery logic.
@@ -497,16 +497,16 @@ Keep source actor/context verified; preserve normal coding gates. The Master res
 - [ ] Write crash matrix: before/after session start, callback, review lock, approval, Git push, and Mattermost post. Uncertain external effects block for reconciliation without an unverified retry.
 - [ ] Add missing pane, unknown provider state, old alias, and DB recovery with missing workspace; never mark automatically as done.
 - [ ] Run `bundle exec rspec spec/integration/recovery_spec.rb`; expect missing reconciliation.
-- [ ] Implement startup reconciliation from DB, Git, and Herdr; create a fresh Master. Reconstruct work from committed artifacts and reviews.
+- [ ] Implement startup reconciliation from DB, Git, and Herdr; create a fresh Commander. Reconstruct work from committed artifacts and reviews.
 - [ ] Restore paused dispatch suppression after restart. Reconcile the current step and preserve its result without starting the next step.
 - [ ] Test recovery with the ignored Superpowers ledger absent. When any project role needs a fresh session, restore phase, approved revisions, and review context.
 - [ ] Reuse a verified healthy conversation after a wait only for the same workflow topic and role/configuration. Otherwise create a fresh conversation.
 - [ ] Recover only that workflow's durable state, branch artifacts, and review history. Preserve approvals, blockers, review counts, and generation checks.
 - [ ] Test `fresh_recovery_loads_only_task_context` and `fresh_session_does_not_reset_gate_state`. Do not claim conversation separation isolates malicious agents.
 - [ ] Mark status stale after 60 seconds without a verified Runtime check. Surface blocked jobs and phases through a deduplicated outbox.
-- [ ] Post approval-needed, blocked, and PR-ready/delivered summaries to Master chat as well as required project-thread notices.
+- [ ] Post approval-needed, blocked, and PR-ready/delivered summaries to Commander chat as well as required project-thread notices.
 - [ ] Deduplicate by verified workflow event and destination. Include project/phase and source/artifact links; keep ordinary progress only in project threads.
-- [ ] Test `important_event_reaches_master_and_project`, `summary_retry_not_duplicated`, `summary_contains_source_links`, and `ordinary_progress_not_mirrored`.
+- [ ] Test `important_event_reaches_commander_and_project`, `summary_retry_not_duplicated`, `summary_contains_source_links`, and `ordinary_progress_not_mirrored`.
 - [ ] Check container restart with named volumes; two threads in one channel and two independent channels work at the same time. Finish only one delivered thread with explicit `finish` and check that its Herdr sessions are archived.
 - [ ] After review, commit: `feat: reconcile runtime state after interruption`.
 
@@ -524,7 +524,7 @@ Keep source actor/context verified; preserve normal coding gates. The Master res
 - [ ] Define mobile application IDs, signing and APNs/FCM secret references, delivery/update ownership, and distribution setup as future human tasks.
 - [ ] Document two independently built application images and pinned upstream chat/push artifacts. Infrastructure owns production orchestration.
 - [ ] Describe private Tailscale/OpenSSH access, Headscale DNS-only through Traefik with trusted TLS; neither Cloudflare Proxy nor Tunnel for Headscale.
-- [ ] Document intentional raw terminal access: the human controls agents directly. No owner-side status/approval CLI or Master session is required for attachment.
+- [ ] Document intentional raw terminal access: the human controls agents directly. No owner-side status/approval CLI or Commander session is required for attachment.
 - [ ] State that terminal input is unsupervised. Kirei's dispatch lock cannot prevent direct input; conflicting changes require review reconciliation.
 - [ ] Document ignored `.env`, optional `op://` references, and root/0600 production files in the infrastructure repo. No secret values or login states in images/Git.
 - [ ] Create backup/restore matrix: include both PostgreSQL databases/roles, Mattermost attachments and push configuration, Herdr, configuration/audit, and Headscale; exclude clones/worktrees/unpushed work/CLI logins.
@@ -562,13 +562,13 @@ Keep source actor/context verified; preserve normal coding gates. The Master res
 | 7 | 6/11 | host restart, persistent clones/worktrees/Herdr/Wagglebot/login states |
 | 8 | 1/6 | four real CLI starts through pinned Herdr |
 | 9-10 | 12/13 + Infra | Tailnet attachment succeeds; external SSH connection test is rejected |
-| 11 | 4/9 | Master request from two channels carries the correct source channel |
+| 11 | 4/9 | Commander request from two channels carries the correct source channel |
 | 12-13 | 5/6/7 | fresh role sessions; duplicate active-thread start rejected; concurrent same-repo threads use separate worktrees |
 | 14-16 | 5 | path/remote checks, three setup actions, one shared service |
 | 17-19 | 7 | revision/bot/race negative tests |
 | 20-24 | 8 | immutable target/base commits, handshake, Writer lock, queued-message acknowledgement, review handoff, third failure |
 | 25-26 | 10 | one branch/PR, no automatic merge |
-| 27 | 9/11 | fresh selected-controller session with same configuration and durably reconstructed status |
+| 27 | 9/11 | fresh selected-commander session with same configuration and durably reconstructed status |
 | 28 | 10/13 | simulated peer and separate Git identity, chat/Git only |
 | 29 | 1/12/13 + Infra | encrypted restore of both databases/roles and attachments; logins not restored |
 | 30 | 1/4/6/13 + Operator | mobile thread interviews through session-bound Kirei outbox, visible Worker role, authenticated ordinary replies and own-build push/deep links |
@@ -597,4 +597,4 @@ Later provider/MCP integration remains [issue #4](https://github.com/swiknaba/di
 - Accept an uncertain review prompt's valid exact review callback only after its effect lease expires
   and the existing identity/frozen-target/clean append-only Git checks pass.
 - Keep hosted CI absence, expanded independent review scope, and minimum manual setup/evidence
-  explicit in `docs/interfaces/master-routing-setup.md`.
+  explicit in `docs/interfaces/commander-routing-setup.md`.

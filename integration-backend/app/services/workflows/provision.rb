@@ -19,10 +19,10 @@ module Services
       sig do
         params(source: Domains::Messaging::VerifyHumanSource, api: Adapters::Mattermost::Api, bot_id: String,
                worktrees: Projects::PrepareWorktree, reserve_session: Sessions::ReserveSession, worktree_root: String,
-               master_channel_id: T.nilable(String), policy: Domains::Workflows::Policy,
+               commander_channel_id: T.nilable(String), policy: Domains::Workflows::Policy,
                directory: Domains::Projects::Directory, requests: Domains::Workflows::Requests, bindings: Domains::Commander::Bindings).void
       end
-      def initialize(source:, api:, bot_id:, worktrees:, reserve_session:, worktree_root:, master_channel_id:,
+      def initialize(source:, api:, bot_id:, worktrees:, reserve_session:, worktree_root:, commander_channel_id:,
                      policy: Domains::Workflows::Policy.new, directory: Domains::Projects::Directory.new,
                      requests: Domains::Workflows::Requests.new, bindings: Domains::Commander::Bindings.new)
         @source = source
@@ -36,7 +36,7 @@ module Services
         @requests = requests
         @bindings = bindings
         @worktree_root = worktree_root
-        @master_channel = master_channel_id
+        @commander_channel = commander_channel_id
       end
 
       sig { override.params(job: Platform::Jobs::Dto::ClaimedJob).returns(Decision) }
@@ -126,11 +126,11 @@ module Services
       end
 
       # A new workflow becomes the human's current conversation context, and in
-      # the Master channel also the context of later top-level posts.
+      # the Commander channel also the context of later top-level posts.
       sig { params(workflow: Domains::Workflows::Dto::WorkflowView, request: Domains::Workflows::Dto::RequestView, delivery: Domains::Messaging::Dto::VerifiedDelivery).void }
       private def bind_conversations(workflow, request, delivery)
         threads = [delivery.thread_id]
-        threads << "master" if delivery.root_post && delivery.channel_id == @master_channel
+        threads << "commander" if delivery.root_post && delivery.channel_id == @commander_channel
         @bindings.bind(channel_id: delivery.channel_id, thread_ids: threads, user_id: delivery.actor.user_id, workflow_id: workflow.id,
                        inbox_id: request.inbox_id, at: Time.now)
       end

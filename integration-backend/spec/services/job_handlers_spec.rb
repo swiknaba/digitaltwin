@@ -7,11 +7,11 @@ RSpec.describe Services::JobHandlers do
   kind = Platform::Jobs::Dto::JobKind
   # The kinds of the pre-composition-root Commander::Services#handlers map.
   base_kinds = [
-    kind::MasterPrompt, kind::WorkflowPrompt, kind::SessionFollowup, kind::WorkflowProvision, kind::SessionStart, kind::SessionStop,
-    kind::ReviewPrompt, kind::ReviewRelease, kind::ReviewCallback, kind::MasterControl, kind::SessionRenew, kind::WorkflowPhasePrompt,
+    kind::CommanderPrompt, kind::WorkflowPrompt, kind::SessionFollowup, kind::WorkflowProvision, kind::SessionStart, kind::SessionStop,
+    kind::ReviewPrompt, kind::ReviewRelease, kind::ReviewCallback, kind::CommanderControl, kind::SessionRenew, kind::WorkflowPhasePrompt,
     kind::WorkflowStart, kind::WorkflowPause, kind::WorkflowResume, kind::WorkflowFinish, kind::WorkflowCancel, kind::WorkflowApprove
   ].freeze
-  controller = { "cli" => "gemini", "provider" => "google", "model" => "fixture-gemini", "family" => "gemini", "launch_args" => [] }
+  commander = { "cli" => "gemini", "provider" => "google", "model" => "fixture-gemini", "family" => "gemini", "launch_args" => [] }
 
   around do |example|
     Dir.mktmpdir("job-handlers") do |dir|
@@ -31,19 +31,19 @@ RSpec.describe Services::JobHandlers do
     described_class.new(composition: Services::Composition.new(configuration: configuration)).call
   end
 
-  it "maps exactly the base kinds to handlers without a controller role", :aggregate_failures do
+  it "maps exactly the base kinds to handlers without a commander role", :aggregate_failures do
     map = handlers(nil)
 
     expect(map.keys).to match_array(base_kinds)
     expect(map.values).to all(be_a(Platform::Jobs::Handler))
   end
 
-  it "adds master.dispatch when a controller role is configured", :aggregate_failures do
-    map = handlers(Domains::Workflows::Records.role_file_from_json(JSON.generate("controller" => controller)))
+  it "adds commander.dispatch when a commander role is configured", :aggregate_failures do
+    map = handlers(Domains::Workflows::Records.role_file_from_json(JSON.generate("commander" => commander)))
 
-    expect(map.keys).to match_array(base_kinds + [kind::MasterDispatch])
+    expect(map.keys).to match_array(base_kinds + [kind::CommanderDispatch])
     expect(map.values).to all(be_a(Platform::Jobs::Handler))
-    expect(map.fetch(kind::MasterDispatch)).to be_a(Services::Master::Dispatch)
-    expect(map.fetch(kind::MasterPrompt)).to be_a(Services::Master::HandleMasterPrompt)
+    expect(map.fetch(kind::CommanderDispatch)).to be_a(Services::Commander::Dispatch)
+    expect(map.fetch(kind::CommanderPrompt)).to be_a(Services::Commander::HandleCommanderPrompt)
   end
 end

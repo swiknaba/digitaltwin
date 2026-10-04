@@ -74,7 +74,7 @@ module Services
       private def queue(id, delivery)
         @jobs.enqueue(kind: Platform::Jobs::Dto::JobKind::WorkflowProvision, payload: Workflows::Dto::ProvisionJob.new(request_id: id), dispatch_key: "workflow:provision:#{id}")
         message = Messaging::Dto::OutgoingMessage.new(
-          channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: Messaging::Dto::Bot::Agent, role: Messaging::Dto::SpeakerRole::Controller,
+          channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: Messaging::Dto::Bot::Agent, role: Messaging::Dto::SpeakerRole::Commander,
           body: "Workflow request #{id} queued; project thread and sessions are not yet created.", key: "workflow:request:#{id}"
         )
         # A failed notice raises and rolls back the request, as before.

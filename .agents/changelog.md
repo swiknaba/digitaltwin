@@ -9,24 +9,24 @@
 - Revised Phase 0 routing so each verified Campfire thread owns one workflow and ordinary messages continue in an activated thread without repeat mentions.
 - Required explicit thread-scoped `@worker finish` to close a delivered workflow and archive its Herdr session metadata; inactivity cannot close work.
 - Aligned the specification and plan with Alpine-preferred images, Kirei CLI bootstrap, Ruby/Node pins, built-in health routes, and PostgreSQL jobs.
-- Bound artifact approvals to Git commits and document paths; made Master configuration selectable and rejected duplicate starts in active threads.
+- Bound artifact approvals to Git commits and document paths; made Commander configuration selectable and rejected duplicate starts in active threads.
 - Removed planning status and local session history from docs and README; aligned the Phase 1 voice reference.
 - Added workflow worktrees, an early integration spike, shared-type ordering, incremental schema constraints, and explicit correction/delivery transitions.
 - Clarified collaborator authority, raw terminal access, callback limits, review diff scope, queued-message acknowledgements, and durable recovery.
 - Planned a maintained Campfire Rails app with thread UI/API and authenticated events; added PostgreSQL search/schema/backup port and upstream maintenance checks.
 - Defined separate Campfire and Kirei databases/roles on one PostgreSQL server, three application images, and retained Campfire Redis dependencies pending a backend decision.
-- Clarified that Master operational chat and targeted emergency changes have no coding review cycle; ordinary project workflows retain their gates.
+- Clarified that Commander operational chat and targeted emergency changes have no coding review cycle; ordinary project workflows retain their gates.
 - Recorded the approved Campfire Redis sidecar, private service connectivity, persistence, and restart/restore checks.
 - Routed Worker interview/progress replies through a session-bound Kirei callback and durable outbox while retaining visible bot/role identity.
 - Defined thread-scoped pause as suppressing new dispatch while preserving current-step completion and callbacks; resume revalidates phase, revision, Runtime, and existing gates.
-- Confirmed shared Master conversational context and operational access across fleet rooms, with separate Master sessions and private control/runtime data for independent fleets.
-- Made Master-created workflow threads an optional Phase 0 convenience with verified/idempotent association; retained existing-thread starts and added a Phase 1 deferral path.
-- Kept detailed updates in project threads and routed important summaries/blockers to configured Master chat with source links and event/destination deduplication.
-- Defined worker sessions as LLM conversations, restricted reuse to the same workflow topic/role/configuration, and scoped fresh recovery to task state while retaining shared Master fleet context.
+- Confirmed shared Commander conversational context and operational access across fleet rooms, with separate Commander sessions and private control/runtime data for independent fleets.
+- Made Commander-created workflow threads an optional Phase 0 convenience with verified/idempotent association; retained existing-thread starts and added a Phase 1 deferral path.
+- Kept detailed updates in project threads and routed important summaries/blockers to configured Commander chat with source links and event/destination deduplication.
+- Defined worker sessions as LLM conversations, restricted reuse to the same workflow topic/role/configuration, and scoped fresh recovery to task state while retaining shared Commander fleet context.
 
 ## 2026-10-01 — Final peer session policy from review interview
 
-- Master alone initiates separately managed fleet sessions. Worker/peer requests need human approval and Master creation; harness-native subordinate agents remain allowed where supported.
+- Commander alone initiates separately managed fleet sessions. Worker/peer requests need human approval and Commander creation; harness-native subordinate agents remain allowed where supported.
 - Preserve human thread starts and the authorized Writer/Reviewer review/recovery lifecycle without repeated spawn approvals. Document Kirei bootstrap and the shared Runtime/raw-terminal limits.
 - Add a planned versioned peer-handoff contract and tests for authenticated context, replay, recipients, artifact bindings, rejected bot starts, and rejected autonomous chains; no automatic limits replace human approval.
 - Reconciled all 16 new review threads and the interview decisions across specification, plan, README, and Phase 1. Checked diff whitespace, Markdown links/fences/tables, 13 tasks, and all 32 acceptance criteria. No system implementation or runtime test claims.
@@ -43,7 +43,7 @@
 - Replace the planned Campfire server fork/SQLite-to-PostgreSQL port/Redis sidecar with the official unmodified Mattermost Team Edition artifact and external Kirei bot REST/WebSocket integration. Use explicit channel mappings, verified root posts, durable event identities, and reconnect backfill.
 - Plan our signed mobile builds and the existing self-hosted Mattermost push proxy/APNs/FCM path, with human-owned enrollment/credentials/distribution and upstream security maintenance. Keep push outside Kirei.
 - Distinguish official compiled-server MIT licensing from mixed server-source licensing. Audit exact artifacts, bundled plugins, dependencies, outputs, notices, and branding; exclude commercial components and required Calls/Agents plugins rather than bypass licensing checks.
-- Replace Phase 1 voice transport with independent self-hosted LiveKit group calls and AI voice. Require native client/background/device integration checks; preserve existing controller authority and coding gates.
+- Replace Phase 1 voice transport with independent self-hosted LiveKit group calls and AI voice. Require native client/background/device integration checks; preserve existing Commander authority and coding gates.
 - Link issue #4 for the post-Phase 2 LiteLLM/MCP direction; add no current-phase rollout or chat-plugin MCP requirement.
 - Validate Markdown/local links/tables/fences, 13 tasks, 27 spec sections, all 32 acceptance criteria and matrix coverage, obsolete-path removal, and preservation of existing workflow/runtime/peer policies. This remains documentation only.
 
@@ -147,7 +147,7 @@
 ## 2026-10-02 — Backend domain-only layout
 
 - Move HTTP controllers, DTOs, and errors from `app/controllers/` to `app/domains/orchestration/http/` (`Domains::Orchestration::Http`). Rename `requests/` to `dto/`.
-- Rename the `controller` domain to `orchestration` (`Domains::Orchestration`), including its spec, bin scripts, and contract paths.
+- Rename the coordination domain to `orchestration` (`Domains::Orchestration`), including its spec, bin scripts, and contract paths.
 - Verify whole-project Sorbet check passes. Six RSpec failures (migration tasks, projects) also fail on the original commit.
 - Rename the `orchestration` domain to `commander` (`Domains::Commander`).
 - Rename the `forge` domain to `git_repos` (`Domains::GitRepos`) and the `Projects::Enroll` `forge:` argument to `git_repos:`.
@@ -163,4 +163,23 @@
 
 ## 2026-10-03
 
-- Refactored the backend into four Zeitwerk layers: `app/domains/` (bounded contexts with private `Kirei::Model` entities and public `dto/` and `errors/`), `app/services/` (use cases and job handlers), `app/adapters/` (Mattermost, Herdr, git, credential files, HTTP, MCP), and `app/platform/` (jobs, lock, transaction, audit, JSON boundary types). Public services return `Kirei::Services::Result`; `Services::Composition` is the composition root over `Services::Configuration` and `Services::JobHandlers`. `spec/contracts/architecture_boundaries_spec.rb` enforces the layer rules with an empty migration allowlist. The Master MCP manifest now types `evidence_inbox_ids` items as `"string"`.
+- Refactored the backend into four Zeitwerk layers: `app/domains/` (bounded contexts with private `Kirei::Model` entities and public `dto/` and `errors/`), `app/services/` (use cases and job handlers), `app/adapters/` (Mattermost, Herdr, git, credential files, HTTP, MCP), and `app/platform/` (jobs, lock, transaction, audit, JSON boundary types). Public services return `Kirei::Services::Result`; `Services::Composition` is the composition root over `Services::Configuration` and `Services::JobHandlers`. `spec/contracts/architecture_boundaries_spec.rb` enforces the layer rules with an empty migration allowlist. The Commander MCP manifest now types `evidence_inbox_ids` items as `"string"`.
+
+## 2026-10-03 — Commander plan and terminology
+
+- Rewrite the first-release Commander plan around visible task goals, bounded work, and completion checks; preserve the approved feature scope.
+- Replace old coordinator labels in current product prose and rename the routing/voice document paths; preserve existing operating identifiers and historical evidence.
+- Record the remaining application-name audit and require a coordinated, tested migration before feature work. No runtime implementation or dispatch activation is included.
+
+- Add the requested distinction between direct human, Commander-forwarded, and Commander-written worker instructions to the Commander spec and plan. Require backend-owned prompt context, source links, truthful thread labels, unchanged attribution during recovery, and no implied human approval.
+
+## 2026-10-04
+
+- Simplify the Commander plan for an undeployed app: direct naming cleanup, empty-database validation, and no installation transition strategy. Remove the obsolete naming audit and repeated terminology guidance.
+- Plan a persistent Commander workspace for base instructions and global learnings, with optional Git sync and separate project memory.
+
+- Complete the Commander application rename in PR26: services, domain values, session role, routes, commands, configuration, jobs, fresh schema, fixtures, and Runtime client contracts. Remove the deferred cleanup task from the plan.
+
+- Add Commander base instructions with simple, medium, and complex model tiers; extend the spec and plan for verified profile selection, human overrides, and independent review diversity.
+
+- Name Opus, Fable, and Sol explicitly in Commander’s complex-task model tier.

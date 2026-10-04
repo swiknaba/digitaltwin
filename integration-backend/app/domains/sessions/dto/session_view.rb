@@ -4,7 +4,7 @@
 module Domains
   module Sessions
     module Dto
-      # One agent session. `workflow_id` is nil only for the controller.
+      # One agent session. `workflow_id` is nil only for the commander.
       class SessionView < T::Struct
         include Kirei::Domain::ValueObject
 

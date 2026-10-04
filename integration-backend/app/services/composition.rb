@@ -37,18 +37,18 @@ module Services
       @credentials = T.let(nil, T.nilable(Adapters::Credentials::FileStore))
       @policy = T.let(nil, T.nilable(Domains::Workflows::Policy))
       @source = T.let(nil, T.nilable(Domains::Messaging::VerifyHumanSource))
-      @authorize_request = T.let(nil, T.nilable(Master::AuthorizeRequest))
-      @approvals = T.let(nil, T.nilable(Master::RecordApproval))
-      @route_followup = T.let(nil, T.nilable(Master::RouteFollowup))
-      @handle_workflow_prompt = T.let(nil, T.nilable(Master::HandleWorkflowPrompt))
-      @handle_master_prompt = T.let(nil, T.nilable(Master::HandleMasterPrompt))
-      @deliver_followup = T.let(nil, T.nilable(Master::DeliverFollowup))
-      @reconcile_followup = T.let(nil, T.nilable(Master::ReconcileFollowup))
-      @tools = T.let(nil, T.nilable(Master::Tools))
-      @reply = T.let(nil, T.nilable(Master::Reply))
-      @ingest_prompt = T.let(nil, T.nilable(Master::IngestPrompt))
-      @dispatch = T.let(nil, T.nilable(Master::Dispatch))
-      @recover = T.let(nil, T.nilable(Master::Recover))
+      @authorize_request = T.let(nil, T.nilable(Commander::AuthorizeRequest))
+      @approvals = T.let(nil, T.nilable(Commander::RecordApproval))
+      @route_followup = T.let(nil, T.nilable(Commander::RouteFollowup))
+      @handle_workflow_prompt = T.let(nil, T.nilable(Commander::HandleWorkflowPrompt))
+      @handle_commander_prompt = T.let(nil, T.nilable(Commander::HandleCommanderPrompt))
+      @deliver_followup = T.let(nil, T.nilable(Commander::DeliverFollowup))
+      @reconcile_followup = T.let(nil, T.nilable(Commander::ReconcileFollowup))
+      @tools = T.let(nil, T.nilable(Commander::Tools))
+      @reply = T.let(nil, T.nilable(Commander::Reply))
+      @ingest_prompt = T.let(nil, T.nilable(Commander::IngestPrompt))
+      @dispatch = T.let(nil, T.nilable(Commander::Dispatch))
+      @recover = T.let(nil, T.nilable(Commander::Recover))
       @reserve_session = T.let(nil, T.nilable(Sessions::ReserveSession))
       @execute_operation = T.let(nil, T.nilable(Sessions::ExecuteOperation))
       @renew = T.let(nil, T.nilable(Sessions::Renew))
@@ -74,85 +74,85 @@ module Services
       @source ||= Domains::Messaging::VerifyHumanSource.new(verifier: verifier, membership: listener_api)
     end
 
-    sig { returns(Master::RecordApproval) }
+    sig { returns(Commander::RecordApproval) }
     def approvals
       @approvals ||= begin
         revision = git_revision
         current_commit = ->(worktree) { revision.call(worktree_path: worktree.worktree_path, branch: worktree.branch) }
-        Master::RecordApproval.new(resolver: verifier, membership: listener_api, current_commit: current_commit, handle: @configuration.agent_handle,
-                                   worker_handle: @configuration.worker_handle, evidence: evidence)
+        Commander::RecordApproval.new(resolver: verifier, membership: listener_api, current_commit: current_commit, handle: @configuration.agent_handle,
+                                      worker_handle: @configuration.worker_handle, evidence: evidence)
       end
     end
 
-    sig { returns(Master::RouteFollowup) }
+    sig { returns(Commander::RouteFollowup) }
     def route_followup
-      @route_followup ||= Master::RouteFollowup.new(resolver: verifier, membership: listener_api, handle: @configuration.agent_handle,
-                                                    master_channel_id: @configuration.master_channel_id)
+      @route_followup ||= Commander::RouteFollowup.new(resolver: verifier, membership: listener_api, handle: @configuration.agent_handle,
+                                                       commander_channel_id: @configuration.commander_channel_id)
     end
 
-    sig { returns(Master::HandleWorkflowPrompt) }
+    sig { returns(Commander::HandleWorkflowPrompt) }
     def handle_workflow_prompt
-      @handle_workflow_prompt ||= Master::HandleWorkflowPrompt.new(route: route_followup, approvals: approvals, handle: @configuration.agent_handle,
-                                                                   worker_handle: @configuration.worker_handle)
+      @handle_workflow_prompt ||= Commander::HandleWorkflowPrompt.new(route: route_followup, approvals: approvals, handle: @configuration.agent_handle,
+                                                                      worker_handle: @configuration.worker_handle)
     end
 
-    sig { returns(Master::HandleMasterPrompt) }
-    def handle_master_prompt
-      @handle_master_prompt ||= Master::HandleMasterPrompt.new(
+    sig { returns(Commander::HandleCommanderPrompt) }
+    def handle_commander_prompt
+      @handle_commander_prompt ||= Commander::HandleCommanderPrompt.new(
         source: source, reconcile_start: reconcile_start, reconcile_operation: reconcile_operation, reconcile_followup: reconcile_followup,
         recover: recover, ingest_prompt: ingest_prompt, handle_workflow_prompt: handle_workflow_prompt, advance_approval: advance_approval,
         agent_handle: @configuration.agent_handle, worker_handle: @configuration.worker_handle
       )
     end
 
-    sig { returns(Master::DeliverFollowup) }
+    sig { returns(Commander::DeliverFollowup) }
     def deliver_followup
-      @deliver_followup ||= Master::DeliverFollowup.new(herdr: herdr, resolver: verifier, membership: listener_api, handle: @configuration.agent_handle,
-                                                        policy: policy)
+      @deliver_followup ||= Commander::DeliverFollowup.new(herdr: herdr, resolver: verifier, membership: listener_api, handle: @configuration.agent_handle,
+                                                           policy: policy)
     end
 
-    sig { returns(Master::ReconcileFollowup) }
+    sig { returns(Commander::ReconcileFollowup) }
     def reconcile_followup
-      @reconcile_followup ||= Master::ReconcileFollowup.new(herdr: herdr, resolver: verifier, membership: listener_api, handle: @configuration.agent_handle)
+      @reconcile_followup ||= Commander::ReconcileFollowup.new(herdr: herdr, resolver: verifier, membership: listener_api, handle: @configuration.agent_handle)
     end
 
-    sig { returns(Master::Tools) }
+    sig { returns(Commander::Tools) }
     def tools
-      @tools ||= Master::Tools.new(source: source, authorize: authorize_request, request_start: request_start, route: route_followup)
+      @tools ||= Commander::Tools.new(source: source, authorize: authorize_request, request_start: request_start, route: route_followup)
     end
 
-    # Nil unless ROLE_CONFIG_FILE configures a controller role.
-    sig { returns(T.nilable(Master::Reply)) }
+    # Nil unless ROLE_CONFIG_FILE configures a commander role.
+    sig { returns(T.nilable(Commander::Reply)) }
     def reply
-      return nil unless controller_role
+      return nil unless commander_role
 
-      @reply ||= Master::Reply.new(authorize: authorize_request)
+      @reply ||= Commander::Reply.new(authorize: authorize_request)
     end
 
-    # Nil unless ROLE_CONFIG_FILE configures a controller role.
-    sig { returns(T.nilable(Master::IngestPrompt)) }
+    # Nil unless ROLE_CONFIG_FILE configures a commander role.
+    sig { returns(T.nilable(Commander::IngestPrompt)) }
     def ingest_prompt
-      role = controller_role
+      role = commander_role
       return nil unless role
 
-      @ingest_prompt ||= Master::IngestPrompt.new(source: source, bootstrap: Sessions::BootstrapController.new(credentials: credentials),
-                                                  configuration: role, credentials: credentials)
+      @ingest_prompt ||= Commander::IngestPrompt.new(source: source, bootstrap: Sessions::BootstrapCommander.new(credentials: credentials),
+                                                     configuration: role, credentials: credentials)
     end
 
-    # Nil unless ROLE_CONFIG_FILE configures a controller role.
-    sig { returns(T.nilable(Master::Dispatch)) }
+    # Nil unless ROLE_CONFIG_FILE configures a commander role.
+    sig { returns(T.nilable(Commander::Dispatch)) }
     def dispatch
-      return nil unless controller_role
+      return nil unless commander_role
 
-      @dispatch ||= Master::Dispatch.new(source: source, herdr: herdr, credentials: credentials, policy: policy)
+      @dispatch ||= Commander::Dispatch.new(source: source, herdr: herdr, credentials: credentials, policy: policy)
     end
 
-    # Nil unless ROLE_CONFIG_FILE configures a controller role.
-    sig { returns(T.nilable(Master::Recover)) }
+    # Nil unless ROLE_CONFIG_FILE configures a commander role.
+    sig { returns(T.nilable(Commander::Recover)) }
     def recover
-      return nil unless controller_role
+      return nil unless commander_role
 
-      @recover ||= Master::Recover.new(source: source, herdr: herdr, handle: @configuration.agent_handle)
+      @recover ||= Commander::Recover.new(source: source, herdr: herdr, handle: @configuration.agent_handle)
     end
 
     sig { returns(Sessions::ReserveSession) }
@@ -218,7 +218,7 @@ module Services
     def provision
       @provision ||= Workflows::Provision.new(source: source, api: worker_api, bot_id: worker_bot_id, worktrees: prepare_worktree,
                                               reserve_session: reserve_session, worktree_root: @configuration.worktree_root,
-                                              master_channel_id: @configuration.master_channel_id, policy: policy)
+                                              commander_channel_id: @configuration.commander_channel_id, policy: policy)
     end
 
     sig { returns(Workflows::Control) }
@@ -260,7 +260,7 @@ module Services
     def chat_listener
       @chat_listener ||= begin
         router = Inbound::RecordDelivery.new(agent_handle: @configuration.agent_handle, worker_handle: @configuration.worker_handle,
-                                             master_channel_id: @configuration.master_channel_id)
+                                             commander_channel_id: @configuration.commander_channel_id)
         Inbound::ChatListener.new(client: listener_client, api: listener_api, verifier: verifier,
                                   channels: required(@configuration.mattermost_channel_ids, "MATTERMOST_CHANNEL_IDS"), router: router,
                                   validation_mode: @configuration.chat_validation_mode, heartbeat_dir: @configuration.heartbeat_dir)
@@ -268,13 +268,13 @@ module Services
     end
 
     sig { returns(T.nilable(Domains::Workflows::Dto::RoleConfig)) }
-    private def controller_role
-      @configuration.roles&.controller
+    private def commander_role
+      @configuration.roles&.commander
     end
 
-    sig { returns(Master::AuthorizeRequest) }
+    sig { returns(Commander::AuthorizeRequest) }
     private def authorize_request
-      @authorize_request ||= Master::AuthorizeRequest.new(source: source)
+      @authorize_request ||= Commander::AuthorizeRequest.new(source: source)
     end
 
     sig { returns(String) }

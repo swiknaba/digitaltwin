@@ -50,7 +50,7 @@ module Services
         session = renewable(session_id, generation)
         return inactive unless session
 
-        @lock.call(key: session.workflow_id || "controller") do
+        @lock.call(key: session.workflow_id || "commander") do
           current = renewable(session_id, generation)
           next inactive unless current
           next failure(Code::SessionReplaced, "Session replaced") unless @registry.latest_generation(workflow_id: current.workflow_id, role: current.role) == generation

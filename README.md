@@ -13,11 +13,9 @@ Long-running AI work is difficult to trust when the request, session, code, revi
 
 The outcome is a small remote team that can preserve context across restarts and make its work inspectable, while still stopping for the human decisions that matter.
 
-## Product names and technical compatibility
+## Commander
 
-The fleet's coordinating role is **Commander**. Its Mattermost display name is **Commander Shepard**; the existing configurable handle remains `@agent` unless an operator deliberately changes it.
-
-The backend still uses technical `controller` enum values and `master` route, request, environment, and migration names (for example, `MASTER_CHANNEL_ID` and `/internal/master/...`). They are persisted/wire compatibility contracts, not the product name. Do not rename them without a designed migration and versioned client compatibility plan. Historical evidence and immutable revision references intentionally retain their original wording.
+Commander is the fleet’s main interface for conversation, coordination, and status.
 
 ## What is available today
 
@@ -63,5 +61,5 @@ The `chat-validation` listener and `push` profiles are opt-in. They require sepa
 - [Local integration wiring and evidence](docs/interfaces/local-integration.md)
 - [Foundation validation checkpoint](docs/interfaces/foundation-validation.md)
 - [Phase 0 fleet specification](docs/agent-fleet-architecture-and-review.md)
-- [Commander routing setup and acceptance](docs/interfaces/master-routing-setup.md)
-- [Phase 1 group calls and AI voice](docs/phase-1-voice-controller.md)
+- [Commander routing setup and acceptance](docs/interfaces/commander-routing-setup.md)
+- [Phase 1 group calls and AI voice](docs/phase-1-voice-commander.md)

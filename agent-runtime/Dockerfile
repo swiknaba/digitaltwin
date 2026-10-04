@@ -50,13 +50,13 @@ CMD ["herdr", "server"]
 # docker build --target with-callback --build-context kirei-clients=<artifact-dir>
 FROM runtime AS with-callback
 COPY --from=kirei-clients --chmod=755 /digitaltwin /usr/local/bin/digitaltwin
-RUN echo "6062994ea169e8d9f2137063e3b61113baa22709766efe381dc2587d5ae55a95  /usr/local/bin/digitaltwin" | sha256sum -c -
+RUN echo "889248ea9a0f4d19dd6cfee3a54aceaee9e02ca7b566c42c160d2ad80bef47e9  /usr/local/bin/digitaltwin" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /digitaltwin-mcp /usr/local/bin/digitaltwin-mcp
-RUN echo "6408102ae1a9ee3a76a4606007c6b8609f9d9154ba0cebb459d7a0542c4d0ea7  /usr/local/bin/digitaltwin-mcp" | sha256sum -c -
+RUN echo "542ca58fc306f0b46f7cc99bc9ef5040297324c70767e2ff3d1724fadeabf099  /usr/local/bin/digitaltwin-mcp" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /mcp.rb /usr/local/bin/mcp.rb
 RUN echo "e4cfea5ff6390c684873093d5c79920a840e458abffd47d9cbef21593e19bd5c  /usr/local/bin/mcp.rb" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /http_tools.rb /usr/local/bin/http_tools.rb
-RUN echo "cecbe55e68ad4535266ed1d7718fb7c485a5eb600d2ef4ed7fc8c740db66f0e4  /usr/local/bin/http_tools.rb" | sha256sum -c -
+RUN echo "633326e1207c318a58c236b5117cd4bae6318f44c409f9e697113b361d6be83d  /usr/local/bin/http_tools.rb" | sha256sum -c -
 
 # Default image explicitly leaves gated callbacks/MCP unavailable.
 FROM runtime AS offline
