@@ -23,6 +23,12 @@ class ClientContractTest(unittest.TestCase):
             self.assertEqual(hashlib.sha256(data).hexdigest(), item["sha256"])
             self.assertIn(item["sha256"] + "  /usr/local/bin/" + name, docker)
 
+    def test_client_pin_is_reachable_from_current_history(self):
+        manifest = json.loads((ROOT / "agent-runtime/contracts/kirei-clients.json").read_text())
+        result = subprocess.run(["git", "merge-base", "--is-ancestor", manifest["source_revision"], "HEAD"],
+                                cwd=ROOT, capture_output=True)
+        self.assertEqual(result.returncode, 0, "Client source revision must be retained in the checked-out history")
+
     def test_staging_rejects_modified_source_and_unexpected_context_files(self):
         manifest = json.loads((ROOT / "agent-runtime/contracts/kirei-clients.json").read_text())
         with tempfile.TemporaryDirectory() as directory:
