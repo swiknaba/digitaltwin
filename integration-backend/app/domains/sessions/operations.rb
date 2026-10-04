@@ -37,7 +37,7 @@ module Domains
 
           generation = @registry.latest_generation(workflow_id: workflow_id, role: role) + 1
           runtime_alias = "digitaltwin-#{session_id}"
-          unless /\A[a-z][a-z0-9_-]{0,31}\z/.match?(runtime_alias)
+          unless /\A[a-z][a-z0-9-]{0,31}\z/.match?(runtime_alias)
             runtime_alias = "digitaltwin-#{Digest::SHA256.hexdigest(session_id).slice(0, 20)}"
           end
           Entities::RuntimeSession.create(id: session_id, workflow_id: workflow_id, role: role.serialize, generation: generation, pane_id: "pending:#{session_id}",
