@@ -194,3 +194,4 @@
 
 - Preserve only the verified `agent_pane_busy` socket error code for startup diagnostics. Redact all raw server text and unrecognized codes.
 - Verify correlation before reporting a Herdr error. Retry only a rejected `agent_pane_busy` on the same uninitialized pane for two seconds; never retry accepted or launched starts.
+- Carry the allowlisted error code as typed `ProtocolViolation` metadata rather than matching display text. Recheck the busy window immediately before another start and sleep no longer than its remaining duration.

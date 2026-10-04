@@ -71,7 +71,9 @@ RSpec.describe Adapters::Herdr::Client do
   end
   it "retains the server error code without exposing its raw error message" do
     socket_fixture(error: { "code" => "agent_pane_busy", "message" => "private server detail" }) do |client, _|
-      expect { client.pane("pane") }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: agent_pane_busy")
+      expect { client.pane("pane") }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: agent_pane_busy") do |error|
+        expect(error.code).to eq("agent_pane_busy")
+      end
     end
   end
   it "rejects a wrong-id error response before exposing its code" do
@@ -81,7 +83,9 @@ RSpec.describe Adapters::Herdr::Client do
   end
   it "redacts an unrecognized server error code" do
     socket_fixture(error: { "code" => "private server detail", "message" => "another private detail" }) do |client, _|
-      expect { client.pane("pane") }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: unknown")
+      expect { client.pane("pane") }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: unknown") do |error|
+        expect(error.code).to eq("unknown")
+      end
     end
   end
   it "maps start, workspace creation and close to captured lifecycle operations on a Unix socket" do

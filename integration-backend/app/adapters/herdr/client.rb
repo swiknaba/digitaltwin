@@ -37,14 +37,19 @@ module Adapters
       sig { params(pane_id: String, name: String, launch: Dto::LaunchSpec).returns(Dto::Pane) }
       def start(pane_id:, name:, launch:)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + INITIAL_SHELL_RETRY_SECONDS
+        retrying_initial_shell = false
         begin
+          raise Errors::ProtocolViolation, "Herdr startup pane remained busy" if retrying_initial_shell && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
           result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
         rescue Errors::ProtocolViolation => error
-          raise unless error.message == "Herdr rejected operation: agent_pane_busy"
+          raise unless error.code == "agent_pane_busy"
           raise unless initial_shell?(pane(pane_id))
-          raise Errors::ProtocolViolation, "Herdr startup pane remained busy" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          raise Errors::ProtocolViolation, "Herdr startup pane remained busy" unless remaining.positive?
 
-          sleep(0.1)
+          sleep([0.1, remaining].min)
+          retrying_initial_shell = true
           retry
         end
         await_start(value: object_field!(result, "agent"), pane_id: pane_id, name: name, kind: launch.cli)
@@ -165,7 +170,8 @@ module Adapters
 
         if response.key?("error")
           error = object_field!(response, "error")
-          raise Errors::ProtocolViolation, "Herdr rejected operation: #{safe_error_code(error)}"
+          code = safe_error_code(error)
+          raise Errors::ProtocolViolation.new("Herdr rejected operation: #{code}", code: code)
         end
 
         result = object_field!(response, "result")

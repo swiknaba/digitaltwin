@@ -68,6 +68,15 @@ RSpec.describe Adapters::Herdr::Client do
     end
   end
 
+  it "does not issue a retry after the initial-shell busy window expires" do
+    stub_const("Adapters::Herdr::Client::INITIAL_SHELL_RETRY_SECONDS", 0)
+    initial_shell = { pane_id: "pane", agent_status: "unknown" }
+    startup_socket(frames: [{ error_code: "agent_pane_busy" }, initial_shell]) do |client, methods|
+      expect { client.start(pane_id: "pane", name: "fixture", launch: launch) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr startup pane remained busy")
+      expect(methods).to eq(["agent.start", "agent.get"])
+    end
+  end
+
   it "rejects a replacement terminal without repeating the start" do
     startup_socket(frames: [pending, ready.merge(terminal_id: "replacement")]) do |client, methods|
       expect { client.start(pane_id: "pane", name: "fixture", launch: launch) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr startup terminal replaced")
