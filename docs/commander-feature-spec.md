@@ -43,6 +43,11 @@ Attribution explains an instruction’s source; it grants no additional permissi
 
 Commander delegates normal coding and research to workers. Coding follows specification and approval, plan and approval, implementation and review, then a pull request. Both specification and plan are reviewed before human approval. Approvals name the task and exact version. Opening a pull request does not automatically merge or deploy it.
 
+Commander chooses a suitable model for each task using its [base instructions](../commander/AGENTS.md).
+Simple work uses Haiku or Lunar; medium work uses Sonnet or Terra; complex work uses Opus or a configured top-tier alternative.
+Model names map to available backend-verified profiles. Explicit human choices take precedence.
+Writer and Reviewer selections retain different providers and model families.
+
 Parallel tasks in one repository use separate branches and worktrees. Each task’s Writer and Reviewer share its worktree and take turns.
 
 Follow-ups reuse the relevant conversation; unrelated tasks start fresh. Only Commander starts independent fleet sessions. Workers ask for approval for additional independent sessions. Already authorized workflow roles need no repeated spawn approval. Workers may use their harness’s subordinate agents within their session.

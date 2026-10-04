@@ -17,7 +17,7 @@ digitaltwin/
 ├── chat-backend/       # Official Team Edition artifact pins and configuration
 ├── push-service/       # Existing upstream push artifact pins and configuration
 ├── mobile-apps/        # Our iOS/Android build recipe, patches, tests, release pipeline
-├── commander/          # Planned persistent Commander instructions and global memory
+├── commander/          # Commander instructions; persistent global memory is planned
 ├── docs/               # Specs, plans, interfaces, operations, acceptance evidence
 ├── scripts/            # Local setup, integration checks, infrastructure handoff helpers
 ├── tests/              # Automated integration tests across deployables

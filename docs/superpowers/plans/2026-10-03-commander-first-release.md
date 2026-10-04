@@ -29,6 +29,7 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 The automated stack already verifies real chat, queues, Herdr transport, callbacks, and restart behavior with a scripted agent.
 It does not verify a real provider conversation. Production dispatch remains disabled.
 The app has not been deployed. Application names and fresh-database schema now use Commander.
+The initial [Commander base instructions](../../../commander/AGENTS.md) define task model tiers; runtime loading and profile selection remain planned.
 Verified human sources already exist; uniform worker-prompt attribution and project-thread sender labels still need implementation.
 
 Complete these tasks in order. Each task ends with a tested commit and review before the next task begins.
@@ -40,7 +41,7 @@ Use failing behavior tests, implement the smallest change, then run the checks b
 
 **Work:**
 
-- [ ] Scaffold persistent `commander/AGENTS.md` and `commander/memory.md` for base instructions, working preferences, and global learnings.
+- [ ] Load the existing `commander/AGENTS.md`; scaffold persistent `commander/memory.md` for working preferences and global learnings.
 - [ ] Mount that folder at `/workspace/commander`; start and recover the Commander Herdr session from that directory.
 - [ ] Verify that the selected CLI loads the base instructions and global memory on a fresh conversation.
 - [ ] Configure the selected Commander profile through private operator files.
@@ -78,7 +79,9 @@ Completed task summaries contain those result details; receipts distinguish rece
 **Work:**
 
 - [ ] Extend context reads to the relevant project and task conversation beyond the current ten-message window.
-- [ ] Extend `start_workflow` with a proposed thread and cited context.
+- [ ] Extend `start_workflow` with a proposed thread, cited context, and configured Writer and Reviewer profile IDs.
+- [ ] Apply the model tiers in `commander/AGENTS.md`; record the selected profiles and reasons.
+- [ ] Validate available profiles in the backend; preserve human model choices and Writer/Reviewer provider and family diversity.
 - [ ] Verify the project, membership, root post, and available thread before binding new work.
 - [ ] Persist typed sender context: effective sender, originating human request, source message, target task, and session.
 - [ ] Record Commander forwarding, rewriting, or generated follow-ups without inventing a new human request.
@@ -93,6 +96,7 @@ Completed task summaries contain those result details; receipts distinguish rece
 Ambiguous context triggers one clarification and no action.
 New work uses an appropriate unoccupied project thread; an occupied thread cannot acquire a competing workflow.
 Two tasks in one repository remain separate. Opening a pull request does not merge or deploy it.
+Simple, medium, and complex tasks select suitable configured profiles; unavailable profiles and invalid review pairings fail before dispatch.
 Direct human, Commander-forwarded, and Commander-written instructions remain distinguishable in stored records, worker prompts, and project-thread delivery labels.
 Forged sender labels or generated approval claims cannot change identity, permissions, or approval state.
 
@@ -170,7 +174,7 @@ Keep new Ruby values in separate, strictly typed files and retain the repository
 | --- | --- | --- |
 | 1 | `commander/{AGENTS.md,memory.md}`, Runtime workspace mount, `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend Commander and session specs for cwd and instruction loading; add a separately approved real-CLI acceptance runner |
 | 2 | Add `services/commander/workflow_status.rb` and typed status DTOs; extend `tools.rb`, HTTP serialization, and milestone delivery | Add status specs; extend Commander tool and outbox specs |
-| 3 | `services/commander/{tools,route_followup,deliver_followup}.rb`, `services/workflows/{request_start,provision,dispatch_phase_prompt}.rb`, review prompt builders, outbound delivery, typed attribution, and role base instructions | Extend routing/workflow/lifecycle/outbox specs with direct human, forwarding or rewriting, generated follow-ups, forged attribution, and generated approval claims |
+| 3 | `services/commander/{tools,route_followup,deliver_followup}.rb`, `services/workflows/{request_start,provision,dispatch_phase_prompt}.rb`, review prompt builders, outbound delivery, typed attribution, and role base instructions | Test model tiers, unavailable profiles, human overrides, review diversity, and existing attribution/routing/lifecycle/outbox cases |
 | 4 | Add a memory domain, typed entry DTOs, `services/commander/` memory operations, a local file adapter, and optional Git sync | Test global/project scope, instruction corrections, concurrent writes, restart, local persistence, and optional sync |
 | 5 | `services/workflows/control.rb`, `services/reviews/release_queued.rb`, Commander tools | Extend lifecycle/review specs with attribution-preserving queues, pause boundaries, cancellation, and premature finish |
 | 6 | Commander/session recovery services and `platform/jobs/store.rb` | Extend lifecycle/job specs with lost receipts, revoked sources, matching-session recovery, and unchanged attribution on replay |
@@ -179,7 +183,9 @@ Keep new Ruby values in separate, strictly typed files and retain the repository
 ### New operation contracts
 
 - Status reads return typed task summaries: project, workflow, thread, phase, wait reason, verified session state, artifact links, and delivery state.
-- `start_workflow` accepts `project_id`, `title`, proposed `thread_id`, and cited inbox IDs. The backend returns a verified request receipt.
+- `start_workflow` accepts `project_id`, `title`, proposed `thread_id`, cited inbox IDs, `writer_profile_id`, and `reviewer_profile_id`.
+- Profile IDs resolve through the backend’s trusted configuration to typed `RoleConfig` values; unknown or unavailable profiles return a typed failure.
+- Persist selected profiles with the request. The backend returns a verified receipt and retains existing approval and diversity checks.
 - Memory operations identify global or project scope and return an entry ID, content, source, and revision.
 - Commander uses `/workspace/commander` as its durable working directory. Its scaffold contains `AGENTS.md` and `memory.md`.
 - Provisioning and recovery verify that directory; the selected CLI loads its instruction format and reads global memory.
