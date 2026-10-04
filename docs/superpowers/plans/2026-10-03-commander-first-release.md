@@ -25,6 +25,10 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 - Keep dispatch disabled until the relevant real CLI checks pass and activation receives approval.
 - Use the latest supported Hermes stable release. Hermes publishes dated stable tags, not minor-line tags. Advance on a normal Runtime rebuild and record the resolved release, source URL, and image artifact digest in build evidence.
 - Hermes native Markdown memory, SQLite history, and skills are Commander-local. Do not create a Kirei memory adapter, Commander knowledge tables, or Markdown mirrors.
+- Hermes is the harness, not a fixed Gemini/Grok model choice. Support native optional xAI Grok
+  provider selection (`xai`/`grok` API key or `xai-oauth`/`grok-oauth` operator OAuth) through
+  Hermes' private profile. Do not create credentials, browser login, a default model, paid calls,
+  or a separate Grok harness in this task.
 - Mattermost PostgreSQL chat storage and Hermes SQLite history coexist. Neither replaces Kirei's orchestration records.
 
 ## Starting point

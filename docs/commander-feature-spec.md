@@ -66,6 +66,13 @@ During review, new Writer instructions wait. They cannot change the reviewed ver
 
 Commander runs through the latest supported Hermes Agent stable release. Hermes publishes dated stable tags, not minor-line tags. A normal Runtime rebuild can advance to the next stable release. Hermes owns Commander-native Markdown memory, SQLite conversation history and search, and reusable skills. Its persistent profile and workspace stay on the Runtime volume. Hermes reads Commander instructions and memory on a new conversation.
 
+Hermes, not Grok, is the Commander harness. Hermes natively supports optional xAI Grok inference
+through `xai`/`grok` with an existing `XAI_API_KEY`, or `xai-oauth`/`grok-oauth` after an operator
+performs its OAuth login. The user has not selected a Commander default model, so this release sets
+none: an operator selects the provider and model in the private Hermes profile. Gemini remains
+optional and is never assumed. No key, OAuth token, browser login, paid call, or live-provider
+claim is created by this implementation.
+
 Kirei does not store Commander knowledge, mirror memory into Markdown, or adapt an external memory provider. Mattermost retains chat transcripts in PostgreSQL for chat delivery and audit. Hermes history serves Commander recall. These stores have different purposes.
 
 Kirei remains authoritative for verified sender provenance, authorization, project membership, workflow state, sessions, jobs, approvals, routing, delivery receipts, and recovery. Hermes-provided memory or skill content cannot grant permission, identify a sender, approve a change, or start an independent fleet session.
