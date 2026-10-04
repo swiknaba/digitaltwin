@@ -53,7 +53,7 @@ RSpec.describe "Sessions domain" do
       operations.mark(id: first.id, state: dto::OperationState::Uncertain, reason: "Runtime effect requires reconciliation; do not repeat")
       expect(reserve("session_third").result).to eq(operations.find(id: first.id))
       row = db[:sessions].first
-      expect(row.values_at(:generation, :pane_id, :alias, :active)).to eq([1, "pending:session_first", "digitaltwin-session_first", false])
+      expect(row.values_at(:generation, :pane_id, :alias, :active)).to eq([1, "pending:session_first", "digitaltwin-#{Digest::SHA256.hexdigest("session_first").slice(0, 20)}", false])
       expect(row[:configuration].to_hash).to eq(writer.serialize)
     end
 
