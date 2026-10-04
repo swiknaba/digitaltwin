@@ -25,6 +25,7 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 - Keep dispatch disabled until the relevant real CLI checks pass and activation receives approval.
 - Use the latest supported Hermes stable release. Hermes publishes dated stable tags, not minor-line tags. Advance on a normal Runtime rebuild; no separate source-URL or artifact-digest record is required.
 - Hermes native Markdown memory, SQLite history, and skills are Commander-local. Do not create a Kirei memory adapter, Commander knowledge tables, or Markdown mirrors.
+- Keep generic Runtime skills separate from team customization. A user- or team-owned Wagglebot company repository owns shared base-agent templates, curated skills, and agent definitions; Digitaltwin must not treat the Wagglebot tool repository as that configuration. No company repository is configured for this release, so no external skill or role-template installation occurs. Any later integration uses Wagglebot's documented connected-cache provisioning and preserves per-profile Hermes learned state.
 - Hermes is the harness, not a fixed Gemini/Grok model choice. Support native optional xAI Grok
   provider selection (`xai`/`grok` API key or `xai-oauth`/`grok-oauth` operator OAuth) through
   Hermes' private profile. Do not create credentials, browser login, a default model, paid calls,
@@ -51,6 +52,7 @@ Use failing behavior tests, implement the smallest change, then run the checks b
 - [ ] Install the latest supported Hermes stable release and record the resolved release and supported CLI profile configuration in sanitized evidence.
 - [ ] Install Hermes in the Runtime Dockerfile final image stage. Run it as the unprivileged Runtime user with a persistent, Commander-only profile and workspace.
 - [ ] Configure the Commander model and private Kirei MCP server through private operator files. Do not store credentials in the image or repository.
+- [ ] When an authorized Wagglebot company repository is identified, connect and provision its pinned shared templates/skills with Wagglebot. Keep Commander learned skills and memory in its own Hermes profile; do not replace Kirei role/permission validation.
 - [ ] Map Hermes context files to `commander/AGENTS.md` and Hermes-native Markdown memory. Let Hermes retain SQLite history and skills in its profile storage.
 - [ ] Initialize a local Git repository in the Commander workspace. Track portable instructions, Markdown memory, and skills; ignore SQLite/WAL files, credentials, and runtime state. Create no automatic Kirei commit job, remote, or push schedule.
 - [ ] Verify that a fresh Hermes Commander session loads its instructions and native memory, retains conversation history after restart, and can invoke only the intended MCP tools.
