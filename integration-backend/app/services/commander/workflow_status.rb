@@ -37,7 +37,7 @@ module Services
         project = @directory.find(id: workflow.project_id)
         return nil unless project
 
-        session = @sessions.active(workflow_id: workflow.id, role: nil).max_by(&:last_verified_at)
+        session = @sessions.active(workflow_id: workflow.id, role: nil).max_by { |candidate| candidate.last_verified_at || Time.at(0) }
         review = review(workflow)
         Dto::WorkflowStatus.new(
           project_id: project.id, project_slug: project.slug, workflow_id: workflow.id, thread_id: workflow.thread_id,
