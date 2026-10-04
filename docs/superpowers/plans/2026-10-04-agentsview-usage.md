@@ -113,7 +113,7 @@ Expected: PASS with synthetic AgentsView output only.
 
 **Files:**
 - Modify: `agent-runtime/README.md`
-- Modify: `docs/interfaces/master-routing-setup.md`
+- Modify: `docs/interfaces/commander-routing-setup.md`
 - Create: `agent-runtime/evidence/agentsview-usage-fixture.md`
 
 **Interfaces:**
