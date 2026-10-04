@@ -4,7 +4,7 @@ Approved high-level behavior, consolidating the [Phase 0 specification](agent-fl
 
 ## One main conversation
 
-Commander Shepard is our main interface to the agent team. Through normal conversation, we can ask questions, request work, change direction, and check progress. The default handle is `@agent`.
+Commander is our main interface to the agent team. Through normal conversation, we can ask questions, request work, change direction, and check progress.
 
 Project channels and task threads hold detailed questions, progress, reviews, and results. Commander chat brings back important milestones, approval requests, blockers, and results with links, rather than copying every message.
 
@@ -59,7 +59,11 @@ During review, new Writer instructions wait. They cannot change the reviewed ver
 
 ## Memory, failures, and restarts
 
-Durable memory should retain project decisions, our working preferences, and lessons learned beyond a conversation. The agreed starting model uses a shared memory repository and project memory files, maintained through human requests and agent instructions, with no scheduled grooming job. Hermes is not integrated or required.
+Durable memory should retain project decisions, our working preferences, and lessons learned beyond a conversation. The project scaffolds a persistent `commander/` folder containing its base instructions in `AGENTS.md` and global preferences and learnings in `memory.md`.
+Commander’s Herdr CLI session runs from that folder and reads it on a fresh conversation.
+Git sync for this folder is optional; local persistence does not depend on it.
+Project decisions stay in each project’s `.agents/memory.md`.
+Explicit steering requests update base instructions; memory updates follow human requests or agent instructions, with no scheduled grooming job. Hermes is not integrated or required.
 
 After restart, Commander restores verified task state and reuses healthy matching conversations. Missing conversations or actions with uncertain outcomes are reported for reconciliation. It never invents success, repeats a potentially completed action, or creates replacement work to clear an error.
 

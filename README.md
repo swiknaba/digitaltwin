@@ -15,11 +15,7 @@ The outcome is a small remote team that can preserve context across restarts and
 
 ## Commander
 
-The fleet's coordinating role is **Commander**. Its Mattermost display name is **Commander Shepard**; the default handle is `@agent`.
-
-The earlier rename updated the domain and display name. Stored roles, several service names, and private interfaces still use older identifiers.
-The [naming audit](docs/interfaces/commander-naming-upgrade.md) lists them and the planned migration, which precedes feature work.
-Historical evidence, migrations, and deduplication keys retain their original bytes.
+Commander is the fleet’s main interface for conversation, coordination, and status.
 
 ## What is available today
 

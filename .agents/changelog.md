@@ -172,3 +172,8 @@
 - Record the remaining application-name audit and require a coordinated, tested migration before feature work. No runtime implementation or dispatch activation is included.
 
 - Add the requested distinction between direct human, Commander-forwarded, and Commander-written worker instructions to the Commander spec and plan. Require backend-owned prompt context, source links, truthful thread labels, unchanged attribution during recovery, and no implied human approval.
+
+## 2026-10-04
+
+- Simplify the Commander plan for an undeployed app: direct naming cleanup, empty-database validation, and no installation transition strategy. Remove the obsolete naming audit and repeated terminology guidance.
+- Plan a persistent Commander workspace for base instructions and global learnings, with optional Git sync and separate project memory.

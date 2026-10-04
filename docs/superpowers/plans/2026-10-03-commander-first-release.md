@@ -6,7 +6,7 @@
 
 **Architecture:** Extend the existing Kirei backend and Herdr sessions. Keep authorization, workflow state, and delivery checks in the backend. Commander interprets requests through its selected CLI and private MCP tools.
 
-**Tech stack:** Ruby 4.0, locked Kirei, Sorbet, PostgreSQL, Mattermost, Herdr, and the existing Runtime clients.
+**Tech stack:** Ruby 4.0, Kirei, Sorbet, PostgreSQL, Mattermost, Herdr, and the existing Runtime clients.
 
 **Spec:** [Approved Commander behavior](../../commander-feature-spec.md). This plan is a draft for review; it does not authorize feature implementation or provider calls.
 
@@ -15,7 +15,6 @@
 The first release covers conversation, status, contextual routing, memory, and controls for existing projects.
 Project enrollment, emergency tools, deployment tools, voice, and mobile acceptance come later.
 
-- Use **Commander** and **Commander Shepard** consistently. Keep the default handle `@agent`.
 - Require a specific second confirmation for destructive or irreversible operations.
 - Keep human approval for reviewed specifications and plans. Bind each approval to the task and exact commit.
 - Keep separate branches and worktrees for parallel tasks. Writer and Reviewer share one task worktree and take turns.
@@ -29,8 +28,7 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 
 The automated stack already verifies real chat, queues, Herdr transport, callbacks, and restart behavior with a scripted agent.
 It does not verify a real provider conversation. Production dispatch remains disabled.
-The earlier naming change updated the domain and display name, while retaining implementation identifiers.
-[The naming audit](../../interfaces/commander-naming-upgrade.md) lists those leftovers.
+The app has not been deployed. Complete the naming cleanup directly; no installation transition is needed.
 Verified human sources already exist; uniform worker-prompt attribution and project-thread sender labels still need implementation.
 
 Complete these tasks in order. Each task ends with a tested commit and review before the next task begins.
@@ -42,13 +40,13 @@ Use failing behavior tests, implement the smallest change, then run the checks b
 
 **Work:**
 
-- [ ] Rename the remaining application namespaces, configuration keys, private routes, and commands listed in the naming audit.
-- [ ] Add migration `009_commander_names` for stored roles, requests, job kinds, workflow configuration, and conversation bindings.
-- [ ] Preserve session identities, request digests, deduplication keys, existing results, and historical evidence.
-- [ ] Update the Runtime client checksums and document the coordinated upgrade and rollback.
+- [ ] Use `commander` for application roles, namespaces, configuration keys, private routes, commands, and schema names.
+- [ ] Update schema definitions, fixtures, Runtime clients, checksums, and setup documentation together.
+- [ ] Remove obsolete names and compatibility aliases from application interfaces and agent instructions.
+- [ ] Verify database creation from scratch and the renamed routes, commands, configuration, and installed clients.
 
-**Done:** A populated version 8 database upgrades and rolls back without losing work or repeating effects.
-Old clients reach the same authenticated handlers during the transition. New instructions and interfaces use Commander.
+**Done:** An empty disposable database boots the renamed application, and interface tests pass with the matching Runtime clients.
+Documentation describes the resulting system without obsolete terminology or installation transition instructions.
 
 ## Task 2: Talk to a real Commander
 
@@ -56,6 +54,9 @@ Old clients reach the same authenticated handlers during the transition. New ins
 
 **Work:**
 
+- [ ] Scaffold persistent `commander/AGENTS.md` and `commander/memory.md` for base instructions, working preferences, and global learnings.
+- [ ] Mount that folder at `/workspace/commander`; start and recover the Commander Herdr session from that directory.
+- [ ] Verify that the selected CLI loads the base instructions and global memory on a fresh conversation.
 - [ ] Configure the selected Commander profile through private operator files.
 - [ ] Use the specified Gemini default, or an operator-selected CLI whose Herdr and MCP behavior passes validation.
 - [ ] Separate conversation permission from permission to start worker workflows.
@@ -65,6 +66,7 @@ Old clients reach the same authenticated handlers during the transition. New ins
 **Done:** The real Commander replies once to the correct source thread.
 An unauthorized sender, stale request credential, or mismatched session cannot prompt it.
 Missing credentials leave this task explicitly blocked; scripted-agent results cannot complete it.
+A fresh session reads its workspace instructions and memory; recovery verifies the same working directory.
 
 ## Task 3: Ask what the fleet is doing
 
@@ -115,12 +117,16 @@ Forged sender labels or generated approval claims cannot change identity, permis
 **Work:**
 
 - [ ] Add bounded operations to read, remember, and correct entries.
-- [ ] Use the configured shared memory repository and each project’s `.agents/memory.md`.
-- [ ] Record the source request and revision; serialize conflicting writes and reconcile uncertain Git outcomes.
+- [ ] Store global preferences and learnings in `commander/memory.md`; keep project decisions in each project’s `.agents/memory.md`.
+- [ ] Update `commander/AGENTS.md` through explicit steering requests; memory entries do not become new permissions.
+- [ ] Keep the Commander folder persistent locally; sync it to a configured Git repository only when enabled.
+- [ ] Record sources and revisions; serialize conflicting writes for both local memory and optional Git sync.
+- [ ] Reconcile uncertain Git outcomes when optional sync is enabled.
 
 **Done:** A remembered preference survives a fresh conversation and backend restart.
 A correction updates the intended entry. Duplicate requests create no duplicate memory.
 Memory updates follow human requests or agent instructions; no scheduled grooming or Hermes integration is added.
+Local persistence works without Git sync. When enabled, sync preserves the same instructions, entries, sources, and revisions.
 
 ## Task 6: Steer work while it runs
 
@@ -171,16 +177,16 @@ Unverified operations remain disabled; disabling dispatch preserves existing res
 
 ## Implementation map
 
-Paths below identify the existing code boundaries. Task 1 renames `services/master/` to `services/commander/` before later tasks use it.
+Paths below describe the code boundaries after Task 1.
 Keep new Ruby values in separate, strictly typed files and retain the repository’s domain/service/adapter boundaries.
 
 | Task | Main changes | Behavior tests |
 | --- | --- | --- |
-| 1 | Session and speaker enums, Commander request entity, routes, configuration, commands, migration 009, Runtime client manifest | Add `spec/integration/commander_naming_migration_spec.rb`; extend HTTP, parser, digest, and installed-client tests |
-| 2 | `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend `spec/domains/commander_spec.rb`; add a separately approved real-CLI acceptance runner |
+| 1 | Session and speaker enums, Commander request entity, routes, configuration, commands, schema definitions, Runtime client manifest | Add `spec/integration/commander_naming_spec.rb`; verify empty-database boot, HTTP, parser, and installed-client tests |
+| 2 | `commander/{AGENTS.md,memory.md}`, Runtime workspace mount, `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend Commander and session specs for cwd and instruction loading; add a separately approved real-CLI acceptance runner |
 | 3 | Add `services/commander/workflow_status.rb` and typed status DTOs; extend `tools.rb`, HTTP serialization, and milestone delivery | Add status specs; extend Commander tool and outbox specs |
 | 4 | `services/commander/{tools,route_followup,deliver_followup}.rb`, `services/workflows/{request_start,provision,dispatch_phase_prompt}.rb`, review prompt builders, outbound delivery, typed attribution, and role base instructions | Extend routing/workflow/lifecycle/outbox specs with direct human, forwarding or rewriting, generated follow-ups, forged attribution, and generated approval claims |
-| 5 | Add a memory domain, typed entry DTOs, `services/commander/` memory operations, and a bounded Git memory adapter | Add memory domain/service specs and concurrent-write/restart integration cases |
+| 5 | Add a memory domain, typed entry DTOs, `services/commander/` memory operations, a local file adapter, and optional Git sync | Test global/project scope, instruction corrections, concurrent writes, restart, local persistence, and optional sync |
 | 6 | `services/workflows/control.rb`, `services/reviews/release_queued.rb`, Commander tools | Extend lifecycle/review specs with attribution-preserving queues, pause boundaries, cancellation, and premature finish |
 | 7 | Commander/session recovery services and `platform/jobs/store.rb` | Extend lifecycle/job specs with lost receipts, revoked sources, matching-session recovery, and unchanged attribution on replay |
 | 8 | `tests/`, `scripts/`, current interface docs, operator evidence | Run automated and separately authorized real CLI acceptance against the release commit |
@@ -189,7 +195,10 @@ Keep new Ruby values in separate, strictly typed files and retain the repository
 
 - Status reads return typed task summaries: project, workflow, thread, phase, wait reason, verified session state, artifact links, and delivery state.
 - `start_workflow` accepts `project_id`, `title`, proposed `thread_id`, and cited inbox IDs. The backend returns a verified request receipt.
-- Memory operations identify shared or project scope and return an entry ID, content, source, and revision.
+- Memory operations identify global or project scope and return an entry ID, content, source, and revision.
+- Commander uses `/workspace/commander` as its durable working directory. Its scaffold contains `AGENTS.md` and `memory.md`.
+- Provisioning and recovery verify that directory; the selected CLI loads its instruction format and reads global memory.
+- Git sync is optional and uses configured repository access. Scaffolding creates no remote repository or provider credentials.
 - Controls retain `workflow_id`, action, and expected version. The backend derives actor authority from the verified human source.
 - `Domains::Messaging::Dto::InstructionAttribution` records the human or Commander sender, originating authenticated request/message/thread, target workflow/session generation, and dispatch ID.
 - Persist that attribution with the existing durable request, follow-up, and dispatch records; omit nonexistent immediate human messages.
@@ -217,5 +226,5 @@ Neither command proves real provider behavior because the full-stack agent is sc
 2. Access revoked after queueing: reject before delivery or recovery; test in Tasks 2 and 7.
 3. New instructions during review: preserve the reviewed revision and queue order; test in Task 6.
 4. A result may already exist after a lost receipt: reconcile without replay; test in Tasks 5 and 7.
-5. Old stored names during upgrade: preserve conversations, digests, and deduplication; test in Task 1.
+5. Fresh workspace or disabled Git sync: load base instructions and retain memory locally; test in Tasks 2 and 5.
 6. Text claims another sender or human approval: preserve verified attribution and ordinary approval gates; test in Task 4.

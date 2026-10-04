@@ -12,9 +12,8 @@ The owner controls project work through Mattermost or an attached Herdr terminal
 Each project workflow uses a writer and a reviewer from different model families.
 The system preserves specifications, plans, reviews, code, and research in Git.
 
-The deployment includes a persistent **Commander** for operational conversation, status, coordination, and targeted emergency changes. Its Mattermost display name is **Commander Shepard**.
+The deployment includes a persistent **Commander** for operational conversation, status, coordination, and targeted emergency changes.
 Commander uses the same local agent runtime as project work; the target durable session role is `commander`.
-The [naming audit](interfaces/commander-naming-upgrade.md) records the required migration from existing storage.
 
 Separate deployments communicate only through Mattermost and Git.
 They do not share filesystems, databases, sockets, private networks, or Commander APIs.
@@ -35,7 +34,7 @@ Phase 0 includes:
 - A Kirei control plane.
 - PostgreSQL for control state and durable jobs.
 - GitHub as the initial Git forge.
-- A configurable memory repository.
+- A persistent Commander workspace with optional Git sync.
 - Headscale and Tailscale for private Herdr access.
 - Encrypted off-site backups.
 
@@ -345,7 +344,7 @@ Mobile thread navigation and reply placement must pass on our own builds.
 
 The deployment uses two Mattermost bot accounts:
 
-- `@agent` is Commander (display name: Commander Shepard).
+- `@agent` is Commander.
 - `@worker` handles project workflow phases.
 
 The exact account handles remain configurable for each deployment.
@@ -361,7 +360,7 @@ Record the source session/generation and deduplicate callback retries before pos
 An uncertain Mattermost post remains subject to reconciliation.
 
 Detailed progress, interview questions, reviews, and work results stay in the project workflow thread.
-Important summaries and blockers also appear in the configured Commander chat under the Commander Shepard bot identity.
+Important summaries and blockers also appear in the configured Commander chat under the Commander bot identity.
 These include approval requests, blocked workflows, and PR-ready or delivered results.
 Each summary identifies the project and phase and links to its source thread and relevant artifacts.
 Kirei uses the durable outbox to deduplicate summaries by workflow event and destination.
@@ -550,7 +549,7 @@ The worker asks an authorized human in Mattermost how to continue.
 
 ## 17. Commander
 
-`@agent` (display name Commander Shepard) routes messages from any channel to one logical Commander session.
+`@agent` routes messages from any channel to one logical Commander session.
 Commander receives the source channel context with each request.
 Commander chat is the primary interface. Project threads support detailed updates and fine-tuning.
 Follow-ups continue the relevant existing workflow and Writer conversation, including parallel
@@ -679,18 +678,17 @@ The acceptance test does not require a second full server deployment.
 
 ## 20. Memory model
 
-Every deployment configures one memory repository slug.
-The owner deployment can use `swiknaba/memory`, but the application does not hardcode it.
+Each deployment scaffolds a persistent `commander/` folder.
+Its `AGENTS.md` contains Commander base instructions; `memory.md` retains global preferences and lessons learned.
+The Commander Herdr CLI session runs from this folder and reads it on a fresh conversation.
+Each project keeps decisions in its own `.agents/memory.md` file.
 
-The repository slug determines the memory workspace path.
-Each project also keeps its local `.agents/memory.md` file.
+Explicit steering requests update base instructions.
+Memory maintenance follows human requests and agent instructions, without a scheduled grooming job.
 
-Memory maintenance occurs manually through `@agent` and base agent instructions.
-The system does not use a memory cron job.
-It does not require memory grooming after each session.
-
-Small additive memory changes can commit directly to the default branch.
-Substantial reorganizations use a branch and pull request.
+Git sync is optional and uses a configured repository.
+Local persistence works without Git access.
+When enabled, small additive changes can commit directly; substantial reorganizations use a branch and pull request.
 
 ## 21. Secrets and credentials
 
@@ -811,7 +809,7 @@ Phase 0 is acceptable when all criteria in this section pass.
 29. An encrypted backup restores all included services without restoring excluded CLI credentials.
 30. The owner completes a threaded agent interview in our mobile builds; self-hosted push opens the correct channel and thread.
 31. A research workflow produces committed Markdown with sources and stated uncertainty.
-32. A workflow can commit and push a durable memory update to the configured memory repository.
+32. Commander retains instructions and memory locally across restarts; optional Git sync preserves sources and revisions.
 
 ## 26. Implementation validation
 

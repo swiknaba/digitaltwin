@@ -1,7 +1,6 @@
 # Bounded Commander routing: setup and acceptance
 
 Current commands below match the installed implementation.
-The [naming audit](commander-naming-upgrade.md) defines the migration required before new Commander feature work.
 
 Gemini was already the specified Commander default on main `f01b846` (§17 of the specification).
 This feature did not select another runtime or configure/authenticate Gemini. Runtime packages
