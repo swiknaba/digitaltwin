@@ -236,3 +236,8 @@
 - Initialize Hermes with the request-scoped Kirei MCP allowlist and preserve Commander instructions, native Markdown memory, and skills in local Git.
 - Stop migration 010 when legacy Commander memory has data. Require export or explicit disposal before removal.
 - Add typed reversible-migration DSL support and deterministic Runtime persistence, Git-ignore, and backend migration coverage.
+
+## 2026-10-04 — Wagglebot reference setup
+
+- Reference Wagglebot's shared worker setup from Commander documentation.
+- Keep Commander role instructions and native Hermes state local until Wagglebot supports Hermes provisioning.
