@@ -23,7 +23,7 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 - Keep instruction sender, originating human request, and backend workflow instructions distinct. Attribution never grants additional authority.
 - Do not merge, deploy, create credentials, or make paid provider calls through plan approval alone.
 - Keep dispatch disabled until the relevant real CLI checks pass and activation receives approval.
-- Pin Hermes to an immutable upstream commit with a recorded source URL and artifact digest. Do not use a floating branch or tag alone.
+- Use the latest supported Hermes minor release and allow patch updates on normal Runtime rebuilds. Record the resolved release, source URL, and image artifact digest in build evidence.
 - Hermes native Markdown memory, SQLite history, and skills are Commander-local. Do not create a Kirei memory adapter, Commander knowledge tables, or Markdown mirrors.
 - Mattermost PostgreSQL chat storage and Hermes SQLite history coexist. Neither replaces Kirei's orchestration records.
 
@@ -44,10 +44,11 @@ Use failing behavior tests, implement the smallest change, then run the checks b
 
 **Work:**
 
-- [ ] Record a reproducible Hermes source commit, installation artifact digest, supported CLI profile configuration, and sanitized source evidence.
+- [ ] Install the latest supported Hermes minor release. Allow patch updates; record each resolved release, source URL, image artifact digest, and supported CLI profile configuration in sanitized evidence.
 - [ ] Install Hermes in the Runtime Dockerfile final image stage. Run it as the unprivileged Runtime user with a persistent, Commander-only profile and workspace.
 - [ ] Configure the Commander model and private Kirei MCP server through private operator files. Do not store credentials in the image or repository.
 - [ ] Map Hermes context files to `commander/AGENTS.md` and Hermes-native Markdown memory. Let Hermes retain SQLite history and skills in its profile storage.
+- [ ] Initialize a local Git repository in the Commander workspace. Track portable instructions, Markdown memory, and skills; ignore SQLite/WAL files, credentials, and runtime state. Create no automatic Kirei commit job, remote, or push schedule.
 - [ ] Verify that a fresh Hermes Commander session loads its instructions and native memory, retains conversation history after restart, and can invoke only the intended MCP tools.
 - [ ] Separate conversation permission from permission to start worker workflows.
 - [ ] Verify one bounded real Hermes conversation, including an MCP call, completion, restart recovery, and a repeated callback.
@@ -57,6 +58,7 @@ Use failing behavior tests, implement the smallest change, then run the checks b
 An unauthorized sender, stale request credential, or mismatched session cannot prompt it.
 Missing credentials leave this task explicitly blocked; scripted-agent results cannot complete it.
 A fresh Hermes session reads its instructions and native memory; recovery verifies the same profile and working directory.
+The local Commander repository provides revision history only for explicitly committed portable files. Automated commits and remote backup are deferred to a separately approved task.
 
 ## Task 2: Ask what the fleet is doing
 
@@ -172,7 +174,7 @@ Keep new Ruby values in separate, strictly typed files and retain the repository
 
 | Task | Main changes | Behavior tests |
 | --- | --- | --- |
-| 1 | `commander/AGENTS.md`, Runtime Dockerfile/profile mount, Hermes pin manifest, `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend Commander and session specs for profile/cwd recovery; add Hermes image and separately approved real-CLI acceptance coverage |
+| 1 | `commander/AGENTS.md`, Runtime Dockerfile/profile mount, Commander workspace `.gitignore`, Hermes release evidence, `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend Commander and session specs for profile/cwd recovery and ignored state; add Hermes image and separately approved real-CLI acceptance coverage |
 | 2 | Add `services/commander/workflow_status.rb` and typed status DTOs; extend `tools.rb`, HTTP serialization, and milestone delivery | Add status specs; extend Commander tool and outbox specs |
 | 3 | `services/commander/{tools,route_followup,deliver_followup}.rb`, `services/workflows/{request_start,provision,dispatch_phase_prompt}.rb`, review prompt builders, outbound delivery, typed attribution, and role base instructions | Test model tiers, unavailable profiles, human overrides, review diversity, and existing attribution/routing/lifecycle/outbox cases |
 | 4 | Remove `domains/memory`, `adapters/memory`, `services/commander/memory.rb`, memory specs, and their wiring; add a forward migration after `009_commander_memory` | Test fresh install, schema-9 upgrade, rollback, and absence of Kirei memory calls while Hermes profile persistence remains covered in Task 1 |
@@ -189,6 +191,8 @@ Keep new Ruby values in separate, strictly typed files and retain the repository
 - Commander has a persistent Hermes profile and `/workspace/commander` working directory. Hermes owns its Markdown memory, SQLite history, and skills.
 - Provisioning and recovery verify the same Commander profile, workspace, instruction file, and private MCP configuration.
 - Hermes memory and session storage receive no Kirei authority data beyond verified, request-scoped MCP context.
+- Commander initialization creates a local repository for portable instructions, Markdown memory, and skills. SQLite history, WAL files, credentials, and runtime state stay ignored.
+- The first release has no Kirei commit job, remote, or push schedule. Automated commits and backup are deferred.
 - Controls retain `workflow_id`, action, and expected version. The backend derives actor authority from the verified human source.
 - `Domains::Messaging::Dto::InstructionAttribution` records the human or Commander sender, originating authenticated request/message/thread, target workflow/session generation, and dispatch ID.
 - Persist that attribution with the existing durable request, follow-up, and dispatch records; omit nonexistent immediate human messages.

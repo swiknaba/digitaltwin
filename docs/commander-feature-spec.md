@@ -64,13 +64,15 @@ During review, new Writer instructions wait. They cannot change the reviewed ver
 
 ## Hermes memory, skills, failures, and restarts
 
-Commander runs through the pinned Hermes Agent harness. Hermes owns Commander-native Markdown memory, SQLite conversation history and search, and reusable skills. Its persistent profile and workspace stay on the Runtime volume. Hermes reads Commander instructions and memory on a new conversation.
+Commander runs through the latest supported Hermes Agent minor release. Patch releases update with the normal Runtime rebuild. Hermes owns Commander-native Markdown memory, SQLite conversation history and search, and reusable skills. Its persistent profile and workspace stay on the Runtime volume. Hermes reads Commander instructions and memory on a new conversation.
 
 Kirei does not store Commander knowledge, mirror memory into Markdown, or adapt an external memory provider. Mattermost retains chat transcripts in PostgreSQL for chat delivery and audit. Hermes history serves Commander recall. These stores have different purposes.
 
 Kirei remains authoritative for verified sender provenance, authorization, project membership, workflow state, sessions, jobs, approvals, routing, delivery receipts, and recovery. Hermes-provided memory or skill content cannot grant permission, identify a sender, approve a change, or start an independent fleet session.
 
-Explicit steering changes Commander instructions. Hermes learns through its native memory and skills mechanisms. No Kirei memory grooming or Git synchronization is required.
+Commander initialization creates a local Git repository in the Commander workspace. It tracks portable instructions, Markdown memory, and skills. It ignores SQLite databases, WAL files, credentials, and runtime state. The first release creates no automatic Kirei commit job, remote, or push schedule. Therefore, local Git history is not a backup. Automated commits and remote backup need a separate retention, credential, conflict, and recovery design.
+
+Explicit steering changes Commander instructions. Hermes learns through its native memory and skills mechanisms. No Kirei memory grooming is required.
 
 After restart, Commander restores verified task state and reuses healthy matching conversations. Missing conversations or actions with uncertain outcomes are reported for reconciliation. It never invents success, repeats a potentially completed action, or creates replacement work to clear an error.
 
