@@ -16,17 +16,9 @@ done
 if [ ! -e "$hermes_home/config.yaml" ]; then
   cp /opt/runtime/config/commander/hermes-config.yaml "$hermes_home/config.yaml"
 fi
-# Existing Commander profiles are operator-owned. Add the one managed shared
+# Existing Commander profiles are operator-owned. Merge the one managed shared
 # library entry without replacing provider credentials or other preferences.
-if ! grep -Fqx '    - /home/runtime/.agents/skills' "$hermes_home/config.yaml"; then
-  if grep -q '^  external_dirs:$' "$hermes_home/config.yaml"; then
-    sed -i '/^  external_dirs:$/a\    - /home/runtime/.agents/skills' "$hermes_home/config.yaml"
-  elif grep -q '^skills:$' "$hermes_home/config.yaml"; then
-    sed -i '/^skills:$/a\  external_dirs:\n    - /home/runtime/.agents/skills' "$hermes_home/config.yaml"
-  else
-    printf '\nskills:\n  external_dirs:\n    - /home/runtime/.agents/skills\n' >> "$hermes_home/config.yaml"
-  fi
-fi
+/opt/runtime/bin/ensure-hermes-shared-skills.py "$hermes_home/config.yaml"
 if [ ! -d "$commander_workspace/.git" ]; then
   git -C "$commander_workspace" init -q
   git -C "$commander_workspace" config user.name "Digitaltwin Commander"
