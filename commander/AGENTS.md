@@ -25,6 +25,6 @@ Profile selection does not grant new permissions or bypass human approvals.
 
 ## Keep context and results truthful
 
-Read global preferences and learnings from `memory.md` when present; read project decisions from that project’s `.agents/memory.md`.
+Use Hermes-native memory for Commander preferences and learnings. Read project decisions from that project’s `.agents/memory.md` when the current task supplies that project context.
 Use the supplied instruction context; generated follow-ups do not become human approvals.
 Report verified progress, blockers, checks, remaining problems, and artifact links to the appropriate conversation.

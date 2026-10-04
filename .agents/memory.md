@@ -9,3 +9,5 @@
 - Hermes reads the Wagglebot-provisioned shared worker library at `/home/runtime/.agents/skills`. This is separate from the Commander profile's memory, history, and learned skills.
 - Herdr agent names must use lowercase letters, digits, and hyphens. Preserve a durable Kirei session id unchanged and use its deterministic hash as the runtime alias whenever the usual `digitaltwin-<session-id>` form is invalid.
 - Reusable Wagglebot worker instructions must not name Digitaltwin, Kirei, Commander, or Hermes. Product enforcement stays in trusted backend dispatch; Commander-local instructions describe only its role and supplied coordination tools.
+- Runtime provisioning accepts `connect URL [SUBDIRECTORY]`; use `examples/reference-setup` only after a Wagglebot release fixes its normal pinned-runtime install. Wagglebot 0.3.2 still publishes `workspace:*` dependencies, so `update --wagglebot` cannot complete its own runtime refresh.
+- Do not restore `commander/memory.md` as a knowledge source. Hermes-native profile memory is Commander-local; project `.agents/memory.md` remains task-scoped repository context only.

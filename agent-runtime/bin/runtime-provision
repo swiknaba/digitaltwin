@@ -2,12 +2,15 @@
 set -eu
 # Explicit operator actions only; startup does not fetch company repositories.
 case "${1:-}" in
-  connect) [ "$#" = 2 ]; exec wagglebot connect "$2" ;;
+  connect)
+    [ "$#" = 2 ] || [ "$#" = 3 ] || { echo 'Usage: runtime-provision connect URL [SUBDIRECTORY]' >&2; exit 2; }
+    if [ "$#" = 3 ]; then exec wagglebot connect "$2" "$3"; else exec wagglebot connect "$2"; fi
+    ;;
   company-update) [ "$#" = 1 ]; exec wagglebot update --wagglebot ;;
   project-init|project-update)
     [ "$#" = 2 ]; path=$(realpath "$2")
     case "$path" in /workspace/repos/*|/workspace/worktrees/*) ;; *) echo 'Project must be in /workspace' >&2; exit 1;; esac
     cd "$path"
     if [ "$1" = project-init ]; then exec wagglebot init; else exec wagglebot update; fi ;;
-  *) echo 'Usage: runtime-provision connect URL | company-update | project-init PATH | project-update PATH' >&2; exit 2 ;;
+  *) echo 'Usage: runtime-provision connect URL [SUBDIRECTORY] | company-update | project-init PATH | project-update PATH' >&2; exit 2 ;;
 esac

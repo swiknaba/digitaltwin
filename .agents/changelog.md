@@ -244,3 +244,5 @@
 - Configure Hermes to read the provisioned shared library at `/home/runtime/.agents/skills`, with deterministic Runtime image coverage.
 - Hash underscore-bearing Kirei session aliases before starting Herdr, whose agent names accept hyphens but not underscores.
 - Keep the Wagglebot shared-worker baseline product-agnostic; Commander-local guidance now uses only its supplied coordination tools rather than backend implementation names.
+- Forward the approved optional company subdirectory through `runtime-provision connect`. Keep the Runtime pin at 0.3.0 until a Wagglebot release fixes its own pinned-runtime install path.
+- Remove the legacy tracked Commander Markdown-memory mirror; Hermes-native profile memory is the Commander knowledge source. Keep project `.agents/memory.md` only as task-scoped repository context.
