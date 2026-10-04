@@ -16,6 +16,7 @@ module Adapters
 
       MAX_LINE_BYTES = 1_048_576
       STARTUP_TIMEOUT_SECONDS = 30
+      SAFE_ERROR_CODES = T.let(["agent_pane_busy"].freeze, T::Array[String])
 
       sig { params(socket_path: String).void }
       def initialize(socket_path: "/run/herdr/herdr.sock")
@@ -131,8 +132,7 @@ module Adapters
           line = socket.gets("\n", MAX_LINE_BYTES + 1)
           raise Errors::ProtocolViolation, "Invalid Herdr response" unless line&.end_with?("\n") && line.bytesize <= MAX_LINE_BYTES
 
-          response = response_from(line)
-          raise Errors::ProtocolViolation, "Herdr correlation mismatch" unless response.id == correlation_id
+          response = response_from(line, correlation_id)
           raise Errors::ProtocolViolation, "Herdr result mismatch" unless response.result_type == expected
 
           response.payload
@@ -141,13 +141,19 @@ module Adapters
         end
       end
 
-      sig { params(line: String).returns(Response) }
-      private def response_from(line)
+      sig { params(line: String, correlation_id: String).returns(Response) }
+      private def response_from(line, correlation_id)
         response = json_object!(JSON.parse(line))
-        raise Errors::ProtocolViolation, "Herdr rejected operation" if response.key?("error")
+        id = string_field!(response, "id")
+        raise Errors::ProtocolViolation, "Herdr correlation mismatch" unless id == correlation_id
+
+        if response.key?("error")
+          error = object_field!(response, "error")
+          raise Errors::ProtocolViolation, "Herdr rejected operation: #{safe_error_code(error)}"
+        end
 
         result = object_field!(response, "result")
-        Response.new(id: string_field!(response, "id"), result_type: string_field!(result, "type"), payload: result)
+        Response.new(id: id, result_type: string_field!(result, "type"), payload: result)
       rescue JSON::ParserError
         raise Errors::ProtocolViolation, "Invalid Herdr response"
       end
@@ -185,6 +191,12 @@ module Adapters
         raise Errors::ProtocolViolation, "Invalid Herdr response" unless value.is_a?(String)
 
         value
+      end
+
+      sig { params(error: JsonObject).returns(String) }
+      private def safe_error_code(error)
+        code = string_field!(error, "code")
+        SAFE_ERROR_CODES.include?(code) ? code : "unknown"
       end
 
       sig { params(object: JsonObject, key: String).returns(T.nilable(String)) }
