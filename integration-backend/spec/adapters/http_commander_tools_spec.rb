@@ -75,8 +75,9 @@ RSpec.describe "POST /internal/commander/tools wire format" do
     env = Rack::MockRequest.env_for("http://localhost/internal/commander/manifest", method: "GET")
     env.merge!("REQUEST_PATH" => "/internal/commander/manifest", "HTTP_HOST" => "localhost", "REMOTE_ADDR" => "127.0.0.1")
     status, _headers, chunks = app.call(env)
-    # SHA-256 of the pre-refactor manifest with Ruling 31 applied: evidence items are strings.
-    expect([status, Digest::SHA256.hexdigest(chunks.join)]).to eq([200, "7e7744e0fa9b0bdfdd5803f657474c6a8e3bfae08c0b7b78710c22c9c5775632"])
+    # SHA-256 of the review-approved manifest: evidence items are strings and
+    # workflow_status is request-bound with no model-supplied fields.
+    expect([status, Digest::SHA256.hexdigest(chunks.join)]).to eq([200, "24609bf55d54ee9456326839adccbe86278932bc3d7bc1f308ab63ef50e75d5a"])
     expect(chunks.join).to include('"evidence_inbox_ids":{"type":"array","items":{"type":"string"},"maxItems":10}')
   end
 

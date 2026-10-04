@@ -85,7 +85,7 @@ RSpec.describe "Request-bound Commander tools and stdio MCP" do
       event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: true, body: "@agent status",
       actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "human", channel_id: "project-channel", member: true, bot: false)
     )
-    allow(source).to receive(:call) do |_inbox_id:, destination: nil|
+    allow(source).to receive(:call) do |inbox_id: _inbox_id, destination: nil|
       destination == "hidden-channel" ? Kirei::Services::Result.new(errors: Platform::Failure.call(code: Domains::Messaging::Dto::ErrorCode::DestinationMembershipRequired, detail: "Hidden")) :
         Kirei::Services::Result.new(result: visible)
     end

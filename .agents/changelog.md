@@ -201,3 +201,7 @@
 - Reserve Commander Herdr workspaces at `/workspace/commander`, independently of worker worktrees.
 - Create that directory during Runtime startup and retain it through Runtime restart checks.
 - Add the persistent Commander memory scaffold. Provider dispatch remains disabled pending live operator evidence.
+
+## 2026-10-04 — Commander workflow status
+
+- Add the request-bound `workflow_status` MCP operation. It filters workflows by authenticated channel access and reports durable workflow, review, approval, artifact, and last-verified session state without asserting live Runtime or delivery success.
