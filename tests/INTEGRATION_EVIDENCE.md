@@ -109,6 +109,6 @@ No other worker resources were removed. No session fixture/token file was create
 Dependency health and offline Runtime health are live local checks, not authenticated chat/provider compatibility.
 Job/callback fixtures now pass on the combined stack and remain explicitly synthetic evidence.
 Whole-project Sorbet remains failing as disclosed by the backend handoff; root integration does not clear it.
-Authenticated chat/bot permissions/reconnect, four CLI handshakes, Writer settled state, selected Master MCP,
+Authenticated chat/bot permissions/reconnect, four CLI handshakes, Writer settled state, selected Commander MCP,
 signed mobile push/deep links, encrypted restore, image publication and production remain open.
 Full Phase 0 acceptance is not claimed. See README.md for the complete 32-row acceptance-scope mapping.

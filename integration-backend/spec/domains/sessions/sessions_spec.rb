@@ -130,7 +130,7 @@ RSpec.describe "Sessions domain" do
       expect(registry.latest_generation(workflow_id: "workflow", role: dto::SessionRole::Writer)).to eq(2)
       expect(registry.latest_generation(workflow_id: "workflow", role: dto::SessionRole::Reviewer)).to eq(0)
       expect(registry.active(workflow_id: "workflow", role: dto::SessionRole::Writer).map(&:id)).to eq(["old"])
-      expect(registry.active_controller).to be_nil
+      expect(registry.active_commander).to be_nil
     end
 
     it "schedules a renewal five minutes before expiry, once per expiry" do

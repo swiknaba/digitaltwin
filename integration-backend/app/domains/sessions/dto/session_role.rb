@@ -4,12 +4,12 @@
 module Domains
   module Sessions
     module Dto
-      # Values of the session_role constraint. Only operator bootstrap creates a controller.
+      # Values of the session_role constraint. Only operator bootstrap creates a commander.
       class SessionRole < T::Enum
         enums do
           Writer = new("writer")
           Reviewer = new("reviewer")
-          Controller = new("controller")
+          Commander = new("commander")
         end
       end
     end

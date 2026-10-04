@@ -77,7 +77,7 @@ app/adapters/
   herdr/client.rb, herdr/dto/{pane,pane_summary,agent_session,agent_status,workspace,launch_spec}.rb
   git/{repositories,revision,evidence,worktrees}.rb, git/errors/operation_failed.rb, git/dto/*.rb
   credentials/file_store.rb            # session/request token files (0600, EXCL, symlink-safe)
-  http/{base,callbacks,master}.rb, http/dto/*.rb, http/errors/missing_authorization.rb
+  http/{base,callbacks,commander}.rb, http/dto/*.rb, http/errors/missing_authorization.rb
   mcp/{server,http_tools}.rb
 app/domains/
   messaging/   inbox, outbox, chat_checkpoints
@@ -85,7 +85,7 @@ app/domains/
   workflows/   workflows, workflow_requests, approvals, queued_messages
   sessions/    sessions, session_operations, callbacks
   reviews/     reviews
-  commander/    master_requests, followups, confirmations, conversation_bindings
+  commander/    commander_requests, followups, confirmations, conversation_bindings
 app/services/
   configuration.rb                     # typed ENV snapshot (T::Struct), loaded once
   composition.rb                       # composition root (old Commander::Services.from_env)
@@ -95,9 +95,9 @@ app/services/
   outbound/deliver_outbox.rb
   projects/enroll.rb
   workflows/{request_start,provision,reconcile_start,dispatch_phase_prompt,control,advance_approval,approve_current,start_existing}.rb
-  sessions/{execute_operation,renew,reconcile_operation,stop_workflow_sessions,bootstrap_controller,post_worker_chat}.rb
+  sessions/{execute_operation,renew,reconcile_operation,stop_workflow_sessions,bootstrap_commander,post_worker_chat}.rb
   reviews/{artifact_ready,review_finished,dispatch_review,release_queued,queue_callback}.rb
-  master/{ingest_prompt,dispatch,recover,reply,route_followup,deliver_followup,reconcile_followup,record_approval,tools}.rb
+  commander/{ingest_prompt,dispatch,recover,reply,route_followup,deliver_followup,reconcile_followup,record_approval,tools}.rb
 ```
 
 Each `services/*` file is one class with `call`. A use case that is also a job handler includes `Platform::Jobs::Handler`. Each context folder has a `README.md` of at most 6 lines that states what it owns and its public API.
@@ -107,7 +107,7 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
 1. Duplicate and replayed inputs, such as the same inbox post, dispatch key, outbox key, or callback key with changed content. Expect the same idempotent result or the same rejection as today. Task 2 and Task 4 specs pin this.
 2. An expired or lost job lease during an external effect. The job moves to `uncertain` and is not retried. Task 2 pins `Lease#begin_effect` returning false after expiry.
 3. A JSONB column read back through `from_hash`, such as `artifacts`, `role_configurations`, `runtime_identity`, or `evidence`, when keys are missing or extra. Resolve strictly and fail closed. Tasks 6, 7 and 9 each add a round-trip spec with a malformed stored row.
-4. Recovery commands (`recover-start`, `recover-session`, `recover-followup`, `recover-master`) from a non-original human. Expect a rejection with no state change. Task 3's parser specs and the existing commander specs pin this.
+4. Recovery commands (`recover-start`, `recover-session`, `recover-followup`, `recover-commander`) from a non-original human. Expect a rejection with no state change. Task 3's parser specs and the existing commander specs pin this.
 5. A stale `expected_version` or a concurrently archived workflow. Expect a typed `VersionChanged` or `Inactive` failure with no partial write. Task 6 pins this.
 
 ---
@@ -146,7 +146,7 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
 
 **Interfaces:**
 - Produces:
-  - `Platform::Jobs::Dto::JobKind < T::Enum`. Its values are exactly: `master.prompt`, `master.dispatch`, `master.control`, `workflow.prompt`, `workflow.start`, `workflow.approve`, `workflow.pause`, `workflow.resume`, `workflow.finish`, `workflow.cancel`, `workflow.provision`, `workflow.phase_prompt`, `session.start`, `session.stop`, `session.renew`, `session.followup`, `review.prompt`, `review.release`, `review.callback`, `mattermost.post`.
+  - `Platform::Jobs::Dto::JobKind < T::Enum`. Its values are exactly: `commander.prompt`, `commander.dispatch`, `commander.control`, `workflow.prompt`, `workflow.start`, `workflow.approve`, `workflow.pause`, `workflow.resume`, `workflow.finish`, `workflow.cancel`, `workflow.provision`, `workflow.phase_prompt`, `session.start`, `session.stop`, `session.renew`, `session.followup`, `review.prompt`, `review.release`, `review.callback`, `mattermost.post`.
   - `Platform::Jobs::Dto::JobStatus < T::Enum` with `pending running complete blocked uncertain`.
   - `module Platform::Jobs::Payload` (interface). Abstract methods: `job_kind -> Dto::JobKind` and `dispatch_key -> String`. Implementers are `T::Struct`s whose props are only `String`, `Integer`, `T::Boolean`, or nilable versions of these.
   - `Platform::Jobs::Store#enqueue(payload: Payload, available_at: Time = Time.now) -> String`. It raises `Platform::Jobs::Errors::DispatchKeyReused` when the key exists with changed content.
@@ -219,7 +219,7 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
     - `Adapters::Git::Worktrees` with `#top_level`, `#remote`, `#add`, `#branch`, `#common_dir`.
   - `Adapters::Credentials::FileStore#write(name:, token:) -> String path`, `#read(name:) -> String`, `#delete(name:) -> void`.
   - `Services::Commands::Parser#call(body: String, agent_handle:, worker_handle:) -> T.nilable(Commands::Dto::Command)`.
-    - `Command` is a union of `T::Struct`s: `RecoverStart(request_id, thread_id)`, `RecoverSession(operation_id, pane_id)`, `RecoverFollowup(followup_id: Integer, outcome: FollowupOutcome)`, `RecoverMaster(request_id)`, `Approve(workflow_id, gate, commit)`, `Route(workflow_id, text)`, `WorkerCommand(action: WorkerAction)`.
+    - `Command` is a union of `T::Struct`s: `RecoverStart(request_id, thread_id)`, `RecoverSession(operation_id, pane_id)`, `RecoverFollowup(followup_id: Integer, outcome: FollowupOutcome)`, `RecoverCommander(request_id)`, `Approve(workflow_id, gate, commit)`, `Route(workflow_id, text)`, `WorkerCommand(action: WorkerAction)`.
     - `WorkerAction` has `start approve pause resume finish cancel`.
     - The parser holds every regex now in `commander/services.rb`, `routing.rb` and `mattermost/router.rb`, unchanged.
 - Consumes: Task 2 platform.
@@ -229,7 +229,7 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
 - [ ] **Step 3: Implement.**
   - Move files and update callers.
   - Callers receive DTOs, so translate `["agent_status"]`-style reads to DTO fields.
-  - Controllers keep identical JSON bodies and status codes.
+  - HTTP adapters keep identical JSON bodies and status codes.
   - Replace inline regexes with parser calls.
 - [ ] **Step 4: Verify.** Run `srb tc`, the full RSpec suite and the architecture spec. Expected: baseline, with the adapter files gone from the allowlist.
 - [ ] **Step 5: Commit.** Message: `refactor: extract adapters and command parser`.
@@ -250,7 +250,7 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
 - Produces:
   - `Messaging::Dto::VerifiedDelivery`: `channel_id`, `post_id`, `thread_id`, `actor: VerifiedActor`, `event_kind: EventKind`, `post_revision: Integer`, `body`, `root_post: T::Boolean`.
   - `Messaging::Dto::VerifiedActor`: `user_id`, `channel_id`, `member`, `bot`.
-  - `Messaging::Dto::OutgoingMessage`: `channel_id`, `thread_id: T.nilable(String)`, `bot: Bot` (`agent` or `worker`), `role: SpeakerRole` (`controller`, `writer` or `reviewer`), `body`, `key`.
+  - `Messaging::Dto::OutgoingMessage`: `channel_id`, `thread_id: T.nilable(String)`, `bot: Bot` (`agent` or `worker`), `role: SpeakerRole` (`commander`, `writer` or `reviewer`), `body`, `key`.
   - `module Messaging::DeliveryVerifier`: abstract `delivery(post_id:, channel_id:, event_kind: EventKind) -> Dto::VerifiedDelivery`.
   - `module Messaging::MembershipCheck`: abstract `member?(channel_id:, user_id:) -> T::Boolean`.
   - `Messaging::RecordDelivery#call(delivery:) -> Result[Dto::RecordedDelivery]`, where the payload is `inbox_id: T.nilable(Integer)` and `duplicate: T::Boolean`.
@@ -305,7 +305,7 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
   - `entities/{workflow,workflow_request,approval,queued_message}.rb`
   - `dto/{phase,gate,control_action,request_state,artifact_ref,artifact_set,role_config,role_assignments,workflow_view,request_view,approval_view,phase_prompt_job,provision_job,error_code}.rb`
   - `{catalog,transitions,requests,approvals,queued_messages,policy}.rb`
-- Move: `workflows/coordinator.rb` and `workflows/provision.rb` to `app/services/workflows/*`, split per the file map. Move `Commander::Services#{control_existing,approve_existing,start_existing,master_control}` there too.
+- Move: `workflows/coordinator.rb` and `workflows/provision.rb` to `app/services/workflows/*`, split per the file map. Move `Commander::Services#{control_existing,approve_existing,start_existing,commander_control}` there too.
 - Delete: `workflows/entities/{session_ref,artifact_ref}.rb`, which are unused or replaced, and `workflows/entities.rb`.
 - Modify: every `@db[:workflows]`, `@db[:workflow_requests]`, `@db[:approvals]` and `@db[:queued_messages]` caller in all files.
 
@@ -354,14 +354,14 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
   - `{registry,operations,authenticate,callbacks,renewals}.rb`
 - Move: `sessions/lifecycle.rb` to `app/services/sessions/*` per the file map. Move `Mattermost::WorkerChat` to `Services::Sessions::PostWorkerChat`, and `Reviews::Intake` session checks to `Sessions::Authenticate`.
 - Delete: `Mattermost::WorkerChat::Workflow`, which is replaced by `Workflows::Dto::WorkflowView`.
-- Modify: every `@db[:sessions]`, `@db[:session_operations]` and `@db[:callbacks]` caller. That includes `Routing`, `Coordinator`, `Master` and `Requests`.
+- Modify: every `@db[:sessions]`, `@db[:session_operations]` and `@db[:callbacks]` caller. That includes `Routing`, `Coordinator`, `Commander` and `Requests`.
 
 **Interfaces:**
 - Produces:
   - `Sessions::Registry` methods:
     - `#find(id:)`
     - `#active(workflow_id:, role:) -> T::Array[Dto::SessionView]`
-    - `#active_controller -> T.nilable(Dto::SessionView)`
+    - `#active_commander -> T.nilable(Dto::SessionView)`
     - `#pending_start(workflow_id: T.nilable(String), role:) -> T.nilable(Dto::SessionView)`
     - `#latest_generation(workflow_id: T.nilable(String), role:) -> Integer`
   - `Sessions::Operations` methods:
@@ -406,35 +406,35 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
 - [ ] **Step 4: Verify.** Expected: baseline.
 - [ ] **Step 5: Commit.** Message: `refactor: add reviews domain and review use cases`.
 
-### Task 9: Commander domain (Master conversation)
+### Task 9: Commander domain (Commander conversation)
 
 **Files:**
 - Create in `app/domains/commander/`:
-  - `entities/{master_request,followup,confirmation,conversation_binding}.rb`
-  - `dto/{master_request_state,master_request_view,followup_status,followup_view,routing_evidence,binding_view,master_dispatch_job,followup_job,error_code}.rb`
-  - `{master_requests,followups,bindings,confirmations}.rb`
-- Move: `commander/{master,followups,routing,approvals,requests,tools}.rb` to `app/services/master/*` per the file map.
-- Modify: every `@db[:master_requests]`, `@db[:followups]`, `@db[:confirmations]` and `@db[:conversation_bindings]` caller.
+  - `entities/{commander_request,followup,confirmation,conversation_binding}.rb`
+  - `dto/{commander_request_state,commander_request_view,followup_status,followup_view,routing_evidence,binding_view,commander_dispatch_job,followup_job,error_code}.rb`
+  - `{commander_requests,followups,bindings,confirmations}.rb`
+- Move: `commander/{commander,followups,routing,approvals,requests,tools}.rb` to `app/services/commander/*` per the file map.
+- Modify: every `@db[:commander_requests]`, `@db[:followups]`, `@db[:confirmations]` and `@db[:conversation_bindings]` caller.
 
 **Interfaces:**
 - Produces:
-  - `Commander::MasterRequests` methods:
-    - `#create(inbox_id:, session_id:, credential_digest:, expires_at:) -> Result[Dto::MasterRequestView]`, which is idempotent on `inbox_id`
-    - `#authorize(id:, token_digest:, states:) -> Result[Dto::MasterRequestView]`
+  - `Commander::CommanderRequests` methods:
+    - `#create(inbox_id:, session_id:, credential_digest:, expires_at:) -> Result[Dto::CommanderRequestView]`, which is idempotent on `inbox_id`
+    - `#authorize(id:, token_digest:, states:) -> Result[Dto::CommanderRequestView]`
     - `#mark(id:, state:, reason:)`
-    - `#first_for_session(session_id:) -> T.nilable(Dto::MasterRequestView)`
+    - `#first_for_session(session_id:) -> T.nilable(Dto::CommanderRequestView)`
   - `Commander::Followups` methods: `#create(inbox_id:, workflow_id:, session: T.nilable(Sessions::Dto::SessionView), evidence: Dto::RoutingEvidence) -> Result[Dto::FollowupView]`, `#find`, `#for_inbox`, `#mark`.
   - `Commander::Bindings` methods: `#bind(channel_id:, thread_ids: T::Array[String], user_id:, workflow_id:, inbox_id:, at:) -> void` and `#find(channel_id:, thread_id:, user_id:) -> T.nilable(Dto::BindingView)`.
-  - `Services::Master::Tools#call(name: Dto::ToolName, arguments: Dto::ToolArguments, token:) -> Result[Dto::ToolResponse]`. The tool results are typed DTO lists that serialize to today's JSON. `Adapters::Mcp` and `Adapters::Http::Master` serialize them.
+  - `Services::Commander::Tools#call(name: Dto::ToolName, arguments: Dto::ToolArguments, token:) -> Result[Dto::ToolResponse]`. The tool results are typed DTO lists that serialize to today's JSON. `Adapters::Mcp` and `Adapters::Http::Commander` serialize them.
 - [ ] **Step 1: Write the failing tests.**
   - `followup creation is idempotent per inbox`
   - `routing_evidence round-trips`
   - `tools reject unexpected fields as a failure result`
-  - The existing `master_tools_spec` and `commander_spec` keep their assertions.
+  - The existing `commander_tools_spec` and `commander_spec` keep their assertions.
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Verify.** Expected: baseline.
-- [ ] **Step 5: Commit.** Message: `refactor: add commander domain and master use cases`.
+- [ ] **Step 5: Commit.** Message: `refactor: add commander domain and commander use cases`.
 
 ### Task 10: Composition root and completion
 
@@ -448,7 +448,7 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
 - Produces:
   - `Services::Configuration.from_env -> Services::Configuration`, a `T::Struct` holding every ENV value read today, with the same names and defaults.
   - `Services::Composition.new(configuration:)`, which exposes each use case.
-  - `Services::JobHandlers#call -> T::Hash[Platform::Jobs::Dto::JobKind, Platform::Jobs::Handler]`. Its kind mapping equals today's `handlers` map, including `master.dispatch` only when the controller role is configured.
+  - `Services::JobHandlers#call -> T::Hash[Platform::Jobs::Dto::JobKind, Platform::Jobs::Handler]`. Its kind mapping equals today's `handlers` map, including `commander.dispatch` only when the commander role is configured.
 - [ ] **Step 1: Write the failing tests.**
   - `job_handlers maps exactly today's kinds`
   - The architecture spec with an empty allowlist

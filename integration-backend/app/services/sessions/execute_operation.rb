@@ -59,7 +59,7 @@ module Services
       private def execute(operation_id, before_effect)
         operation = @operations.find(id: operation_id) or raise ArgumentError, "Missing session operation"
         session = T.must(@registry.find(id: operation.session_id))
-        @lock.call(key: session.workflow_id || "controller") do
+        @lock.call(key: session.workflow_id || "commander") do
           operation = T.must(@operations.find(id: operation_id))
           next operation.state unless operation.state == State::Queued
           next State::Queued unless @policy.dispatch_allowed?
@@ -84,7 +84,7 @@ module Services
       sig { params(operation: Sessions::Dto::OperationView, session: Sessions::Dto::SessionView, workflow: T.nilable(Workflow)).void }
       private def start(operation, session, workflow)
         env = { "DIGITALTWIN_SESSION_TOKEN_FILE" => @credentials.path(name: "#{session.id}.token"), "DIGITALTWIN_SESSION_GENERATION" => session.generation.to_s,
-                "DIGITALTWIN_CALLBACK_URL" => @url, "DIGITALTWIN_MASTER_REQUEST_TOKEN_FILE" => @credentials.path(name: "#{session.id}.request-token") }
+                "DIGITALTWIN_CALLBACK_URL" => @url, "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE" => @credentials.path(name: "#{session.id}.request-token") }
         created = @herdr.create_workspace(cwd: workflow&.worktree_path, label: session.alias, env: env)
         @operations.record_workspace(session_id: session.id, pane_id: created.root_pane_id, workspace_id: created.workspace_id)
         launch = Adapters::Herdr::Dto::LaunchSpec.new(cli: session.configuration.cli, launch_args: session.configuration.launch_args)

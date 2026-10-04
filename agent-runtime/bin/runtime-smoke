@@ -34,4 +34,4 @@ if [[ ${1:-} == --server ]]; then
   jq -e '.result.snapshot.protocol == 22 and .result.snapshot.version == "0.9.3"' "$scratch/snapshot.json" >/dev/null
 fi
 printf 'PASS: offline versions, Linux schema, role shells, tools%s\n' "${1:+, live Herdr server}"
-printf 'OPEN: authenticated four-CLI prompt/state/idle, selected Master MCP, callback delivery, Tailnet SSH\n'
+printf 'OPEN: authenticated four-CLI prompt/state/idle, selected Commander MCP, callback delivery, Tailnet SSH\n'

@@ -24,13 +24,13 @@ module Services
 
       sig do
         params(herdr: Adapters::Herdr::Client, source: Messaging::VerifyHumanSource, credentials: Adapters::Credentials::FileStore, handle: String,
-               master_requests: Domains::Commander::MasterRequests, registry: Sessions::Registry, operations: Sessions::Operations, catalog: Domains::Workflows::Catalog, complete: CompleteOperation,
+               commander_requests: Domains::Commander::CommanderRequests, registry: Sessions::Registry, operations: Sessions::Operations, catalog: Domains::Workflows::Catalog, complete: CompleteOperation,
                inbox: Messaging::Inbox, outbox: Messaging::Outbox, audit: Platform::Audit::Log, jobs: Platform::Jobs::Store, lock: Platform::Lock).void
       end
-      def initialize(herdr:, source:, credentials:, handle:, master_requests: Domains::Commander::MasterRequests.new, registry: Sessions::Registry.new, operations: Sessions::Operations.new, catalog: Domains::Workflows::Catalog.new,
+      def initialize(herdr:, source:, credentials:, handle:, commander_requests: Domains::Commander::CommanderRequests.new, registry: Sessions::Registry.new, operations: Sessions::Operations.new, catalog: Domains::Workflows::Catalog.new,
                      complete: CompleteOperation.new, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, audit: Platform::Audit::Log.new,
                      jobs: Platform::Jobs::Store.new, lock: Platform::Lock.new)
-        @master_requests = master_requests
+        @commander_requests = commander_requests
         @herdr = herdr
         @source = source
         @credentials = credentials
@@ -66,7 +66,7 @@ module Services
             next failure(Code::RecoveryRejected, "Exact original-human session recovery required")
           end
 
-          @lock.call(key: workflow ? workflow.id : "controller") { reconcile(operation_id, session.id, workflow, inbox_id, pane_id, delivery) }
+          @lock.call(key: workflow ? workflow.id : "commander") { reconcile(operation_id, session.id, workflow, inbox_id, pane_id, delivery) }
         end
       end
 
@@ -169,21 +169,21 @@ module Services
           channel_id: delivery.channel_id,
           thread_id: delivery.thread_id,
           bot: Messaging::Dto::Bot::Agent,
-          role: Messaging::Dto::SpeakerRole::Controller,
+          role: Messaging::Dto::SpeakerRole::Commander,
           body: "Session operation #{operation.id} reconciled against runtime evidence; no start or stop was repeated.",
           key: key
         )
         Platform::Unwrap.call(@outbox.enqueue(message: message))
       end
 
-      # The workflow's verified source, or the Controller's first human request.
+      # The workflow's verified source, or the Commander's first human request.
       sig { params(session: Sessions::Dto::SessionView, workflow: T.nilable(Workflow)).returns(T.nilable(Messaging::Dto::InboxRecord)) }
       private def original_source(session, workflow)
         if workflow
           source_id = workflow.source_inbox_id
           source_id && @inbox.find(id: source_id)
         else
-          @inbox.earliest(ids: @master_requests.inbox_ids_for_session(session_id: session.id))
+          @inbox.earliest(ids: @commander_requests.inbox_ids_for_session(session_id: session.id))
         end
       end
 

@@ -32,7 +32,7 @@ module Services
 
       sig { params(value: T.nilable(String)).returns(String) }
       private def required(value)
-        raise ArgumentError, "Controller job is malformed" unless value
+        raise ArgumentError, "Commander job is malformed" unless value
 
         value
       end

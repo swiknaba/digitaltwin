@@ -51,7 +51,7 @@ class FullStackChatTest(core.DisposableComposeTest):
             diagnostic["herdr_panes"] = self.compose(["exec", "-T", "agent-runtime", "herdr", "pane", "list"], check=False).stdout
             diagnostic["job_outcomes"] = self.compose(["exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "digitaltwin_development", "-c",
                                                        "SELECT kind,status,last_error FROM jobs ORDER BY available_at LIMIT 30"], check=False).stdout
-            diagnostic["session_operations"] = self.ruby('r=Domains::Sessions::Registry.new; sessions=r.all_active+r.pending_starts(workflow_id:nil,role:Domains::Sessions::Dto::SessionRole::Controller); puts JSON.generate(sessions.map{|s| o=Domains::Sessions::Operations.new.for_session(session_id:s.id,kind:Domains::Sessions::Dto::OperationKind::Start); {id:s.id,pane:s.pane_id,active:s.active,state:s.state.serialize,operation_state:o&.state&.serialize,operation_reason:o&.reason}})', check=False).stdout
+            diagnostic["session_operations"] = self.ruby('r=Domains::Sessions::Registry.new; sessions=r.all_active+r.pending_starts(workflow_id:nil,role:Domains::Sessions::Dto::SessionRole::Commander); puts JSON.generate(sessions.map{|s| o=Domains::Sessions::Operations.new.for_session(session_id:s.id,kind:Domains::Sessions::Dto::OperationKind::Start); {id:s.id,pane:s.pane_id,active:s.active,state:s.state.serialize,operation_state:o&.state&.serialize,operation_reason:o&.reason}})', check=False).stdout
             sanitized = self.redact(json.dumps(diagnostic))
             print("Disposable full-stack failure: " + sanitized)
             artifact = os.environ.get("DIGITALTWIN_TEST_ARTIFACTS")
@@ -155,12 +155,12 @@ class FullStackChatTest(core.DisposableComposeTest):
             for post in initial["posts"].values():
                 self.request("DELETE", "/posts/" + post["id"], token=self.admin_token)
         environment.update({"MATTERMOST_LOCAL_BOT_IDS": ",".join(bots.values()), "MATTERMOST_CHANNEL_IDS": ",".join(self.channels),
-                            "MASTER_CHANNEL_ID": self.channels[0], "MATTERMOST_AGENT_BOT_ID": bots["agent"], "MATTERMOST_WORKER_BOT_ID": bots["worker"]})
+                            "COMMANDER_CHANNEL_ID": self.channels[0], "MATTERMOST_AGENT_BOT_ID": bots["agent"], "MATTERMOST_WORKER_BOT_ID": bots["worker"]})
         for service in ["backend-web", "backend-worker", "backend-chat-listener"]:
             override["services"][service]["environment"].update(environment)
         path.write_text(json.dumps(override))
         role = {"cli": "pi", "provider": "fixture", "model": "deterministic", "family": "fixture", "launch_args": []}
-        files = {**{name + ".token": value for name, value in tokens.items()}, "roles.json": json.dumps({"controller": role}), "ready": self.project}
+        files = {**{name + ".token": value for name, value in tokens.items()}, "roles.json": json.dumps({"commander": role}), "ready": self.project}
         # Ruby has no app bootstrap here: write secret values from stdin, never argv/env/logs.
         self.compose(["run", "--rm", "--no-deps", "-T", "--entrypoint", "ruby", "backend-worker", "-rjson", "-e",
                       "JSON.parse(STDIN.read).each{|name,value| File.write('/auth/'+name,value,mode:'w',perm:0600)}"], source=json.dumps(files))

@@ -3,7 +3,7 @@
 
 module Domains
   module Sessions
-    # Read access to sessions. A scope is one workflow role, or the controller
+    # Read access to sessions. A scope is one workflow role, or the commander
     # (workflow_id nil). Lists order by created_at, then id.
     class Registry
       extend T::Sig
@@ -34,8 +34,8 @@ module Domains
       end
 
       sig { returns(T.nilable(Dto::SessionView)) }
-      def active_controller
-        Records.sessions(ordered(scope(nil, Dto::SessionRole::Controller).where(active: true))).first
+      def active_commander
+        Records.sessions(ordered(scope(nil, Dto::SessionRole::Commander).where(active: true))).first
       end
 
       sig { returns(T::Array[Dto::SessionView]) }

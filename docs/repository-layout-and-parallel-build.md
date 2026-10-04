@@ -17,6 +17,7 @@ digitaltwin/
 ├── chat-backend/       # Official Team Edition artifact pins and configuration
 ├── push-service/       # Existing upstream push artifact pins and configuration
 ├── mobile-apps/        # Our iOS/Android build recipe, patches, tests, release pipeline
+├── commander/          # Commander instructions; persistent global memory is planned
 ├── docs/               # Specs, plans, interfaces, operations, acceptance evidence
 ├── scripts/            # Local setup, integration checks, infrastructure handoff helpers
 ├── tests/              # Automated integration tests across deployables
@@ -42,7 +43,7 @@ digitaltwin/
 
 Two application images are built here: Kirei and Runtime.
 Mattermost and push proxy consume upstream artifacts; their workstreams configure and validate those services.
-Do not create separate Master, Worker bot, scheduler, push gateway, or chat application codebases.
+Do not create separate Commander, Worker bot, scheduler, push gateway, or chat application codebases.
 Kirei's worker process and the Herdr Runtime are distinct responsibilities.
 
 Keep application commands inside their folders, such as `integration-backend/bin/worker` and `agent-runtime/bin/runtime-smoke`.
@@ -91,7 +92,8 @@ The Phase 0 plan uses these mappings for implementation.
 
 Run host-side Ruby commands from `integration-backend/`; run `docker compose` from the repository root.
 Container paths are image contracts, independent of these source paths.
-Runtime workspace roots remain `/workspace/repos` and `/workspace/worktrees/<workflow-uuid>`.
+Runtime project workspace roots remain `/workspace/repos` and `/workspace/worktrees/<workflow-uuid>`.
+The Commander plan adds a persistent `commander/` scaffold mounted at `/workspace/commander`, with optional Git sync.
 
 ## Parallel Work Plan
 
@@ -99,7 +101,7 @@ One Codex session per deployable is a good default after a small shared foundati
 Use a separate branch and Git worktree for each session, with one integration owner.
 Folders reduce conflicts; they do not remove shared contracts or prerequisite work.
 
-1. **Validate the boundary first (Task 1).** Agree on verified Mattermost events, Herdr operations, CLI startup/idle behavior, and Master MCP round trips.
+1. **Validate the boundary first (Task 1).** Agree on verified Mattermost events, Herdr operations, CLI startup/idle behavior, and Commander MCP round trips.
    Record exact pins and sanitized fixtures; prove the disposable mention → Herdr → reply slice before production workflow work.
 2. **Establish the foundation (Tasks 2-3).** Bootstrap Kirei, local Compose, separate databases, shared types, durable jobs, inbox, and outbox.
    Agree on start commands, health checks, ENV/secret names, UID/GID, volumes, socket access, and callback authentication/routing.
@@ -108,13 +110,13 @@ Folders reduce conflicts; they do not remove shared contracts or prerequisite wo
 
 | Workstream | Scope and dependencies |
 | --- | --- |
-| Integration backend (Kirei) | Tasks 4-5 routing/enrollment, then Tasks 7-10 gates, reviews, Master, and delivery. Runtime/session contracts and Task 3 state must precede their consumers. |
+| Integration backend (Kirei) | Tasks 4-5 routing/enrollment, then Tasks 7-10 gates, reviews, Commander, and delivery. Runtime/session contracts and Task 3 state must precede their consumers. |
 | Agent runtime (Herdr) | Task 6 image, tools, persistence, and provisioning after Task 1 validation. Coordinate Kirei's Herdr adapter, sessions migration, and packaged clients with the Kirei owner. |
 | Chat backend + push service | Configure pinned upstream services, verify authenticated threads/reconnect and push compatibility, and document upgrades/restore. One session can own both small configuration folders. |
 | Mobile apps | Build pipeline, patches, chat/deep links, and push checks against the agreed server/push versions. Device, signing, and distribution checks need operator setup. |
 | Integration | Own root Compose/environment glue, cross-service startup, smoke checks, production handoff, and acceptance evidence. Merge compatible changes in dependency order. |
 
-Do not split Kirei web, worker, listener, and Master into separate deployable sessions.
+Do not split Kirei web, worker, listener, and Commander into separate deployable sessions.
 They share one Ruby application, schema, dependencies, and transaction rules.
 Additional Kirei domain sessions can follow later with explicit file ownership and stable shared types.
 Task 1 validation gates still block Tasks 6-10 when required contracts lack evidence.

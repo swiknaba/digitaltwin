@@ -3,7 +3,7 @@
 
 module Services
   module Workflows
-    # Handles human workflow controls: master.control jobs from the Master's
+    # Handles human workflow controls: commander.control jobs from the Commander's
     # tool, and workflow.pause/resume/finish/cancel jobs from a thread command.
     # Each control is source-verified and version-bound, and its transition,
     # follow-up jobs, session stops and audit receipt commit together.
@@ -43,14 +43,14 @@ module Services
       sig { override.params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
       def call(job:)
         Kirei::Services::Runner.call(self.class.name.to_s) do
-          Platform::Unwrap.call(job.kind == Kind::MasterControl ? master_control(job) : thread_control(job))
+          Platform::Unwrap.call(job.kind == Kind::CommanderControl ? commander_control(job) : thread_control(job))
           Platform::Jobs::Dto::Decision.complete
         end
       end
 
       sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Outcome) }
-      private def master_control(job)
-        payload = Domains::Commander::Dto::MasterControlJob.from_hash(job.payload, true)
+      private def commander_control(job)
+        payload = Domains::Commander::Dto::CommanderControlJob.from_hash(job.payload, true)
         action = Action.try_deserialize(payload.action)
         return failure(Code::UnsupportedAction, "Unsupported workflow action") unless action
 
@@ -160,7 +160,7 @@ module Services
       end
 
       sig { returns(Outcome) }
-      private def malformed = failure(Code::MalformedJob, "Controller job is malformed")
+      private def malformed = failure(Code::MalformedJob, "Commander job is malformed")
 
       sig { params(code: Code, detail: String).returns(Outcome) }
       private def failure(code, detail)

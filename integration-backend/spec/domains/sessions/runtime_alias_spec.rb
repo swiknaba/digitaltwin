@@ -8,7 +8,7 @@ RSpec.describe Domains::Sessions::Operations do
 
   it "reserves a valid Herdr name for mixed-case durable IDs without changing the ID" do
     session_id = "session_abCDEF123xyz"
-    result = described_class.new.reserve(session_id: session_id, workflow_id: nil, role: Domains::Sessions::Dto::SessionRole::Controller, configuration: configuration, credential_digest: "fixture-digest")
+    result = described_class.new.reserve(session_id: session_id, workflow_id: nil, role: Domains::Sessions::Dto::SessionRole::Commander, configuration: configuration, credential_digest: "fixture-digest")
     expect(result.failed?).to eq(false)
     session = Domains::Sessions::Registry.new.find(id: session_id)
     expect(session.id).to eq(session_id)
@@ -17,7 +17,7 @@ RSpec.describe Domains::Sessions::Operations do
   end
 
   it "preserves existing valid aliases" do
-    result = described_class.new.reserve(session_id: "session_first", workflow_id: nil, role: Domains::Sessions::Dto::SessionRole::Controller, configuration: configuration, credential_digest: "fixture-digest")
+    result = described_class.new.reserve(session_id: "session_first", workflow_id: nil, role: Domains::Sessions::Dto::SessionRole::Commander, configuration: configuration, credential_digest: "fixture-digest")
     expect(result.failed?).to eq(false)
     expect(Domains::Sessions::Registry.new.find(id: "session_first").alias).to eq("digitaltwin-session_first")
   end

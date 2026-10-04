@@ -18,7 +18,7 @@ RSpec.describe Services::Commands::Parser do
     expect(parse("@agent recover-session #{uuid} pane:1.a_b-c")).to eq(dto::RecoverSession.new(operation_id: uuid, pane_id: "pane:1.a_b-c"))
     expect(parse("@agent recover-followup followup_abc123 delivered")).to eq(dto::RecoverFollowup.new(followup_id: "followup_abc123", outcome: dto::FollowupOutcome::Delivered))
     expect(parse("@agent recover-followup followup_def456 discard")).to eq(dto::RecoverFollowup.new(followup_id: "followup_def456", outcome: dto::FollowupOutcome::Discard))
-    expect(parse("@agent recover-master #{uuid}")).to eq(dto::RecoverMaster.new(request_id: uuid))
+    expect(parse("@agent recover-commander #{uuid}")).to eq(dto::RecoverCommander.new(request_id: uuid))
   end
 
   it "parses exact approvals and routed instructions" do
@@ -44,7 +44,7 @@ RSpec.describe Services::Commands::Parser do
   end
 
   it "rejects near misses" do
-    expect(parse("@agent recover-master #{uuid} ")).to be_nil
+    expect(parse("@agent recover-commander #{uuid} ")).to be_nil
     expect(parse("@agent recover-start #{uuid} #{thread} ")).to be_nil
     expect(parse("@agent recover-start #{uuid} #{"T" * 26}")).to be_nil
     expect(parse("@agent recover-followup followup_4 maybe")).to be_nil

@@ -24,7 +24,7 @@ RSpec.describe Platform::Jobs::Store do
 
   it "persists payload structs without nil props and parses them strictly" do
     payload = Domains::Commander::Dto::InboxDispatchJob.new(inbox_id: "inbox_7", channel_id: "c", thread_id: "t")
-    store.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterPrompt, payload: payload, dispatch_key: "inbox:7:master.prompt")
+    store.enqueue(kind: Platform::Jobs::Dto::JobKind::CommanderPrompt, payload: payload, dispatch_key: "inbox:7:commander.prompt")
     persisted = db[:jobs].first[:payload].to_hash
     expect(persisted).to eq("inbox_id" => "inbox_7", "channel_id" => "c", "thread_id" => "t")
     expect(Domains::Commander::Dto::InboxDispatchJob.from_hash(persisted, true)).to eq(payload)

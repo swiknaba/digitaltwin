@@ -15,7 +15,7 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[Domains::Workflows::Dto::WorkflowView] }
 
       sig do
-        params(source: Domains::Messaging::VerifyHumanSource, approvals: Master::RecordApproval, advance: AdvanceApproval,
+        params(source: Domains::Messaging::VerifyHumanSource, approvals: Commander::RecordApproval, advance: AdvanceApproval,
                catalog: Domains::Workflows::Catalog).void
       end
       def initialize(source:, approvals:, advance:, catalog: Domains::Workflows::Catalog.new)
@@ -64,7 +64,7 @@ module Services
       end
 
       sig { returns(Outcome) }
-      private def malformed = failure(Code::MalformedJob, "Controller job is malformed")
+      private def malformed = failure(Code::MalformedJob, "Commander job is malformed")
 
       sig { params(code: Code, detail: String).returns(Outcome) }
       private def failure(code, detail)

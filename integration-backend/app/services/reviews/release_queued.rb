@@ -16,7 +16,7 @@ module Services
       RequestFailed = Adapters::Mattermost::Errors::RequestFailed
 
       sig do
-        params(route: Master::RouteFollowup, followups: Domains::Commander::Followups, catalog: Domains::Workflows::Catalog,
+        params(route: Commander::RouteFollowup, followups: Domains::Commander::Followups, catalog: Domains::Workflows::Catalog,
                queued_messages: Domains::Workflows::QueuedMessages, jobs: Platform::Jobs::Store, audit: Platform::Audit::Log).void
       end
       def initialize(route:, followups: Domains::Commander::Followups.new, catalog: Domains::Workflows::Catalog.new,
@@ -72,7 +72,7 @@ module Services
       end
 
       # A clarification leaves the message queued.
-      sig { params(outcome: Master::Dto::RouteOutcome).returns(T::Boolean) }
+      sig { params(outcome: Commander::Dto::RouteOutcome).returns(T::Boolean) }
       private def route_dispatched?(outcome) = !outcome.followup.nil?
     end
   end

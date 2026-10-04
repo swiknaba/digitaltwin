@@ -23,6 +23,6 @@ job = T.must(store.claim(worker_id: "fixture", now: now + 34))
 abort "effect marker" unless job.lease.begin_effect(now: now + 35)
 store.claim(worker_id: "recovery", now: now + 65)
 abort "unsafe retry" unless T.must(store.find(id: uncertain)).status == Platform::Jobs::Dto::JobStatus::Uncertain
-store.enqueue(kind: Platform::Jobs::Dto::JobKind::MasterDispatch,
-              payload: Domains::Commander::Dto::MasterDispatchJob.new(request_id: "integration:request"),
+store.enqueue(kind: Platform::Jobs::Dto::JobKind::CommanderDispatch,
+              payload: Domains::Commander::Dto::CommanderDispatchJob.new(request_id: "integration:request"),
               dispatch_key: "integration:blocked")

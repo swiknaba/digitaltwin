@@ -19,7 +19,7 @@ module Adapters
 
       sig { override.returns(T::Array[JsonObject]) }
       def definitions
-        value = request("GET", "/internal/master/manifest").fetch("tools")
+        value = request("GET", "/internal/commander/manifest").fetch("tools")
         raise ArgumentError, "Invalid tool manifest" unless value.is_a?(Array) && value.all? { |item| json_object?(item) }
 
         value
@@ -27,7 +27,7 @@ module Adapters
 
       sig { override.params(name: String, args: JsonObject, token: String).returns(Object) }
       def call(name, args, token:)
-        request("POST", "/internal/master/tools", { "name" => name, "arguments" => args }, token).fetch("result")
+        request("POST", "/internal/commander/tools", { "name" => name, "arguments" => args }, token).fetch("result")
       end
 
       sig { params(method: String, path: String, body: T.nilable(JsonObject), token: T.nilable(String)).returns(JsonObject) }

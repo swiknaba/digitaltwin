@@ -83,9 +83,9 @@ module Domains
 
       sig { params(stored: Dto::RoleAssignments).returns(Dto::RoleAssignments) }
       private_class_method def self.role_assignments(stored)
-        controller = stored.controller
+        commander = stored.commander
         roles = Dto::RoleAssignments.new(writer: role_config(stored.writer), reviewer: role_config(stored.reviewer),
-                                         controller: controller && role_config(controller))
+                                         commander: commander && role_config(commander))
         verified!(roles.serialize == stored.serialize)
         roles
       end
@@ -94,9 +94,9 @@ module Domains
       private_class_method def self.role_file(stored)
         writer = stored.writer
         reviewer = stored.reviewer
-        controller = stored.controller
+        commander = stored.commander
         file = Dto::RoleFile.new(writer: writer && role_config(writer), reviewer: reviewer && role_config(reviewer),
-                                 controller: controller && role_config(controller))
+                                 commander: commander && role_config(commander))
         verified!(file.serialize == stored.serialize)
         file
       end
