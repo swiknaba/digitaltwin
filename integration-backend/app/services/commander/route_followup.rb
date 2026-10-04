@@ -119,8 +119,10 @@ module Services
         @renewals.schedule(session: session) if session&.active && session.credential_expires_at <= @now.call
         evidence = Commander::Dto::RoutingEvidence.new(source_inbox_id: inbox_id, selection: selection, interpretation: interpretation,
                                                        direct_thread: direct&.id, recent_binding: recent_binding,
-                                                       attribution: Commander::Dto::InstructionAttribution.new(effective_sender: forwarded ? "Commander" : d.actor.user_id, origin_inbox_id: inbox_id,
-                                                                                                                origin_user_id: d.actor.user_id, mode: forwarded ? "commander_forwarded" : "direct_human"))
+                                                       attribution: Commander::Dto::InstructionAttribution.new(
+                                                         effective_sender: forwarded ? "Commander" : d.actor.user_id, origin_inbox_id: inbox_id,
+                                                         origin_user_id: d.actor.user_id, mode: forwarded ? "commander_forwarded" : "direct_human"
+                                                       ))
         followup = Platform::Unwrap.call(@followups.create(inbox_id: inbox_id, workflow_id: w.id, session: session, evidence: evidence))
         threads = [d.thread_id]
         threads << COMMANDER_THREAD if commander_root

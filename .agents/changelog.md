@@ -217,3 +217,7 @@
 
 - Add bounded, source-attributed global and project Commander memory with optimistic corrections, idempotent requests, scope serialization, and atomic local Markdown rendering.
 - Add the durable memory schema and clean-migration coverage. Optional Git synchronization remains unimplemented and disabled because no configured repository or operator credentials are available.
+# 2026-10-04
+
+- Align Commander attribution prompt and tool-response contracts with verified routing metadata.
+- Serialize bounded concurrent Commander-memory writes through the scope lock.

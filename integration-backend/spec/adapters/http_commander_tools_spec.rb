@@ -106,6 +106,7 @@ RSpec.describe "POST /internal/commander/tools wire format" do
     expect([status, body]).to eq([200, "{\"result\":{\"id\":\"#{row[:id]}\",\"inbox_id\":\"inbox_1\",\"workflow_id\":\"w1\",\"session_id\":\"s1\",\"generation\":1," \
                                        "\"status\":\"queued\",\"reason\":null,\"evidence\":{\"selection\":null,\"direct_thread\":null," \
                                        "\"interpretation\":{\"workflow_id\":\"w1\",\"evidence_inbox_ids\":[\"inbox_2\"]},\"recent_binding\":null," \
+                                       "\"attribution\":{\"effective_sender\":\"Commander\",\"origin_inbox_id\":\"inbox_1\",\"origin_user_id\":\"#{user}\",\"mode\":\"commander_forwarded\"}," \
                                        "\"source_inbox_id\":\"inbox_1\"},\"created_at\":\"#{row[:created_at]}\",\"delivered_at\":null}}"])
     expect(tool("send_prompt", "workflow_id" => "w1", "evidence_inbox_ids" => ["inbox_2"])).to eq([status, body])
     # A request from w2's thread: direct w2 plus interpreted w1 needs clarification.

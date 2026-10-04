@@ -17,6 +17,7 @@ module Services
       MAX_CONTENT_BYTES = 4_000
       MAX_ENTRIES = 100
       MAX_LIMIT = 50
+      LOCK_ATTEMPTS = 10
 
       sig do
         params(commander_workspace: String, directory: Domains::Projects::Directory, entries: Domains::Memory::MemoryEntries,
@@ -46,6 +47,7 @@ module Services
 
       sig { params(scope: Scope, project_id: T.nilable(String), content: String, source: String, idempotency_key: String).returns(Outcome) }
       def remember(scope:, project_id:, content:, source:, idempotency_key:)
+        attempts = T.let(0, Integer)
         return invalid_content unless valid_content?(content: content, source: source, idempotency_key: idempotency_key)
         return failure(Code::MissingProject, "Memory scope requires its matching project binding") unless valid_scope_binding?(scope: scope, project_id: project_id)
 
@@ -63,12 +65,20 @@ module Services
             Kirei::Services::Result.new(result: entry)
           end
         end
-      rescue Adapters::Memory::Errors::WriteFailed, Platform::Lock::Busy => error
+      rescue Platform::Lock::Busy => error
+        attempts = T.must(attempts) + 1
+        if attempts < LOCK_ATTEMPTS
+          sleep 0.01
+          retry
+        end
+        failure(Code::PersistenceFailed, error.message)
+      rescue Adapters::Memory::Errors::WriteFailed => error
         failure(Code::PersistenceFailed, error.message)
       end
 
       sig { params(id: String, expected_revision: Integer, content: String, source: String, idempotency_key: String).returns(Outcome) }
       def correct(id:, expected_revision:, content:, source:, idempotency_key:)
+        attempts = T.let(0, Integer)
         return invalid_content unless valid_content?(content: content, source: source, idempotency_key: idempotency_key)
 
         original = @entries.find(id: id)
@@ -89,7 +99,14 @@ module Services
             Kirei::Services::Result.new(result: corrected)
           end
         end
-      rescue Adapters::Memory::Errors::WriteFailed, Platform::Lock::Busy => error
+      rescue Platform::Lock::Busy => error
+        attempts = T.must(attempts) + 1
+        if attempts < LOCK_ATTEMPTS
+          sleep 0.01
+          retry
+        end
+        failure(Code::PersistenceFailed, error.message)
+      rescue Adapters::Memory::Errors::WriteFailed => error
         failure(Code::PersistenceFailed, error.message)
       end
 
