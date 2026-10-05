@@ -9,6 +9,10 @@ Shared service fixtures and acceptance checks belong here when they exercise mul
 Component tests cannot establish that independently built services work together.
 This folder verifies shared contracts and recovery without giving one component ownership of another component's source.
 
+For a concise human-operated local startup, activation, and live-acceptance
+sequence, see [local-human-runbook.md](local-human-runbook.md). It keeps
+provider login and paid calls as explicit operator actions.
+
 ## API and Configuration Contract
 
 Run tests from the repository root against local Compose with disposable data and simulated providers by default.
