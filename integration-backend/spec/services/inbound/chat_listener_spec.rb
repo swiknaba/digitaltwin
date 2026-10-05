@@ -9,7 +9,7 @@ RSpec.describe Services::Inbound::ChatListener do
   let(:listener) do
     described_class.new(client: client, api: api, verifier: Adapters::Mattermost::DeliveryVerifier.new(api: api), channels: [],
                         router: Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", commander_channel_id: nil),
-                        validation_mode: true, heartbeat_dir: "/tmp")
+                        transport_enabled: true, heartbeat_dir: "/tmp")
   end
 
   it "reads the actual TextMessage buffer rather than Object#to_s" do

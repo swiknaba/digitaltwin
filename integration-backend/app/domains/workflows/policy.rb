@@ -7,6 +7,11 @@ module Domains
     class Policy
       extend T::Sig
 
+      sig { params(local_dispatch_activation: T.nilable(Dto::LocalDispatchActivation)).void }
+      def initialize(local_dispatch_activation: nil)
+        @local_dispatch_activation = local_dispatch_activation
+      end
+
       sig { params(writer: Dto::RoleConfig, reviewer: Dto::RoleConfig).returns(T::Boolean) }
       def diverse?(writer, reviewer)
         writer.provider != reviewer.provider && writer.family != reviewer.family
@@ -30,9 +35,10 @@ module Domains
       sig { params(state: String).returns(T::Boolean) }
       def settled?(state) = %w[idle done].include?(state)
 
-      # Cannot be enabled by the environment: requires reviewed release-bound evidence/code.
+      # Local dispatch requires the checked, read-only operator acknowledgement
+      # file. Hosted activation remains intentionally outside this repository.
       sig { returns(T::Boolean) }
-      def dispatch_allowed? = false
+      def dispatch_allowed? = !@local_dispatch_activation.nil?
     end
   end
 end

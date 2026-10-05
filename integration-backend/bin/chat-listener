@@ -6,7 +6,9 @@ Startup.validate!
 exit if ENV["BOOT_CHECK_ONLY"] == "1"
 require "async"
 Async do
-  Services::Composition.instance.chat_listener.call
+  composition = Services::Composition.instance
+  composition.local_dispatch_preflight.call
+  composition.chat_listener.call
 ensure
   Kirei::App.raw_db_connection.disconnect
 end.wait

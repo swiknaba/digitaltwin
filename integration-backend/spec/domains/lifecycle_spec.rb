@@ -221,7 +221,10 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(execute(op[:id])).to eq("complete")
     expect(db[:sessions][id: id][:runtime_identity]).to eq(identity)
     launch = Adapters::Herdr::Dto::LaunchSpec.new(cli: "codex", launch_args: ["--model", "fixture-gpt"])
-    expect(herdr).to have_received(:start).once.with(pane_id: "pane", name: Domains::Sessions::Registry.new.find(id: id).alias, launch: launch)
+    expect(herdr).to have_received(:start).once.with(
+      pane_id: "pane", name: Domains::Sessions::Registry.new.find(id: id).alias,
+      launch: launch, workspace_id: "runtime-workspace"
+    )
     expect(herdr).to have_received(:create_workspace).with(hash_including(env: hash_including("DIGITALTWIN_SESSION_GENERATION" => "1",
                                                                                               "DIGITALTWIN_SESSION_TOKEN_FILE" => File.join(@credential_root, "#{id}.token"))))
     expect(File.stat(File.join(@credential_root, "#{id}.token")).mode & 0777).to eq(0600)

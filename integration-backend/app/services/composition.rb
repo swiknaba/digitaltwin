@@ -67,6 +67,7 @@ module Services
       @start_existing = T.let(nil, T.nilable(Workflows::StartExisting))
       @deliver_outbox = T.let(nil, T.nilable(Outbound::DeliverOutbox))
       @chat_listener = T.let(nil, T.nilable(Inbound::ChatListener))
+      @local_dispatch_preflight = T.let(nil, T.nilable(LocalDispatchPreflight))
     end
 
     sig { returns(Domains::Messaging::VerifyHumanSource) }
@@ -266,8 +267,13 @@ module Services
                                              commander_channel_id: @configuration.commander_channel_id)
         Inbound::ChatListener.new(client: listener_client, api: listener_api, verifier: verifier,
                                   channels: required(@configuration.mattermost_channel_ids, "MATTERMOST_CHANNEL_IDS"), router: router,
-                                  validation_mode: @configuration.chat_validation_mode, heartbeat_dir: @configuration.heartbeat_dir)
+                                  transport_enabled: @configuration.chat_transport_enabled?, heartbeat_dir: @configuration.heartbeat_dir)
       end
+    end
+
+    sig { returns(LocalDispatchPreflight) }
+    def local_dispatch_preflight
+      @local_dispatch_preflight ||= LocalDispatchPreflight.new(configuration: @configuration)
     end
 
     sig { returns(T.nilable(Domains::Workflows::Dto::RoleConfig)) }
@@ -343,7 +349,7 @@ module Services
 
     sig { returns(Domains::Workflows::Policy) }
     private def policy
-      @policy ||= Domains::Workflows::Policy.new
+      @policy ||= Domains::Workflows::Policy.new(local_dispatch_activation: @configuration.local_dispatch_activation)
     end
 
     sig { type_parameters(:Value).params(value: T.nilable(T.type_parameter(:Value)), name: String).returns(T.type_parameter(:Value)) }

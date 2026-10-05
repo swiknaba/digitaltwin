@@ -16,8 +16,8 @@ module FullStackFixture
       super
     end
 
-    sig { override.params(pane_id: String, name: String, launch: Adapters::Herdr::Dto::LaunchSpec).returns(Adapters::Herdr::Dto::Pane) }
-    def start(pane_id:, name:, launch:)
+    sig { override.params(pane_id: String, name: String, launch: Adapters::Herdr::Dto::LaunchSpec, workspace_id: T.nilable(String)).returns(Adapters::Herdr::Dto::Pane) }
+    def start(pane_id:, name:, launch:, workspace_id: nil)
       super
     rescue Adapters::Herdr::Errors::ProtocolViolation => error
       warn "Fixture Herdr startup failed: #{error.message}"
