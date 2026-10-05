@@ -59,24 +59,27 @@ class DisposableComposeTest(unittest.TestCase):
         if len(context) != 1 or not context[0]["Endpoints"]["docker"]["Host"].startswith("unix://"):
             raise RuntimeError("suite requires a local Unix Docker endpoint; remote infrastructure is excluded")
         cls.project = "digitaltwin-integration-" + uuid.uuid4().hex[:12]
+        cls.image_prefix = os.environ.get("DIGITALTWIN_TEST_IMAGE_PREFIX", cls.project)
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", cls.image_prefix):
+            raise RuntimeError("test image prefix must be a local image name")
         cls.temporary = tempfile.TemporaryDirectory(prefix=cls.project)
         cls.addClassCleanup(cls.temporary.cleanup)
         override = Path(cls.temporary.name) / "compose.yml"
         override.write_text(f'''services:
   mattermost:
-    image: {cls.project}-chat:check
+    image: {cls.image_prefix}-chat:check
     ports: !override
       - "127.0.0.1::8065"
   backend-migrate:
-    image: {cls.project}-backend:check
+    image: {cls.image_prefix}-backend:check
   backend-web:
-    image: {cls.project}-backend:check
+    image: {cls.image_prefix}-backend:check
     ports: !override
       - "127.0.0.1::3000"
   backend-worker:
-    image: {cls.project}-backend:check
+    image: {cls.image_prefix}-backend:check
   agent-runtime:
-    image: {cls.project}-runtime:check
+    image: {cls.image_prefix}-runtime:check
 ''')
         cls.base = ["docker", "compose", "--env-file", str(ROOT / ".env.example"), "-p", cls.project]
         for name in [ROOT / "compose.yml", ROOT / "compose.backend.yml", ROOT / "compose.integration.yml", override]:
@@ -84,7 +87,11 @@ class DisposableComposeTest(unittest.TestCase):
         cls.addClassCleanup(cls.cleanup)
         cls.command([str(ROOT / "scripts/prepare-callback-context")])
         cls.compose(["config", "--quiet"])
-        cls.compose(["build", "mattermost", "backend-web", "agent-runtime"], timeout=1800)
+        images = [f"{cls.image_prefix}-{service}:check" for service in ["chat", "backend", "runtime"]]
+        if cls.image_prefix == cls.project:
+            cls.compose(["build", "mattermost", "backend-web", "agent-runtime"], timeout=1800)
+        else:
+            cls.command(["docker", "image", "inspect", *images])
         try:
             cls.compose(["up", "-d", "--no-build", "--pull", "never", "--wait", "--wait-timeout", "240"], timeout=300)
         except RuntimeError as error:
@@ -123,7 +130,8 @@ class DisposableComposeTest(unittest.TestCase):
     def cleanup(cls):
         result = cls.compose(["down", "--volumes", "--remove-orphans"], check=False)
         # Only uniquely tagged images from this run; no other workers' artifacts.
-        cls.command(["docker", "image", "rm", *[f"{cls.project}-{s}:check" for s in ["chat", "backend", "runtime"]]], check=False)
+        if cls.image_prefix == cls.project:
+            cls.command(["docker", "image", "rm", *[f"{cls.project}-{s}:check" for s in ["chat", "backend", "runtime"]]], check=False)
         if result.returncode:
             raise RuntimeError(f"cleanup failed for own project {cls.project}")
         label = "label=com.docker.compose.project=" + cls.project
@@ -139,6 +147,10 @@ class DisposableComposeTest(unittest.TestCase):
     @classmethod
     def ruby(cls, source, **kwargs):
         return cls.compose(["exec", "-T", "backend-web", "bundle", "exec", "ruby", "-r", "./app", "-"], source=source, **kwargs)
+
+    @classmethod
+    def ruby_with_runtime_socket(cls, source, **kwargs):
+        return cls.compose(["exec", "-T", "backend-worker", "bundle", "exec", "ruby", "-r", "./app", "-"], source=source, **kwargs)
 
     def get(self, service, path):
         with urllib.request.urlopen(self.addresses[service] + path, timeout=10) as response:

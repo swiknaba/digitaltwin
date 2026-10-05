@@ -17,7 +17,6 @@ module Adapters
       MAX_LINE_BYTES = 1_048_576
       REQUEST_TIMEOUT_SECONDS = 5.0
       STARTUP_TIMEOUT_SECONDS = 30
-      FRESH_WORKSPACE_READINESS_SECONDS = 7.0
       BUSY_RETRY_SECONDS = 2.0
       SAFE_ERROR_CODES = T.let(["agent_pane_busy"].freeze, T::Array[String])
 
@@ -39,7 +38,6 @@ module Adapters
       sig { params(pane_id: String, name: String, launch: Dto::LaunchSpec, workspace_id: T.nilable(String)).returns(Dto::Pane) }
       def start(pane_id:, name:, launch:, workspace_id: nil)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + STARTUP_TIMEOUT_SECONDS
-        await_fresh_workspace(pane_id: pane_id, workspace_id: workspace_id, deadline: deadline) if workspace_id
         result = begin
           startup_request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started", deadline: deadline)
         rescue Errors::ProtocolViolation => error
@@ -87,44 +85,6 @@ module Adapters
       sig { params(pane: Dto::Pane).returns(T::Boolean) }
       private def initial_shell?(pane)
         pane.agent_status == Dto::AgentStatus::Unknown && pane.name.nil? && pane.agent.nil? && pane.agent_session.nil? && pane.interactive_ready.nil? && pane.launch_pending.nil?
-      end
-
-      # A workspace.create acknowledgement only confirms that Herdr made the
-      # terminal. The server can still be draining a just-closed interactive
-      # pane, during which its next socket connection is not serviced. Before
-      # submitting agent.start, wait briefly for a read-only observation that
-      # binds this new workspace to an untouched pane. This never repeats a
-      # launch effect and keeps the normal startup deadline for the launch and
-      # its readiness polling.
-      sig { params(pane_id: String, workspace_id: String, deadline: T.any(Float, Integer)).void }
-      private def await_fresh_workspace(pane_id:, workspace_id:, deadline:)
-        readiness_deadline = [deadline.to_f, Process.clock_gettime(Process::CLOCK_MONOTONIC) + FRESH_WORKSPACE_READINESS_SECONDS].min
-        loop do
-          begin
-            return if initial_shell_agent?(pane_id: pane_id, workspace_id: workspace_id, deadline: readiness_deadline)
-            raise Errors::ProtocolViolation, "Herdr fresh workspace changed before startup"
-          rescue Errors::ProtocolViolation => error
-            raise unless error.code == "unknown"
-          rescue Timeout::Error
-            # The read has no runtime effect. A new socket after a bounded
-            # delay is safe, unlike retrying agent.start after a timeout.
-          end
-
-          begin
-            return if pane_belongs_to_workspace?(pane_id: pane_id, workspace_id: workspace_id, deadline: readiness_deadline) &&
-                      no_agent_submitted?(pane_id: pane_id, deadline: readiness_deadline)
-            raise Errors::ProtocolViolation, "Herdr fresh workspace changed before startup"
-          rescue Errors::ProtocolViolation => error
-            raise unless error.code == "unknown"
-          rescue Timeout::Error
-            # See the read-only timeout handling above.
-          end
-
-          remaining = readiness_deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          raise Errors::ProtocolViolation, "Herdr fresh workspace readiness timed out" unless remaining.positive?
-
-          sleep([0.1, remaining].min)
-        end
       end
 
       # Herdr explicitly rejects agent_pane_busy before it starts an agent. One

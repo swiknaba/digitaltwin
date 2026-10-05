@@ -48,6 +48,7 @@ class FullStackChatTest(core.DisposableComposeTest):
             diagnostic["fixture_errors"] = self.compose(["exec", "-T", "agent-runtime", "python3", "-c",
                                                          "from pathlib import Path; p=Path.home()/'fixture-errors.jsonl'; print(p.read_text() if p.exists() else '')"], check=False).stdout
             diagnostic["raw_start_probe"] = getattr(self, "raw_start_probe", None)
+            diagnostic["ruby_start_probe"] = getattr(self, "ruby_start_probe", None)
             diagnostic["herdr_panes"] = self.compose(["exec", "-T", "agent-runtime", "herdr", "pane", "list"], check=False).stdout
             diagnostic["herdr_server_log"] = self.compose(["exec", "-T", "agent-runtime", "sh", "-ec",
                                                             "tail -n 200 /home/runtime/.config/herdr/herdr-server.log"], check=False).stdout[-12000:]
@@ -102,6 +103,7 @@ class FullStackChatTest(core.DisposableComposeTest):
         return user, headers["Token"]
 
     def configure_chat(self):
+        self.configure_fixture_runtime()
         fixture = core.ROOT / "tests/fixtures/full_stack"
         self.auth_volume = self.project + "_e2e-auth"
         environment = {
@@ -173,6 +175,18 @@ class FullStackChatTest(core.DisposableComposeTest):
         self.agent_id = bots["agent"]
         self.agent_token = tokens["agent"]
 
+    def configure_fixture_runtime(self):
+        if getattr(type(self), "fixture_runtime_configured", False):
+            return
+        fixture = core.ROOT / "tests/fixtures/full_stack"
+        override = {"services": {"agent-runtime": {"volumes": [str(fixture / "pi") + ":/usr/local/bin/pi:ro",
+                                                                  str(fixture / "pi") + ":/usr/local/bin/hermes:ro"]}}}
+        path = Path(self.temporary.name) / "fixture-runtime.json"
+        path.write_text(json.dumps(override))
+        type(self).base += ["-f", str(path)]
+        self.compose(["up", "-d", "--no-build", "--wait", "--wait-timeout", "120", "agent-runtime"], timeout=180)
+        type(self).fixture_runtime_configured = True
+
     def effects(self):
         result = self.compose(["exec", "-T", "agent-runtime", "python3", "-c",
                                "from pathlib import Path; p=Path.home()/'fixture-effects.jsonl'; print(p.read_text() if p.exists() else '')"])
@@ -182,7 +196,7 @@ class FullStackChatTest(core.DisposableComposeTest):
         data, _ = self.request("GET", "/channels/" + channel + "/posts", token=self.human_token)
         return [post for post in data["posts"].values() if post["message"] == "E2E_REPLY=" + nonce]
 
-    def test_backend_checks(self):
+    def test_07_fast_backend_checks(self):
         for database in ["digitaltwin_backend_test", "digitaltwin_migration_test"]:
             self.compose(["exec", "-T", "postgres", "createdb", "-U", "postgres", database])
         result = self.compose(["run", "--rm", "--no-deps", "-T",
@@ -198,7 +212,78 @@ class FullStackChatTest(core.DisposableComposeTest):
         self.evidence["backend_examples"] = sum(int(examples) for examples, _ in counts)
         self.evidence["backend_failures"] = sum(int(failures) for _, failures in counts)
 
-    def test_real_chat_and_herdr_roundtrip(self):
+    def test_08_ruby_client_herdr_startup(self):
+        self.configure_fixture_runtime()
+        source = r'''
+require "json"
+require "securerandom"
+require "socket"
+require "async"
+require "./app"
+
+clock = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+
+def raw_call(clock, method, params)
+  opened = clock.call
+  socket = UNIXSocket.new("/run/herdr/herdr.sock")
+  connected = clock.call
+  request = JSON.generate({ id: SecureRandom.uuid, method: method, params: params }) + "\n"
+  bytes = socket.write(request)
+  written = clock.call
+  abort "partial Herdr request write" unless bytes == request.bytesize
+  line = socket.gets("\n", 1_048_577)
+  received = clock.call
+  abort "invalid Herdr response" unless line&.end_with?("\n") && line.bytesize <= 1_048_576
+  [{ "method" => method, "connect_ms" => ((connected - opened) * 1000).round(1),
+     "write_ms" => ((written - connected) * 1000).round(1), "read_ms" => ((received - written) * 1000).round(1) },
+   JSON.parse(line)]
+ensure
+  socket&.close
+end
+
+raw_workspace_timing, raw_workspace = raw_call(clock, "workspace.create",
+                                                { "cwd" => "/workspace/commander", "label" => "ruby-transport-probe", "env" => {}, "focus" => false })
+raw_pane_id = raw_workspace.fetch("result").fetch("root_pane").fetch("pane_id")
+raw_workspace_id = raw_workspace.fetch("result").fetch("workspace").fetch("workspace_id")
+raw_start_timing, = raw_call(clock, "agent.start", { "pane_id" => raw_pane_id, "name" => "ruby-transport-probe", "kind" => "pi", "args" => [] })
+raw_close_timing, = raw_call(clock, "workspace.close", { "workspace_id" => raw_workspace_id })
+
+client = Adapters::Herdr::Client.new
+client_probe = Async do
+  Kirei::Services::Runner.call("FullStackFixture::HerdrProbe") do
+    lock = Platform::Lock.new
+    workspace = nil
+    started = clock.call
+    begin
+      lock.call(key: "ruby-socket-probe") do
+        workspace = client.create_workspace(cwd: "/workspace/commander", label: "ruby-socket-probe", env: {})
+        created = clock.call
+        # Execute the same second database checkout as record_workspace while
+        # the advisory lock keeps its first checkout pinned.
+        Kirei::App.raw_db_connection[:sessions].where(id: "fixture-none").update(alias: "fixture-none")
+        recorded = clock.call
+        pane = client.start(pane_id: workspace.root_pane_id, name: "ruby-socket-probe",
+                            launch: Adapters::Herdr::Dto::LaunchSpec.new(cli: "pi", launch_args: []), workspace_id: workspace.workspace_id)
+        settled = clock.call
+        { "workspace_create_ms" => ((created - started) * 1000).round(1),
+          "workspace_record_ms" => ((recorded - created) * 1000).round(1),
+          "agent_start_ms" => ((settled - recorded) * 1000).round(1),
+          "agent" => pane.agent, "proven_session" => !pane.agent_session.nil? }
+      end
+    ensure
+      client.close(pane_id: workspace.root_pane_id) if workspace
+    end
+  end
+end.wait
+puts JSON.generate({ "ruby_transport" => [raw_workspace_timing, raw_start_timing, raw_close_timing], **client_probe })
+'''
+        result = self.ruby_with_runtime_socket(source)
+        self.ruby_start_probe = json.loads(result.stdout.splitlines()[-1])
+        print("Ruby Herdr startup probe: " + json.dumps(self.ruby_start_probe, sort_keys=True))
+        self.assertEqual(self.ruby_start_probe["agent"], "pi")
+        self.assertTrue(self.ruby_start_probe["proven_session"])
+
+    def test_09_real_chat_and_herdr_roundtrip(self):
         self.configure_chat()
         self.ruby("abort 'production gate opened' if Domains::Workflows::Policy.new.dispatch_allowed?")
         checkpoint_json = self.ruby("c=Domains::Messaging::Checkpoints.new; puts JSON.generate(" + json.dumps(self.channels) + ".to_h{|id| [id,c.revision(channel_id:id)]})").stdout.splitlines()[-1]
@@ -312,7 +397,19 @@ print(json.dumps(observations))
 
 
 def load_tests(loader, tests, pattern):
-    # Reuse Compose lifecycle; the six base checks run once in their original module.
-    cases = [FullStackChatTest("test_real_chat_and_herdr_roundtrip"), FullStackChatTest("test_backend_checks")]
+    # Keep the expensive disposable stack alive across all gates. The source
+    # contract tests run before this module in CI; these checks then fail fast
+    # from backend validation, through the real Ruby socket client, to chat.
+    cases = [FullStackChatTest(name) for name in [
+        "test_01_health_migrations_database_ownership",
+        "test_02_container_uid_socket_callback_and_plugin_boundary",
+        "test_03_falcon_parallel_http_and_rejected_json",
+        "test_04_durable_jobs_and_restart",
+        "test_05_packaged_callback_synthetic_thread_binding",
+        "test_06_pending_migrations_fail_closed_and_pool_bounds",
+        "test_07_fast_backend_checks",
+        "test_08_ruby_client_herdr_startup",
+        "test_09_real_chat_and_herdr_roundtrip",
+    ]]
     return unittest.TestSuite(case for case in cases if not loader.testNamePatterns or
                               any(fnmatch.fnmatchcase(case.id(), pattern) for pattern in loader.testNamePatterns))
