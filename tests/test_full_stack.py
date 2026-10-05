@@ -179,12 +179,15 @@ class FullStackChatTest(core.DisposableComposeTest):
         if getattr(type(self), "fixture_runtime_configured", False):
             return
         fixture = core.ROOT / "tests/fixtures/full_stack"
-        override = {"services": {"agent-runtime": {"volumes": [str(fixture / "pi") + ":/usr/local/bin/pi:ro",
-                                                                  str(fixture / "pi") + ":/usr/local/bin/hermes:ro"]}}}
+        override = {"services": {
+            "agent-runtime": {"volumes": [str(fixture / "pi") + ":/usr/local/bin/pi:ro",
+                                                str(fixture / "pi") + ":/usr/local/bin/hermes:ro"]},
+            "backend-worker": {"volumes": [str(fixture) + ":/e2e:ro"]},
+        }}
         path = Path(self.temporary.name) / "fixture-runtime.json"
         path.write_text(json.dumps(override))
         type(self).base += ["-f", str(path)]
-        self.compose(["up", "-d", "--no-build", "--wait", "--wait-timeout", "120", "agent-runtime"], timeout=180)
+        self.compose(["up", "-d", "--no-build", "--wait", "--wait-timeout", "120", "agent-runtime", "backend-worker"], timeout=180)
         type(self).fixture_runtime_configured = True
 
     def effects(self):
@@ -220,6 +223,7 @@ require "securerandom"
 require "socket"
 require "async"
 require "./app"
+require "/e2e/observed_herdr"
 
 clock = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
 
@@ -248,7 +252,9 @@ raw_workspace_id = raw_workspace.fetch("result").fetch("workspace").fetch("works
 raw_start_timing, = raw_call(clock, "agent.start", { "pane_id" => raw_pane_id, "name" => "ruby-transport-probe", "kind" => "pi", "args" => [] })
 raw_close_timing, = raw_call(clock, "workspace.close", { "workspace_id" => raw_workspace_id })
 
-client = Adapters::Herdr::Client.new
+# Use the same test-only subclass that the worker composition uses. This
+# catches an adapter-signature drift before the chat/worker roundtrip.
+client = FullStackFixture::ObservedHerdr.new
 client_probe = Async do
   Kirei::Services::Runner.call("FullStackFixture::HerdrProbe") do
     lock = Platform::Lock.new
