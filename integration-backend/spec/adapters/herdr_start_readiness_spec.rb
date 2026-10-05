@@ -53,6 +53,15 @@ RSpec.describe Adapters::Herdr::Client do
     end
   end
 
+  it "limits the initial start socket request to the shared startup deadline" do
+    stub_const("Adapters::Herdr::Client::STARTUP_TIMEOUT_SECONDS", 1)
+    allow(Process).to receive(:clock_gettime).and_return(0.0)
+    expect(Timeout).to receive(:timeout).with(1.0).and_call_original
+    startup_socket(frames: [ready]) do |client, _methods|
+      expect(client.start(pane_id: "pane", name: "fixture", launch: launch).agent_session&.value).to eq("conversation")
+    end
+  end
+
   it "retries a redacted get rejection after an accepted start without repeating the start" do
     startup_socket(frames: [pending, { error_code: "upstream_not_ready" }, ready]) do |client, methods|
       live = client.start(pane_id: "pane", name: "fixture", launch: launch)
@@ -61,7 +70,7 @@ RSpec.describe Adapters::Herdr::Client do
     end
   end
 
-  it "retries a rejected start only while the same pane is an uninitialized shell" do
+  it "retries an explicit busy rejection only after the same pane proves untouched" do
     initial_shell = { pane_id: "pane", agent_status: "unknown" }
     startup_socket(frames: [{ error_code: "agent_pane_busy" }, initial_shell, pending, ready]) do |client, methods|
       expect(client.start(pane_id: "pane", name: "fixture", launch: launch).agent_session&.value).to eq("conversation")
@@ -69,27 +78,33 @@ RSpec.describe Adapters::Herdr::Client do
     end
   end
 
-  it "retries a redacted transient start error only while the same pane is an uninitialized shell" do
+  it "retries a redacted read only while proving an explicit busy rejection is pre-launch" do
     initial_shell = { pane_id: "pane", agent_status: "unknown" }
-    startup_socket(frames: [{ error_code: "not_ready_yet" }, { error_code: "not_ready_yet" }, initial_shell, pending, ready]) do |client, methods|
+    startup_socket(frames: [{ error_code: "agent_pane_busy" }, { error_code: "not_ready_yet" }, initial_shell, pending, ready]) do |client, methods|
       expect(client.start(pane_id: "pane", name: "fixture", launch: launch).agent_session&.value).to eq("conversation")
       expect(methods).to eq(["agent.start", "agent.get", "agent.get", "agent.start", "agent.get"])
     end
   end
 
-  it "does not retry a busy start after the pane has a launch state" do
-    startup_socket(frames: [{ error_code: "agent_pane_busy" }, pending]) do |client, methods|
+  it "does not retry an explicit busy rejection after a pane has launch state" do
+    startup_socket(frames: [{ error_code: "agent_pane_busy" }, ready]) do |client, methods|
       expect { client.start(pane_id: "pane", name: "fixture", launch: launch) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: agent_pane_busy")
       expect(methods).to eq(["agent.start", "agent.get"])
     end
   end
 
-  it "does not issue a retry after the initial-shell busy window expires" do
-    stub_const("Adapters::Herdr::Client::INITIAL_SHELL_RETRY_SECONDS", 0)
-    initial_shell = { pane_id: "pane", agent_status: "unknown" }
-    startup_socket(frames: [{ error_code: "agent_pane_busy" }, initial_shell]) do |client, methods|
-      expect { client.start(pane_id: "pane", name: "fixture", launch: launch) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr startup pane remained busy")
-      expect(methods).to eq(["agent.start", "agent.get"])
+  it "does not begin a busy-start reconciliation after the shared deadline" do
+    stub_const("Adapters::Herdr::Client::STARTUP_TIMEOUT_SECONDS", 0)
+    startup_socket(frames: [{ error_code: "agent_pane_busy" }]) do |client, methods|
+      expect { client.start(pane_id: "pane", name: "fixture", launch: launch) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr startup readiness timed out")
+      expect(methods).to be_empty
+    end
+  end
+
+  it "does not inspect or reuse a pane after a redacted start rejection" do
+    startup_socket(frames: [{ error_code: "not_ready_yet" }, ready]) do |client, methods|
+      expect { client.start(pane_id: "pane", name: "fixture", launch: launch) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: unknown")
+      expect(methods).to eq(["agent.start"])
     end
   end
 
@@ -111,7 +126,7 @@ RSpec.describe Adapters::Herdr::Client do
     stub_const("Adapters::Herdr::Client::STARTUP_TIMEOUT_SECONDS", 0)
     startup_socket(frames: [pending]) do |client, methods|
       expect { client.start(pane_id: "pane", name: "fixture", launch: launch) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr startup readiness timed out")
-      expect(methods).to eq(["agent.start"])
+      expect(methods).to be_empty
     end
   end
 end

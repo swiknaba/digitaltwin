@@ -1,0 +1,22 @@
+#!/usr/bin/env ruby
+# typed: strict
+# frozen_string_literal: true
+
+# Read-only preflight for the local-only dispatch activation path. It is the
+# same check effect-owning worker/listener processes make before starting.
+require_relative "../app"
+require "async"
+
+Startup.validate!
+configuration = Services::Configuration.from_env
+abort "Local dispatch activation is not configured" unless configuration.local_dispatch_enabled?
+
+Async do
+  Services::Composition.new(configuration: configuration).local_dispatch_preflight.call
+  roles = configuration.roles or raise "Role configuration missing"
+  channels = configuration.mattermost_channel_ids or raise "Monitored channels missing"
+  puts JSON.generate({ "local_dispatch_activation" => true, "monitored_channels" => channels.length, "commander_configured" => !roles.commander.nil?,
+                       "provider_call" => false, "runtime_effect" => false })
+ensure
+  Kirei::App.raw_db_connection.disconnect
+end.wait

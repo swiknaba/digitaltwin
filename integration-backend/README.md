@@ -84,9 +84,11 @@ DATABASE_URL=... MIGRATION_TEST_DATABASE_URL=... bin/check   # specs, RuboCop, S
 
 ## Operating rules
 
-- Dispatch to agent sessions is blocked. `Policy#dispatch_allowed?` returns `false` until live Herdr,
-  authenticated chat, and Commander MCP evidence exists. No environment variable overrides it.
-  Workflow starts, prompts, reviews, and session renewals stay queued or blocked.
+- Dispatch to agent sessions is blocked by default. The only exception is the documented,
+  file-gated [local Commander/direct-worker activation](../docs/interfaces/local-commander-activation.md),
+  which validates mounted chat identities, role selection and the shared Herdr socket before the
+  operator starts effect-owning services. It is not a boolean environment override or a production path.
+  Workflow starts, prompts, reviews, and session renewals otherwise stay queued or blocked.
 - `CHAT_VALIDATION_MODE=1` does not enable agent sessions, reviews, approvals, or production workflows.
 - Store credentials only as mounted read-only files. Keep no tokens, signing keys, or provider login state in Git or images.
 - Only the worker mounts Git workspaces and the Herdr socket. Live GitHub creation needs an operator-provided `gh` login.

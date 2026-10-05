@@ -15,11 +15,8 @@ module Adapters
       JsonObject = T.type_alias { T::Hash[String, JsonValue] }
 
       MAX_LINE_BYTES = 1_048_576
+      REQUEST_TIMEOUT_SECONDS = 5.0
       STARTUP_TIMEOUT_SECONDS = 30
-      # A new Herdr pane can take several seconds before it answers a correlated
-      # get request. This remains pre-launch observation only: no second start
-      # is issued until that get proves the pane is still the untouched shell.
-      INITIAL_SHELL_RETRY_SECONDS = 15
       SAFE_ERROR_CODES = T.let(["agent_pane_busy"].freeze, T::Array[String])
 
       sig { params(socket_path: String).void }
@@ -39,23 +36,15 @@ module Adapters
 
       sig { params(pane_id: String, name: String, launch: Dto::LaunchSpec).returns(Dto::Pane) }
       def start(pane_id:, name:, launch:)
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + INITIAL_SHELL_RETRY_SECONDS
-        retrying_initial_shell = T.let(false, T::Boolean)
-        begin
-          raise Errors::ProtocolViolation, "Herdr startup pane remained busy" if retrying_initial_shell && Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + STARTUP_TIMEOUT_SECONDS
+        result = begin
+          startup_request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started", deadline: deadline)
+        rescue Errors::ProtocolViolation => error
+          raise unless error.code == "agent_pane_busy"
 
-          result = request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started")
-        rescue Errors::ProtocolViolation
-          raise unless initial_shell_for_retry?(pane_id: pane_id, deadline: deadline)
-
-          remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          raise Errors::ProtocolViolation, "Herdr startup pane remained busy" unless remaining.positive?
-
-          sleep([0.1, remaining].min)
-          retrying_initial_shell = true
-          retry
+          retry_initial_shell_start(pane_id: pane_id, name: name, launch: launch, deadline: deadline, error: error)
         end
-        await_start(value: object_field!(result, "agent"), pane_id: pane_id, name: name, kind: launch.cli)
+        await_start(value: object_field!(result, "agent"), pane_id: pane_id, name: name, kind: launch.cli, deadline: deadline)
       end
 
       sig { params(cwd: T.nilable(String), label: String, env: T::Hash[String, String]).returns(Dto::Workspace) }
@@ -97,29 +86,38 @@ module Adapters
         pane.agent_status == Dto::AgentStatus::Unknown && pane.name.nil? && pane.agent.nil? && pane.agent_session.nil? && pane.interactive_ready.nil? && pane.launch_pending.nil?
       end
 
-      # A just-created pane can briefly reject both start and get requests.
-      # Do not retry the start until a later correlated get proves this is still
-      # the untouched shell; any accepted launch state remains non-retryable.
-      sig { params(pane_id: String, deadline: T.any(Float, Integer)).returns(T::Boolean) }
-      private def initial_shell_for_retry?(pane_id:, deadline:)
+      # Herdr explicitly rejects agent_pane_busy before it starts an agent. One
+      # retry is safe only after a correlated read proves that exact pane is
+      # still the untouched shell. An opaque/redacted start error never enters
+      # this path, and the original deadline covers every observation.
+      sig do
+        params(pane_id: String, name: String, launch: Dto::LaunchSpec, deadline: T.any(Float, Integer), error: Errors::ProtocolViolation).returns(JsonObject)
+      end
+      private def retry_initial_shell_start(pane_id:, name:, launch:, deadline:, error:)
         loop do
+          raise error if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
           begin
-            return initial_shell?(pane(pane_id))
-          rescue Errors::ProtocolViolation
-            raise if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+            raise error unless initial_shell?(pane(pane_id))
+          rescue Errors::ProtocolViolation => read_error
+            raise error unless read_error.code == "unknown"
+            raise error if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
             sleep(0.1)
+            next
           end
+          raise error if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+          return startup_request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started", deadline: deadline)
         end
       end
 
       # Socket agent.start acknowledges submission; the pinned CLI additionally
       # waits for a detected, interactive conversation in the same terminal.
       # Poll only the accepted launch. Never repeat its start effect on failure.
-      sig { params(value: JsonObject, pane_id: String, name: String, kind: String).returns(Dto::Pane) }
-      private def await_start(value:, pane_id:, name:, kind:)
+      sig { params(value: JsonObject, pane_id: String, name: String, kind: String, deadline: T.any(Float, Integer)).returns(Dto::Pane) }
+      private def await_start(value:, pane_id:, name:, kind:, deadline:)
         terminal_id = string_field!(value, "terminal_id")
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + STARTUP_TIMEOUT_SECONDS
         loop do
           raise Errors::ProtocolViolation, "Herdr startup terminal replaced" unless string_field!(value, "terminal_id") == terminal_id
 
@@ -142,7 +140,7 @@ module Adapters
 
           sleep(0.1)
           begin
-            value = object_field!(request("agent.get", { "target" => pane_id }, "agent_info"), "agent")
+            value = object_field!(startup_request("agent.get", { "target" => pane_id }, "agent_info", deadline: deadline), "agent")
           rescue Errors::ProtocolViolation => error
             # Herdr can redact a transient read rejection to "unknown" while
             # the accepted launch registers its terminal. Retrying this read
@@ -170,10 +168,20 @@ module Adapters
                               kind: string_field!(session, "kind"), value: string_field!(session, "value"))
       end
 
-      sig { params(operation: String, params: JsonObject, expected: String).returns(JsonObject) }
-      private def request(operation, params, expected)
+      # Startup reconciliation has one deadline across its side effect and all
+      # observations. Generic calls keep the normal socket timeout.
+      sig { params(operation: String, params: JsonObject, expected: String, deadline: T.any(Float, Integer)).returns(JsonObject) }
+      private def startup_request(operation, params, expected, deadline:)
+        remaining = deadline.to_f - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        raise Errors::ProtocolViolation, "Herdr startup readiness timed out" unless remaining.positive?
+
+        request(operation, params, expected, timeout_seconds: [remaining, REQUEST_TIMEOUT_SECONDS].min)
+      end
+
+      sig { params(operation: String, params: JsonObject, expected: String, timeout_seconds: T.nilable(Float)).returns(JsonObject) }
+      private def request(operation, params, expected, timeout_seconds: nil)
         socket = T.let(nil, T.nilable(UNIXSocket))
-        Timeout.timeout(5) do
+        Timeout.timeout(timeout_seconds || REQUEST_TIMEOUT_SECONDS) do
           socket = UNIXSocket.new(@path)
           correlation_id = SecureRandom.uuid
           socket.write(JSON.generate(id: correlation_id, method: operation, params: params) + "\n")

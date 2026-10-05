@@ -42,15 +42,19 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    has neither Git workspaces nor the Herdr socket. Build clients with the checksum staging script.
 2. Provide existing authenticated chat identities through read-only token-file mounts. Listener
    needs `MATTERMOST_URL`, `MATTERMOST_LISTENER_TOKEN_FILE`, `MATTERMOST_LOCAL_BOT_IDS`,
-   `MATTERMOST_CHANNEL_IDS` (including Commander and project), and `COMMANDER_CHANNEL_ID`.
+   and `MATTERMOST_CHANNEL_IDS` for the direct worker/project path. Optional
+   Commander routing additionally needs `COMMANDER_CHANNEL_ID` included in that
+   monitored channel list.
    Worker additionally needs `MATTERMOST_WORKER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE`,
    both corresponding `*_BOT_ID` values, and the same local-bot IDs. Web's request-bound MCP
    services need the listener/Worker token-file references, Worker bot ID and chat/local-bot settings
    for authoritative REST checks. Optional peers use `MATTERMOST_PEER_BOT_IDS`. No bot token
-   goes to Runtime. Activate only the disposable chat-validation listener/worker transport for acceptance;
-   `CHAT_VALIDATION_MODE=1` does not enable Herdr effects.
-3. Supply `ROLE_CONFIG_FILE` to web and worker: a trusted Commander entry; Writer/Reviewer
-   entries are additionally required when creating workflows or running review. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). The Commander entry must use
+   goes to Runtime. `CHAT_VALIDATION_MODE=1` remains disposable transport validation and does not
+   enable Herdr effects. The separate [local activation runbook](local-commander-activation.md)
+   validates the same mappings without storing provider credentials or adding a boolean production override.
+3. Supply `ROLE_CONFIG_FILE` to web and worker: Writer/Reviewer entries are
+   required when creating workflows or running review; an optional Commander
+   entry enables Commander routing. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). The Commander entry must use
    `"cli": "hermes"`. Writer/Reviewer must differ in provider
    and family. Use the actual already authorized models/login setup in Runtime; do not pass provider
    credentials as launch arguments. The persistent Commander directory is `/workspace/commander`.
@@ -115,10 +119,13 @@ Capture sanitized artifact/version/schema identities, state transitions and opaq
   review-lock queue/release and concurrent follow-ups; show IDs/generations did not change and
   acknowledgments distinguish queued, delivered and human-reconciled outcomes.
 
-Then review a bounded policy-code change and re-arm only unsent evidence-blocked jobs after
-source/state revalidation. `Policy#dispatch_allowed?` is intentionally hard-coded false: there is
-no ENV switch, and setup alone cannot enable this branch. No authenticated/provider run has been
-performed by this task. Obtain authorization for any acceptance run that could consume paid usage.
+For one operator-controlled local stack, use the separate
+[file-gated activation runbook](local-commander-activation.md) only after those prerequisites and
+the read-only preflight pass. It binds the checked role file, chat identities, memberships and runtime
+socket before effects are started; it is not an ENV switch and is not a Hetzner/production deployment
+path. Re-arm only unsent evidence-blocked jobs after source/state revalidation. No
+authenticated/provider run has been performed by this task. Obtain authorization for any acceptance
+run that could consume paid usage.
 
 ## Review and CI
 

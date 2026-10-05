@@ -1,0 +1,48 @@
+#!/usr/bin/env ruby
+# typed: strict
+# frozen_string_literal: true
+
+# Explicit local-only bootstrap for one pre-staged repository. It verifies the
+# named human and channel through Mattermost before recording the mapping; it
+# never clones, creates a repository, starts an agent, or contacts a provider.
+require "optparse"
+require_relative "../app"
+require "async"
+
+options = T.let({}, T::Hash[String, String])
+OptionParser.new do |parser|
+  %w[channel-id human-id slug].each { |name| parser.on("--#{name} VALUE") { |value| options[name] = value } }
+end.parse!(ARGV)
+abort "Expected --channel-id, --human-id and --slug" unless ARGV.empty? && options.keys.sort == %w[channel-id human-id slug]
+
+Startup.validate!
+configuration = Services::Configuration.from_env
+abort "Local dispatch activation is not configured" unless configuration.local_dispatch_enabled?
+
+Async do
+  composition = Services::Composition.new(configuration: configuration)
+  composition.local_dispatch_preflight.call
+  url = configuration.mattermost_url or raise "Mattermost URL missing"
+  token_file = configuration.mattermost_listener_token_file or raise "Listener credential missing"
+  api = Adapters::Mattermost::Api.new(client: Adapters::Mattermost::Client.new(url: url, token_file: token_file))
+  channel_id = options.fetch("channel-id")
+  human_id = options.fetch("human-id")
+  human = api.user(human_id)
+  raise "Verified human identity mismatch" unless human.id == human_id && !human.bot && human.delete_at.zero?
+
+  membership = api.member!(channel_id: channel_id, user_id: human_id)
+  raise "Verified human membership mismatch" unless membership.channel_id == channel_id && membership.user_id == human_id
+
+  paths = Domains::Projects::WorkspacePaths.new(root: configuration.workspace_root, worktrees_root: configuration.worktree_root)
+  result = Services::Projects::Enroll.new(paths: paths).call(
+    actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: human_id, channel_id: channel_id, member: true, bot: false),
+    channel_id: channel_id, slug: options.fetch("slug"), choice: Domains::Projects::Dto::EnrollChoice::Stop
+  )
+  error = result.errors.first if result.failed?
+  raise "Local project enrollment rejected: #{error&.code}" if error
+
+  enrollment = result.result
+  puts JSON.generate({ "enrollment" => enrollment.status.serialize, "provider_call" => false, "runtime_effect" => false })
+ensure
+  Kirei::App.raw_db_connection.disconnect
+end.wait
