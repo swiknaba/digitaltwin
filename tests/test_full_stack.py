@@ -121,7 +121,7 @@ class FullStackChatTest(core.DisposableComposeTest):
                 "backend-web": {"environment": environment, "volumes": ["e2e-auth:/auth:ro", str(fixture) + ":/app/e2e_fixtures:ro"]},
                 "backend-worker": {"environment": {**environment, "RACK_ENV": "test", "CHAT_VALIDATION_MODE": "1", "DIGITALTWIN_DISPOSABLE_TEST_PROJECT": self.project},
                                    "volumes": ["e2e-auth:/auth", str(fixture) + ":/e2e:ro"], "command": ["bundle", "exec", "ruby", "/e2e/worker.rb"]},
-                "backend-chat-listener": {"image": self.project + "-backend:check", "environment": environment, "volumes": ["e2e-auth:/auth:ro"]},
+                "backend-chat-listener": {"image": self.image_prefix + "-backend:check", "environment": environment, "volumes": ["e2e-auth:/auth:ro"]},
                 "agent-runtime": {"volumes": [str(fixture / "pi") + ":/usr/local/bin/pi:ro",
                                               str(fixture / "pi") + ":/usr/local/bin/hermes:ro"]},
             },
