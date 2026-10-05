@@ -4,35 +4,33 @@ Digitaltwin is a self-hosted AI team for people who want durable, reviewable wor
 
 ## Why it exists
 
-Long-running AI work is difficult to trust when the request, session, code, review, and follow-up live in different places. Digitaltwin joins those pieces without treating an agent conversation as authority by itself:
+Long-running AI work is difficult to trust when the request, session, code, review, and follow-up live in different places. Digitaltwin gives the person responsible for that work one team they can guide and inspect without treating an agent conversation as authority by itself:
 
-- Mattermost is where people and bots converse in threads.
-- The Kirei integration backend verifies the human, thread, workflow state, and exact artifact before it routes or delivers work.
-- Herdr runs the selected coding CLIs in a persistent but private Runtime.
-- Git holds the durable specification, plan, implementation, review evidence, and approvals.
+- A chat interface lets people and bots keep questions, direction, and results together; a CLI provides a second direct way to control workers.
+- A control service keeps the human, request, current work, and result connected so only authorized work moves forward.
+- Private worker environments give agents a durable place to complete bounded tasks without exposing their sessions.
+- Git keeps the specification, plan, changes, review evidence, and approvals available for inspection.
 
 The outcome is a small remote team that can preserve context across restarts and make its work inspectable, while still stopping for the human decisions that matter.
 
 ```mermaid
 flowchart TD
   human[Human]
-  chat[Chat]
-  cli[CLI]
-  commander[Commander]
-  fleet[Agent fleet]
+  access[Chat or CLI]
+  commander[Commander<br/>optional copilot]
+  workers[Workers]
 
-  human <--> chat
-  human <--> cli
-  chat <--> commander
-  cli <--> commander
-  commander <--> fleet
+  human <--> access
+  access <--> workers
+  access <--> commander
+  commander <--> workers
 ```
 
-Humans communicate with Commander through chat or CLI. Commander coordinates the agent fleet and returns status and results through the same interface. This diagram shows the product flow, not implementation technology.
+People can work directly with workers through chat or a CLI. They can also ask Commander to coordinate a fleet; Commander is an optional copilot, not a required gateway. Each connection is two-way, so questions, direction, status, and results can travel both ways. This diagram shows the product flow, not implementation technology.
 
 ## Commander
 
-Commander is the fleet’s main interface for conversation, coordination, and status.
+Commander is an optional copilot for coordinating a fleet, sharing status, and helping people steer work. People can also work directly with workers through chat or a CLI.
 
 ## What is available today
 
