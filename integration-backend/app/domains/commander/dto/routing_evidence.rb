@@ -14,13 +14,14 @@ module Domains
         const :interpretation, T.nilable(RoutingInterpretation)
         const :recent_binding, T.nilable(String)
         const :source_inbox_id, String
+        const :attribution, T.nilable(InstructionAttribution), default: nil
 
         # Keeps today's JSONB shape: absent values stay present as null, and
         # the key order matches what PostgreSQL returns for the stored object.
         # `super` keeps unknown stored keys, so Followups can detect them.
         sig { params(strict: T::Boolean).returns(T::Hash[String, T.nilable(T.any(String, T::Hash[String, T.any(String, T::Array[String])]))]) }
         def serialize(strict = true)
-          { "selection" => nil, "direct_thread" => nil, "interpretation" => nil, "recent_binding" => nil }.merge(super)
+          { "selection" => nil, "direct_thread" => nil, "interpretation" => nil, "recent_binding" => nil, "attribution" => nil }.merge(super)
         end
       end
     end

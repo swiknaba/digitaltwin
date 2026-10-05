@@ -90,8 +90,14 @@ class DisposableComposeTest(unittest.TestCase):
         except RuntimeError as error:
             # Fresh disposable stack contains only checked-in public DB samples.
             state = cls.compose(["ps", "--all", "--format", "json"], check=False)
+            runtime_diagnostic = cls.compose(["logs", "--no-color", "--tail", "60", "agent-runtime"], check=False)
             diagnostic = cls.compose(["logs", "--no-color", "--tail", "30", "postgres", "local-volume-init", "backend-migrate", "backend-web", "backend-worker", "agent-runtime", "mattermost"], check=False)
-            detail = "Container states:\n" + state.stdout + state.stderr + "\nService logs:\n" + diagnostic.stdout + diagnostic.stderr
+            # Keep the failing service's own output before verbose Compose state.
+            # The raised diagnostic is deliberately bounded below, and the state
+            # records can otherwise hide the only actionable startup error.
+            detail = ("Agent-runtime logs:\n" + runtime_diagnostic.stdout + runtime_diagnostic.stderr +
+                      "\nService logs:\n" + diagnostic.stdout + diagnostic.stderr +
+                      "\nContainer states:\n" + state.stdout + state.stderr)
             for marker in ["local-only-postgres", "local-only-kirei", "local-only-mattermost"]:
                 detail = detail.replace(marker, "<sample-redacted>")
             detail = re.sub(r"(postgres(?:ql)?://)[^@\s]+@", r"\1<redacted>@", detail)

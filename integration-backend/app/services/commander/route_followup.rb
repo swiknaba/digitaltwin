@@ -48,10 +48,10 @@ module Services
       end
 
       sig do
-        params(inbox_id: String, selection: T.nilable(String), interpretation: T.nilable(Commander::Dto::RoutingInterpretation), clarify: T::Boolean)
+        params(inbox_id: String, selection: T.nilable(String), interpretation: T.nilable(Commander::Dto::RoutingInterpretation), clarify: T::Boolean, forwarded: T::Boolean)
           .returns(Outcome)
       end
-      def call(inbox_id:, selection: nil, interpretation: nil, clarify: true)
+      def call(inbox_id:, selection: nil, interpretation: nil, clarify: true, forwarded: false)
         Kirei::Services::Runner.call(self.class.name.to_s) do
           source = @inbox.find(id: inbox_id)
           next failure(Code::MissingSource, "Missing source") unless source
@@ -75,15 +75,15 @@ module Services
             interpreted = target
           end
           allowed_channels = workflows.map(&:channel_id).uniq.select { |channel| @membership.member?(channel_id: channel, user_id: d.actor.user_id) }
-          @transaction.call { route(inbox_id, d, selection, interpretation, interpreted, allowed_channels, clarify) }
+          @transaction.call { route(inbox_id, d, selection, interpretation, interpreted, allowed_channels, clarify, forwarded) }
         end
       end
 
       sig do
         params(inbox_id: String, d: Messaging::Dto::VerifiedDelivery, selection: T.nilable(String), interpretation: T.nilable(Commander::Dto::RoutingInterpretation),
-               interpreted: T.nilable(Workflow), allowed_channels: T::Array[String], clarify: T::Boolean).returns(Outcome)
+               interpreted: T.nilable(Workflow), allowed_channels: T::Array[String], clarify: T::Boolean, forwarded: T::Boolean).returns(Outcome)
       end
-      private def route(inbox_id, d, selection, interpretation, interpreted, allowed_channels, clarify)
+      private def route(inbox_id, d, selection, interpretation, interpreted, allowed_channels, clarify, forwarded)
         @inbox.lock(id: inbox_id)
         existing = @followups.for_inbox(inbox_id: inbox_id)
         return routed(existing) if existing
@@ -118,7 +118,11 @@ module Services
         session = writer_session(w)
         @renewals.schedule(session: session) if session&.active && session.credential_expires_at <= @now.call
         evidence = Commander::Dto::RoutingEvidence.new(source_inbox_id: inbox_id, selection: selection, interpretation: interpretation,
-                                                       direct_thread: direct&.id, recent_binding: recent_binding)
+                                                       direct_thread: direct&.id, recent_binding: recent_binding,
+                                                       attribution: Commander::Dto::InstructionAttribution.new(
+                                                         effective_sender: forwarded ? "Commander" : d.actor.user_id, origin_inbox_id: inbox_id,
+                                                         origin_user_id: d.actor.user_id, mode: forwarded ? "commander_forwarded" : "direct_human"
+                                                       ))
         followup = Platform::Unwrap.call(@followups.create(inbox_id: inbox_id, workflow_id: w.id, session: session, evidence: evidence))
         threads = [d.thread_id]
         threads << COMMANDER_THREAD if commander_root

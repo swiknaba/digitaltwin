@@ -13,6 +13,7 @@ module Services
 
       Code = Dto::ErrorCode
       Role = Domains::Sessions::Dto::SessionRole
+      HERMES_CLI = "hermes"
       Outcome = T.type_alias { Kirei::Services::Result[String] }
 
       sig do
@@ -47,6 +48,9 @@ module Services
         return Kirei::Services::Result.new(result: pending.id) if pending
         unless Domains::Sessions::ConfigurationPolicy.complete?(configuration)
           return Kirei::Services::Result.new(errors: Platform::Failure.call(code: Code::IncompleteConfiguration, detail: "Incomplete role configuration"))
+        end
+        unless configuration.cli == HERMES_CLI
+          return Kirei::Services::Result.new(errors: Platform::Failure.call(code: Code::IncompleteConfiguration, detail: "Commander requires the Hermes CLI"))
         end
 
         id = @registry.next_id

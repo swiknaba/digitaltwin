@@ -679,16 +679,17 @@ The acceptance test does not require a second full server deployment.
 ## 20. Memory model
 
 Each deployment scaffolds a persistent `commander/` folder.
-Its `AGENTS.md` contains Commander base instructions; `memory.md` retains global preferences and lessons learned.
-The Commander Herdr CLI session runs from this folder and reads it on a fresh conversation.
+Its `AGENTS.md` contains Commander base instructions. Hermes retains Commander preferences and
+learnings in its native profile memory, with SQLite conversation history and skills in the same
+persistent profile. The Commander Herdr CLI session runs from this folder.
 Each project keeps decisions in its own `.agents/memory.md` file.
 
 Explicit steering requests update base instructions.
 Memory maintenance follows human requests and agent instructions, without a scheduled grooming job.
 
-Git sync is optional and uses a configured repository.
-Local persistence works without Git access.
-When enabled, small additive changes can commit directly; substantial reorganizations use a branch and pull request.
+The workspace initializes a local Git repository containing its portable instructions and selected
+Hermes files. It has no automatic commits, remote, or backup schedule; those need a separately
+approved retention and recovery design.
 
 ## 21. Secrets and credentials
 

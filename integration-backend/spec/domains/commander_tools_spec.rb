@@ -69,6 +69,34 @@ RSpec.describe "Request-bound Commander tools and stdio MCP" do
     expect(db[:workflows].first[:phase]).to eq("spec_writing")
     expect { call_tool("workflow_control", args.merge("expected_version" => 1), token: "request-token") }.to raise_error(ArgumentError)
   end
+
+  it "reports only visible workflow status from durable records" do
+    db[:projects].insert(id: "project", channel_id: "project-channel", slug: "owner/repo", remote_identity: "github.com/owner/repo", workspace: "/tmp/repo")
+    db[:workflows].insert(id: "workflow", project_id: "project", channel_id: "project-channel", thread_id: "project-root", branch: "branch", worktree_path: "/tmp/workflow", blocker: "Waiting for human approval", role_configurations: workflow_roles)
+    db[:sessions].insert(
+      id: "writer", workflow_id: "workflow", role: "writer", pane_id: "pane", alias: "writer", generation: 1,
+      credential_digest: "writer-digest", credential_expires_at: Time.now + 3600, configuration: session_configuration,
+      state: "working", last_verified_at: Time.utc(2026, 10, 4, 12, 0, 0)
+    )
+    db[:workflows].insert(id: "hidden", project_id: "project", channel_id: "hidden-channel", thread_id: "hidden-root", branch: "hidden", worktree_path: "/tmp/hidden", role_configurations: workflow_roles)
+
+    visible = Domains::Messaging::Dto::VerifiedDelivery.new(
+      channel_id: "project-channel", thread_id: "project-root", post_id: "status-post", post_revision: 1,
+      event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: true, body: "@agent status",
+      actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "human", channel_id: "project-channel", member: true, bot: false)
+    )
+    allow(source).to receive(:call) do |**arguments|
+      destination = arguments[:destination]
+      destination == "hidden-channel" ? Kirei::Services::Result.new(errors: Platform::Failure.call(code: Domains::Messaging::Dto::ErrorCode::DestinationMembershipRequired, detail: "Hidden")) :
+        Kirei::Services::Result.new(result: visible)
+    end
+
+    expect(call_tool("workflow_status", { "request_id" => "request" }, token: "request-token")).to eq(
+      [{ "project_id" => "project", "project_slug" => "owner/repo", "workflow_id" => "workflow", "thread_id" => "project-root", "phase" => "spec_writing",
+         "wait_reason" => "Waiting for human approval", "session_state" => "working", "last_verified_at" => Time.utc(2026, 10, 4, 12, 0, 0), "review_state" => nil,
+         "approval_state" => nil, "delivery_state" => nil, "artifact_links" => [] }]
+    )
+  end
   it "rejects unexpected and mistyped fields as a failure result before the capability check" do
     unexpected = service.call(name: Services::Commander::Dto::ToolName::ListProjects, arguments: arguments("request_id" => "request", "role" => "commander"), token: "worker-token")
     expect(unexpected.errors.map { |error| [error.code, error.detail] }).to eq([%w[unexpected_fields Unexpected\ tool\ fields]])
@@ -84,6 +112,19 @@ RSpec.describe "Request-bound Commander tools and stdio MCP" do
     expect(call_tool("read_context", { "request_id" => "request" }, token: "request-token")).to eq(
       [{ "inbox_id" => @inbox, "channel_id" => "commander", "thread_id" => "root", "text" => "@agent help" }]
     )
+  end
+
+  it "returns more than ten recent accessible context entries" do
+    11.times do |index|
+      id = "inbox_context_#{index}"
+      post_id = "context-post-#{index}"
+      body = "context #{index}"
+      db[:inbox].insert(id: id, channel_id: "commander", thread_id: "root", post_id: post_id, post_revision: 1, event_kind: "posted", user_id: "human",
+                        verified_delivery: Sequel.pg_jsonb(delivery.serialize.merge("post_id" => post_id, "body" => body)))
+    end
+
+    allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: delivery))
+    expect(call_tool("read_context", { "request_id" => "request" }, token: "request-token").length).to eq(11)
   end
   it "serves JSON-RPC initialization and request-bound tools without exposing credentials" do
     Dir.mktmpdir do |root|

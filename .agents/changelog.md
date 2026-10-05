@@ -195,3 +195,58 @@
 - Preserve only the verified `agent_pane_busy` socket error code for startup diagnostics. Redact all raw server text and unrecognized codes.
 - Verify correlation before reporting a Herdr error. Retry only a rejected `agent_pane_busy` on the same uninitialized pane for two seconds; never retry accepted or launched starts.
 - Carry the allowlisted error code as typed `ProtocolViolation` metadata rather than matching display text. Recheck the busy window immediately before another start and sleep no longer than its remaining duration.
+
+## 2026-10-04 — Commander persistent workspace
+
+- Reserve Commander Herdr workspaces at `/workspace/commander`, independently of worker worktrees.
+- Create that directory during Runtime startup and retain it through Runtime restart checks.
+- Add the persistent Commander memory scaffold. Provider dispatch remains disabled pending live operator evidence.
+
+## 2026-10-04 — Commander workflow status
+
+- Add the request-bound `workflow_status` MCP operation. It filters workflows by authenticated channel access and reports durable workflow, review, approval, artifact, and last-verified session state without asserting live Runtime or delivery success.
+
+## 2026-10-04 — Migration annotation stability
+
+- Synchronize generated entity schema annotations and verify that the clean migration entrypoint does not rewrite them.
+
+## 2026-10-04 — Commander context window
+
+- Extend the bounded readable Commander context from 10 to 50 accessible recent messages for project and task routing.
+## 2026-10-04 — Durable Commander memory
+
+- Add bounded, source-attributed global and project Commander memory with optimistic corrections, idempotent requests, scope serialization, and atomic local Markdown rendering.
+- Add the durable memory schema and clean-migration coverage. Optional Git synchronization remains unimplemented and disabled because no configured repository or operator credentials are available.
+
+## 2026-10-04 — Commander Hermes architecture
+
+- Revise the Commander specification and implementation plan to use Hermes-native Markdown memory, SQLite history, and skills.
+- Plan removal of the Kirei Commander memory subsystem with a forward migration. Preserve Kirei authority for orchestration and verified approvals.
+- Use the latest Hermes stable release; upstream publishes dated stable tags, not minor-line tags. Initialize a local Commander Git repository for portable files only; defer automated commits and remote backup.
+- Install Hermes in the Runtime final image stage and initialize its persistent Commander workspace as a local repository. Ignore SQLite history, credentials, and runtime state.
+- Remove the Kirei Commander-memory implementation and add migration 010 to drop schema-9 memory tables without rewriting migration history.
+# 2026-10-04
+
+- Align Commander attribution prompt and tool-response contracts with verified routing metadata.
+- Serialize bounded concurrent Commander-memory writes through the scope lock.
+
+## 2026-10-04 — Hermes Commander completion
+
+- Require Hermes for Commander session reservation, dispatch, and recovery; keep Writer and Reviewer profiles independent.
+- Initialize Hermes with the request-scoped Kirei MCP allowlist and preserve Commander instructions, native Markdown memory, and skills in local Git.
+- Stop migration 010 when legacy Commander memory has data. Require export or explicit disposal before removal.
+- Add typed reversible-migration DSL support and deterministic Runtime persistence, Git-ignore, and backend migration coverage.
+
+## 2026-10-04 — Wagglebot reference setup
+
+- Reference Wagglebot's shared worker setup from Commander documentation.
+- Keep Commander role instructions and native Hermes state local until Wagglebot supports Hermes provisioning.
+- Configure Hermes to read the provisioned shared library at `/home/runtime/.agents/skills`, with deterministic Runtime image coverage.
+- Hash underscore-bearing Kirei session aliases before starting Herdr, whose agent names accept hyphens but not underscores.
+- Keep the Wagglebot shared-worker baseline product-agnostic; Commander-local guidance now uses only its supplied coordination tools rather than backend implementation names.
+- Forward the approved optional company subdirectory through `runtime-provision connect`. Keep the Runtime pin at 0.3.0 until a Wagglebot release fixes its own pinned-runtime install path.
+- Remove the legacy tracked Commander Markdown-memory mirror; Hermes-native profile memory is the Commander knowledge source. Keep project `.agents/memory.md` only as task-scoped repository context.
+
+## 2026-10-05 — Herdr accepted-start readiness
+
+- Retry a redacted transient `agent.get` rejection while polling an already accepted Herdr start. Never repeat the start effect; retain the readiness deadline and fail-closed behavior.

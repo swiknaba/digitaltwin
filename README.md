@@ -13,6 +13,23 @@ Long-running AI work is difficult to trust when the request, session, code, revi
 
 The outcome is a small remote team that can preserve context across restarts and make its work inspectable, while still stopping for the human decisions that matter.
 
+```mermaid
+flowchart TD
+  human[Human]
+  chat[Chat]
+  cli[CLI]
+  commander[Commander]
+  fleet[Agent fleet]
+
+  human <--> chat
+  human <--> cli
+  chat <--> commander
+  cli <--> commander
+  commander <--> fleet
+```
+
+Humans communicate with Commander through chat or CLI. Commander coordinates the agent fleet and returns status and results through the same interface. This diagram shows the product flow, not implementation technology.
+
 ## Commander
 
 Commander is the fleet’s main interface for conversation, coordination, and status.

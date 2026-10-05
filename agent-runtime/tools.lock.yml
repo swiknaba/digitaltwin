@@ -37,13 +37,25 @@ packages:
   opencode: "1.18.34"
   gemini_cli: "0.62.0"
   skills: "1.5.23"
+grok_build:
+  version: "1.0.46"
+  source: https://x.ai/cli/install.sh
+  linux_amd64:
+    url: https://x.ai/cli/grok-1.0.46-linux-x86_64
+    sha256: 41626a53292324140b92556b9d42ff5542e3dcd04aff85eafb8689dd4adb44fc
+  install: official_xai_stable_binary_in_runtime_final_stage
+  update_policy: advance_to_current_official_stable_release_on_deliberate_runtime_rebuild
+hermes:
+  release: "v2026.9.24"
+  source: https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.24
+  install: release_source_with_frozen_uv_lock_in_runtime_final_stage
+  update_policy: advance_to_next_upstream_stable_release_on_deliberate_runtime_rebuild
 wagglebot:
-  version: "0.3.0"
-  source_revision: d11c200202121563e34b92e28be92de1ed497ce0
-  url: https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.0.tgz
-  sha256: b9adcf0d854b6a7ed338463329e5ec0062adb79c3cbb9189fdf14fffb4b51974
-  install: unmodified_published_bundle_with_locked_skills_dependency
-  upstream_defect: npm_manifest_workspace_dependencies_cannot_be_installed
+  version: "0.3.4"
+  source_revision: 0612d71b25df5964bc568b28be7a279012bd6c73
+  url: https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.4.tgz
+  sha256: d7d9d34067f19cf9cff42ac9ea4a2bbdfd4cbd08479f512776311d6857c6f2d1
+  install: staged_self_contained_published_bundle
 runtime:
   uid: 10001
   gid: 10001

@@ -28,7 +28,7 @@ RSpec.describe Domains::Commander::Followups do
     created = followups.create(inbox_id: "inbox_1", workflow_id: "w1", session: nil, evidence: evidence).result
     expect(db[:followups][id: created.id][:evidence].to_hash).to eq(
       "selection" => nil, "direct_thread" => nil, "interpretation" => { "workflow_id" => "w1", "evidence_inbox_ids" => ["inbox_2"] },
-      "recent_binding" => nil, "source_inbox_id" => "inbox_1"
+      "recent_binding" => nil, "attribution" => nil, "source_inbox_id" => "inbox_1"
     )
     expect(followups.find(id: created.id)&.evidence).to eq(evidence)
   end

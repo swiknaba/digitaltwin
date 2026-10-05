@@ -19,7 +19,7 @@
 #  archived_at         :timestamp without time zone, null
 #  created_at          :timestamp without time zone, not null
 #  paused_commit       :text                null
-#  source_inbox_id     :integer             null
+#  source_inbox_id     :text                null
 #  role_configurations :jsonb               not null
 #
 

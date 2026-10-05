@@ -5,18 +5,18 @@
 #
 # Table name: reviews
 #
-#  id                     :text                not null, primary key
-#  workflow_id            :text                not null
-#  gate                   :text                not null
-#  round                  :integer             not null
-#  target_commit          :text                not null
-#  base_commit            :text                null
-#  review_commit          :text                null
-#  review_path            :text                not null
-#  verdict                :text                null
-#  reviewer_configuration :jsonb               not null
-#  created_at             :timestamp without time zone, not null
-#  dispatch_state         :text                not null
+#  id                  :text                not null, primary key
+#  workflow_id         :text                not null
+#  gate                :text                not null
+#  round               :integer             not null
+#  target_commit       :text                not null
+#  base_commit         :text                null
+#  review_commit       :text                null
+#  review_path         :text                not null
+#  verdict             :text                null
+#  reviewer_configuration:jsonb               not null
+#  created_at          :timestamp without time zone, not null
+#  dispatch_state      :text                not null
 #
 
 module Domains

@@ -1,0 +1,27 @@
+skills:
+  # Agent-authored, mutable procedure knowledge stays separate from the
+  # read-only Commander baseline packaged with the selected Hermes release.
+  create_dir: learned-skills
+  external_dirs:
+    # Wagglebot provisions shared worker skills here. Hermes reads them but keeps
+    # Commander memory, history, and learned skills under .hermes.
+    - /home/runtime/.agents/skills
+    - /opt/hermes-agent/skills/productivity/weekly-review-planning
+    - /opt/hermes-agent/skills/research/grounded-citations
+
+mcp_servers:
+  digitaltwin:
+    command: /usr/local/bin/digitaltwin-mcp
+    args: []
+    env:
+      DIGITALTWIN_CALLBACK_URL: ${DIGITALTWIN_CALLBACK_URL}
+      DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE: ${DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE}
+    tools:
+      include:
+        - list_projects
+        - list_workflows
+        - read_context
+        - workflow_status
+        - start_workflow
+        - send_prompt
+        - workflow_control

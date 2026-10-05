@@ -75,8 +75,9 @@ RSpec.describe "POST /internal/commander/tools wire format" do
     env = Rack::MockRequest.env_for("http://localhost/internal/commander/manifest", method: "GET")
     env.merge!("REQUEST_PATH" => "/internal/commander/manifest", "HTTP_HOST" => "localhost", "REMOTE_ADDR" => "127.0.0.1")
     status, _headers, chunks = app.call(env)
-    # SHA-256 of the pre-refactor manifest with Ruling 31 applied: evidence items are strings.
-    expect([status, Digest::SHA256.hexdigest(chunks.join)]).to eq([200, "7e7744e0fa9b0bdfdd5803f657474c6a8e3bfae08c0b7b78710c22c9c5775632"])
+    # SHA-256 of the review-approved manifest: evidence items are strings and
+    # workflow_status is request-bound with no model-supplied fields.
+    expect([status, Digest::SHA256.hexdigest(chunks.join)]).to eq([200, "24609bf55d54ee9456326839adccbe86278932bc3d7bc1f308ab63ef50e75d5a"])
     expect(chunks.join).to include('"evidence_inbox_ids":{"type":"array","items":{"type":"string"},"maxItems":10}')
   end
 
@@ -105,6 +106,7 @@ RSpec.describe "POST /internal/commander/tools wire format" do
     expect([status, body]).to eq([200, "{\"result\":{\"id\":\"#{row[:id]}\",\"inbox_id\":\"inbox_1\",\"workflow_id\":\"w1\",\"session_id\":\"s1\",\"generation\":1," \
                                        "\"status\":\"queued\",\"reason\":null,\"evidence\":{\"selection\":null,\"direct_thread\":null," \
                                        "\"interpretation\":{\"workflow_id\":\"w1\",\"evidence_inbox_ids\":[\"inbox_2\"]},\"recent_binding\":null," \
+                                       "\"attribution\":{\"effective_sender\":\"Commander\",\"origin_inbox_id\":\"inbox_1\",\"origin_user_id\":\"#{user}\",\"mode\":\"commander_forwarded\"}," \
                                        "\"source_inbox_id\":\"inbox_1\"},\"created_at\":\"#{row[:created_at]}\",\"delivered_at\":null}}"])
     expect(tool("send_prompt", "workflow_id" => "w1", "evidence_inbox_ids" => ["inbox_2"])).to eq([status, body])
     # A request from w2's thread: direct w2 plus interpreted w1 needs clarification.

@@ -6,7 +6,7 @@
 # Table name: followups
 #
 #  id                  :text                not null, primary key
-#  inbox_id            :text                not null, unique
+#  inbox_id            :text                not null
 #  workflow_id         :text                not null
 #  session_id          :text                null
 #  generation          :integer             null

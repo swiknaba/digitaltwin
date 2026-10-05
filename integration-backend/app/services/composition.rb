@@ -163,7 +163,7 @@ module Services
     sig { returns(Sessions::ExecuteOperation) }
     def execute_operation
       @execute_operation ||= Sessions::ExecuteOperation.new(herdr: herdr, source: source, credentials: credentials, policy: policy,
-                                                            callback_url: @configuration.callback_url)
+                                                            callback_url: @configuration.callback_url, commander_workspace: @configuration.commander_workspace)
     end
 
     sig { returns(Sessions::Renew) }
@@ -173,7 +173,10 @@ module Services
 
     sig { returns(Sessions::ReconcileOperation) }
     def reconcile_operation
-      @reconcile_operation ||= Sessions::ReconcileOperation.new(herdr: herdr, source: source, credentials: credentials, handle: @configuration.agent_handle)
+      @reconcile_operation ||= Sessions::ReconcileOperation.new(
+        herdr: herdr, source: source, credentials: credentials, handle: @configuration.agent_handle,
+        commander_workspace: @configuration.commander_workspace
+      )
     end
 
     sig { returns(Reviews::DispatchReview) }

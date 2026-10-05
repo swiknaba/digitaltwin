@@ -24,10 +24,11 @@ module Services
       sig do
         params(herdr: Adapters::Herdr::Client, source: Domains::Messaging::VerifyHumanSource, credentials: Adapters::Credentials::FileStore, callback_url: String,
                policy: Domains::Workflows::Policy, registry: Sessions::Registry, operations: Sessions::Operations, catalog: Domains::Workflows::Catalog,
-               complete: CompleteOperation, lock: Platform::Lock).void
+               complete: CompleteOperation, lock: Platform::Lock, commander_workspace: String).void
       end
       def initialize(herdr:, source:, credentials:, callback_url:, policy: Domains::Workflows::Policy.new, registry: Sessions::Registry.new,
-                     operations: Sessions::Operations.new, catalog: Domains::Workflows::Catalog.new, complete: CompleteOperation.new, lock: Platform::Lock.new)
+                     operations: Sessions::Operations.new, catalog: Domains::Workflows::Catalog.new, complete: CompleteOperation.new, lock: Platform::Lock.new,
+                     commander_workspace: ::Services::Configuration::DEFAULT_COMMANDER_WORKSPACE)
         @herdr = herdr
         @source = source
         @credentials = credentials
@@ -38,6 +39,7 @@ module Services
         @catalog = catalog
         @complete = complete
         @lock = lock
+        @commander_workspace = commander_workspace
       end
 
       sig { override.params(job: Platform::Jobs::Dto::ClaimedJob).returns(Decision) }
@@ -85,7 +87,7 @@ module Services
       private def start(operation, session, workflow)
         env = { "DIGITALTWIN_SESSION_TOKEN_FILE" => @credentials.path(name: "#{session.id}.token"), "DIGITALTWIN_SESSION_GENERATION" => session.generation.to_s,
                 "DIGITALTWIN_CALLBACK_URL" => @url, "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE" => @credentials.path(name: "#{session.id}.request-token") }
-        created = @herdr.create_workspace(cwd: workflow&.worktree_path, label: session.alias, env: env)
+        created = @herdr.create_workspace(cwd: workspace_path(session, workflow), label: session.alias, env: env)
         @operations.record_workspace(session_id: session.id, pane_id: created.root_pane_id, workspace_id: created.workspace_id)
         launch = Adapters::Herdr::Dto::LaunchSpec.new(cli: session.configuration.cli, launch_args: session.configuration.launch_args)
         live = @herdr.start(pane_id: created.root_pane_id, name: session.alias, launch: launch)
@@ -124,6 +126,13 @@ module Services
       sig { params(workflow: Workflow).returns(String) }
       private def source_inbox_id(workflow)
         workflow.source_inbox_id or raise ArgumentError, "Missing verified source"
+      end
+
+      sig { params(session: Sessions::Dto::SessionView, workflow: T.nilable(Workflow)).returns(String) }
+      private def workspace_path(session, workflow)
+        return @commander_workspace if session.role == Sessions::Dto::SessionRole::Commander
+
+        workflow&.worktree_path or raise ArgumentError, "Missing workflow workspace"
       end
     end
   end

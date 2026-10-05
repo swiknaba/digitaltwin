@@ -31,7 +31,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   let(:renewals) { Domains::Sessions::Renewals.new }
   let(:reserve_session) { Services::Sessions::ReserveSession.new(source: source, credentials: credentials) }
   let(:bootstrap) { Services::Sessions::BootstrapCommander.new(credentials: credentials) }
-  let(:execute_operation) { Services::Sessions::ExecuteOperation.new(herdr: herdr, source: source, credentials: credentials, callback_url: "http://fixture.invalid", policy: policy) }
+  let(:execute_operation) { Services::Sessions::ExecuteOperation.new(herdr: herdr, source: source, credentials: credentials, callback_url: "http://fixture.invalid", commander_workspace: "/workspace/commander", policy: policy) }
   let(:renew_service) { Services::Sessions::Renew.new(herdr: herdr, source: source, credentials: credentials, policy: policy, renewals: renewals) }
   let(:reconcile_operation) { Services::Sessions::ReconcileOperation.new(herdr: herdr, source: source, credentials: credentials, handle: "agent") }
   let(:stop_sessions) { Services::Sessions::StopWorkflowSessions.new }
@@ -227,6 +227,27 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(File.stat(File.join(@credential_root, "#{id}.token")).mode & 0777).to eq(0600)
     expect { reserve("commander") }.to raise_error(ArgumentError)
   end
+  it "starts Commander in its persistent workspace" do
+    commander = Domains::Workflows::Dto::RoleConfig.new(cli: "hermes", provider: "fixture", model: "fixture-hermes", family: "fixture", launch_args: [])
+    id = Platform::Unwrap.call(bootstrap.call(configuration: commander))
+    allow(herdr).to receive(:create_workspace).and_return(herdr_workspace(workspace_id: "commander-workspace", pane_id: "commander-pane"))
+    identity = { "source" => "fixture", "agent" => "hermes", "kind" => "id", "value" => "commander-conversation" }
+    allow(herdr).to receive(:start).and_return(herdr_pane("agent_session" => identity, "agent_status" => "idle"))
+
+    op = db[:session_operations][session_id: id]
+    expect(execute(op[:id])).to eq("complete")
+    expect(herdr).to have_received(:create_workspace).with(hash_including(cwd: "/workspace/commander"))
+    expect(herdr).to have_received(:start).with(hash_including(launch: Adapters::Herdr::Dto::LaunchSpec.new(cli: "hermes", launch_args: [])))
+  end
+  it "rejects a non-Hermes Commander profile before it reserves a session" do
+    commander = Domains::Workflows::Dto::RoleConfig.new(cli: "gemini", provider: "google", model: "fixture-gemini", family: "gemini", launch_args: [])
+
+    result = bootstrap.call(configuration: commander)
+
+    expect(result.failed?).to be(true)
+    expect(result.errors.first.code).to eq("incomplete_configuration")
+    expect(db[:sessions].where(role: "commander").count).to eq(0)
+  end
   it "does not repeat an uncertain session start or create another conversation" do
     workflow(active_sessions: false)
     id = reserve("writer")
@@ -360,9 +381,9 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
 
   it "keeps Commander busy requests pending and recovers expired requests only for the bound human" do
-    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini"))
+    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "hermes", "provider" => "fixture", "family" => "fixture"))
     sid = Platform::Unwrap.call(bootstrap.call(configuration: config))
-    identity = { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "commander-conversation" }
+    identity = { "source" => "fixture", "agent" => "hermes", "kind" => "id", "value" => "commander-conversation" }
     db[:sessions].where(id: sid).update(active: true, pane_id: "commander-pane", runtime_identity: Sequel.pg_jsonb(identity))
     commander = commander_use_cases(config)
     request = commander.ingest(@inbox)
@@ -469,7 +490,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
 
   it "recovers Commander startup only for the first associated human request and exact neutral conversation" do
-    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini"))
+    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "hermes", "provider" => "fixture", "family" => "fixture"))
     commander = commander_use_cases(config)
     commander.ingest(@inbox)
     commander = db[:sessions][role: "commander"]
@@ -479,8 +500,8 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     recovery = delivery.dup
     allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} commander-pane")
     allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
-    live = { "agent_session" => { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
-             "name" => commander[:alias], "cwd" => "/home/runtime", "agent" => "gemini" }
+    live = { "agent_session" => { "source" => "fixture", "agent" => "hermes", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
+             "name" => commander[:alias], "cwd" => "/workspace/commander", "agent" => "hermes" }
     allow(herdr).to receive(:pane).and_return(herdr_pane(live))
     expect(reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "commander-pane")).to eq("complete")
     expect(db[:sessions][id: commander[:id]][:active]).to eq(true)
@@ -488,7 +509,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
 
   it "binds Commander recovery to the earliest human request even when a later request has a smaller inbox id" do
-    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini"))
+    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "hermes", "provider" => "fixture", "family" => "fixture"))
     commander = commander_use_cases(config)
     commander.ingest(@inbox)
     commander = db[:sessions][role: "commander"]

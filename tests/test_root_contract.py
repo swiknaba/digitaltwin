@@ -1,7 +1,10 @@
 """Compose agreement checks only; these do not start or validate applications."""
 import json
+import os
 from pathlib import Path
 import runpy
+import subprocess
+import tempfile
 from types import SimpleNamespace
 import unittest
 
@@ -105,6 +108,25 @@ class CombinedRootContractTest(unittest.TestCase):
         self.assertTrue(all(volume["type"] == "volume" for volume in runtime["volumes"]))
         self.assertEqual(runtime["build"]["target"], "with-callback")
         self.assertIn("kirei-clients", runtime["build"]["additional_contexts"])
+
+    def test_hermes_mcp_template_is_tracked(self):
+        template = "agent-runtime/config/commander/hermes-config.yaml"
+        subprocess.run(["git", "ls-files", "--error-unmatch", template], cwd=ROOT, check=True,
+                       stdout=subprocess.DEVNULL)
+        configuration = (ROOT / template).read_text()
+        self.assertIn("digitaltwin-mcp", configuration)
+
+    def test_runtime_provision_forwards_an_optional_company_subdirectory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = root / "wagglebot"
+            captured = root / "arguments"
+            executable.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURED_ARGUMENTS"\n')
+            executable.chmod(0o755)
+            environment = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}", "CAPTURED_ARGUMENTS": str(captured)}
+            subprocess.run([str(ROOT / "agent-runtime/bin/runtime-provision"), "connect", "https://example.invalid/company.git",
+                            "examples/reference-setup"], check=True, env=environment)
+            self.assertEqual(captured.read_text().splitlines(), ["connect", "https://example.invalid/company.git", "examples/reference-setup"])
 
     def test_worker_and_listener_wait_for_dependencies(self):
         self.assertEqual(self.services["backend-worker"]["depends_on"]["agent-runtime"]["condition"], "service_healthy")

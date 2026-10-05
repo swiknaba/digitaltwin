@@ -12,6 +12,7 @@ module Services
           ListProjects = new("list_projects")
           ListWorkflows = new("list_workflows")
           ReadContext = new("read_context")
+          WorkflowStatus = new("workflow_status")
           StartWorkflow = new("start_workflow")
           SendPrompt = new("send_prompt")
           WorkflowControl = new("workflow_control")
@@ -21,7 +22,7 @@ module Services
         sig { returns(T::Array[ToolField]) }
         def fields
           case self
-          when ListProjects, ListWorkflows, ReadContext then []
+          when ListProjects, ListWorkflows, ReadContext, WorkflowStatus then []
           when StartWorkflow then [ToolField::ProjectId, ToolField::Title]
           when SendPrompt then [ToolField::WorkflowId, ToolField::EvidenceInboxIds]
           when WorkflowControl then [ToolField::WorkflowId, ToolField::Action, ToolField::ExpectedVersion]
