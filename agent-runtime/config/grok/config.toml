@@ -1,0 +1,4 @@
+[cli]
+# Runtime images update only through deliberate rebuilds; agent processes do
+# not download a replacement binary while handling a session.
+auto_update = false

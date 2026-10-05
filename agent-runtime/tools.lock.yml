@@ -37,6 +37,14 @@ packages:
   opencode: "1.18.34"
   gemini_cli: "0.62.0"
   skills: "1.5.23"
+grok_build:
+  version: "1.0.46"
+  source: https://x.ai/cli/install.sh
+  linux_amd64:
+    url: https://x.ai/cli/grok-1.0.46-linux-x86_64
+    sha256: 41626a53292324140b92556b9d42ff5542e3dcd04aff85eafb8689dd4adb44fc
+  install: official_xai_stable_binary_in_runtime_final_stage
+  update_policy: advance_to_current_official_stable_release_on_deliberate_runtime_rebuild
 hermes:
   release: "v2026.9.24"
   source: https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.24

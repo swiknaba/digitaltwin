@@ -26,10 +26,13 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 - Use the latest supported Hermes stable release. Hermes publishes dated stable tags, not minor-line tags. Advance on a normal Runtime rebuild; no separate source-URL or artifact-digest record is required.
 - Hermes native Markdown memory, SQLite history, and skills are Commander-local. Do not create a Kirei memory adapter, Commander knowledge tables, or Markdown mirrors.
 - Use the Wagglebot `examples/reference-setup` subdirectory as the shared worker baseline after a release supports both company-subdirectory connections and its own pinned-runtime provisioning. Connect it through `runtime-provision connect URL examples/reference-setup`, then use the documented Wagglebot cache flow. Hermes reads the provisioned shared library at `/home/runtime/.agents/skills`; Commander’s local `AGENTS.md` and `SOUL.md` remain authoritative for its coordinator role. Hermes learned state stays per profile. Hermes is not a Wagglebot provisioning target.
-- Hermes is the harness, not a fixed Gemini/Grok model choice. Support native optional xAI Grok
+- Hermes is the Commander harness, not a fixed Gemini/Grok model choice. Support native optional xAI Grok
   provider selection (`xai`/`grok` API key or `xai-oauth`/`grok-oauth` operator OAuth) through
   Hermes' private profile. Do not create credentials, browser login, a default model, paid calls,
-  or a separate Grok harness in this task.
+  or a default Grok Build role in this task. Package official xAI Grok Build as an additional
+  Herdr-native `grok` worker CLI, with background self-update disabled. It may be selected only
+  through an operator role configuration and official API-key/login setup outside Git; it never
+  replaces the Hermes-only Commander role.
 - Mattermost PostgreSQL chat storage and Hermes SQLite history coexist. Neither replaces Kirei's orchestration records.
 
 ## Starting point

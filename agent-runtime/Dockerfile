@@ -2,6 +2,7 @@
 FROM node:22.23.2-bookworm-slim AS runtime
 ARG TARGETARCH
 ARG HERMES_REF=v2026.9.24
+ARG GROK_BUILD_VERSION=1.0.46
 RUN test "$TARGETARCH" = amd64
 COPY apt-packages.lock /opt/runtime/apt-packages.lock
 RUN apt-get update \
@@ -20,6 +21,12 @@ RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 RUN curl -fsSL https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64 -o /usr/local/bin/herdr \
  && echo '18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7  /usr/local/bin/herdr' | sha256sum -c - \
  && chmod 755 /usr/local/bin/herdr
+# xAI publishes Grok Build through stable/alpha/enterprise channels, not a
+# documented minor-line artifact URL. Install the current stable build chosen
+# for this image; advancing it is an explicit Runtime rebuild.
+RUN curl -fsSL "https://x.ai/cli/grok-${GROK_BUILD_VERSION}-linux-x86_64" -o /usr/local/bin/grok \
+ && echo '41626a53292324140b92556b9d42ff5542e3dcd04aff85eafb8689dd4adb44fc  /usr/local/bin/grok' | sha256sum -c - \
+ && chmod 755 /usr/local/bin/grok
 # Hermes publishes dated stable release tags, not minor-line tags. The current
 # installer targets newer source trees than v2026.9.24, so install this
 # selected stable source release with its own frozen uv lockfile. A later

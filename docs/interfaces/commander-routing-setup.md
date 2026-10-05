@@ -54,12 +54,17 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    `"cli": "hermes"`. Writer/Reviewer must differ in provider
    and family. Use the actual already authorized models/login setup in Runtime; do not pass provider
    credentials as launch arguments. The persistent Commander directory is `/workspace/commander`.
-   Hermes is the harness; it does not fix Commander to Gemini or any other model. xAI Grok is
+   Hermes is the harness; it does not fix Commander to Gemini or any other model. Its optional xAI Grok provider is
    supported natively as `provider: xai` (alias `grok`) with an existing `XAI_API_KEY`, or as
    `provider: xai-oauth` (alias `grok-oauth`) after an operator-run `hermes model`/`hermes auth add
    xai-oauth` login. Select the actual Grok model in the private Hermes profile or interactive
    model picker; do not add a key, OAuth token, model default, or provider value to Git, launch
    arguments, logs, or this setup file. Gemini remains an optional Hermes provider, not a default.
+   Runtime also packages the official xAI Grok Build CLI for a separately configured Writer or
+   Reviewer role (`"cli": "grok"`); it is not a Commander replacement or a Hermes provider
+   setting. Grok Build accepts an operator-provided `XAI_API_KEY` or its official login outside
+   Git. Its default Runtime config disables background self-updates. No role is enabled merely by
+   installing the binary; Kirei still verifies the configured role and all workflow authorization.
 4. Retain a verified `projects` row binding the project channel to its repository slug/origin and
    `/workspace/repos/owner/repo`. Repository origin must match; branches/worktrees are verified.
    For existing-session acceptance, bind Writer's actual Herdr pane, alias, cwd, CLI, opaque

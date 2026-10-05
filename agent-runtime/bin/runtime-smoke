@@ -3,7 +3,7 @@ set -euo pipefail
 [[ $(id -u) == 10001 ]]
 [[ $(node --version) == v22.23.2 ]]
 [[ $(herdr --version) == 'herdr 0.9.3' ]]
-for command in codex claude opencode gemini wagglebot hermes; do
+for command in codex claude opencode gemini grok wagglebot hermes; do
   timeout 45 "$command" --version
 done
 node -e 'const {createRequire}=require("node:module"); const r=createRequire("/opt/wagglebot/dist/index.js"); if (r("skills/package.json").version !== "1.5.23") process.exit(1)'

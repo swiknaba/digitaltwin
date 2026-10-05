@@ -1,7 +1,7 @@
 # Agent Runtime
 
 Non-root Linux AMD64 image containing Herdr 0.9.3, Codex, Claude Code, OpenCode,
-Gemini CLI, Hermes Agent, Wagglebot, OpenSSH, Ruby for the standalone callback, and the required
+Gemini CLI, xAI Grok Build, Hermes Agent, Wagglebot, OpenSSH, Ruby for the standalone callback, and the required
 shell/Python tools. This component owns image packaging and local runtime tests.
 Kirei owns session/workflow logic and callback/MCP source.
 
@@ -34,8 +34,12 @@ This is a component test, not Phase 0 acceptance or a production deployment.
 
 `bin/cli-startup-probe.py` runs **only in a disposable empty Runtime home**, with a
 running Herdr server and no provider credentials. It creates/closes test workspaces
-and starts the actual installed CLIs, including Hermes. No prompt or authentication is submitted. The
-recorded initial ready/idle states do not prove readiness after model work.
+and starts the actual installed CLIs, including Hermes and Grok Build. Grok Build is a distinct
+Herdr worker CLI; Hermes remains the Commander harness and may independently select xAI as an
+inference provider. No prompt or authentication is submitted. The
+recorded initial ready/idle states do not prove readiness after model work. Its default set covers
+all installed harnesses; `CLI_STARTUP_PROBE_KINDS` can select a comma-separated subset for a
+bounded offline component test.
 
 ## Exact dependencies and Debian slim decision
 
@@ -60,6 +64,13 @@ The previous Alpine image measured about 2.16 GB uncompressed; native CLI packag
 dominated it. The post-build evidence records the replacement image's compressed
 and uncompressed sizes separately. Neither value is inferred from the slim base
 image alone.
+
+Grok Build is the official xAI `grok` binary. xAI publishes stable/alpha/enterprise
+channels rather than a minor-line artifact URL, so this Runtime records the current stable build
+and advances it only in a deliberate image rebuild. The default local Grok config disables its
+background updater; an operator supplies `XAI_API_KEY` or completes the official login outside Git.
+Herdr's packaged `grok` integration registers only its local session-state hook. The image and
+tests never submit a prompt, authenticate, or contact a provider.
 
 Wagglebot 0.3.4 publishes the staged, self-contained package tarball: its manifest
 has no `workspace:*` runtime dependencies and its remaining runtime dependencies are

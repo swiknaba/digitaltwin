@@ -4,7 +4,7 @@ image=${1:-digitaltwin-runtime-worker:20261001}
 name="digitaltwin-runtime-test-$(date +%s)-$$"
 cleanup() { docker rm -fv "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
-docker run -d --name "$name" --platform linux/amd64 --cap-drop ALL --security-opt no-new-privileges "$image" >/dev/null
+docker run -d --name "$name" --platform linux/amd64 --network none --cap-drop ALL --security-opt no-new-privileges "$image" >/dev/null
 ready() {
   for attempt in $(seq 1 30); do
     if docker exec "$name" /opt/runtime/bin/runtime-health; then return; fi
@@ -23,6 +23,23 @@ if docker exec "$name" bash -elc 'test "$(command -v rg)" = /deliberately-wrong-
 fi
 printf 'PASS: deliberately failed first assertion exits nonzero in both shells\n'
 docker exec "$name" /opt/runtime/bin/runtime-smoke --server
+docker exec -e CLI_STARTUP_PROBE_KINDS=gemini,hermes,grok "$name" sh -c 'python3 /opt/runtime/bin/cli-startup-probe.py > /tmp/cli-startup-probe.jsonl'
+docker exec -i "$name" python3 - <<'PY'
+import json
+from pathlib import Path
+
+observations = [json.loads(line) for line in Path('/tmp/cli-startup-probe.jsonl').read_text().splitlines()]
+assert [observation['cli'] for observation in observations] == ['gemini', 'hermes', 'grok']
+assert all(observation['authenticated'] is False for observation in observations)
+by_cli = {observation['cli']: observation for observation in observations}
+# A vendor UI may wait for its unreachable service in this network-disabled
+# probe. Hermes and Grok Build must still enroll as Herdr agents locally.
+assert by_cli['hermes']['startup_exit'] == 0
+assert by_cli['grok']['startup_exit'] == 0
+assert '"agent":"hermes"' in by_cli['hermes']['startup_response']
+assert '"agent":"grok"' in by_cli['grok']['startup_response']
+PY
+docker exec "$name" sh -ec 'test "$(grok --version)" = "grok 1.0.46 (2765805b9442)"; test "$(grep -E "^auto_update = false$" "$HOME/.grok/config.toml")" = "auto_update = false"; test -x "$HOME/.grok/hooks/herdr-agent-state.sh"; test -f "$HOME/.grok/hooks/herdr.json"'
 # A second container using the shared volumes and agreed UID reaches the real API.
 docker run --rm --platform linux/amd64 --user 10001:10001 --volumes-from "$name" --cap-drop ALL --security-opt no-new-privileges --entrypoint /opt/runtime/bin/runtime-health "$image"
 docker exec "$name" sh -ec 'test "$(awk "/CapEff/ {print \$2}" /proc/1/status)" = 0000000000000000; test ! -e /var/run/docker.sock; printf preserved > /workspace/restart-fixture; printf preserved > "$HOME/restart-fixture"'

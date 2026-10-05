@@ -7,7 +7,8 @@ for path in "$HOME" /workspace /run/herdr; do
 done
 commander_workspace=/workspace/commander
 hermes_home="$commander_workspace/.hermes"
-mkdir -p "$commander_workspace" "$hermes_home" /workspace/repos /workspace/worktrees "$HOME/.agents/skills" "$HOME/.config/herdr" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode"
+grok_home="$HOME/.grok"
+mkdir -p "$commander_workspace" "$hermes_home" /workspace/repos /workspace/worktrees "$HOME/.agents/skills" "$HOME/.config/herdr" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode" "$grok_home"
 for file in AGENTS.md SOUL.md .gitignore; do
   if [ ! -e "$commander_workspace/$file" ]; then
     cp "/opt/runtime/config/commander/$file" "$commander_workspace/$file"
@@ -29,8 +30,11 @@ fi
 if [ ! -e "$HOME/.config/herdr/config.toml" ]; then
   cp /opt/runtime/config/herdr.toml "$HOME/.config/herdr/config.toml"
 fi
+if [ ! -e "$grok_home/config.toml" ]; then
+  cp /opt/runtime/config/grok/config.toml "$grok_home/config.toml"
+fi
 # Supported upstream installations preserve existing operator configuration.
-for integration in codex claude opencode; do
+for integration in codex claude opencode grok; do
   herdr integration install "$integration"
 done
 export HERMES_HOME="$hermes_home"
