@@ -36,7 +36,7 @@ RUN curl -fsSL https://github.com/astral-sh/uv/releases/download/0.12.3/uv-x86_6
  && tar -xzf /tmp/uv.tar.gz -C /tmp \
  && install -m 755 /tmp/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv \
  && rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu
-RUN curl -fsSL "https://github.com/NousResearch/hermes-agent/archive/refs/tags/${HERMES_REF}.tar.gz" -o /tmp/hermes-agent.tar.gz \
+RUN curl -fsSL --retry 4 --retry-delay 2 --retry-max-time 60 "https://github.com/NousResearch/hermes-agent/archive/refs/tags/${HERMES_REF}.tar.gz" -o /tmp/hermes-agent.tar.gz \
  && mkdir /opt/hermes-agent \
  && tar -xzf /tmp/hermes-agent.tar.gz --strip-components=1 -C /opt/hermes-agent \
  && cd /opt/hermes-agent \

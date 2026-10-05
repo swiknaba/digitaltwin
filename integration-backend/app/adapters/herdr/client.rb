@@ -17,6 +17,7 @@ module Adapters
       MAX_LINE_BYTES = 1_048_576
       REQUEST_TIMEOUT_SECONDS = 5.0
       STARTUP_TIMEOUT_SECONDS = 30
+      BUSY_RETRY_SECONDS = 2.0
       SAFE_ERROR_CODES = T.let(["agent_pane_busy"].freeze, T::Array[String])
 
       sig { params(socket_path: String).void }
@@ -34,15 +35,15 @@ module Adapters
         agent("agent.prompt", { "target" => pane_id, "text" => text }, "agent_prompted", pane_id)
       end
 
-      sig { params(pane_id: String, name: String, launch: Dto::LaunchSpec).returns(Dto::Pane) }
-      def start(pane_id:, name:, launch:)
+      sig { params(pane_id: String, name: String, launch: Dto::LaunchSpec, workspace_id: T.nilable(String)).returns(Dto::Pane) }
+      def start(pane_id:, name:, launch:, workspace_id: nil)
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + STARTUP_TIMEOUT_SECONDS
         result = begin
           startup_request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started", deadline: deadline)
         rescue Errors::ProtocolViolation => error
           raise unless error.code == "agent_pane_busy"
 
-          retry_initial_shell_start(pane_id: pane_id, name: name, launch: launch, deadline: deadline, error: error)
+          retry_initial_shell_start(pane_id: pane_id, name: name, launch: launch, workspace_id: workspace_id, deadline: deadline, error: error)
         end
         await_start(value: object_field!(result, "agent"), pane_id: pane_id, name: name, kind: launch.cli, deadline: deadline)
       end
@@ -87,29 +88,77 @@ module Adapters
       end
 
       # Herdr explicitly rejects agent_pane_busy before it starts an agent. One
-      # retry is safe only after a correlated read proves that exact pane is
-      # still the untouched shell. An opaque/redacted start error never enters
-      # this path, and the original deadline covers every observation.
+      # retry is safe only after the caller binds the exact freshly-created
+      # workspace and a correlated read proves that pane still unstarted. A
+      # fresh pane can redact agent.get as unknown; then pane.list binds the
+      # workspace and agent.list proves there is no submitted launch. An
+      # opaque/redacted start error never enters this path, and the original
+      # deadline covers every observation.
       sig do
-        params(pane_id: String, name: String, launch: Dto::LaunchSpec, deadline: T.any(Float, Integer), error: Errors::ProtocolViolation).returns(JsonObject)
+        params(pane_id: String, name: String, launch: Dto::LaunchSpec, workspace_id: T.nilable(String), deadline: T.any(Float, Integer), error: Errors::ProtocolViolation).returns(JsonObject)
       end
-      private def retry_initial_shell_start(pane_id:, name:, launch:, deadline:, error:)
+      private def retry_initial_shell_start(pane_id:, name:, launch:, workspace_id:, deadline:, error:)
+        raise error unless workspace_id
+
+        busy_deadline = [deadline.to_f, Process.clock_gettime(Process::CLOCK_MONOTONIC) + BUSY_RETRY_SECONDS].min
         loop do
-          raise error if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          raise error if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= busy_deadline
 
           begin
-            raise error unless initial_shell?(pane(pane_id))
+            pane_unstarted = initial_shell_agent?(pane_id: pane_id, workspace_id: workspace_id, deadline: busy_deadline)
           rescue Errors::ProtocolViolation => read_error
             raise error unless read_error.code == "unknown"
-            raise error if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
-            sleep(0.1)
-            next
+            begin
+              pane_unstarted = pane_belongs_to_workspace?(pane_id: pane_id, workspace_id: workspace_id, deadline: busy_deadline) &&
+                               no_agent_submitted?(pane_id: pane_id, deadline: busy_deadline)
+            rescue Errors::ProtocolViolation => inventory_error
+              raise error unless inventory_error.code == "unknown"
+
+              retry_remaining = busy_deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+              raise error unless retry_remaining.positive?
+
+              sleep([0.1, retry_remaining].min)
+              next
+            end
           end
-          raise error if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          raise error unless pane_unstarted
+
+          remaining = busy_deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          raise error unless remaining.positive?
+
+          sleep([0.1, remaining].min)
+          raise error if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= busy_deadline
 
           return startup_request("agent.start", { "pane_id" => pane_id, "name" => name, "kind" => launch.cli, "args" => launch.launch_args }, "agent_started", deadline: deadline)
         end
+      end
+
+      sig { params(pane_id: String, workspace_id: String, deadline: T.any(Float, Integer)).returns(T::Boolean) }
+      private def initial_shell_agent?(pane_id:, workspace_id:, deadline:)
+        value = object_field!(startup_request("agent.get", { "target" => pane_id }, "agent_info", deadline: deadline), "agent")
+        string_field!(value, "workspace_id") == workspace_id && initial_shell?(pane_from(value: value, pane_id: pane_id))
+      end
+
+      # PaneInfo omits startup-only fields, so it verifies only the caller's
+      # fresh workspace binding. The agent-list check below is the sole proof
+      # that no launch was submitted when agent.get is temporarily unavailable.
+      sig { params(pane_id: String, workspace_id: String, deadline: T.any(Float, Integer)).returns(T::Boolean) }
+      private def pane_belongs_to_workspace?(pane_id:, workspace_id:, deadline:)
+        panes = object_array_field!(startup_request("pane.list", {}, "pane_list", deadline: deadline), "panes")
+        value = panes.find { |candidate| string_field!(candidate, "pane_id") == pane_id }
+        return false unless value
+
+        string_field!(value, "workspace_id") == workspace_id && agent_status!(value) == Dto::AgentStatus::Unknown
+      end
+
+      # AgentInfo includes name and launch_pending, unlike PaneInfo. Herdr
+      # registers an accepted start in agent.list before returning its success
+      # response, so any matching entry makes a second start unsafe.
+      sig { params(pane_id: String, deadline: T.any(Float, Integer)).returns(T::Boolean) }
+      private def no_agent_submitted?(pane_id:, deadline:)
+        agents = object_array_field!(startup_request("agent.list", {}, "agent_list", deadline: deadline), "agents")
+        agents.none? { |agent| string_field!(agent, "pane_id") == pane_id }
       end
 
       # Socket agent.start acknowledges submission; the pinned CLI additionally

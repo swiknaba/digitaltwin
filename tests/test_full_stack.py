@@ -226,10 +226,15 @@ for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-ali
         time.sleep(delay)
         started = call('agent.start', {'pane_id': created['root_pane']['pane_id'], 'name': name, 'kind': 'pi', 'args': []})
         agent = started.get('result', {}).get('agent', {})
+        listed = [item for item in call('agent.list', {})['result']['agents']
+                  if item.get('pane_id') == created['root_pane']['pane_id']]
+        registered = listed[0] if len(listed) == 1 else {}
         observations.append({'delay': delay, 'name': name, 'error_code': started.get('error', {}).get('code'),
                              'result_type': started.get('result', {}).get('type'),
                              'state': agent.get('agent_status'), 'launch_pending': agent.get('launch_pending'),
-                             'interactive_ready': agent.get('interactive_ready'), 'has_session': bool(agent.get('agent_session'))})
+                             'interactive_ready': agent.get('interactive_ready'), 'has_session': bool(agent.get('agent_session')),
+                             'agent_list_name': registered.get('name'),
+                             'agent_list_launch_pending': registered.get('launch_pending')})
     finally:
         call('workspace.close', {'workspace_id': created['workspace']['workspace_id']})
         deadline = time.monotonic() + 5
@@ -243,6 +248,12 @@ for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-ali
 print(json.dumps(observations))
 """
         self.raw_start_probe = json.loads(self.compose(["exec", "-T", "agent-runtime", "python3", "-c", probe]).stdout)
+        # Pin the recovery invariant for the selected Herdr binary: once an
+        # agent.start succeeds, agent.list immediately records the target and
+        # its pending launch. This is what makes an empty agent list safe only
+        # after Herdr's explicit pre-start agent_pane_busy rejection.
+        self.assertTrue(all(row["agent_list_name"] == row["name"] and row["agent_list_launch_pending"] is True
+                            for row in self.raw_start_probe), "agent.list did not record accepted starts")
         created = json.loads(self.compose(["exec", "-T", "agent-runtime", "herdr", "workspace", "create", "--label", "direct-fixture", "--cwd", "/home/runtime"]).stdout)["result"]
         pane = created["root_pane"]["pane_id"]
         try:
