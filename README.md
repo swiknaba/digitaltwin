@@ -17,7 +17,7 @@ The outcome is a small remote team that can preserve context across restarts and
 flowchart TD
   human[Human]
   access[Chat or CLI]
-  commander[Commander<br/>optional copilot]
+  commander[Commander<br/> as optional copilot]
   workers[Workers]
 
   human <--> access
