@@ -61,13 +61,12 @@ dominated it. The post-build evidence records the replacement image's compressed
 and uncompressed sizes separately. Neither value is inferred from the slim base
 image alone.
 
-Wagglebot 0.3.0's published npm manifest contains `workspace:*` dependencies and
-ordinary `npm install wagglebot@0.3.0` fails with `EUNSUPPORTEDPROTOCOL`. The image
-extracts its checksum-verified, **unmodified published tarball**, whose dist bundle
-contains those internal modules, and exposes the separately locked skills 1.5.23
-through NODE_PATH. Version/help checks pass. Company provisioning against a real
-operator repository remains open; no company configuration is invented or fetched
-at startup. Revisit this packaging workaround after upstream repairs its release.
+Wagglebot 0.3.3 publishes the staged, self-contained package tarball: its manifest
+has no `workspace:*` runtime dependencies and its remaining runtime dependencies are
+bundled. The image extracts the checksum-verified published tarball and exposes the
+separately locked skills 1.5.23 through NODE_PATH. Version/help checks and a real
+reference-setup provisioning flow are required before this Runtime pin is accepted.
+No company configuration is invented or fetched at startup.
 
 The callback interpreter is Debian Ruby, satisfying the coordinated stdlib client
 minimum >=3.1. It does not replace Kirei's backend-owned Ruby 4.0.7 pin.

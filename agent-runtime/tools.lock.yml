@@ -43,12 +43,11 @@ hermes:
   install: release_source_with_frozen_uv_lock_in_runtime_final_stage
   update_policy: advance_to_next_upstream_stable_release_on_deliberate_runtime_rebuild
 wagglebot:
-  version: "0.3.0"
-  source_revision: d11c200202121563e34b92e28be92de1ed497ce0
-  url: https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.0.tgz
-  sha256: b9adcf0d854b6a7ed338463329e5ec0062adb79c3cbb9189fdf14fffb4b51974
-  install: unmodified_published_bundle_with_locked_skills_dependency
-  upstream_defect: npm_manifest_workspace_dependencies_cannot_be_installed
+  version: "0.3.3"
+  source_revision: 962bd678b92734a277b62a2fe705e576df3560aa
+  url: https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.3.tgz
+  sha256: 6e43c8c0decebfeaa645a28d402d862615889703fe7c7e1c83b2d1eb1a920f56
+  install: staged_self_contained_published_bundle
 runtime:
   uid: 10001
   gid: 10001
