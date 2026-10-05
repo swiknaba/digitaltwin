@@ -61,7 +61,7 @@ dominated it. The post-build evidence records the replacement image's compressed
 and uncompressed sizes separately. Neither value is inferred from the slim base
 image alone.
 
-Wagglebot 0.3.3 publishes the staged, self-contained package tarball: its manifest
+Wagglebot 0.3.4 publishes the staged, self-contained package tarball: its manifest
 has no `workspace:*` runtime dependencies and its remaining runtime dependencies are
 bundled. The image extracts the checksum-verified published tarball and exposes the
 separately locked skills 1.5.23 through NODE_PATH. Version/help checks and a real

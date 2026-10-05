@@ -43,10 +43,10 @@ hermes:
   install: release_source_with_frozen_uv_lock_in_runtime_final_stage
   update_policy: advance_to_next_upstream_stable_release_on_deliberate_runtime_rebuild
 wagglebot:
-  version: "0.3.3"
-  source_revision: 962bd678b92734a277b62a2fe705e576df3560aa
-  url: https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.3.tgz
-  sha256: 6e43c8c0decebfeaa645a28d402d862615889703fe7c7e1c83b2d1eb1a920f56
+  version: "0.3.4"
+  source_revision: 0612d71b25df5964bc568b28be7a279012bd6c73
+  url: https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.4.tgz
+  sha256: d7d9d34067f19cf9cff42ac9ea4a2bbdfd4cbd08479f512776311d6857c6f2d1
   install: staged_self_contained_published_bundle
 runtime:
   uid: 10001

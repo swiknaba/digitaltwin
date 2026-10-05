@@ -37,10 +37,10 @@ RUN curl -fsSL "https://github.com/NousResearch/hermes-agent/archive/refs/tags/$
  && ln -s /opt/hermes-agent/.venv/bin/hermes /usr/local/bin/hermes \
  && chmod -R a+rX /opt/hermes-agent /opt/hermes-uv-cache /opt/hermes-python \
  && rm -f /tmp/hermes-agent.tar.gz
-# Wagglebot 0.3.3 publishes the staged, self-contained package tarball. Extract
+# Wagglebot 0.3.4 publishes the staged, self-contained package tarball. Extract
 # the checksum-verified package and resolve its bundled runtime dependencies.
-RUN curl -fsSL https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.3.tgz -o /tmp/wagglebot.tgz \
- && echo '6e43c8c0decebfeaa645a28d402d862615889703fe7c7e1c83b2d1eb1a920f56  /tmp/wagglebot.tgz' | sha256sum -c - \
+RUN curl -fsSL https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.4.tgz -o /tmp/wagglebot.tgz \
+ && echo 'd7d9d34067f19cf9cff42ac9ea4a2bbdfd4cbd08479f512776311d6857c6f2d1  /tmp/wagglebot.tgz' | sha256sum -c - \
  && mkdir /opt/wagglebot && tar -xzf /tmp/wagglebot.tgz --strip-components=1 -C /opt/wagglebot \
  && chmod 755 /opt/wagglebot/bin/wagglebot.js \
  && ln -s /opt/wagglebot/bin/wagglebot.js /usr/local/bin/wagglebot && rm /tmp/wagglebot.tgz
