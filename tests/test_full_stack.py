@@ -324,6 +324,7 @@ for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-ali
                              'result_type': started.get('result', {}).get('type'),
                              'state': agent.get('agent_status'), 'launch_pending': agent.get('launch_pending'),
                              'interactive_ready': agent.get('interactive_ready'), 'has_session': bool(agent.get('agent_session')),
+                             'agent_list_count': len(listed),
                              'agent_list_name': registered.get('name'),
                              'agent_list_launch_pending': registered.get('launch_pending')})
     finally:
@@ -339,12 +340,23 @@ for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-ali
 print(json.dumps(observations))
 """
         self.raw_start_probe = json.loads(self.compose(["exec", "-T", "agent-runtime", "python3", "-c", probe]).stdout)
-        # Pin the recovery invariant for the selected Herdr binary: once an
-        # agent.start succeeds, agent.list immediately records the target and
-        # its pending launch. This is what makes an empty agent list safe only
-        # after Herdr's explicit pre-start agent_pane_busy rejection.
+        # Pin the recovery invariant for the selected Herdr binary. A just
+        # closed pane can receive Herdr's explicit pre-start
+        # ``agent_pane_busy`` rejection; it must not invent an agent.list
+        # entry, and the retry must still record the accepted launch. Do not
+        # demand agent.list evidence for the rejected request itself.
+        accepted_starts = [row for row in self.raw_start_probe if row["error_code"] is None]
+        rejected_starts = [row for row in self.raw_start_probe if row["error_code"] is not None]
+        self.assertTrue(all(row["error_code"] == "agent_pane_busy" for row in rejected_starts),
+                        "raw start probe received an unexpected Herdr rejection")
+        self.assertTrue(all(row["agent_list_count"] == 0 and row["agent_list_name"] is None and row["agent_list_launch_pending"] is None
+                            for row in rejected_starts), "rejected starts must not create agent.list entries")
         self.assertTrue(all(row["agent_list_name"] == row["name"] and row["agent_list_launch_pending"] is True
-                            for row in self.raw_start_probe), "agent.list did not record accepted starts")
+                            for row in accepted_starts), "agent.list did not record accepted starts")
+        self.assertTrue(any(row["name"] == "wire-probe" and row["delay"] == 0.5 for row in accepted_starts),
+                        "wire-probe did not recover after a busy rejection")
+        self.assertTrue(any(row["name"] == "digitaltwin-alias-probe" for row in accepted_starts),
+                        "alias probe did not start")
         created = json.loads(self.compose(["exec", "-T", "agent-runtime", "herdr", "workspace", "create", "--label", "direct-fixture", "--cwd", "/home/runtime"]).stdout)["result"]
         pane = created["root_pane"]["pane_id"]
         try:
