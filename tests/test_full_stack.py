@@ -217,7 +217,10 @@ def call(method, params):
         return json.loads(stream.readline())
 
 observations = []
-for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-session_abCDEF123xyz')]:
+# Keep this transport probe to valid Herdr agent names. Mixed-case durable IDs
+# are covered by the backend runtime-alias spec; injecting a known-invalid name
+# here can leave a transient server error immediately before the real chat test.
+for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-alias-probe')]:
     created = call('workspace.create', {'cwd': '/home/runtime', 'label': 'wire-probe', 'env': {}, 'focus': False})['result']
     try:
         time.sleep(delay)
