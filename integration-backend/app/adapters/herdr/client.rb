@@ -141,7 +141,15 @@ module Adapters
           raise Errors::ProtocolViolation, "Herdr startup readiness timed out" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
           sleep(0.1)
-          value = object_field!(request("agent.get", { "target" => pane_id }, "agent_info"), "agent")
+          begin
+            value = object_field!(request("agent.get", { "target" => pane_id }, "agent_info"), "agent")
+          rescue Errors::ProtocolViolation => error
+            # Herdr can redact a transient read rejection to "unknown" while
+            # the accepted launch registers its terminal. Retrying this read
+            # cannot repeat the already accepted start effect.
+            raise unless error.code == "unknown"
+            raise Errors::ProtocolViolation, "Herdr startup readiness timed out" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+          end
         end
       end
 

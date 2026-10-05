@@ -53,6 +53,14 @@ RSpec.describe Adapters::Herdr::Client do
     end
   end
 
+  it "retries a redacted get rejection after an accepted start without repeating the start" do
+    startup_socket(frames: [pending, { error_code: "upstream_not_ready" }, ready]) do |client, methods|
+      live = client.start(pane_id: "pane", name: "fixture", launch: launch)
+      expect(live.agent_session&.value).to eq("conversation")
+      expect(methods).to eq(["agent.start", "agent.get", "agent.get"])
+    end
+  end
+
   it "retries a rejected start only while the same pane is an uninitialized shell" do
     initial_shell = { pane_id: "pane", agent_status: "unknown" }
     startup_socket(frames: [{ error_code: "agent_pane_busy" }, initial_shell, pending, ready]) do |client, methods|

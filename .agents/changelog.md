@@ -246,3 +246,7 @@
 - Keep the Wagglebot shared-worker baseline product-agnostic; Commander-local guidance now uses only its supplied coordination tools rather than backend implementation names.
 - Forward the approved optional company subdirectory through `runtime-provision connect`. Keep the Runtime pin at 0.3.0 until a Wagglebot release fixes its own pinned-runtime install path.
 - Remove the legacy tracked Commander Markdown-memory mirror; Hermes-native profile memory is the Commander knowledge source. Keep project `.agents/memory.md` only as task-scoped repository context.
+
+## 2026-10-05 — Herdr accepted-start readiness
+
+- Retry a redacted transient `agent.get` rejection while polling an already accepted Herdr start. Never repeat the start effect; retain the readiness deadline and fail-closed behavior.
