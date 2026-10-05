@@ -14,26 +14,21 @@ Long-running AI work is difficult to trust when the request, session, code, revi
 The outcome is a small remote team that can preserve context across restarts and make its work inspectable, while still stopping for the human decisions that matter.
 
 ```mermaid
-flowchart LR
+flowchart TD
   human[Human]
-  chat[Mattermost chat interface]
-  commander[Commander\nHermes harness]
-  control[Kirei control backend\nverification, approvals, jobs]
-  fleet[Agent fleet\nHerdr worker terminals]
-  repos[Project repositories\nGit artifacts]
+  chat[Chat]
+  cli[CLI]
+  commander[Commander]
+  fleet[Agent fleet]
 
   human <--> chat
+  human <--> cli
   chat <--> commander
-  commander --> control
-  control --> fleet
-  fleet --> repos
-  repos --> fleet
-  fleet --> control
-  control --> commander
-  commander --> chat
+  cli <--> commander
+  commander <--> fleet
 ```
 
-The human uses Mattermost; Commander coordinates through Hermes, while Kirei verifies and gates work before Herdr starts worker CLIs. Status and results return through Commander to the same human conversation. This diagram shows the reviewed product flow, not currently enabled autonomous dispatch.
+Humans communicate with Commander through chat or CLI. Commander coordinates the agent fleet and returns status and results through the same interface. This diagram shows the product flow, not implementation technology.
 
 ## Commander
 
