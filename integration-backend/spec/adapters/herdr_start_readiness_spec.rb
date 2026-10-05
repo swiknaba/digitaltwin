@@ -77,18 +77,18 @@ RSpec.describe Adapters::Herdr::Client do
 
   it "retries an explicit busy rejection only after the same pane proves untouched" do
     initial_shell = { pane_id: "pane", agent_status: "unknown", workspace_id: workspace_id }
-    startup_socket(frames: [{ error_code: "agent_pane_busy" }, initial_shell, pending, ready]) do |client, methods|
+    startup_socket(frames: [initial_shell, { error_code: "agent_pane_busy" }, initial_shell, pending, ready]) do |client, methods|
       expect(client.start(pane_id: "pane", name: "fixture", launch: launch, workspace_id: workspace_id).agent_session&.value).to eq("conversation")
-      expect(methods).to eq(["agent.start", "agent.get", "agent.start", "agent.get"])
+      expect(methods).to eq(["agent.get", "agent.start", "agent.get", "agent.start", "agent.get"])
     end
   end
 
   it "uses agent list only when a busy pane redacts agent get" do
     initial_shell = { pane_id: "pane", agent_status: "unknown" }
     inventory = initial_shell.merge(workspace_id: workspace_id)
-    startup_socket(frames: [{ error_code: "agent_pane_busy" }, { error_code: "not_ready_yet" }, { panes: [inventory] }, { agents: [] }, pending, ready]) do |client, methods|
+    startup_socket(frames: [inventory, { error_code: "agent_pane_busy" }, { error_code: "not_ready_yet" }, { panes: [inventory] }, { agents: [] }, pending, ready]) do |client, methods|
       expect(client.start(pane_id: "pane", name: "fixture", launch: launch, workspace_id: workspace_id).agent_session&.value).to eq("conversation")
-      expect(methods).to eq(["agent.start", "agent.get", "pane.list", "agent.list", "agent.start", "agent.get"])
+      expect(methods).to eq(["agent.get", "agent.start", "agent.get", "pane.list", "agent.list", "agent.start", "agent.get"])
     end
   end
 
@@ -101,24 +101,25 @@ RSpec.describe Adapters::Herdr::Client do
 
   it "does not retry a busy rejection when agent list shows a submitted launch" do
     inventory = { pane_id: "pane", agent_status: "unknown", workspace_id: workspace_id }
-    startup_socket(frames: [{ error_code: "agent_pane_busy" }, { error_code: "not_ready_yet" }, { panes: [inventory] }, { agents: [pending.merge(workspace_id: workspace_id)] }]) do |client, methods|
+    startup_socket(frames: [inventory, { error_code: "agent_pane_busy" }, { error_code: "not_ready_yet" }, { panes: [inventory] }, { agents: [pending.merge(workspace_id: workspace_id)] }]) do |client, methods|
       expect { client.start(pane_id: "pane", name: "fixture", launch: launch, workspace_id: workspace_id) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: agent_pane_busy")
-      expect(methods).to eq(["agent.start", "agent.get", "pane.list", "agent.list"])
+      expect(methods).to eq(["agent.get", "agent.start", "agent.get", "pane.list", "agent.list"])
     end
   end
 
-  it "does not retry a busy rejection when the inventory has another workspace" do
+  it "does not start when the fresh workspace binding changes before launch" do
     initial_shell = { pane_id: "pane", agent_status: "unknown", workspace_id: "other-workspace" }
-    startup_socket(frames: [{ error_code: "agent_pane_busy" }, { error_code: "not_ready_yet" }, { panes: [initial_shell] }]) do |client, methods|
-      expect { client.start(pane_id: "pane", name: "fixture", launch: launch, workspace_id: workspace_id) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: agent_pane_busy")
-      expect(methods).to eq(["agent.start", "agent.get", "pane.list"])
+    startup_socket(frames: [initial_shell]) do |client, methods|
+      expect { client.start(pane_id: "pane", name: "fixture", launch: launch, workspace_id: workspace_id) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr fresh workspace changed before startup")
+      expect(methods).to eq(["agent.get"])
     end
   end
 
   it "does not retry an explicit busy rejection after a pane has launch state" do
-    startup_socket(frames: [{ error_code: "agent_pane_busy" }, ready]) do |client, methods|
+    initial_shell = { pane_id: "pane", agent_status: "unknown", workspace_id: workspace_id }
+    startup_socket(frames: [initial_shell, { error_code: "agent_pane_busy" }, ready]) do |client, methods|
       expect { client.start(pane_id: "pane", name: "fixture", launch: launch, workspace_id: workspace_id) }.to raise_error(Adapters::Herdr::Errors::ProtocolViolation, "Herdr rejected operation: agent_pane_busy")
-      expect(methods).to eq(["agent.start", "agent.get"])
+      expect(methods).to eq(["agent.get", "agent.start", "agent.get"])
     end
   end
 
