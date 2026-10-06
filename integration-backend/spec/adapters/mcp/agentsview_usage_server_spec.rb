@@ -7,7 +7,7 @@ require "stringio"
 require "timeout"
 
 RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
-  def usage_document(cost_source: "computed", amount: 23, matched_pattern: "gpt-5.1", tokens: 10)
+  def usage_document(cost_source: "computed", amount: 23, matched_pattern: "gpt-5.1", tokens: 10, models: true)
     {
       "schema_version" => 6,
       "pricing" => {
@@ -16,12 +16,12 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
         "latest_row_updated_at" => nil,
         "cost_source" => cost_source,
         "fallback" => { "used" => true },
-        "models" => {
+        "models" => models ? {
           "gpt-5.1" => {
             "cost_source" => cost_source,
             "resolutions" => [{ "matched_pattern" => matched_pattern, "cost_source" => cost_source }]
           }
-        }
+        } : {}
       },
       "totals" => {
         "inputTokens" => tokens,
@@ -33,14 +33,16 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
     }
   end
 
-  def response_for(arguments, document: usage_document, timezone: "Europe/Berlin")
+  def response_for(arguments, document: usage_document, timezone: "Europe/Berlin", authorizer: ->(_token) {})
     calls = []
     runner = lambda do |environment, argv|
       calls << [environment, argv]
       argv[1] == "sync" ? "" : JSON.generate(document)
     end
-    command = Adapters::Mcp::AgentsviewUsageCommand.new(timezone: timezone, command_runner: runner)
     Dir.mktmpdir do |dir|
+      source_roots = %w[codex claude gemini opencode].map { |name| File.join(dir, name) }
+      source_roots.each { |path| Dir.mkdir(path) }
+      command = Adapters::Mcp::AgentsviewUsageCommand.new(timezone: timezone, command_runner: runner, source_roots: source_roots, authorizer: authorizer)
       token = File.join(dir, "request-token")
       File.write(token, "fixture-capability")
       input = StringIO.new(JSON.generate(jsonrpc: "2.0", id: 1, method: "tools/list") + "\n" + JSON.generate(jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "get_usage", arguments: arguments }) + "\n")
@@ -63,15 +65,20 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
       "cost" => { "status" => "estimated_api", "microdollars" => 23 }
     )
     expect(value.fetch("source")).to eq({ "machine" => "runtime", "archive_freshness" => "synced" })
+    environment = {
+      "AGENTSVIEW_NO_DAEMON" => "1", "AGENTSVIEW_DATA_DIR" => "/home/runtime/.agentsview",
+      "CLAUDE_PROJECTS_DIR" => "/home/runtime/.claude/projects", "CODEX_SESSIONS_DIR" => "/home/runtime/.codex/sessions",
+      "GEMINI_DIR" => "/home/runtime/.gemini", "OPENCODE_DIR" => "/home/runtime/.local/share/opencode"
+    }
     expected_calls = [
-      [{ "AGENTSVIEW_NO_DAEMON" => "1" }, ["/usr/local/bin/agentsview", "sync"]],
-      [{ "AGENTSVIEW_NO_DAEMON" => "1" }, ["/usr/local/bin/agentsview", "usage", "daily", "--json", "--offline", "--no-sync", "--breakdown", "--timezone", "Europe/Berlin", "--since", "2026-10-04", "--until", "2026-10-05", "--agent", "codex"]]
+      [environment, ["/usr/local/bin/agentsview", "sync"]],
+      [environment, ["/usr/local/bin/agentsview", "usage", "daily", "--json", "--offline", "--no-sync", "--breakdown", "--timezone", "Europe/Berlin", "--since", "2026-10-04", "--until", "2026-10-05", "--agent", "codex"]]
     ]
     expect(calls).to eq(expected_calls)
   end
 
   it "preserves a reported zero and never serializes missing token data as zero cost" do
-    reported_zero = usage_document(cost_source: "reported", amount: 0, matched_pattern: nil, tokens: 0)
+    reported_zero = usage_document(cost_source: "reported", amount: 0, matched_pattern: nil, tokens: 0, models: false)
     rows, = response_for({ "range" => { "today" => true } }, document: reported_zero, timezone: "UTC")
     reported = JSON.parse(rows.last.dig("result", "content", 0, "text"))
     expect(reported.fetch("cost")).to eq({ "status" => "reported", "microdollars" => 0 })
@@ -107,7 +114,15 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
       expect(rows.last.dig("error", "code")).to eq(-32_602)
       expect(calls).to be_empty
     end
-    expect { Adapters::Mcp::AgentsviewUsageCommand.new(timezone: "../../../etc/passwd") }.to raise_error(ArgumentError)
+    expect { Adapters::Mcp::AgentsviewUsageCommand.new(timezone: "../../../etc/passwd", authorizer: ->(_token) {}) }.to raise_error(ArgumentError)
+  end
+
+  it "requires a live request capability before touching source roots or AgentsView" do
+    rejected = ->(_token) { raise IOError, "rejected fixture capability" }
+    rows, calls = response_for({ "range" => { "today" => true } }, authorizer: rejected)
+
+    expect(rows.last.dig("error", "code")).to eq(-32_602)
+    expect(calls).to be_empty
   end
 
   it "does not alter the ordinary Commander bridge mode" do

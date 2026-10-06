@@ -24,12 +24,13 @@ require server_file
 
 if ENV["DIGITALTWIN_MCP_TOOLSET"] == "agentsview_usage"
   usage_files = if File.directory?(repository_root)
-                  %w[agentsview_usage_response agentsview_usage_command agentsview_usage_server].map { |name| File.join(repository_root, "#{name}.rb") }
+                  %w[agentsview_usage_response agentsview_usage_authorizer agentsview_usage_command agentsview_usage_server].map { |name| File.join(repository_root, "#{name}.rb") }
                 else
-                  %w[agentsview_usage_response agentsview_usage_command agentsview_usage_server].map { |name| File.join(__dir__, "#{name}.rb") }
+                  %w[agentsview_usage_response agentsview_usage_authorizer agentsview_usage_command agentsview_usage_server].map { |name| File.join(__dir__, "#{name}.rb") }
                 end
   usage_files.each { |file| require file }
-  command = Adapters::Mcp::AgentsviewUsageCommand.new
+  authorizer = Adapters::Mcp::AgentsviewUsageAuthorizer.new(url: ENV.fetch("DIGITALTWIN_CALLBACK_URL"))
+  command = Adapters::Mcp::AgentsviewUsageCommand.new(authorizer: ->(token) { authorizer.authorize(token: token) })
   Adapters::Mcp::AgentsviewUsageServer.new(command: command, token_file: ENV.fetch("DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE")).serve
 else
   require tools_file

@@ -33,6 +33,18 @@ module Domains
         Kirei::Services::Result.new(errors: Platform::Failure.call(code: Dto::ErrorCode::CapabilityRejected, detail: "Request capability expired or inactive"))
       end
 
+      # Fails closed unless one and only one unexpired request in `states`
+      # matches the credential digest. This supports a deliberately narrow
+      # token-only capability check for a read-only local reporting tool.
+      sig { params(token_digest: String, states: T::Array[State], now: Time).returns(Kirei::Services::Result[Dto::CommanderRequestView]) }
+      def authorize_token(token_digest:, states:, now: Time.now)
+        matches = all(Entities::CommanderRequest.query.where(credential_digest: token_digest, state: states.map(&:serialize)))
+        request = matches.one? ? matches.first : nil
+        return Kirei::Services::Result.new(result: request) if request && request.expires_at > now
+
+        Kirei::Services::Result.new(errors: Platform::Failure.call(code: Dto::ErrorCode::CapabilityRejected, detail: "Request capability expired or inactive"))
+      end
+
       # Sets the state, and the reason when one is given.
       sig { params(id: String, state: State, reason: T.nilable(String)).void }
       def mark(id:, state:, reason: nil)

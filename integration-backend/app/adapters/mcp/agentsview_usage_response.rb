@@ -76,9 +76,11 @@ module Adapters
         has_token_data = tokens.values.any? { |value| value.is_a?(Integer) && value.positive? }
         has_priced_model = !models.empty?
         return { "status" => "unavailable" } unless has_token_data || source == "reported"
-        return { "status" => "unavailable" } unless has_priced_model
 
         amount = microdollars(totals, "totalCost")
+        return { "status" => "reported", "microdollars" => amount } if source == "reported" && !has_priced_model
+        return { "status" => "unavailable" } unless has_priced_model
+
         if unpriced_token_rows?(models)
           return { "status" => "partial_estimate", "microdollars" => amount }
         end

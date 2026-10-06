@@ -11,19 +11,24 @@ module Adapters
 
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Range = T.type_alias { T::Hash[String, String] }
+      SourceRoots = T.type_alias { T::Array[String] }
       CommandRunner = T.type_alias { T.proc.params(environment: T::Hash[String, String], argv: T::Array[String]).returns(String) }
+      Authorizer = T.type_alias { T.proc.params(token: String).void }
 
       EXECUTABLE = "/usr/local/bin/agentsview"
       SOURCE_MACHINE = "runtime"
       TIMEOUT_SECONDS = 30
       MAX_STDOUT_BYTES = 1_048_576
       ALLOWED_AGENTS = T.let(%w[claude codex gemini opencode].freeze, T::Array[String])
+      SOURCE_ROOTS = T.let(["/home/runtime/.codex/sessions", "/home/runtime/.claude/projects", "/home/runtime/.gemini", "/home/runtime/.local/share/opencode"].freeze, SourceRoots)
 
-      sig { params(timezone: T.nilable(String), command_runner: T.nilable(CommandRunner)).void }
-      def initialize(timezone: nil, command_runner: nil)
+      sig { params(authorizer: Authorizer, timezone: T.nilable(String), command_runner: T.nilable(CommandRunner), source_roots: T.nilable(SourceRoots)).void }
+      def initialize(authorizer:, timezone: nil, command_runner: nil, source_roots: nil)
         @timezone = T.let(timezone || ENV.fetch("RUNTIME_USAGE_TIMEZONE", "UTC"), String)
         validate_timezone!(@timezone)
         @command_runner = T.let(command_runner, T.nilable(CommandRunner))
+        @source_roots = T.let(source_roots || SOURCE_ROOTS, SourceRoots)
+        @authorizer = T.let(authorizer, Authorizer)
       end
 
       sig { override.returns(T::Array[JsonObject]) }
@@ -53,8 +58,10 @@ module Adapters
         raise ArgumentError, "Empty Commander request capability" if token.empty?
         raise ArgumentError, "Unexpected usage tool fields" unless [%w[range], %w[agent range]].include?(args.keys.sort)
 
+        @authorizer.call(token)
         range = resolve_range(object(args, "range"))
         agent = optional_agent(args["agent"])
+        ensure_source_roots!
         run!(%w[sync])
         output = run!(usage_arguments(range, agent))
         document = parse_document(output)
@@ -143,7 +150,14 @@ module Adapters
 
       sig { params(args: T::Array[String]).returns(String) }
       private def run!(args)
-        environment = { "AGENTSVIEW_NO_DAEMON" => "1" }
+        environment = {
+          "AGENTSVIEW_NO_DAEMON" => "1",
+          "AGENTSVIEW_DATA_DIR" => "/home/runtime/.agentsview",
+          "CLAUDE_PROJECTS_DIR" => "/home/runtime/.claude/projects",
+          "CODEX_SESSIONS_DIR" => "/home/runtime/.codex/sessions",
+          "GEMINI_DIR" => "/home/runtime/.gemini",
+          "OPENCODE_DIR" => "/home/runtime/.local/share/opencode"
+        }
         return @command_runner.call(environment, [EXECUTABLE] + args) if @command_runner
 
         command = T.let([EXECUTABLE] + args, T::Array[String])
@@ -186,6 +200,11 @@ module Adapters
       sig { params(args: JsonObject, key: String).returns(JsonObject) }
       private def object(args, key)
         object_value(args.fetch(key))
+      end
+
+      sig { void }
+      private def ensure_source_roots!
+        raise ArgumentError, "AgentsView source roots are unavailable" unless @source_roots.all? { |path| File.directory?(path) }
       end
 
       sig { params(timezone: String).void }
