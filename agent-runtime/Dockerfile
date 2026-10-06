@@ -106,7 +106,7 @@ RUN echo "633326e1207c318a58c236b5117cd4bae6318f44c409f9e697113b361d6be83d  /usr
 COPY --from=kirei-clients --chmod=755 /agentsview_usage_response.rb /usr/local/bin/agentsview_usage_response.rb
 RUN echo "f3c65b279d3a0fc2843372ae18d0e440343d57b22ef3cc017bbb688b543bfe1d  /usr/local/bin/agentsview_usage_response.rb" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /agentsview_usage_authorizer.rb /usr/local/bin/agentsview_usage_authorizer.rb
-RUN echo "7ffb0f8420c337b73398aeb75fb82fd0001b00cfb24bbea349b269d2d887d1f2  /usr/local/bin/agentsview_usage_authorizer.rb" | sha256sum -c -
+RUN echo "94f965e8615b9971f45d3e9e9b3bd10fd4ec0ce249d469fb408005c45382029c  /usr/local/bin/agentsview_usage_authorizer.rb" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /agentsview_usage_command.rb /usr/local/bin/agentsview_usage_command.rb
 RUN echo "d98e642b3d1477be87ddc0190c71a729690b01d317e2026df4debcf704f4f489  /usr/local/bin/agentsview_usage_command.rb" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /agentsview_usage_server.rb /usr/local/bin/agentsview_usage_server.rb

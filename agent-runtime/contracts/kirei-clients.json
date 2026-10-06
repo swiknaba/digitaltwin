@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_revision": "24e28f2ab0ec8d02b35d56ad1c1c972e6e0e63ce",
+  "source_revision": "051fb9b55bbce69e10246270f730653fbda04df0",
   "validation": "isolated_fixtures_passed_live_dispatch_gated",
   "files": {
     "digitaltwin": {
@@ -25,7 +25,7 @@
     },
     "agentsview_usage_authorizer.rb": {
       "source": "integration-backend/app/adapters/mcp/agentsview_usage_authorizer.rb",
-      "sha256": "7ffb0f8420c337b73398aeb75fb82fd0001b00cfb24bbea349b269d2d887d1f2"
+      "sha256": "94f965e8615b9971f45d3e9e9b3bd10fd4ec0ce249d469fb408005c45382029c"
     },
     "agentsview_usage_command.rb": {
       "source": "integration-backend/app/adapters/mcp/agentsview_usage_command.rb",

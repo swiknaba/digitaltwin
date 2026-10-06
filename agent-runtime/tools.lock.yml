@@ -91,6 +91,6 @@ runtime:
 callback_clients:
   owner: integration-backend
   manifest: contracts/kirei-clients.json
-  source_revision: 24e28f2ab0ec8d02b35d56ad1c1c972e6e0e63ce
+  source_revision: 051fb9b55bbce69e10246270f730653fbda04df0
   packaged_directory: /usr/local/bin
   validation: isolated_callback_stdio_fixtures_only_live_gates_open
