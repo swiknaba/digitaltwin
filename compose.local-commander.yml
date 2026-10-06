@@ -1,10 +1,11 @@
-# Local-only Commander or direct-worker activation. The ignored directory holds
+# Local-only Commander or direct-agent activation. The ignored directory holds
 # existing chat credential files, the role configuration and the explicit
 # activation acknowledgement. It does not mount provider credentials into Kirei.
 services:
   backend-web:
     environment: &local_dispatch_environment
       CHAT_VALIDATION_MODE: "0"
+      COMMANDER_HANDLE: "${COMMANDER_HANDLE:-commander}"
       COMMANDER_CHANNEL_ID: "${COMMANDER_CHANNEL_ID:-}"
       LOCAL_DISPATCH_ACTIVATION_FILE: "/local-config/local-dispatch.json"
       MATTERMOST_AGENT_BOT_ID: "${MATTERMOST_AGENT_BOT_ID:?Set the local Commander bot id}"
@@ -13,9 +14,10 @@ services:
       MATTERMOST_LISTENER_TOKEN_FILE: "/local-config/listener.token"
       MATTERMOST_LOCAL_BOT_IDS: "${MATTERMOST_LOCAL_BOT_IDS:?Set local Mattermost bot ids}"
       MATTERMOST_PEER_BOT_IDS: "${MATTERMOST_PEER_BOT_IDS:-}"
-      MATTERMOST_WORKER_BOT_ID: "${MATTERMOST_WORKER_BOT_ID:?Set the local Worker bot id}"
+      MATTERMOST_WORKER_BOT_ID: "${MATTERMOST_WORKER_BOT_ID:?Set the local project Agent bot id}"
       MATTERMOST_WORKER_TOKEN_FILE: "/local-config/worker.token"
       ROLE_CONFIG_FILE: "/local-config/roles.json"
+      AGENT_HANDLE: "${AGENT_HANDLE:-agent}"
     volumes: &local_dispatch_volumes
       - type: bind
         source: "${DIGITALTWIN_LOCAL_CONFIG_DIR:?Set an absolute ignored local config directory}"

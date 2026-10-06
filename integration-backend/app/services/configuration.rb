@@ -11,8 +11,8 @@ module Services
     Bot = Domains::Messaging::Dto::Bot
 
     DEFAULT_CALLBACK_URL = "http://backend-web:3000"
-    DEFAULT_AGENT_HANDLE = "agent"
-    DEFAULT_WORKER_HANDLE = "worker"
+    COMMANDER_HANDLE = "commander"
+    AGENT_HANDLE = "agent"
     DEFAULT_WORKSPACE_ROOT = "/workspace/repos"
     DEFAULT_WORKTREE_ROOT = "/workspace/worktrees"
     DEFAULT_COMMANDER_WORKSPACE = "/workspace/commander"
@@ -31,8 +31,8 @@ module Services
     # valid; starts then fail with RolesMissing.
     const :roles, T.nilable(Domains::Workflows::Dto::RoleFile), default: nil
     const :callback_url, String, default: DEFAULT_CALLBACK_URL
-    const :agent_handle, String, default: DEFAULT_AGENT_HANDLE
-    const :worker_handle, String, default: DEFAULT_WORKER_HANDLE
+    const :commander_handle, String, default: COMMANDER_HANDLE
+    const :agent_handle, String, default: AGENT_HANDLE
     const :workspace_root, String, default: DEFAULT_WORKSPACE_ROOT
     const :worktree_root, String, default: DEFAULT_WORKTREE_ROOT
     const :commander_workspace, String, default: DEFAULT_COMMANDER_WORKSPACE
@@ -47,13 +47,17 @@ module Services
       roles = roles_from_env
       activation = local_dispatch_activation_from_env
       validate_local_dispatch!(activation: activation, roles: roles, role_config_path: ENV["ROLE_CONFIG_FILE"])
+      commander_handle = ENV.fetch("COMMANDER_HANDLE", COMMANDER_HANDLE)
+      agent_handle = ENV.fetch("AGENT_HANDLE", AGENT_HANDLE)
+      raise ArgumentError, "Commander and project agent handles must differ" if commander_handle == agent_handle
+
       new(
         mattermost_url: ENV["MATTERMOST_URL"], mattermost_listener_token_file: ENV["MATTERMOST_LISTENER_TOKEN_FILE"],
         mattermost_bot_token_files: per_bot("TOKEN_FILE"), mattermost_bot_ids: per_bot("BOT_ID"),
         mattermost_local_bot_ids: ENV["MATTERMOST_LOCAL_BOT_IDS"]&.split(","), mattermost_peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","),
         mattermost_channel_ids: ENV["MATTERMOST_CHANNEL_IDS"]&.split(","), commander_channel_id: ENV["COMMANDER_CHANNEL_ID"], roles: roles,
-        callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", DEFAULT_CALLBACK_URL), agent_handle: ENV.fetch("AGENT_HANDLE", DEFAULT_AGENT_HANDLE),
-        worker_handle: ENV.fetch("WORKER_HANDLE", DEFAULT_WORKER_HANDLE), workspace_root: ENV.fetch("WORKSPACE_ROOT", DEFAULT_WORKSPACE_ROOT),
+        callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", DEFAULT_CALLBACK_URL), commander_handle: commander_handle,
+        agent_handle: agent_handle, workspace_root: ENV.fetch("WORKSPACE_ROOT", DEFAULT_WORKSPACE_ROOT),
         worktree_root: ENV.fetch("WORKTREE_ROOT", DEFAULT_WORKTREE_ROOT), commander_workspace: ENV.fetch("COMMANDER_WORKSPACE", DEFAULT_COMMANDER_WORKSPACE),
         heartbeat_dir: ENV.fetch("HEARTBEAT_DIR", DEFAULT_HEARTBEAT_DIR),
         chat_validation_mode: ENV["CHAT_VALIDATION_MODE"] == "1", local_dispatch_activation: activation

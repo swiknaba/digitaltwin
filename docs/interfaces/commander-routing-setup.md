@@ -18,10 +18,10 @@ Lost effect receipts now have bounded recovery:
 
 | Exact human command in Commander chat | Evidence checked; no external action replayed |
 | --- | --- |
-| `@agent recover-followup ID delivered` or `discard` | Original human, destination membership, no live send lease, exact settled Writer conversation/generation. This records a human outcome, not an automatic socket receipt. Discard releases later queued instructions; a fresh human instruction is needed for any new send. |
-| `@agent recover-start REQUEST_ID THREAD_ID` | Original human; actual bot/channel/root/title/request correlation, undeleted root, no live creation lease. Continue against that root without posting another. |
-| `@agent recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Commander-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
-| `@agent recover-commander REQUEST_ID` | Original human, settled same Commander and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
+| `@commander recover-followup ID delivered` or `discard` | Original human, destination membership, no live send lease, exact settled Writer conversation/generation. This records a human outcome, not an automatic socket receipt. Discard releases later queued instructions; a fresh human instruction is needed for any new send. |
+| `@commander recover-start REQUEST_ID THREAD_ID` | Original human; actual bot/channel/root/title/request correlation, undeleted root, no live creation lease. Continue against that root without posting another. |
+| `@commander recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Commander-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
+| `@commander recover-commander REQUEST_ID` | Original human, settled same Commander and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
 
 IDs appear in queue/reservation receipts. Recovery is not proof of a send when the user selects
 `delivered`; the audit labels that as human confirmation. A missing conversation/receipt remains

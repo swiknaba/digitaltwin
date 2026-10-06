@@ -16,15 +16,15 @@ module Services
       Workflow = Domains::Workflows::Dto::WorkflowView
 
       sig do
-        params(agent_handle: String, worker_handle: String, commander_channel_id: T.nilable(String),
+        params(commander_handle: String, agent_handle: String, commander_channel_id: T.nilable(String),
                record: Messaging::RecordDelivery, outbox: Messaging::Outbox, catalog: Domains::Workflows::Catalog,
                queued_messages: Domains::Workflows::QueuedMessages).void
       end
-      def initialize(agent_handle:, worker_handle:,
+      def initialize(commander_handle:, agent_handle:,
                      commander_channel_id:, record: Messaging::RecordDelivery.new, outbox: Messaging::Outbox.new,
                      catalog: Domains::Workflows::Catalog.new, queued_messages: Domains::Workflows::QueuedMessages.new)
+        @commander = T.let(valid_handle!(commander_handle), String)
         @agent = T.let(valid_handle!(agent_handle), String)
-        @worker = T.let(valid_handle!(worker_handle), String)
         @commander_channel = commander_channel_id
         @record = record
         @outbox = outbox
@@ -83,14 +83,14 @@ module Services
 
       sig { params(body: String).returns(T.nilable(String)) }
       private def command_for(body)
-        command = Commands::Parser.new.call(body: body, agent_handle: @agent, worker_handle: @worker)
+        command = Commands::Parser.new.call(body: body, commander_handle: @commander, agent_handle: @agent)
         command.action.serialize if command.is_a?(Commands::Dto::WorkerCommand)
       end
 
       # A mention anywhere in the body, not a command, so it stays out of the parser.
       sig { params(delivery: Messaging::Dto::VerifiedDelivery).returns(T::Boolean) }
       private def commander_prompt?(delivery)
-        (delivery.channel_id == @commander_channel || delivery.body.match?(/(?:\A|\s)@#{Regexp.escape(@agent)}\b/)) &&
+        (delivery.channel_id == @commander_channel || delivery.body.match?(/(?:\A|\s)@#{Regexp.escape(@commander)}\b/)) &&
           delivery.actor.member && !delivery.actor.bot
       end
 

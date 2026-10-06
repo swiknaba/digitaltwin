@@ -1,11 +1,11 @@
-# Local Commander and direct-worker activation
+# Local Commander and direct-agent activation
 
 This is the only supported activation path in this repository. It is for one
 operator-controlled local Docker stack; it is not a Hetzner deployment recipe.
-It enables real chat, Hermes Commander (when configured), and worker effects
+It enables real chat, Hermes Commander (when configured), and project-agent effects
 only after a read-only prerequisite check. The normal stack remains gated.
 
-Commander is optional. A verified human can use `@worker` directly in a project
+Commander is optional. A verified human can use `@agent` directly in a project
 thread with Writer and Reviewer roles. Adding the optional `commander` role lets
 the same human ask Hermes to inspect status and route an authorized follow-up;
 it does not grant Hermes additional authority or make Commander a required hop.
@@ -51,21 +51,26 @@ provider key, OAuth token, browser profile, or any secret in Git, `.env`,
 `roles.json`, command arguments, or a chat post. Provider state stays in the
 Runtime's persistent home and is configured interactively by the operator.
 
+The credential filenames preserve stable delivery identities: `agent.token`
+authenticates `@commander`, and `worker.token` authenticates `@agent`.
+
 Create `.local/commander.env` with the absolute path to that directory and the
 non-secret Mattermost IDs collected from your authenticated local server:
 
 ```sh
 DIGITALTWIN_LOCAL_CONFIG_DIR=/absolute/path/to/digitaltwin/.local/commander
 MATTERMOST_CHANNEL_IDS=<project-channel-id>
-MATTERMOST_LOCAL_BOT_IDS=<agent-bot-id>,<worker-bot-id>
-MATTERMOST_AGENT_BOT_ID=<agent-bot-id>
-MATTERMOST_WORKER_BOT_ID=<worker-bot-id>
+MATTERMOST_LOCAL_BOT_IDS=<commander-bot-id>,<agent-bot-id>
+MATTERMOST_AGENT_BOT_ID=<commander-bot-id>
+MATTERMOST_WORKER_BOT_ID=<agent-bot-id>
 MATTERMOST_PEER_BOT_IDS=
+COMMANDER_HANDLE=commander
+AGENT_HANDLE=agent
 ```
 
 For optional Commander routing, also set `COMMANDER_CHANNEL_ID` and include
 that same channel in `MATTERMOST_CHANNEL_IDS`. Without both, no Commander
-route is enabled and verified humans can still use `@worker` directly.
+route is enabled and verified humans can still use `@agent` directly.
 
 Keep this file at mode `0600`. It contains no tokens, but remains local so a
 channel or bot mapping cannot accidentally be committed.
@@ -83,7 +88,7 @@ credentials. For example:
 }
 ```
 
-For direct worker control, omit the `commander` member; keep Writer and Reviewer
+For direct project-agent control, omit the `commander` member; keep Writer and Reviewer
 because a workflow reserves both roles and enforces their diversity.
 
 Only after reviewing that role selection, create the local acknowledgement. It
@@ -174,9 +179,9 @@ provider's normal Hermes and worker-CLI setup in the Runtime; do not automate a
 login through this repository or chat.
 
 1. From that verified human account in the mapped project channel, create a new
-   root thread with `@worker start` and a bounded test task. This proves the
+   root thread with `@agent start` and a bounded test task. This proves the
    direct human-to-worker path and retains the normal review/approval gates.
-2. If Hermes is configured, post `@agent` in the configured Commander channel
+2. If Hermes is configured, post `@commander` in the configured Commander channel
    asking for the status of that exact task, then send one bounded follow-up to
    the same task. Confirm that Hermes reports only backend-verified status and
    the Writer receives the follow-up in its existing conversation.

@@ -253,6 +253,10 @@
 
 ## 2026-10-06 — AgentsView usage implementation
 
+- Document the local Mattermost human, listener, Commander, and project-agent setup, including least-privileged bot-form choices, channel collaboration boundaries, capability settings, token-file contents, required memberships, and non-secret ID lookup.
+- Make `@commander` the default public coordination handle and `@agent` the project-workflow handle. Preserve the persisted delivery identities and token filenames for compatibility.
+- Rename the public handle configuration and service keywords to `COMMANDER_HANDLE`/`commander_handle` and `AGENT_HANDLE`/`agent_handle`. Keep the persisted `agent` and `worker` delivery identities unchanged.
+
 - Package checksum-pinned AgentsView v0.44.0 in the Debian Runtime with usage-only archival, four scoped provider roots, no remote source or UI listener, and synthetic offline component evidence.
 - Add a separate checksum-pinned Commander MCP process exposing only calendar-range `get_usage`; validate timezones and distinguish reported zero, estimated, partial, mixed, and unavailable costs without exposing sessions or transcripts.
 - Require the same active, human-verified Commander request capability before reporting usage, and replace persisted AgentsView config on startup. Per-request config comparison and canonical root checks reject post-start remote hosts, extra roots, listeners, and root symlinks.

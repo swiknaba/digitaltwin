@@ -22,6 +22,19 @@ RSpec.describe Services::Configuration do
     end
   end
 
+  it "defaults the public Commander handle to commander" do
+    with_environment("COMMANDER_HANDLE" => nil, "AGENT_HANDLE" => nil) do
+      configuration = described_class.from_env
+      expect([configuration.commander_handle, configuration.agent_handle]).to eq(["commander", "agent"])
+    end
+  end
+
+  it "rejects identical Commander and project agent handles" do
+    with_environment("COMMANDER_HANDLE" => "commander", "AGENT_HANDLE" => "commander") do
+      expect { described_class.from_env }.to raise_error(ArgumentError, "Commander and project agent handles must differ")
+    end
+  end
+
   it "enables only a checked local acknowledgement tied to the role file" do
     Dir.mktmpdir do |dir|
       roles_path = File.join(dir, "roles.json")

@@ -32,10 +32,81 @@ Do not add `--volumes` unless you intentionally want to erase this local stack.
 
 ## 2. Prepare the human-owned chat and role setup
 
-In the Mattermost UI, create or select the local project channel and the human
-and bot identities you will use. Obtain their existing authenticated token files
-through your normal Mattermost operator process; this repository does not create
-or print tokens.
+This section needs four local Mattermost identities:
+
+| Identity | Purpose | Required local file |
+| --- | --- | --- |
+| Human | Posts the test request and is enrolled for the project channel. | None |
+| Listener | Reads Mattermost events and identities. Use a dedicated non-bot local account when practical. | `listener.token` |
+| `@commander` bot | Posts Commander replies. | `agent.token` |
+| `@agent` bot | Posts project workflow replies. | `worker.token` |
+
+A token file is a mode-0600, one-line text file containing only a Mattermost
+personal access token. It is not a JSON export, an account ID, or a file that
+Mattermost creates automatically. The backend reads the file and sends its
+value as a bearer credential. Do not add `Bearer ` to the file.
+
+The default local stack deliberately disables bot-account and personal-access-
+token creation. The first account on a new Mattermost server is the system
+administrator. Sign in as that account, open **System Console**, and enable:
+
+- **Integrations → Integration Management → Enable personal access tokens**.
+- **Integrations → Bot Accounts → Enable bot account creation**.
+
+These settings are required only to provision this disposable local test. They
+are not part of normal stack startup. Mattermost documents the settings and
+their security implications in its [integration settings](https://docs.mattermost.com/administration-guide/configure/integrations-configuration-settings.html)
+and [personal-access-token guide](https://docs.mattermost.com/developers/integrate/reference/personal-access-token.html).
+
+Create or select one local team and a private project channel. Add the human,
+the listener identity when it is separate, `@commander`, and `@agent` to that
+channel. Generate the bot tokens in the Mattermost UI:
+
+1. Open **Product menu → Integrations → Bot Accounts**.
+2. Select **Add Bot Account**.
+3. Create `commander` with these values:
+
+   | Field | Value |
+   | --- | --- |
+   | Username | `commander` |
+   | Bot Icon | Leave the default icon. |
+   | Display Name | `Commander` |
+   | Description | `Local Commander status and follow-up bot` |
+   | Role | `Member` |
+   | `post:all` | Leave unchecked. |
+   | `post:channels` | Leave unchecked. |
+
+   Select **Create Bot Account**. Copy the token on the **Setup Successful**
+   page before selecting **Done**. Mattermost does not reveal it again.
+4. Repeat for `agent`, changing only the values below:
+
+   | Field | Value |
+   | --- | --- |
+   | Username | `agent` |
+   | Display Name | `Agent` |
+   | Description | `Local project workflow agent` |
+
+   Keep the default icon, `Member` role, and both posting permissions unchecked.
+5. Add both bots to the local team, then to the project channel.
+
+Do not give either bot the System Admin role. The backend restricts both bots to
+the monitored local channels, so global posting permissions are unnecessary.
+
+`@commander` coordinates work. `@agent` runs project workflows. Do not create a
+third Commander bot: the current backend recognizes exactly these two delivery
+identities. Add both bots to every mapped
+project channel. They can both post there as channel members; `post:all` and
+`post:channels` would instead grant broader Mattermost access. Bot posts never
+count as human workflow commands, so a bot cannot trigger another bot merely by
+posting in the channel.
+
+For the listener identity, sign in as that non-bot account. Open **Profile →
+Security → Personal Access Tokens**, create one token, and copy it immediately.
+For a disposable local test, the human may also be the listener. A dedicated
+listener reduces the credential's authority and is the preferred setup.
+
+Create the ignored credential directory before pasting each token into its own
+file. The terminal commands below never print token values:
 
 ```sh
 mkdir -p .local/commander
@@ -46,32 +117,69 @@ Place these local-only files in `.local/commander/`:
 
 ```text
 listener.token     authenticated listener token
-agent.token        authenticated agent-bot token
-worker.token       authenticated worker-bot token
+agent.token        authenticated Commander-bot token
+worker.token       authenticated project-agent-bot token
 roles.json         Writer/Reviewer roles; optional Commander role
 ```
 
-After you create those files with your existing values, lock their modes:
+Paste each value directly into its matching file, with no label or `Bearer`
+prefix. Use an editor or other local secret-entry mechanism; do not paste a
+token into a shell command, chat, issue, or Git-tracked file. Afterward, lock
+the modes:
 
 ```sh
 chmod 600 .local/commander/{listener,agent,worker}.token .local/commander/roles.json
 ```
+
+The file names preserve the backend's stable delivery identities: `agent.token`
+belongs to `@commander`, and `worker.token` belongs to `@agent`.
+The historical internal names and public handles intentionally differ. Do not
+rename these files or the `MATTERMOST_AGENT_*` and `MATTERMOST_WORKER_*`
+variables.
+
+Collect the non-secret IDs before writing the mapping. The local Mattermost
+CLI can display them without changing server state:
+
+```sh
+docker compose -p "$project" exec -T mattermost \
+  /mattermost/bin/mmctl user search <human-username> --json --local
+docker compose -p "$project" exec -T mattermost \
+  /mattermost/bin/mmctl bot list --all --json --local
+docker compose -p "$project" exec -T mattermost \
+  /mattermost/bin/mmctl channel search --team <team-name> <channel-name> --json --local
+```
+
+Record only the returned human user ID, Commander bot user ID, project-agent
+bot user ID, and project channel ID. Do not save the command output when it contains more
+local account data than you need.
 
 Create `.local/commander.env` with your own IDs. Keep it local and mode 0600:
 
 ```sh
 cat > .local/commander.env <<'EOF'
 DIGITALTWIN_LOCAL_CONFIG_DIR=/absolute/path/to/digitaltwin/.local/commander
+COMMANDER_HANDLE=commander
+AGENT_HANDLE=agent
 MATTERMOST_CHANNEL_IDS=<project-channel-id>
-MATTERMOST_LOCAL_BOT_IDS=<agent-bot-id>,<worker-bot-id>
-MATTERMOST_AGENT_BOT_ID=<agent-bot-id>
-MATTERMOST_WORKER_BOT_ID=<worker-bot-id>
+MATTERMOST_LOCAL_BOT_IDS=<commander-bot-id>,<agent-bot-id>
+# Internal variable names retain the existing delivery identities.
+MATTERMOST_AGENT_BOT_ID=<commander-bot-id>
+MATTERMOST_WORKER_BOT_ID=<agent-bot-id>
 MATTERMOST_PEER_BOT_IDS=
 # Optional: set this only when roles.json contains a commander role.
 # COMMANDER_CHANNEL_ID=<commander-channel-id>
 EOF
 chmod 600 .local/commander.env
 ```
+
+If a prior local stack used the old `@agent` and `@worker` handles, finish or
+reconcile its active work before changing this mapping. Old recovery messages
+will not be parsed under the new defaults.
+
+Replace the old environment-variable pair together: change
+`AGENT_HANDLE=commander` to `COMMANDER_HANDLE=commander`, and change
+`WORKER_HANDLE=agent` to `AGENT_HANDLE=agent`. The old variables are not
+accepted because the old `AGENT_HANDLE` would be ambiguous.
 
 `roles.json` must contain different Writer and Reviewer `provider` and `family`
 values. Add the optional Commander entry only when it uses `"cli":"hermes"`.
@@ -164,10 +272,10 @@ docker compose --env-file .env --env-file .local/commander.env -p "$project" \
 Where to act and check:
 
 - In Mattermost, use the mapped **project channel** as the verified human.
-  Start a new root thread with `@worker start` and one small, bounded test task.
+  Start a new root thread with `@agent start` and one small, bounded test task.
   Watch the same thread for its receipt/reply.
 - For optional Commander, use the configured **Commander channel**. Post
-  `@agent` asking for the status of that exact task, then send one bounded
+  `@commander` asking for the status of that exact task, then send one bounded
   follow-up to the same task. Confirm it refers to the existing task rather
   than creating a replacement.
 - In a terminal, inspect only the relevant local services:

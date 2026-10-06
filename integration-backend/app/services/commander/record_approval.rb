@@ -4,7 +4,7 @@
 module Services
   module Commander
     # Records a human spec or plan approval once, from the exact Commander-chat
-    # approve command or a verified `@worker approve` in the workflow thread.
+    # approve command or a verified `@agent approve` by default in the workflow thread.
     # Only the latest approving review of the current revision binds. Returns
     # the approval id.
     class RecordApproval
@@ -18,11 +18,11 @@ module Services
 
       sig do
         params(resolver: Domains::Messaging::DeliveryVerifier, membership: Domains::Messaging::MembershipCheck, current_commit: CurrentCommitSource,
-               handle: String, worker_handle: String, evidence: T.nilable(Adapters::Git::Evidence), inbox: Domains::Messaging::Inbox,
+               handle: String, agent_handle: String, evidence: T.nilable(Adapters::Git::Evidence), inbox: Domains::Messaging::Inbox,
                catalog: Domains::Workflows::Catalog, rounds: Domains::Reviews::Rounds, approvals: Domains::Workflows::Approvals,
                lock: Platform::Lock, transaction: Platform::Transaction).void
       end
-      def initialize(resolver:, membership:, current_commit:, handle:, worker_handle:,
+      def initialize(resolver:, membership:, current_commit:, handle:, agent_handle:,
                      evidence: nil, inbox: Domains::Messaging::Inbox.new, catalog: Domains::Workflows::Catalog.new,
                      rounds: Domains::Reviews::Rounds.new, approvals: Domains::Workflows::Approvals.new, lock: Platform::Lock.new,
                      transaction: Platform::Transaction.new)
@@ -31,7 +31,7 @@ module Services
         @current_commit = current_commit
         @evidence = evidence
         @handle = handle
-        @worker_handle = worker_handle
+        @agent_handle = agent_handle
         @inbox = inbox
         @catalog = catalog
         @rounds = rounds
@@ -56,7 +56,7 @@ module Services
           w = @catalog.find(id: workflow_id)
           next failure(Code::MissingWorkflow, "Missing workflow") unless w
 
-          contextual = d.channel_id == w.channel_id && d.thread_id == w.thread_id && d.body == "@#{@worker_handle} approve"
+          contextual = d.channel_id == w.channel_id && d.thread_id == w.thread_id && d.body == "@#{@agent_handle} approve"
           exact = d.body == "@#{@handle} approve #{workflow_id} #{gate.serialize} #{commit}"
           next failure(Code::ApprovalRejected, "Approval requires exact or verified thread binding") unless exact || contextual
           next failure(Code::MembershipRequired, "Destination membership required") unless @membership.member?(channel_id: w.channel_id, user_id: d.actor.user_id)

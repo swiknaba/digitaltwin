@@ -21,10 +21,10 @@ module Services
 
       sig do
         params(source: Domains::Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, evidence: Adapters::Git::Evidence,
-               stop_sessions: Sessions::StopWorkflowSessions, worker_handle: String, queue_release: Reviews::QueueRelease, catalog: Domains::Workflows::Catalog,
+               stop_sessions: Sessions::StopWorkflowSessions, agent_handle: String, queue_release: Reviews::QueueRelease, catalog: Domains::Workflows::Catalog,
                transitions: Domains::Workflows::Transitions, phase_prompts: Domains::Workflows::PhasePrompts, audit: Platform::Audit::Log).void
       end
-      def initialize(source:, herdr:, evidence:, stop_sessions:, worker_handle:, queue_release: Reviews::QueueRelease.new, catalog: Domains::Workflows::Catalog.new,
+      def initialize(source:, herdr:, evidence:, stop_sessions:, agent_handle:, queue_release: Reviews::QueueRelease.new, catalog: Domains::Workflows::Catalog.new,
                      transitions: Domains::Workflows::Transitions.new,
                      phase_prompts: Domains::Workflows::PhasePrompts.new, audit: Platform::Audit::Log.new)
         @source = source
@@ -36,7 +36,7 @@ module Services
         @transitions = transitions
         @phase_prompts = phase_prompts
         @audit = audit
-        @worker = worker_handle
+        @agent = agent_handle
       end
 
       # Failures raise, so the worker keeps today's retry path.
@@ -58,7 +58,7 @@ module Services
       end
 
       # The command must come from the workflow's own thread as the exact
-      # `@worker <action>` text.
+      # `@agent <action>` text by default; the configured handle remains explicit.
       sig { params(job: Platform::Jobs::Dto::ClaimedJob).returns(Outcome) }
       private def thread_control(job)
         payload = Domains::Commander::Dto::InboxDispatchJob.from_hash(job.payload, true)
@@ -74,7 +74,7 @@ module Services
         return failure(Code::UnsupportedAction, "Unsupported workflow action") unless action
 
         same_thread = workflow && delivery.channel_id == workflow.channel_id && delivery.thread_id == workflow.thread_id
-        return failure(Code::SourceMismatch, "Control source/workflow mismatch") unless workflow && same_thread && delivery.body == "@#{@worker} #{action.serialize}"
+        return failure(Code::SourceMismatch, "Control source/workflow mismatch") unless workflow && same_thread && delivery.body == "@#{@agent} #{action.serialize}"
 
         expected_version = payload.expected_version
         return malformed unless expected_version

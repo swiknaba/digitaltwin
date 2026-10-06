@@ -8,7 +8,7 @@ RSpec.describe Services::Inbound::HistoryRecovery do
 
   def post(id, user, revision)
     { "id" => id * 26, "channel_id" => channel, "user_id" => user, "root_id" => "",
-      "message" => "@agent fixture", "create_at" => revision, "update_at" => revision, "delete_at" => 0 }
+      "message" => "@commander fixture", "create_at" => revision, "update_at" => revision, "delete_at" => 0 }
   end
 
   before do
@@ -24,7 +24,7 @@ RSpec.describe Services::Inbound::HistoryRecovery do
     allow(@client).to receive(:get) { |path| fixture.request(path) }
     api = Adapters::Mattermost::Api.new(client: @client)
     @resolver = Adapters::Mattermost::DeliveryVerifier.new(api: api, local_bot_ids: [bot])
-    @service = Services::Inbound::HistoryRecovery.new(api: api, verifier: @resolver, router: Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", commander_channel_id: nil))
+    @service = Services::Inbound::HistoryRecovery.new(api: api, verifier: @resolver, router: Services::Inbound::RecordDelivery.new(commander_handle: "commander", agent_handle: "agent", commander_channel_id: nil))
     @fail_post = nil
   end
 

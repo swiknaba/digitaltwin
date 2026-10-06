@@ -3,7 +3,7 @@
 
 module Services
   module Workflows
-    # Handles workflow.start: an exact `@worker start` root post in an enrolled
+    # Handles workflow.start: an exact `@agent start` root post by default in an enrolled
     # project channel starts a workflow in that same thread.
     class StartExisting
       extend T::Sig
@@ -14,15 +14,15 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[String] }
 
       sig do
-        params(source: Domains::Messaging::VerifyHumanSource, request_start: RequestStart, agent_handle: String, worker_handle: String,
+        params(source: Domains::Messaging::VerifyHumanSource, request_start: RequestStart, commander_handle: String, agent_handle: String,
                directory: Domains::Projects::Directory).void
       end
-      def initialize(source:, request_start:, agent_handle:, worker_handle:, directory: Domains::Projects::Directory.new)
+      def initialize(source:, request_start:, commander_handle:, agent_handle:, directory: Domains::Projects::Directory.new)
         @source = source
         @request_start = request_start
         @directory = directory
+        @commander = commander_handle
         @agent = agent_handle
-        @worker = worker_handle
       end
 
       # Failures raise, so the worker keeps today's retry path.
@@ -40,7 +40,7 @@ module Services
         return Kirei::Services::Result.new(errors: verified.errors) if verified.failed?
 
         delivery = verified.result
-        command = Commands::Parser.new.call(body: delivery.body, agent_handle: @agent, worker_handle: @worker)
+        command = Commands::Parser.new.call(body: delivery.body, commander_handle: @commander, agent_handle: @agent)
         start = command.is_a?(Commands::Dto::WorkerCommand) && command.action == Commands::Dto::WorkerAction::Start && command.single_space_separator
         return failure(Code::StartRequired, "Human root start required") unless delivery.root_post && start
 
