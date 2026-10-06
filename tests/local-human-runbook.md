@@ -165,6 +165,16 @@ docker compose exec -it agent-runtime codex login --device-auth
 Use device-code login only when your ChatGPT workspace enables it. It is
 unavailable in some workspaces.
 
+If Compose reports `Bind for 127.0.0.1:1455 failed: port is already allocated`,
+a stale one-off Runtime container owns the callback port. `docker compose down`
+does not remove one-off `docker compose run` containers. Identify it, then
+remove only that named `agent-runtime-run-...` container before retrying:
+
+```sh
+docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+docker rm -f THE_AGENT_RUNTIME_RUN_CONTAINER_NAME
+```
+
 See [Codex authentication](https://developers.openai.com/codex/auth#login-on-headless-devices).
 
 Check the saved login:
@@ -391,6 +401,8 @@ Digitaltwin's database:
 ```text
 Mattermost project channel + root human account -> Runtime Git checkout
 ```
+
+Calling `bin/enroll-local-project` below is the action that creates the mapping.
 
 Get the Mattermost user ID for the human account. `root` is the default human
 username in this runbook. Copy the value of its JSON `id` field.

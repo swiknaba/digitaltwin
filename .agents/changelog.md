@@ -276,6 +276,7 @@
 - Separate Runtime repository cloning, Git authentication, and Mattermost enrollment in the local test runbook. State that enrollment maps an existing checkout and never clones or pushes.
 - State explicitly that enrollment is a one-time backend command, not a Mattermost action or local configuration edit.
 - Document Runtime-persistent GitHub deploy-key setup and Git author identity before agent commit and push tests.
+- Document recovery from a stale one-off Runtime container that blocks the Codex callback port.
 - Make the Runtime authentication and project-enrollment instructions work from a remote Docker host over SSH.
 - Make `@commander` the default public coordination handle and `@agent` the project-workflow handle.
 - Rename public handle configuration and service keywords to `COMMANDER_HANDLE`/`commander_handle` and `AGENT_HANDLE`/`agent_handle`.
