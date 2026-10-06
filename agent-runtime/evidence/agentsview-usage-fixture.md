@@ -7,13 +7,15 @@ Recorded 2026-10-06 from the local `linux/amd64` Runtime component image.
 - The image build verified the archive, release provenance JSON, and SPDX JSON
   checksums before extracting `/usr/local/bin/agentsview`.
 - `agentsview --version` reported `agentsview v0.44.0` with the pinned commit.
-- `agent-runtime/bin/agentsview-fixture.py --self-test` passed. It writes only
-  empty synthetic Claude, Codex, Gemini, and OpenCode roots; it contains no
-  real home path, session text, credential, or usable usage data.
+- `agent-runtime/bin/agentsview-fixture.py --self-test` passed. Its disposable
+  Claude-shaped record has synthetic token counts plus transcript- and
+  credential-like sentinels; the other three roots remain empty fixtures.
 - `agent-runtime/bin/test-image digitaltwin-runtime-agentsview:local` passed.
   It ran `agentsview sync` and `usage daily --json --offline --no-sync
   --breakdown --timezone UTC --since 2026-10-04 --until 2026-10-05` in a
-  temporary home. The JSON had schema version 6 and zero token/cost totals.
+  temporary home. The JSON had schema version 6 and included the fixture token
+  counts. It also searched both the usage response and generated archive for
+  both sentinels and found neither.
 - The test verifies `archive_content = "usage"`, the four configured providers,
   no remote-host or UI configuration, no published Runtime port, dropped
   capabilities, and a network-isolated container. It also writes a synthetic

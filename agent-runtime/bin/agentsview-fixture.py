@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create deliberately empty, synthetic session roots for offline usage checks."""
+"""Create synthetic usage-only session roots for offline AgentsView checks."""
 import argparse
 import json
 from pathlib import Path
@@ -12,14 +12,24 @@ ROOTS = (
     ".gemini/tmp/fixture.json",
     ".local/share/opencode/fixture.json",
 )
+SENTINEL_TRANSCRIPT = "TRANSCRIPT_SENTINEL_DO_NOT_ARCHIVE"
+SENTINEL_CREDENTIAL = "CREDENTIAL_SENTINEL_DO_NOT_ARCHIVE"
+
 CONTENTS = {
-    ROOTS[0]: '{"type":"fixture","entries":[]}\n',
+    ROOTS[0]: (
+        '{"type":"user","uuid":"fixture-user","timestamp":"2026-10-04T12:00:00Z",'
+        '"message":{"role":"user","content":"%s %s"}}\n'
+        '{"type":"assistant","uuid":"fixture-assistant","timestamp":"2026-10-04T12:00:01Z",'
+        '"message":{"role":"assistant","content":[{"type":"text","text":"%s"}],'
+        '"usage":{"input_tokens":11,"output_tokens":13,"cache_creation_input_tokens":0,'
+        '"cache_read_input_tokens":0}}}\n'
+    ) % (SENTINEL_TRANSCRIPT, SENTINEL_CREDENTIAL, SENTINEL_TRANSCRIPT),
     ROOTS[1]: '{"type":"fixture","items":[]}\n',
     ROOTS[2]: '{"session":"fixture","messages":[]}\n',
     ROOTS[3]: '{"session":"fixture","parts":[]}\n',
 }
 REPORTED_ZERO = {"status": "reported", "microdollars": 0}
-FORBIDDEN_CONTENT = ("/users/", "/home/", "prompt", "secret", "credential")
+FORBIDDEN_CONTENT = ("/users/", "/home/")
 
 
 def write_fixture(root: Path) -> dict[str, str]:
@@ -40,9 +50,11 @@ def self_test() -> None:
         assert tuple(created) == ROOTS
         assert all((root / relative).is_file() for relative in ROOTS)
         assert all(fragment not in content.lower() for content in created.values() for fragment in FORBIDDEN_CONTENT)
+        assert SENTINEL_TRANSCRIPT in created[ROOTS[0]]
+        assert SENTINEL_CREDENTIAL in created[ROOTS[0]]
         assert REPORTED_ZERO == {"status": "reported", "microdollars": 0}
         assert not any(path.is_symlink() for path in root.rglob("*"))
-    print("PASS: four synthetic AgentsView roots contain no session text or usable usage data")
+    print("PASS: synthetic fixture includes recognized usage and isolated leak sentinels")
 
 
 def main() -> None:

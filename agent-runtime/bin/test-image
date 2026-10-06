@@ -53,7 +53,9 @@ docker exec "$name" sh -ec '
     CLAUDE_PROJECTS_DIR="$fixture/home/.claude/projects" CODEX_SESSIONS_DIR="$fixture/home/.codex/sessions" \
     GEMINI_DIR="$fixture/home/.gemini" OPENCODE_DIR="$fixture/home/.local/share/opencode" \
     agentsview usage daily --json --offline --no-sync --breakdown --timezone UTC --since 2026-10-04 --until 2026-10-05 > "$fixture/usage.json"
-  python3 -c "import json, sys; report=json.load(open(sys.argv[1])); totals=report[\"totals\"]; assert report[\"schema_version\"] == 6; assert all(totals[key] == 0 for key in (\"inputTokens\", \"outputTokens\", \"cacheCreationTokens\", \"cacheReadTokens\")); assert totals[\"totalCost\"][\"microdollars\"] == 0" "$fixture/usage.json"
+  python3 -c "import json, sys; report=json.load(open(sys.argv[1])); totals=report[\"totals\"]; assert report[\"schema_version\"] == 6; assert totals[\"inputTokens\"] >= 11; assert totals[\"outputTokens\"] >= 13" "$fixture/usage.json"
+  ! grep -R -F -q TRANSCRIPT_SENTINEL_DO_NOT_ARCHIVE "$fixture/data" "$fixture/usage.json"
+  ! grep -R -F -q CREDENTIAL_SENTINEL_DO_NOT_ARCHIVE "$fixture/data" "$fixture/usage.json"
   python3 -c "import tomllib; config=tomllib.load(open(\"$fixture/data/config.toml\", \"rb\")); assert config[\"archive_content\"] == \"usage\"; assert set(config[\"agents\"]) == {\"claude\", \"codex\", \"gemini\", \"opencode\"}; assert not any(key in config for key in (\"remote_hosts\", \"host\", \"public_url\", \"public_origins\"))"
 '
 printf 'PASS: AgentsView offline synthetic usage fixture has no listener, transcript data, or remote source\n'
