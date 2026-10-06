@@ -265,8 +265,18 @@
 - Require harness model defaults at session start; remove operator-maintained model IDs from the proposed setup.
 - Supply the Mattermost address to all local dispatch processes and load the local mapping directly in the validation script.
 - Document interactive Runtime login and status checks for Codex and Claude, persistent login storage, and local Herdr terminal attachment.
+- Publish the Runtime Codex callback only on Mac loopback so standard interactive Codex login works from the local container.
+- Remove unnecessary local permission-changing commands from the human setup runbook.
+- Add verified Runtime login procedures for Gemini and Grok, and distinguish their CLI credentials from Hermes Commander provider configuration.
+- Document the Herdr client detach shortcut without stopping Runtime or its agents.
+- Clarify that Hermes provider credentials are separate from CLI logins, explain Gemini, Grok, fallbacks, and Mixture of Agents, and keep browser login outside Herdr's container clipboard.
+- Remove unnecessary local permission-changing commands from the activation reference.
 - Add the required Mattermost team-membership command before project-channel membership in the local runbook.
 - Document the local Mattermost human, listener, Commander, and project-agent setup, including least-privileged bot-form choices, channel collaboration boundaries, capability settings, token-file contents, required memberships, and non-secret ID lookup.
+- Separate Runtime repository cloning, Git authentication, and Mattermost enrollment in the local test runbook. State that enrollment maps an existing checkout and never clones or pushes.
+- State explicitly that enrollment is a one-time backend command, not a Mattermost action or local configuration edit.
+- Document Runtime-persistent GitHub deploy-key setup and Git author identity before agent commit and push tests.
+- Make the Runtime authentication and project-enrollment instructions work from a remote Docker host over SSH.
 - Make `@commander` the default public coordination handle and `@agent` the project-workflow handle.
 - Rename public handle configuration and service keywords to `COMMANDER_HANDLE`/`commander_handle` and `AGENT_HANDLE`/`agent_handle`.
 - Pin Runtime client provenance to the retained merged revision with matching hashes. Split CI into Client Runtime, Chat Backend, and root Compose contract steps.

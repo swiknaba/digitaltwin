@@ -122,10 +122,14 @@ class CombinedRootContractTest(unittest.TestCase):
         self.assertEqual(set(acceptance.run(command).stdout.splitlines()),
                          {"postgres", "mattermost", "local-volume-init", "backend-migrate", "backend-web", "backend-worker", "agent-runtime"})
 
-    def test_runtime_is_private_and_nonroot(self):
+    def test_runtime_exposes_only_the_local_codex_login_callback_and_runs_nonroot(self):
         runtime = self.services["agent-runtime"]
         self.assertEqual(runtime["user"], "10001:10001")
-        self.assertNotIn("ports", runtime)
+        self.assertEqual(len(runtime["ports"]), 1)
+        self.assertEqual(runtime["ports"][0]["host_ip"], "127.0.0.1")
+        self.assertEqual(runtime["ports"][0]["published"], "1455")
+        self.assertEqual(runtime["ports"][0]["target"], 1455)
+        self.assertEqual(runtime["ports"][0]["protocol"], "tcp")
         self.assertEqual(runtime["cap_drop"], ["ALL"])
         self.assertTrue(all(volume["type"] == "volume" for volume in runtime["volumes"]))
         self.assertEqual(runtime["build"]["target"], "with-callback")

@@ -22,6 +22,8 @@ services:
         required: true
     image: digitaltwin-agent-runtime:local
     platform: linux/amd64
+    ports:
+    - 127.0.0.1:1455:1455
     security_opt:
     - no-new-privileges:true
     user: 10001:10001

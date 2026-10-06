@@ -32,7 +32,6 @@ by the local Docker user:
 ```sh
 cp .env.example .env
 mkdir -p .local/commander
-chmod 700 .local/commander
 ```
 
 Create these existing-credential files yourself under `.local/commander`, then
@@ -152,7 +151,6 @@ is not a credential and it does not contact a provider:
 
 ```sh
 role_hash=$(shasum -a 256 .local/commander/roles.json | awk '{print $1}'); printf '{"schema":"digitaltwin.local-dispatch/v1","scope":"local","confirmed_at":"%s","role_config_sha256":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$role_hash" > .local/commander/local-dispatch.json
-chmod 600 .local/commander/local-dispatch.json
 ```
 
 ## Verify prerequisites before enabling workers
@@ -182,18 +180,22 @@ longer match the acknowledged local setup.
 ## Map one local project before the first worker request
 
 The first release operates on an explicitly mapped project channel. Before
-enrolling it, put an already authorized Git checkout at
-`/workspace/repos/<owner>/<repository>` in the shared Runtime workspace. It
-must be a repository root whose `origin` matches the requested GitHub slug;
-the repository is never copied into the backend image. A public clone can be
-made by the operator from the Runtime shell, for example:
+enrolling it, configure the Runtime's persistent Git authentication and author
+identity. For one test repository, use a dedicated GitHub deploy key with write
+access. Keep the private key in Runtime's persistent home. Never put it in Git,
+the local overlay, or chat.
+
+Then put the authorized checkout at `/workspace/repos/<owner>/<repository>` in
+the shared Runtime workspace. It must be a repository root whose `origin`
+matches the requested GitHub slug; the repository is never copied into the
+backend image. Clone through the authorized SSH remote, for example:
 
 ```sh
-docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml exec -T agent-runtime sh -lc 'mkdir -p /workspace/repos/OWNER && git clone -- https://github.com/OWNER/REPOSITORY.git /workspace/repos/OWNER/REPOSITORY'
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml exec -T agent-runtime sh -lc 'mkdir -p /workspace/repos/OWNER && git clone -- git@github.com:OWNER/REPOSITORY.git /workspace/repos/OWNER/REPOSITORY'
 ```
 
-For a private repository, use your already authorized Git setup instead; do
-not add a Git credential to this repository, the local overlay, or chat.
+The Runtime must have both push authorization and `git config user.name` plus
+`git config user.email` before agents can create commits.
 
 Then run the explicit, one-project registration command. Replace the values
 with the mapped Mattermost project channel, a verified non-bot human user ID
