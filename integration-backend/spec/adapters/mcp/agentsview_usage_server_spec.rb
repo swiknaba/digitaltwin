@@ -1,0 +1,123 @@
+# frozen_string_literal: true
+
+require_relative "../../spec_helper"
+require "date"
+require "open3"
+require "stringio"
+require "timeout"
+
+RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
+  def usage_document(cost_source: "computed", amount: 23, matched_pattern: "gpt-5.1", tokens: 10)
+    {
+      "schema_version" => 6,
+      "pricing" => {
+        "source" => "embedded",
+        "table_version" => "fixture",
+        "latest_row_updated_at" => nil,
+        "cost_source" => cost_source,
+        "fallback" => { "used" => true },
+        "models" => {
+          "gpt-5.1" => {
+            "cost_source" => cost_source,
+            "resolutions" => [{ "matched_pattern" => matched_pattern, "cost_source" => cost_source }]
+          }
+        }
+      },
+      "totals" => {
+        "inputTokens" => tokens,
+        "outputTokens" => tokens.zero? ? 0 : 2,
+        "cacheCreationTokens" => tokens.zero? ? 0 : 3,
+        "cacheReadTokens" => tokens.zero? ? 0 : 4,
+        "totalCost" => { "microdollars" => amount }
+      }
+    }
+  end
+
+  def response_for(arguments, document: usage_document, timezone: "Europe/Berlin")
+    calls = []
+    runner = lambda do |environment, argv|
+      calls << [environment, argv]
+      argv[1] == "sync" ? "" : JSON.generate(document)
+    end
+    command = Adapters::Mcp::AgentsviewUsageCommand.new(timezone: timezone, command_runner: runner)
+    Dir.mktmpdir do |dir|
+      token = File.join(dir, "request-token")
+      File.write(token, "fixture-capability")
+      input = StringIO.new(JSON.generate(jsonrpc: "2.0", id: 1, method: "tools/list") + "\n" + JSON.generate(jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "get_usage", arguments: arguments }) + "\n")
+      output = StringIO.new
+      described_class.new(command: command, token_file: token).serve(input: input, output: output)
+      rows = output.string.lines.map { |line| JSON.parse(line) }
+      [rows, calls]
+    end
+  end
+
+  it "exposes exactly the safe usage tool and runs only fixed local commands" do
+    rows, calls = response_for({ "range" => { "dates" => { "from" => "2026-10-04", "to" => "2026-10-05" } }, "agent" => "codex" })
+
+    expect(rows.first.dig("result", "tools").map { |tool| tool.fetch("name") }).to eq(["get_usage"])
+    value = JSON.parse(rows.last.dig("result", "content", 0, "text"))
+    expect(value).to include(
+      "range" => { "kind" => "dates", "from" => "2026-10-04", "to" => "2026-10-05", "timezone" => "Europe/Berlin" },
+      "agent" => "codex",
+      "tokens" => { "input" => 10, "output" => 2, "cache_creation" => 3, "cache_read" => 4 },
+      "cost" => { "status" => "estimated_api", "microdollars" => 23 }
+    )
+    expect(value.fetch("source")).to eq({ "machine" => "runtime", "archive_freshness" => "synced" })
+    expected_calls = [
+      [{ "AGENTSVIEW_NO_DAEMON" => "1" }, ["/usr/local/bin/agentsview", "sync"]],
+      [{ "AGENTSVIEW_NO_DAEMON" => "1" }, ["/usr/local/bin/agentsview", "usage", "daily", "--json", "--offline", "--no-sync", "--breakdown", "--timezone", "Europe/Berlin", "--since", "2026-10-04", "--until", "2026-10-05", "--agent", "codex"]]
+    ]
+    expect(calls).to eq(expected_calls)
+  end
+
+  it "preserves a reported zero and never serializes missing token data as zero cost" do
+    reported_zero = usage_document(cost_source: "reported", amount: 0, matched_pattern: nil, tokens: 0)
+    rows, = response_for({ "range" => { "today" => true } }, document: reported_zero, timezone: "UTC")
+    reported = JSON.parse(rows.last.dig("result", "content", 0, "text"))
+    expect(reported.fetch("cost")).to eq({ "status" => "reported", "microdollars" => 0 })
+
+    unavailable = usage_document(amount: 0, tokens: 0)
+    rows, = response_for({ "range" => { "today" => true } }, document: unavailable, timezone: "UTC")
+    value = JSON.parse(rows.last.dig("result", "content", 0, "text"))
+    expect(value.fetch("cost")).to eq({ "status" => "unavailable" })
+  end
+
+  it "marks unpriced token rows as a partial estimate and accepts the supported calendar forms" do
+    partial = usage_document(amount: 11, matched_pattern: nil)
+    rows, = response_for({ "range" => { "last_days" => 2 } }, document: partial, timezone: "UTC")
+    value = JSON.parse(rows.last.dig("result", "content", 0, "text"))
+    expect(value.fetch("cost")).to eq({ "status" => "partial_estimate", "microdollars" => 11 })
+
+    rows, = response_for({ "range" => { "current_month" => true } }, timezone: "UTC")
+    range = JSON.parse(rows.last.dig("result", "content", 0, "text")).fetch("range")
+    expect(range.fetch("from")).to match(/\A\d{4}-\d{2}-01\z/)
+    expect(range.fetch("to")).to match(/\A\d{4}-\d{2}-\d{2}\z/)
+  end
+
+  it "rejects malformed ranges, unknown fields, unsupported agents, and invalid timezones before a command runs" do
+    invalid_arguments = [
+      { "range" => { "today" => true, "current_month" => true } },
+      { "range" => { "last_days" => 0 } },
+      { "range" => { "dates" => { "from" => "2026-10-05T01:00:00Z", "to" => "2026-10-05" } } },
+      { "range" => { "today" => true }, "agent" => "claude,gemini" },
+      { "range" => { "today" => true }, "command" => "cat" }
+    ]
+    invalid_arguments.each do |arguments|
+      rows, calls = response_for(arguments)
+      expect(rows.last.dig("error", "code")).to eq(-32_602)
+      expect(calls).to be_empty
+    end
+    expect { Adapters::Mcp::AgentsviewUsageCommand.new(timezone: "../../../etc/passwd") }.to raise_error(ArgumentError)
+  end
+
+  it "does not alter the ordinary Commander bridge mode" do
+    Dir.mktmpdir do |dir|
+      token = File.join(dir, "token")
+      File.write(token, "disposable-fixture")
+      input = JSON.generate(jsonrpc: "2.0", id: 1, method: "initialize") + "\n"
+      output, status = Open3.capture2e({ "DIGITALTWIN_CALLBACK_URL" => "http://127.0.0.1:9", "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE" => token }, "ruby", "bin/mcp", stdin_data: input)
+      expect(status.success?).to be(true), output
+      expect(JSON.parse(output).dig("result", "serverInfo", "name")).to eq("digitaltwin")
+    end
+  end
+end

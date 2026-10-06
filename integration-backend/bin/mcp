@@ -7,8 +7,11 @@
 # installs them next to this file as mcp.rb and http_tools.rb.
 require "json"
 require "net/http"
+require "open3"
 require "stringio"
+require "timeout"
 require "uri"
+require "date"
 require "sorbet-runtime"
 
 repository_root = File.expand_path("../app/adapters/mcp", __dir__)
@@ -18,6 +21,18 @@ server_file, tools_file = if File.directory?(repository_root)
                             [File.join(__dir__, "mcp.rb"), File.join(__dir__, "http_tools.rb")]
                           end
 require server_file
-require tools_file
-tools = Adapters::Mcp::HttpTools.new(url: ENV.fetch("DIGITALTWIN_CALLBACK_URL"))
-Adapters::Mcp::Server.new(tools: tools, token_file: ENV.fetch("DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE")).serve
+
+if ENV["DIGITALTWIN_MCP_TOOLSET"] == "agentsview_usage"
+  usage_files = if File.directory?(repository_root)
+                  %w[agentsview_usage_response agentsview_usage_command agentsview_usage_server].map { |name| File.join(repository_root, "#{name}.rb") }
+                else
+                  %w[agentsview_usage_response agentsview_usage_command agentsview_usage_server].map { |name| File.join(__dir__, "#{name}.rb") }
+                end
+  usage_files.each { |file| require file }
+  command = Adapters::Mcp::AgentsviewUsageCommand.new
+  Adapters::Mcp::AgentsviewUsageServer.new(command: command, token_file: ENV.fetch("DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE")).serve
+else
+  require tools_file
+  tools = Adapters::Mcp::HttpTools.new(url: ENV.fetch("DIGITALTWIN_CALLBACK_URL"))
+  Adapters::Mcp::Server.new(tools: tools, token_file: ENV.fetch("DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE")).serve
+end
