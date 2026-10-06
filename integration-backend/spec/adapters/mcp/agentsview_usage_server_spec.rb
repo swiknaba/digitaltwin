@@ -1,36 +1,12 @@
 # frozen_string_literal: true
 
 require_relative "../../spec_helper"
+require_relative "../../support/spec_support/agentsview_usage/fixture_authorizer"
+require_relative "../../support/spec_support/agentsview_usage/fixture_runner"
 require "date"
 require "open3"
 require "stringio"
 require "timeout"
-
-module AgentsviewUsageServerSpec
-  class FixtureAuthorizer
-    include Adapters::Mcp::AgentsviewUsageAuthorizerInterface
-
-    def initialize(&implementation)
-      @implementation = implementation
-    end
-
-    def authorize(token:)
-      @implementation.call(token)
-    end
-  end
-
-  class FixtureRunner
-    include Adapters::Mcp::AgentsviewUsageRunnerInterface
-
-    def initialize(&implementation)
-      @implementation = implementation
-    end
-
-    def run(environment:, argv:)
-      @implementation.call(environment, argv)
-    end
-  end
-end
 
 RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
   def usage_document(cost_source: "computed", amount: 23, matched_pattern: "gpt-5.1", tokens: 10, models: true)
@@ -66,10 +42,10 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
     source_roots: nil,
     managed_config_path: nil,
     active_config_path: nil,
-    authorizer: AgentsviewUsageServerSpec::FixtureAuthorizer.new { |_token| }
+    authorizer: usage_authorizer { |_token| }
   )
     calls = []
-    runner = AgentsviewUsageServerSpec::FixtureRunner.new do |environment, argv|
+    runner = SpecSupport::AgentsviewUsage::FixtureRunner.new do |environment, argv|
       calls << [environment, argv]
       argv[1] == "sync" ? "" : JSON.generate(document)
     end
@@ -91,6 +67,10 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
       rows = output.string.lines.map { |line| JSON.parse(line) }
       [rows, calls]
     end
+  end
+
+  def usage_authorizer(&implementation)
+    SpecSupport::AgentsviewUsage::FixtureAuthorizer.new(&implementation)
   end
 
   it "exposes exactly the safe usage tool and runs only fixed local commands" do
@@ -159,11 +139,11 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
       expect(rows.last.dig("error", "code")).to eq(-32_602)
       expect(calls).to be_empty
     end
-    expect { Adapters::Mcp::AgentsviewUsageCommand.new(timezone: "../../../etc/passwd", authorizer: AgentsviewUsageServerSpec::FixtureAuthorizer.new { |_token| }) }.to raise_error(ArgumentError)
+    expect { Adapters::Mcp::AgentsviewUsageCommand.new(timezone: "../../../etc/passwd", authorizer: usage_authorizer { |_token| }) }.to raise_error(ArgumentError)
   end
 
   it "requires a live request capability before touching source roots or AgentsView" do
-    rejected = AgentsviewUsageServerSpec::FixtureAuthorizer.new { |_token| raise IOError, "rejected fixture capability" }
+    rejected = usage_authorizer { |_token| raise IOError, "rejected fixture capability" }
     rows, calls = response_for({ "range" => { "today" => true } }, authorizer: rejected)
 
     expect(rows.last.dig("error", "code")).to eq(-32_602)

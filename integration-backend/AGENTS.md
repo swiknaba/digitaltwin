@@ -5,7 +5,7 @@
 - Add `# typed: strict` and `# frozen_string_literal: true` to every Ruby source file.
 - Extend `T::Sig` and add signatures for public and private methods.
 - Model boundaries with explicit types and typed results. Do not use `T.untyped`, `T.unsafe`, unchecked casts, broad hashes, or blanket suppressions.
-- Define one concrete class per Ruby file. Keep controllers thin and services stateless with a small `.call` API.
+- Define one concrete class or module per Ruby file. Its full constant path must match the `app/` path after Zeitwerk inflection. Namespace wrappers may enclose it, but helpers, interfaces, values, errors, and nested classes/modules each need matching files. `bin/check-zeitwerk` enforces this rule through a fresh eager load and source-ownership check.
 - Use Kirei persistence abstractions and typed row resolution. Add low-level Sequel only for a demonstrated Kirei gap.
 - Define class methods with `def self.`, not `class << self`. Make private methods private inline: `private def name` and `private_class_method def self.name`. Do not use a bare `private` section. RuboCop enforces both rules.
 - Use double-quoted strings. Handle only narrow, real boundary failures and preserve their cause in typed results.

@@ -3,17 +3,6 @@
 
 module Adapters
   module Mcp
-    module AgentsviewUsageRunnerInterface
-      extend T::Helpers
-
-      extend T::Sig
-
-      interface!
-
-      sig { abstract.params(environment: T::Hash[String, String], argv: T::Array[String]).returns(String) }
-      def run(environment:, argv:); end
-    end
-
     # Restricts local token reporting to one pinned executable, four agents,
     # calendar-day ranges, and a fixed local-only sync/query sequence.
     class AgentsviewUsageCommand

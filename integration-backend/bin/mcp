@@ -15,18 +15,20 @@ require "date"
 require "sorbet-runtime"
 
 repository_root = File.expand_path("../app/adapters/mcp", __dir__)
-server_file, tools_file = if File.directory?(repository_root)
-                            [File.join(repository_root, "server.rb"), File.join(repository_root, "http_tools.rb")]
-                          else
-                            [File.join(__dir__, "mcp.rb"), File.join(__dir__, "http_tools.rb")]
-                          end
+server_file, tool_gateway_file, tools_file =
+  if File.directory?(repository_root)
+    [File.join(repository_root, "server.rb"), File.join(repository_root, "server/tool_gateway.rb"), File.join(repository_root, "http_tools.rb")]
+  else
+    [File.join(__dir__, "mcp.rb"), File.join(__dir__, "server/tool_gateway.rb"), File.join(__dir__, "http_tools.rb")]
+  end
 require server_file
+require tool_gateway_file
 
 if ENV["DIGITALTWIN_MCP_TOOLSET"] == "agentsview_usage"
   usage_files = if File.directory?(repository_root)
-                  %w[agentsview_usage_response agentsview_usage_authorizer agentsview_usage_command agentsview_usage_server].map { |name| File.join(repository_root, "#{name}.rb") }
+                  %w[agentsview_usage_response agentsview_usage_authorizer_interface agentsview_usage_authorizer agentsview_usage_runner_interface agentsview_usage_command agentsview_usage_server].map { |name| File.join(repository_root, "#{name}.rb") }
                 else
-                  %w[agentsview_usage_response agentsview_usage_authorizer agentsview_usage_command agentsview_usage_server].map { |name| File.join(__dir__, "#{name}.rb") }
+                  %w[agentsview_usage_response agentsview_usage_authorizer_interface agentsview_usage_authorizer agentsview_usage_runner_interface agentsview_usage_command agentsview_usage_server].map { |name| File.join(__dir__, "#{name}.rb") }
                 end
   usage_files.each { |file| require file }
   authorizer = Adapters::Mcp::AgentsviewUsageAuthorizer.new(url: ENV.fetch("DIGITALTWIN_CALLBACK_URL"))

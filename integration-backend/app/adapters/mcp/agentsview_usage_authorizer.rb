@@ -3,17 +3,6 @@
 
 module Adapters
   module Mcp
-    module AgentsviewUsageAuthorizerInterface
-      extend T::Helpers
-
-      extend T::Sig
-
-      interface!
-
-      sig { abstract.params(token: String).void }
-      def authorize(token:); end
-    end
-
     # Minimal callback client for the aggregate-only usage server. It can only
     # prove the live request capability; it cannot enumerate or invoke tools.
     class AgentsviewUsageAuthorizer
