@@ -98,7 +98,7 @@ FROM runtime AS with-callback
 COPY --from=kirei-clients --chmod=755 /digitaltwin /usr/local/bin/digitaltwin
 RUN echo "889248ea9a0f4d19dd6cfee3a54aceaee9e02ca7b566c42c160d2ad80bef47e9  /usr/local/bin/digitaltwin" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /digitaltwin-mcp /usr/local/bin/digitaltwin-mcp
-RUN echo "8eaa6aadf579a75d66886e21a91ceef6843cd96604d9cc8e5886337b87dcd037  /usr/local/bin/digitaltwin-mcp" | sha256sum -c -
+RUN echo "8ef05b8d2b5deb4b6f33518e074a53ccbe84f2fd833029d5d81c9368e4cbcd74  /usr/local/bin/digitaltwin-mcp" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /mcp.rb /usr/local/bin/mcp.rb
 RUN echo "e4cfea5ff6390c684873093d5c79920a840e458abffd47d9cbef21593e19bd5c  /usr/local/bin/mcp.rb" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /http_tools.rb /usr/local/bin/http_tools.rb
@@ -106,9 +106,9 @@ RUN echo "633326e1207c318a58c236b5117cd4bae6318f44c409f9e697113b361d6be83d  /usr
 COPY --from=kirei-clients --chmod=755 /agentsview_usage_response.rb /usr/local/bin/agentsview_usage_response.rb
 RUN echo "f3c65b279d3a0fc2843372ae18d0e440343d57b22ef3cc017bbb688b543bfe1d  /usr/local/bin/agentsview_usage_response.rb" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /agentsview_usage_authorizer.rb /usr/local/bin/agentsview_usage_authorizer.rb
-RUN echo "2afcb2aaf7b72d0ae1db69179d396d2afff21b7144e633a56169f1bf28d955c4  /usr/local/bin/agentsview_usage_authorizer.rb" | sha256sum -c -
+RUN echo "6d1d3a9586a918bd763c728f9c83572361922716379f0e14a345fd77584bf297  /usr/local/bin/agentsview_usage_authorizer.rb" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /agentsview_usage_command.rb /usr/local/bin/agentsview_usage_command.rb
-RUN echo "1997715edf644dac72b409e9fa504ddaea542f90e20d90027fde16158a62bb11  /usr/local/bin/agentsview_usage_command.rb" | sha256sum -c -
+RUN echo "5f006a7f6bbd6bfc09a05ae09bafd1d22389b409b4199cea7f06e3452c0896ae  /usr/local/bin/agentsview_usage_command.rb" | sha256sum -c -
 COPY --from=kirei-clients --chmod=755 /agentsview_usage_server.rb /usr/local/bin/agentsview_usage_server.rb
 RUN echo "c1e9379f7f0116941f3e74819bddab3684194c9d0154b0f6a96e8e01c0f74556  /usr/local/bin/agentsview_usage_server.rb" | sha256sum -c -
 
