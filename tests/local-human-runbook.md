@@ -130,10 +130,26 @@ to `MATTERMOST_CHANNEL_IDS`. Add both bots to every monitored channel.
 
 ## 5. Add roles and validate the chat setup
 
-Create `.local/commander/roles.json`. It must include Writer and Reviewer
-roles with different `provider` and `family` values. Add a Commander role only
-when it uses `"cli":"hermes"`. See the [activation reference](../docs/interfaces/local-commander-activation.md)
-for the JSON shape.
+Create `.local/commander/roles.json` using the [role setup reference](../docs/interfaces/local-commander-activation.md#configure-the-role-agents).
+
+For example, this setup selects GPT-5 for Writer and Sonnet 4 for Reviewer:
+
+```json
+{
+  "writer": {"cli":"codex","provider":"openai","model":"gpt-5","family":"gpt","launch_args":["--model","gpt-5"]},
+  "reviewer": {"cli":"claude","provider":"anthropic","model":"claude-sonnet-4-20250514","family":"claude","launch_args":["--model","claude-sonnet-4-20250514"]}
+}
+```
+
+Use model IDs available to your accounts. `launch_args` selects the actual
+model; `model` records its name. Keep those values identical.
+Chat messages cannot currently change this selection.
+
+Writer and Reviewer must use different providers and model families. The JSON
+key `family` means model family, such as `gpt` or `claude`.
+GPT-5 and GPT-5 mini both belong to `gpt`; they cannot form this review pair.
+
+For Commander and saved CLI defaults, use the examples in the role setup reference.
 
 Create the acknowledgement after reviewing the role file:
 

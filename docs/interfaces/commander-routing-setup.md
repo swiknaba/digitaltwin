@@ -56,7 +56,10 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    required when creating workflows or running review; an optional Commander
    entry enables Commander routing. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). The Commander entry must use
    `"cli": "hermes"`. Writer/Reviewer must differ in provider
-   and family. Use the actual already authorized models/login setup in Runtime; do not pass provider
+   and family. `family` means model family. `model` records the selected model; it does not configure the CLI.
+   Select the actual model through CLI settings or supported `launch_args` before activation. Chat cannot currently override it.
+   See the [role field reference](local-commander-activation.md#configure-the-role-agents).
+   Use the actual already authorized models/login setup in Runtime; do not pass provider
    credentials as launch arguments. The persistent Commander directory is `/workspace/commander`.
    Hermes is the harness; it does not fix Commander to Gemini or any other model. Its optional xAI Grok provider is
    supported natively as `provider: xai` (alias `grok`) with an existing `XAI_API_KEY`, or as

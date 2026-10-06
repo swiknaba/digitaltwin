@@ -70,21 +70,82 @@ route is enabled and verified humans can still use `@agent` directly.
 Keep this file at mode `0600`. It contains no tokens, but remains local so a
 channel or bot mapping cannot accidentally be committed.
 
-`roles.json` has one Writer and one Reviewer with different `provider` and
-`family` values. The `commander` entry is optional; if present, its CLI must be
-`hermes`. Provider and model names are descriptive role configuration, not
-credentials. For example:
+## Configure the role agents
+
+`roles.json` assigns one agent to each role: Writer, Reviewer, and optionally Commander.
+These assignments apply to new sessions. Chat messages cannot currently select another model.
+
+Choose the model in each CLI's settings first. Then record the same selection
+in `roles.json`:
+
+| JSON field | Meaning |
+| --- | --- |
+| `cli` | Executable to start: `codex`, `claude`, or `hermes`. |
+| `launch_args` | Arguments passed to that executable. `[]` uses its configured settings. |
+| `provider` | Provider of the selected model, such as `openai` or `anthropic`. |
+| `model` | Exact selected model name, recorded for audit. This field does not select the model. |
+| `family` | Model family, such as `gpt` or `claude`, used to check review independence. |
+
+Writer and Reviewer must have different `provider` and `family` values.
+Changing only the model version does not meet this requirement.
+
+### Example: select models through launch arguments
+
+This example starts Codex with GPT-5 and Claude with Sonnet 4.
+These are example model IDs; use models available to your accounts.
 
 ```json
 {
-  "writer": {"cli":"codex","provider":"openai","model":"your-writer-model","family":"your-writer-family","launch_args":[]},
-  "reviewer": {"cli":"claude","provider":"anthropic","model":"your-reviewer-model","family":"your-reviewer-family","launch_args":[]},
-  "commander": {"cli":"hermes","provider":"your-provider","model":"your-commander-model","family":"your-commander-family","launch_args":[]}
+  "writer": {"cli":"codex","provider":"openai","model":"gpt-5","family":"gpt","launch_args":["--model","gpt-5"]},
+  "reviewer": {"cli":"claude","provider":"anthropic","model":"claude-sonnet-4-20250514","family":"claude","launch_args":["--model","claude-sonnet-4-20250514"]}
 }
 ```
 
-For direct project-agent control, omit the `commander` member; keep Writer and Reviewer
-because a workflow reserves both roles and enforces their diversity.
+The Writer's `launch_args` select `gpt-5`. Its `model` field records `gpt-5`.
+Both values must match. The Reviewer follows the same rule.
+
+The effective CLI selections are:
+
+```sh
+codex --model gpt-5
+claude --model claude-sonnet-4-20250514
+```
+
+These lines explain the selections; the backend starts the agents through Herdr.
+See the [Claude CLI reference](https://docs.anthropic.com/en/docs/claude-code/cli-usage) for `--model`.
+
+### Example: use the CLI's saved model settings
+
+If Codex already defaults to `gpt-5`, this Writer entry uses that saved setting:
+
+```json
+{"cli":"codex","provider":"openai","model":"gpt-5","family":"gpt","launch_args":[]}
+```
+
+Changing `model` here to `gpt-5-mini` would only change the recorded label.
+To select that model, also change the CLI setting or supply matching launch arguments.
+
+### Example: add Commander
+
+If your private Hermes profile selects OpenAI's `gpt-5`, add this entry alongside Writer and Reviewer:
+
+```json
+"commander": {"cli":"hermes","provider":"openai","model":"gpt-5","family":"gpt","launch_args":[]}
+```
+
+Use Hermes's [model configuration](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models) to select its actual provider and model.
+Commander may use the same model as Writer; the diversity rule compares only Writer and Reviewer.
+
+### Examples: independent review
+
+| Writer | Reviewer | Allowed? |
+| --- | --- | --- |
+| OpenAI GPT-5 (`openai`, `gpt`) | Anthropic Sonnet 4 (`anthropic`, `claude`) | Yes: both provider and family differ. |
+| OpenAI GPT-5 (`openai`, `gpt`) | OpenAI GPT-5 mini (`openai`, `gpt`) | No: same provider and family. |
+| Anthropic Sonnet (`anthropic`, `claude`) | Anthropic Opus (`anthropic`, `claude`) | No: same provider and family. |
+
+The backend records your declared model identity; it does not verify the CLI's
+actual model. Keep the CLI settings and this file consistent.
 
 Only after reviewing that role selection, create the local acknowledgement. It
 is not a credential and it does not contact a provider:
