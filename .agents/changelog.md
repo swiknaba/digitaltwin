@@ -253,9 +253,15 @@
 
 ## 2026-10-06 — AgentsView usage implementation
 
+- Replace pre-deployment Mattermost delivery identities everywhere with `Commander` and `Agent`. Use `commander.token` and `agent.token`, plus matching `MATTERMOST_COMMANDER_*` and `MATTERMOST_AGENT_*` settings.
+- Enable disposable bot-account and personal-access-token provisioning in the default local chat configuration. Rewrite the human local-test runbook as one ordered setup procedure.
+- Fix the local Compose project name as `digitaltwin`, and reuse images during ordinary starts. Rebuilds remove only superseded Digital Twin dangling images.
+- Use `agent` consistently for product-facing local-core and workflow terminology.
+- Use `root` as the documented local Mattermost administrator and listener account. Keep runbook commands single-line and shell-safe.
+- Simplify local dispatch mapping: derive bot-author IDs from the named delivery bots and mount the fixed ignored local directory.
 - Document the local Mattermost human, listener, Commander, and project-agent setup, including least-privileged bot-form choices, channel collaboration boundaries, capability settings, token-file contents, required memberships, and non-secret ID lookup.
-- Make `@commander` the default public coordination handle and `@agent` the project-workflow handle. Preserve the persisted delivery identities and token filenames for compatibility.
-- Rename the public handle configuration and service keywords to `COMMANDER_HANDLE`/`commander_handle` and `AGENT_HANDLE`/`agent_handle`. Keep the persisted `agent` and `worker` delivery identities unchanged.
+- Make `@commander` the default public coordination handle and `@agent` the project-workflow handle.
+- Rename public handle configuration and service keywords to `COMMANDER_HANDLE`/`commander_handle` and `AGENT_HANDLE`/`agent_handle`.
 - Pin Runtime client provenance to the retained merged revision with matching hashes. Split CI into Client Runtime, Chat Backend, and root Compose contract steps.
 
 - Package checksum-pinned AgentsView v0.44.0 in the Debian Runtime with usage-only archival, four scoped provider roots, no remote source or UI listener, and synthetic offline component evidence.

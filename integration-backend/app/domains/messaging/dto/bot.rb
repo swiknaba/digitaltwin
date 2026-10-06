@@ -7,8 +7,8 @@ module Domains
       # Bot account that posts an outbox message; values are persisted in outbox.bot.
       class Bot < T::Enum
         enums do
+          Commander = new("commander")
           Agent = new("agent")
-          Worker = new("worker")
         end
       end
     end

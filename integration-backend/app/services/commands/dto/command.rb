@@ -5,7 +5,7 @@ module Services
   module Commands
     module Dto
       Command = T.type_alias do
-        T.any(RecoverStart, RecoverSession, RecoverFollowup, RecoverCommander, Approve, Route, MalformedDirective, WorkerCommand)
+        T.any(RecoverStart, RecoverSession, RecoverFollowup, RecoverCommander, Approve, Route, MalformedDirective, AgentCommand)
       end
     end
   end

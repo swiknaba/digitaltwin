@@ -42,12 +42,12 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    has neither Git workspaces nor the Herdr socket. Build clients with the checksum staging script.
 2. Provide existing authenticated chat identities through read-only token-file mounts. Listener
    needs `MATTERMOST_URL`, `MATTERMOST_LISTENER_TOKEN_FILE`, `MATTERMOST_LOCAL_BOT_IDS`,
-   and `MATTERMOST_CHANNEL_IDS` for the direct worker/project path. Optional
+   and `MATTERMOST_CHANNEL_IDS` for the project Agent path. Optional
    Commander routing additionally needs `COMMANDER_CHANNEL_ID` included in that
    monitored channel list.
-   Worker additionally needs `MATTERMOST_WORKER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE`,
+   The backend worker additionally needs `MATTERMOST_COMMANDER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE`,
    both corresponding `*_BOT_ID` values, and the same local-bot IDs. Web's request-bound MCP
-   services need the listener/Worker token-file references, Worker bot ID and chat/local-bot settings
+   services need the listener, Commander, and Agent token-file references, their bot IDs, and chat/local-bot settings
    for authoritative REST checks. Optional peers use `MATTERMOST_PEER_BOT_IDS`. No bot token
    goes to Runtime. `CHAT_VALIDATION_MODE=1` remains disposable transport validation and does not
    enable Herdr effects. The separate [local activation runbook](local-commander-activation.md)

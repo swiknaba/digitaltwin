@@ -61,7 +61,7 @@ module Services
         message = Messaging::Dto::OutgoingMessage.new(
           channel_id: source.channel_id,
           thread_id: source.thread_id,
-          bot: Messaging::Dto::Bot::Agent,
+          bot: Messaging::Dto::Bot::Commander,
           role: Messaging::Dto::SpeakerRole::Commander,
           body: text,
           key: key

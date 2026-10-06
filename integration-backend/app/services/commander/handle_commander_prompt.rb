@@ -74,7 +74,7 @@ module Services
           true
         when Commands::Approve, Commands::Route, Commands::MalformedDirective
           false
-        when Commands::WorkerCommand, NilClass
+        when Commands::AgentCommand, NilClass
           ingest = @ingest_prompt
           return false unless ingest
 

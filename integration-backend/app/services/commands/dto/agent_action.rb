@@ -4,8 +4,8 @@
 module Services
   module Commands
     module Dto
-      # Workflow actions a human addresses to the Worker bot.
-      class WorkerAction < T::Enum
+      # Workflow actions a human addresses to the Agent bot.
+      class AgentAction < T::Enum
         enums do
           Start = new("start")
           Approve = new("approve")

@@ -48,7 +48,7 @@ module Services
 
       sig { params(source: Messaging::Dto::InboxRecord, body: String, key: String).void }
       private def notify(source, body, key)
-        message = Messaging::Dto::OutgoingMessage.new(channel_id: source.channel_id, thread_id: source.thread_id, bot: Messaging::Dto::Bot::Agent,
+        message = Messaging::Dto::OutgoingMessage.new(channel_id: source.channel_id, thread_id: source.thread_id, bot: Messaging::Dto::Bot::Commander,
                                                       role: Messaging::Dto::SpeakerRole::Commander, body: body, key: key)
         Platform::Unwrap.call(@outbox.enqueue(message: message))
       end

@@ -29,10 +29,10 @@ RSpec.describe Services::Commands::Parser do
   end
 
   it "parses project agent commands with today's whitespace and word-boundary rules" do
-    expect(parse("@agent start")).to eq(dto::WorkerCommand.new(action: dto::WorkerAction::Start, single_space_separator: true))
-    expect(parse("@agent  pause now")).to eq(dto::WorkerCommand.new(action: dto::WorkerAction::Pause, single_space_separator: false))
+    expect(parse("@agent start")).to eq(dto::AgentCommand.new(action: dto::AgentAction::Start, single_space_separator: true))
+    expect(parse("@agent  pause now")).to eq(dto::AgentCommand.new(action: dto::AgentAction::Pause, single_space_separator: false))
     %w[approve resume finish cancel].each do |action|
-      expect(parse("@agent #{action}")).to eq(dto::WorkerCommand.new(action: dto::WorkerAction.deserialize(action), single_space_separator: true))
+      expect(parse("@agent #{action}")).to eq(dto::AgentCommand.new(action: dto::AgentAction.deserialize(action), single_space_separator: true))
     end
   end
 
@@ -56,7 +56,7 @@ RSpec.describe Services::Commands::Parser do
   end
 
   it "escapes configured handles" do
-    expect(parse("@a.b start", agent: "a.b")).to eq(dto::WorkerCommand.new(action: dto::WorkerAction::Start, single_space_separator: true))
+    expect(parse("@a.b start", agent: "a.b")).to eq(dto::AgentCommand.new(action: dto::AgentAction::Start, single_space_separator: true))
     expect(parse("@axb start", agent: "a.b")).to be_nil
   end
 end

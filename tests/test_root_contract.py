@@ -13,6 +13,18 @@ acceptance = SimpleNamespace(**runpy.run_path(str(ROOT / "scripts/acceptance")))
 
 
 class RootContractTest(unittest.TestCase):
+    def test_local_compose_uses_a_stable_project_and_reclaims_rebuilt_images(self):
+        compose = (ROOT / "compose.yml").read_text()
+        dev = (ROOT / "scripts/dev").read_text()
+
+        self.assertIn("name: digitaltwin\n", compose)
+        self.assertNotIn("up --build", dev)
+        self.assertIn(
+            "docker image prune -f --filter dangling=true "
+            "--filter label=com.docker.compose.project=digitaltwin",
+            dev,
+        )
+
     @classmethod
     def setUpClass(cls):
         command = acceptance.COMPOSE + ["--profile", "chat-validation", "-f", str(ROOT / "compose.yml"),
@@ -141,6 +153,27 @@ class CombinedRootContractTest(unittest.TestCase):
         self.assertTrue(chat["build"]["context"].endswith("/chat-backend"))
         self.assertEqual(chat["environment"]["MM_EMAILSETTINGS_SENDPUSHNOTIFICATIONS"], "false")
         self.assertEqual(chat["environment"]["MM_PLUGINSETTINGS_ENABLE"], "false")
+        self.assertEqual(chat["environment"]["MM_SERVICESETTINGS_ENABLEBOTACCOUNTCREATION"], "true")
+        self.assertEqual(chat["environment"]["MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS"], "true")
+
+    def test_local_chat_supports_the_named_commander_and_agent_setup(self):
+        phase0 = json.loads((ROOT / "chat-backend/config/phase0.json").read_text())
+        self.assertTrue(phase0["ServiceSettings"]["EnableBotAccountCreation"])
+        self.assertTrue(phase0["ServiceSettings"]["EnableUserAccessTokens"])
+
+        activation = (ROOT / "compose.local-commander.yml").read_text()
+        self.assertIn("MATTERMOST_COMMANDER_BOT_ID", activation)
+        self.assertIn("MATTERMOST_COMMANDER_TOKEN_FILE", activation)
+        self.assertIn("/local-config/commander.token", activation)
+        self.assertIn("MATTERMOST_AGENT_BOT_ID", activation)
+        self.assertIn("MATTERMOST_AGENT_TOKEN_FILE", activation)
+        self.assertIn("/local-config/agent.token", activation)
+        self.assertIn('source: "./.local/commander"', activation)
+        self.assertNotIn("DIGITALTWIN_LOCAL_CONFIG_DIR", activation)
+        self.assertNotIn("MATTERMOST_LOCAL_BOT_IDS", activation)
+        self.assertNotIn("MATTERMOST_PEER_BOT_IDS", activation)
+        self.assertNotIn("MATTERMOST_WORKER_", activation)
+        self.assertNotIn("/local-config/worker.token", activation)
 
     def test_only_initializer_requires_root_and_push_is_optional(self):
         initializer = self.services["local-volume-init"]

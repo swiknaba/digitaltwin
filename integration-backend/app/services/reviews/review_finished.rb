@@ -119,7 +119,7 @@ module Services
         @queue_release.call(workflow_id: workflow.id, version: version + 1)
         @phase_prompts.enqueue(workflow_id: workflow.id, version: version + 1) if verdict == Verdict::ChangesRequested && phase != Phase::Blocked
         message = Messaging::OutgoingMessage.new(
-          channel_id: workflow.channel_id, thread_id: workflow.thread_id, bot: Messaging::Bot::Worker, role: Messaging::SpeakerRole::Reviewer,
+          channel_id: workflow.channel_id, thread_id: workflow.thread_id, bot: Messaging::Bot::Agent, role: Messaging::SpeakerRole::Reviewer,
           body: "Review #{verdict.serialize} for #{review.target_commit}; committed at #{review_commit}.", key: "review:result:#{review.id}"
         )
         Platform::Unwrap.call(Domains::Messaging::Outbox.new.enqueue(message: message))

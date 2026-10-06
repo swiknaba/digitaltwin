@@ -1,4 +1,4 @@
 # Sessions use cases
 Effects around the sessions domain: Herdr starts and stops, credential files (`<id>.token`, `<id>.request-token`) and chat notices.
-Use cases: `ReserveSession`, `BootstrapCommander`, `StopWorkflowSessions`, `ReconcileOperation`, `PostWorkerChat`; job handlers: `ExecuteOperation` (session.start/stop), `Renew` (session.renew).
+Use cases: `ReserveSession`, `BootstrapCommander`, `StopWorkflowSessions`, `ReconcileOperation`, `PostAgentChat`; job handlers: `ExecuteOperation` (session.start/stop), `Renew` (session.renew).
 Helper: `CompleteOperation` settles a proven operation.

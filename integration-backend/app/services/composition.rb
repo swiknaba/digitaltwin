@@ -30,7 +30,7 @@ module Services
       @listener_client = T.let(nil, T.nilable(Mattermost::Client))
       @listener_api = T.let(nil, T.nilable(Mattermost::Api))
       @verifier = T.let(nil, T.nilable(Mattermost::DeliveryVerifier))
-      @worker_api = T.let(nil, T.nilable(Mattermost::Api))
+      @project_agent_api = T.let(nil, T.nilable(Mattermost::Api))
       @herdr = T.let(nil, T.nilable(Adapters::Herdr::Client))
       @revision = T.let(nil, T.nilable(Adapters::Git::Revision))
       @evidence = T.let(nil, T.nilable(Adapters::Git::Evidence))
@@ -215,7 +215,7 @@ module Services
 
     sig { returns(Workflows::ReconcileStart) }
     def reconcile_start
-      @reconcile_start ||= Workflows::ReconcileStart.new(source: source, api: worker_api, bot_id: worker_bot_id, commander_handle: @configuration.commander_handle)
+      @reconcile_start ||= Workflows::ReconcileStart.new(source: source, api: project_agent_api, bot_id: project_agent_bot_id, commander_handle: @configuration.commander_handle)
     end
 
     sig { returns(Projects::PrepareWorktree) }
@@ -227,7 +227,7 @@ module Services
 
     sig { returns(Workflows::Provision) }
     def provision
-      @provision ||= Workflows::Provision.new(source: source, api: worker_api, bot_id: worker_bot_id, worktrees: prepare_worktree,
+      @provision ||= Workflows::Provision.new(source: source, api: project_agent_api, bot_id: project_agent_bot_id, worktrees: prepare_worktree,
                                               reserve_session: reserve_session, worktree_root: @configuration.worktree_root,
                                               commander_channel_id: @configuration.commander_channel_id, policy: policy)
     end
@@ -254,7 +254,7 @@ module Services
                                                        agent_handle: @configuration.agent_handle)
     end
 
-    # Needs MATTERMOST_<BOT>_TOKEN_FILE and MATTERMOST_<BOT>_BOT_ID for every bot.
+    # Needs the configured Commander and project Agent token files and bot IDs.
     sig { returns(Outbound::DeliverOutbox) }
     def deliver_outbox
       @deliver_outbox ||= begin
@@ -317,16 +317,16 @@ module Services
     end
 
     sig { returns(Mattermost::Api) }
-    private def worker_api
-      @worker_api ||= begin
-        token_file = required(@configuration.mattermost_bot_token_files[Bot::Worker], "MATTERMOST_WORKER_TOKEN_FILE")
+    private def project_agent_api
+      @project_agent_api ||= begin
+        token_file = required(@configuration.mattermost_bot_token_files[Bot::Agent], "MATTERMOST_AGENT_TOKEN_FILE")
         Mattermost::Api.new(client: Mattermost::Client.new(url: mattermost_url, token_file: token_file))
       end
     end
 
     sig { returns(String) }
-    private def worker_bot_id
-      bot_id(Bot::Worker)
+    private def project_agent_bot_id
+      bot_id(Bot::Agent)
     end
 
     sig { params(bot: Bot).returns(String) }

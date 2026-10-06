@@ -29,6 +29,13 @@ RSpec.describe Services::Configuration do
     end
   end
 
+  it "derives local bot authors from the named Commander and Agent bot ids" do
+    with_environment("MATTERMOST_COMMANDER_BOT_ID" => "commander-id", "MATTERMOST_AGENT_BOT_ID" => "agent-id",
+                     "MATTERMOST_LOCAL_BOT_IDS" => nil) do
+      expect(described_class.from_env.mattermost_local_bot_ids).to eq(["commander-id", "agent-id"])
+    end
+  end
+
   it "rejects identical Commander and project agent handles" do
     with_environment("COMMANDER_HANDLE" => "commander", "AGENT_HANDLE" => "commander") do
       expect { described_class.from_env }.to raise_error(ArgumentError, "Commander and project agent handles must differ")
@@ -40,7 +47,7 @@ RSpec.describe Services::Configuration do
       roles_path = File.join(dir, "roles.json")
       activation_path = File.join(dir, "local-dispatch.json")
       File.write(roles_path, role_file)
-      %w[listener agent worker].each { |name| File.write(File.join(dir, "#{name}.token"), "fixture-#{name}") }
+      %w[listener commander agent].each { |name| File.write(File.join(dir, "#{name}.token"), "fixture-#{name}") }
       activation = {
         "schema" => "digitaltwin.local-dispatch/v1", "scope" => "local", "confirmed_at" => "2026-10-05T12:00:00Z",
         "role_config_sha256" => Digest::SHA256.file(roles_path).hexdigest
@@ -50,8 +57,8 @@ RSpec.describe Services::Configuration do
       environment = {
         "LOCAL_DISPATCH_ACTIVATION_FILE" => activation_path, "ROLE_CONFIG_FILE" => roles_path,
         "MATTERMOST_URL" => "http://mattermost.test", "MATTERMOST_LISTENER_TOKEN_FILE" => File.join(dir, "listener.token"),
-        "MATTERMOST_AGENT_TOKEN_FILE" => File.join(dir, "agent.token"), "MATTERMOST_WORKER_TOKEN_FILE" => File.join(dir, "worker.token"),
-        "MATTERMOST_AGENT_BOT_ID" => "agent", "MATTERMOST_WORKER_BOT_ID" => "worker", "MATTERMOST_LOCAL_BOT_IDS" => "agent,worker",
+        "MATTERMOST_COMMANDER_TOKEN_FILE" => File.join(dir, "commander.token"), "MATTERMOST_AGENT_TOKEN_FILE" => File.join(dir, "agent.token"),
+        "MATTERMOST_COMMANDER_BOT_ID" => "commander", "MATTERMOST_AGENT_BOT_ID" => "agent",
         "MATTERMOST_CHANNEL_IDS" => "project", "COMMANDER_CHANNEL_ID" => nil
       }
       with_environment(environment) do
@@ -71,7 +78,7 @@ RSpec.describe Services::Configuration do
       roles_path = File.join(dir, "roles.json")
       activation_path = File.join(dir, "local-dispatch.json")
       File.write(roles_path, JSON.generate(WorkflowFixtures::WORKFLOW_ROLES.merge("commander" => WorkflowFixtures::WORKFLOW_ROLES.fetch("writer").merge("cli" => "hermes"))))
-      %w[listener agent worker].each { |name| File.write(File.join(dir, "#{name}.token"), "fixture-#{name}") }
+      %w[listener commander agent].each { |name| File.write(File.join(dir, "#{name}.token"), "fixture-#{name}") }
       activation = {
         "schema" => "digitaltwin.local-dispatch/v1",
         "scope" => "local",
@@ -83,8 +90,8 @@ RSpec.describe Services::Configuration do
       environment = {
         "LOCAL_DISPATCH_ACTIVATION_FILE" => activation_path, "ROLE_CONFIG_FILE" => roles_path,
         "MATTERMOST_URL" => "http://mattermost.test", "MATTERMOST_LISTENER_TOKEN_FILE" => File.join(dir, "listener.token"),
-        "MATTERMOST_AGENT_TOKEN_FILE" => File.join(dir, "agent.token"), "MATTERMOST_WORKER_TOKEN_FILE" => File.join(dir, "worker.token"),
-        "MATTERMOST_AGENT_BOT_ID" => "agent", "MATTERMOST_WORKER_BOT_ID" => "worker", "MATTERMOST_LOCAL_BOT_IDS" => "agent,worker",
+        "MATTERMOST_COMMANDER_TOKEN_FILE" => File.join(dir, "commander.token"), "MATTERMOST_AGENT_TOKEN_FILE" => File.join(dir, "agent.token"),
+        "MATTERMOST_COMMANDER_BOT_ID" => "commander", "MATTERMOST_AGENT_BOT_ID" => "agent",
         "MATTERMOST_CHANNEL_IDS" => "project", "COMMANDER_CHANNEL_ID" => nil
       }
       with_environment(environment) do

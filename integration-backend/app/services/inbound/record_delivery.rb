@@ -57,7 +57,7 @@ module Services
           queue(Kind::WorkflowStart, delivery, inbox_id)
         elsif workflow && dispatch_suppressed?(workflow) && command.nil?
           queue_message(workflow, inbox_id)
-          notice = Messaging::Dto::OutgoingMessage.new(channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: Messaging::Dto::Bot::Worker,
+          notice = Messaging::Dto::OutgoingMessage.new(channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: Messaging::Dto::Bot::Agent,
                                                        role: Messaging::Dto::SpeakerRole::Writer, body: "Message queued; delivery waits for review or pause completion.",
                                                        key: "queued:#{inbox_id}")
           Platform::Unwrap.call(@outbox.enqueue(message: notice))
@@ -84,7 +84,7 @@ module Services
       sig { params(body: String).returns(T.nilable(String)) }
       private def command_for(body)
         command = Commands::Parser.new.call(body: body, commander_handle: @commander, agent_handle: @agent)
-        command.action.serialize if command.is_a?(Commands::Dto::WorkerCommand)
+        command.action.serialize if command.is_a?(Commands::Dto::AgentCommand)
       end
 
       # A mention anywhere in the body, not a command, so it stays out of the parser.

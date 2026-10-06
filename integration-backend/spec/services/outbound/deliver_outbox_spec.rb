@@ -4,7 +4,7 @@ RSpec.describe Services::Outbound::DeliverOutbox do
   before do
     db[:outbox].delete; db[:jobs].delete
     @channel, @root, @bot = "c" * 26, "r" * 26, "b" * 26
-    message = Domains::Messaging::Dto::OutgoingMessage.new(channel_id: @channel, thread_id: @root, bot: Domains::Messaging::Dto::Bot::Worker,
+    message = Domains::Messaging::Dto::OutgoingMessage.new(channel_id: @channel, thread_id: @root, bot: Domains::Messaging::Dto::Bot::Agent,
                                                            role: Domains::Messaging::Dto::SpeakerRole::Writer, body: "[writer] question", key: "response")
     @id = Domains::Messaging::Outbox.new.enqueue(message: message).result
     @gets = { "/api/v4/users/me" => { "id" => @bot, "is_bot" => true }, "/api/v4/channels/#{@channel}" => { "id" => @channel },
@@ -21,8 +21,8 @@ RSpec.describe Services::Outbound::DeliverOutbox do
       body.merge("id" => "p" * 26, "user_id" => bot, "create_at" => 2, "update_at" => 2, "delete_at" => 0)
     end
   end
-  def apis = { Domains::Messaging::Dto::Bot::Worker => Adapters::Mattermost::Api.new(client: @client) }
-  def bot_ids = { Domains::Messaging::Dto::Bot::Worker => @bot }
+  def apis = { Domains::Messaging::Dto::Bot::Agent => Adapters::Mattermost::Api.new(client: @client) }
+  def bot_ids = { Domains::Messaging::Dto::Bot::Agent => @bot }
   def service = described_class.new(apis: apis, bot_ids: bot_ids)
   def reconcile = Services::Outbound::ReconcileOutbox.new(apis: apis, bot_ids: bot_ids)
 

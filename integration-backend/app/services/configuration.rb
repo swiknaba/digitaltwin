@@ -20,7 +20,7 @@ module Services
 
     const :mattermost_url, T.nilable(String), default: nil
     const :mattermost_listener_token_file, T.nilable(String), default: nil
-    # MATTERMOST_<BOT>_TOKEN_FILE and MATTERMOST_<BOT>_BOT_ID for each set bot.
+    # MATTERMOST_COMMANDER_* and MATTERMOST_AGENT_* identify the delivery bots.
     const :mattermost_bot_token_files, T::Hash[Bot, String], default: {}
     const :mattermost_bot_ids, T::Hash[Bot, String], default: {}
     const :mattermost_local_bot_ids, T.nilable(T::Array[String]), default: nil
@@ -51,10 +51,13 @@ module Services
       agent_handle = ENV.fetch("AGENT_HANDLE", AGENT_HANDLE)
       raise ArgumentError, "Commander and project agent handles must differ" if commander_handle == agent_handle
 
+      bot_ids = per_bot("BOT_ID")
+      local_bot_ids = bot_ids.size == Bot.values.size ? bot_ids.values : nil
+
       new(
         mattermost_url: ENV["MATTERMOST_URL"], mattermost_listener_token_file: ENV["MATTERMOST_LISTENER_TOKEN_FILE"],
-        mattermost_bot_token_files: per_bot("TOKEN_FILE"), mattermost_bot_ids: per_bot("BOT_ID"),
-        mattermost_local_bot_ids: ENV["MATTERMOST_LOCAL_BOT_IDS"]&.split(","), mattermost_peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","),
+        mattermost_bot_token_files: per_bot("TOKEN_FILE"), mattermost_bot_ids: bot_ids,
+        mattermost_local_bot_ids: local_bot_ids, mattermost_peer_bot_ids: ENV.fetch("MATTERMOST_PEER_BOT_IDS", "").split(","),
         mattermost_channel_ids: ENV["MATTERMOST_CHANNEL_IDS"]&.split(","), commander_channel_id: ENV["COMMANDER_CHANNEL_ID"], roles: roles,
         callback_url: ENV.fetch("DIGITALTWIN_CALLBACK_URL", DEFAULT_CALLBACK_URL), commander_handle: commander_handle,
         agent_handle: agent_handle, workspace_root: ENV.fetch("WORKSPACE_ROOT", DEFAULT_WORKSPACE_ROOT),
@@ -125,7 +128,7 @@ module Services
       raise ArgumentError, "Local dispatch Commander must use Hermes" if commander && commander.cli != "hermes"
       raise ArgumentError, "Local dispatch Commander configuration is incomplete" if commander && !Domains::Sessions::ConfigurationPolicy.complete?(commander)
 
-      required = [ENV["MATTERMOST_URL"], ENV["MATTERMOST_LISTENER_TOKEN_FILE"], ENV["MATTERMOST_CHANNEL_IDS"], ENV["MATTERMOST_LOCAL_BOT_IDS"]]
+      required = [ENV["MATTERMOST_URL"], ENV["MATTERMOST_LISTENER_TOKEN_FILE"], ENV["MATTERMOST_CHANNEL_IDS"]]
       raise ArgumentError, "Local dispatch chat configuration is incomplete" if required.any? { |value| value.nil? || value.empty? }
 
       Domains::Messaging::Dto::Bot.values.each do |bot|

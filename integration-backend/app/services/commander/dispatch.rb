@@ -91,7 +91,7 @@ module Services
         message = Messaging::Dto::OutgoingMessage.new(
           channel_id: old_source.channel_id,
           thread_id: old_source.thread_id,
-          bot: Messaging::Dto::Bot::Agent,
+          bot: Messaging::Dto::Bot::Commander,
           role: Messaging::Dto::SpeakerRole::Commander,
           body: "Commander request #{old.id} expired without a completion receipt. Verify its outcome, then use @#{@handle} recover-commander #{old.id} to continue the same session.",
           key: "commander:expired:#{old.id}"

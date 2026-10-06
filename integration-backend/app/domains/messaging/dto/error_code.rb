@@ -11,7 +11,7 @@ module Domains
           SourceChanged = new("source_changed")
           DestinationMembershipRequired = new("destination_membership_required")
           KeyReused = new("key_reused")
-          WorkerMessageRequiresThreadAndRole = new("worker_message_requires_thread_and_role")
+          AgentMessageRequiresThreadAndRole = new("agent_message_requires_thread_and_role")
         end
       end
     end

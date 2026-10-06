@@ -8,19 +8,17 @@ services:
       COMMANDER_HANDLE: "${COMMANDER_HANDLE:-commander}"
       COMMANDER_CHANNEL_ID: "${COMMANDER_CHANNEL_ID:-}"
       LOCAL_DISPATCH_ACTIVATION_FILE: "/local-config/local-dispatch.json"
-      MATTERMOST_AGENT_BOT_ID: "${MATTERMOST_AGENT_BOT_ID:?Set the local Commander bot id}"
-      MATTERMOST_AGENT_TOKEN_FILE: "/local-config/agent.token"
+      MATTERMOST_COMMANDER_BOT_ID: "${MATTERMOST_COMMANDER_BOT_ID:?Set the local Commander bot id}"
+      MATTERMOST_COMMANDER_TOKEN_FILE: "/local-config/commander.token"
       MATTERMOST_CHANNEL_IDS: "${MATTERMOST_CHANNEL_IDS:?Set monitored Mattermost channel ids}"
       MATTERMOST_LISTENER_TOKEN_FILE: "/local-config/listener.token"
-      MATTERMOST_LOCAL_BOT_IDS: "${MATTERMOST_LOCAL_BOT_IDS:?Set local Mattermost bot ids}"
-      MATTERMOST_PEER_BOT_IDS: "${MATTERMOST_PEER_BOT_IDS:-}"
-      MATTERMOST_WORKER_BOT_ID: "${MATTERMOST_WORKER_BOT_ID:?Set the local project Agent bot id}"
-      MATTERMOST_WORKER_TOKEN_FILE: "/local-config/worker.token"
+      MATTERMOST_AGENT_BOT_ID: "${MATTERMOST_AGENT_BOT_ID:?Set the local project Agent bot id}"
+      MATTERMOST_AGENT_TOKEN_FILE: "/local-config/agent.token"
       ROLE_CONFIG_FILE: "/local-config/roles.json"
       AGENT_HANDLE: "${AGENT_HANDLE:-agent}"
     volumes: &local_dispatch_volumes
       - type: bind
-        source: "${DIGITALTWIN_LOCAL_CONFIG_DIR:?Set an absolute ignored local config directory}"
+        source: "./.local/commander"
         target: "/local-config"
         read_only: true
   backend-worker:

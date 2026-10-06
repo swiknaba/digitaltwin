@@ -1,6 +1,8 @@
 # Reviewed local core. Listener and push require their opt-in profiles.
 # Stage the checksum-verified callback with scripts/prepare-callback-context.
 ---
+name: digitaltwin
+
 services:
   agent-runtime:
     build:
@@ -235,7 +237,9 @@ services:
       MM_PLUGINSETTINGS_ENABLEMARKETPLACE: 'false'
       MM_PLUGINSETTINGS_ENABLEREMOTEMARKETPLACE: 'false'
       MM_PLUGINSETTINGS_ENABLEUPLOADS: 'false'
+      MM_SERVICESETTINGS_ENABLEBOTACCOUNTCREATION: 'true'
       MM_SERVICESETTINGS_ENABLELOCALMODE: 'true'
+      MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS: 'true'
       MM_SERVICESETTINGS_SITEURL: http://localhost:8065
       MM_SQLSETTINGS_DATASOURCE: postgres://mattermost:${MATTERMOST_DB_PASSWORD:?Set
         the local Mattermost database password}@postgres:5432/mattermost?sslmode=disable&connect_timeout=10

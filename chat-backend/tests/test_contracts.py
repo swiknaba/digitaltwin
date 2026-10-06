@@ -111,13 +111,14 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             contracts.backfill_path('../bad', 10000)
 
-    def test_safe_config_excludes_all_plugin_execution(self):
+    def test_local_config_allows_identity_provisioning_without_plugins(self):
         config = json.loads((ROOT / 'config/phase0.json').read_text())
         for key in ('Enable', 'EnableUploads', 'EnableMarketplace', 'EnableRemoteMarketplace', 'AutomaticPrepackagedPlugins'):
             self.assertIs(config['PluginSettings'][key], False)
         self.assertEqual(config['PluginSettings']['PluginStates'], {})
         self.assertIs(config['ServiceSettings']['EnableLocalMode'], True)
-        self.assertIs(config['ServiceSettings']['EnableBotAccountCreation'], False)
+        self.assertIs(config['ServiceSettings']['EnableBotAccountCreation'], True)
+        self.assertIs(config['ServiceSettings']['EnableUserAccessTokens'], True)
 
 
 if __name__ == '__main__':

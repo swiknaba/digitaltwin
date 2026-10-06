@@ -40,8 +40,8 @@ set each to mode `0600`:
 
 ```text
 listener.token
+commander.token
 agent.token
-worker.token
 roles.json
 local-dispatch.json
 ```
@@ -51,21 +51,16 @@ provider key, OAuth token, browser profile, or any secret in Git, `.env`,
 `roles.json`, command arguments, or a chat post. Provider state stays in the
 Runtime's persistent home and is configured interactively by the operator.
 
-The credential filenames preserve stable delivery identities: `agent.token`
-authenticates `@commander`, and `worker.token` authenticates `@agent`.
+`commander.token` authenticates `@commander`. `agent.token` authenticates
+`@agent`.
 
 Create `.local/commander.env` with the absolute path to that directory and the
 non-secret Mattermost IDs collected from your authenticated local server:
 
 ```sh
-DIGITALTWIN_LOCAL_CONFIG_DIR=/absolute/path/to/digitaltwin/.local/commander
-MATTERMOST_CHANNEL_IDS=<project-channel-id>
-MATTERMOST_LOCAL_BOT_IDS=<commander-bot-id>,<agent-bot-id>
-MATTERMOST_AGENT_BOT_ID=<commander-bot-id>
-MATTERMOST_WORKER_BOT_ID=<agent-bot-id>
-MATTERMOST_PEER_BOT_IDS=
-COMMANDER_HANDLE=commander
-AGENT_HANDLE=agent
+MATTERMOST_CHANNEL_IDS=REPLACE_WITH_PROJECT_CHANNEL_ID
+MATTERMOST_COMMANDER_BOT_ID=REPLACE_WITH_COMMANDER_BOT_ID
+MATTERMOST_AGENT_BOT_ID=REPLACE_WITH_AGENT_BOT_ID
 ```
 
 For optional Commander routing, also set `COMMANDER_CHANNEL_ID` and include
@@ -95,9 +90,7 @@ Only after reviewing that role selection, create the local acknowledgement. It
 is not a credential and it does not contact a provider:
 
 ```sh
-role_hash=$(shasum -a 256 .local/commander/roles.json | awk '{print $1}')
-printf '{"schema":"digitaltwin.local-dispatch/v1","scope":"local","confirmed_at":"%s","role_config_sha256":"%s"}\n' \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$role_hash" > .local/commander/local-dispatch.json
+role_hash=$(shasum -a 256 .local/commander/roles.json | awk '{print $1}'); printf '{"schema":"digitaltwin.local-dispatch/v1","scope":"local","confirmed_at":"%s","role_config_sha256":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$role_hash" > .local/commander/local-dispatch.json
 chmod 600 .local/commander/local-dispatch.json
 ```
 
@@ -112,11 +105,11 @@ file-gated local activation instead.
 set -a
 . .local/commander.env
 set +a
-project=digitaltwin-local-commander
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml up --build -d --wait \
-  mattermost agent-runtime backend-migrate backend-web
-scripts/validate-local-commander "$project"
+
+./scripts/dev --build
+
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml up -d --wait mattermost agent-runtime backend-migrate backend-web
+scripts/validate-local-commander
 ```
 
 The command must print JSON with `provider_call:false` and `runtime_effect:false`,
@@ -139,9 +132,7 @@ the repository is never copied into the backend image. A public clone can be
 made by the operator from the Runtime shell, for example:
 
 ```sh
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml exec -T agent-runtime \
-  sh -lc 'mkdir -p /workspace/repos/OWNER && git clone -- https://github.com/OWNER/REPOSITORY.git /workspace/repos/OWNER/REPOSITORY'
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml exec -T agent-runtime sh -lc 'mkdir -p /workspace/repos/OWNER && git clone -- https://github.com/OWNER/REPOSITORY.git /workspace/repos/OWNER/REPOSITORY'
 ```
 
 For a private repository, use your already authorized Git setup instead; do
@@ -152,9 +143,7 @@ with the mapped Mattermost project channel, a verified non-bot human user ID
 from that channel, and the matching repository slug:
 
 ```sh
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml run --rm --no-deps backend-worker \
-  bin/enroll-local-project --channel-id <project-channel-id> --human-id <human-user-id> --slug OWNER/REPOSITORY
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml run --rm --no-deps backend-worker bin/enroll-local-project --channel-id REPLACE_WITH_PROJECT_CHANNEL_ID --human-id REPLACE_WITH_HUMAN_USER_ID --slug OWNER/REPOSITORY
 ```
 
 This command re-runs the local read-only preflight, verifies the supplied human
@@ -166,9 +155,7 @@ slug for the same channel fails closed.
 After that preflight succeeds, start the two effect-owning services:
 
 ```sh
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml --profile chat-validation up -d --wait \
-  backend-worker backend-chat-listener
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml --profile chat-validation up -d --wait backend-worker backend-chat-listener
 ```
 
 ## Human-run live acceptance

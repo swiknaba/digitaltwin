@@ -37,7 +37,7 @@ module Adapters
         return unexpected_callback_fields_response unless allowed_keys?(values, %w[generation key text])
 
         callback = say_callback(values)
-        result = Services::Sessions::PostWorkerChat.new.call(token: callback.token, generation: callback.generation, key: callback.key, body: callback.body)
+        result = Services::Sessions::PostAgentChat.new.call(token: callback.token, generation: callback.generation, key: callback.key, body: callback.body)
         return render_json({ "status" => "accepted", "reason" => "Queued in bound thread" }, status: 202) if result.success?
 
         render_json({ "status" => "rejected", "reason" => result.errors.first&.detail.to_s }, status: 403)

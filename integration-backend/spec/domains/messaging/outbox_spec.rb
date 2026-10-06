@@ -14,7 +14,7 @@ RSpec.describe Domains::Messaging::Outbox do
     expect(outbox.enqueue(message: outgoing_message).result).to eq(id)
     expect(db[:jobs].select_map(%i[kind dispatch_key])).to eq([["mattermost.post", "outbox:#{id}"]])
     item = outbox.item(id: id)
-    expect([item&.status, item&.bot, item&.role, item&.body]).to eq([Domains::Messaging::Dto::OutboxStatus::Pending, Domains::Messaging::Dto::Bot::Worker,
+    expect([item&.status, item&.bot, item&.role, item&.body]).to eq([Domains::Messaging::Dto::OutboxStatus::Pending, Domains::Messaging::Dto::Bot::Agent,
                                                                      Domains::Messaging::Dto::SpeakerRole::Writer, "hello"])
     expect(outbox.item_by_key(key: "response")&.id).to eq(id)
   end
@@ -27,13 +27,13 @@ RSpec.describe Domains::Messaging::Outbox do
     expect(db[:jobs].count).to eq(1)
   end
 
-  it "worker message without thread fails" do
+  it "agent message without thread fails" do
     [outgoing_message(thread_id: nil), outgoing_message(thread_id: ""), outgoing_message(role: Domains::Messaging::Dto::SpeakerRole::Commander)].each do |message|
       failure = outbox.enqueue(message: message).errors.first
-      expect([failure&.code, failure&.detail]).to eq(["worker_message_requires_thread_and_role", "Worker messages require thread and role"])
+      expect([failure&.code, failure&.detail]).to eq(["agent_message_requires_thread_and_role", "Agent messages require thread and role"])
     end
-    agent = outgoing_message(thread_id: nil, bot: Domains::Messaging::Dto::Bot::Agent, role: Domains::Messaging::Dto::SpeakerRole::Commander)
-    expect(outbox.enqueue(message: agent).success?).to be(true)
+    commander = outgoing_message(thread_id: nil, bot: Domains::Messaging::Dto::Bot::Commander, role: Domains::Messaging::Dto::SpeakerRole::Commander)
+    expect(outbox.enqueue(message: commander).success?).to be(true)
     expect(db[:outbox].count).to eq(1)
   end
 

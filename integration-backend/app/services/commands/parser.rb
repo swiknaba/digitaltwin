@@ -38,12 +38,12 @@ module Services
         Dto::MalformedDirective.new if body.match?(/\A@#{commander} (approve|route)\b/)
       end
 
-      sig { params(body: String, agent: String).returns(T.nilable(Dto::WorkerCommand)) }
+      sig { params(body: String, agent: String).returns(T.nilable(Dto::AgentCommand)) }
       private def agent_command(body, agent)
         match = body.match(/\A@#{agent}(\s+)(start|approve|pause|resume|finish|cancel)\b/)
         return nil unless match
 
-        Dto::WorkerCommand.new(action: Dto::WorkerAction.deserialize(capture(match, 2)), single_space_separator: capture(match, 1) == " ")
+        Dto::AgentCommand.new(action: Dto::AgentAction.deserialize(capture(match, 2)), single_space_separator: capture(match, 1) == " ")
       end
 
       sig { params(match: MatchData, index: Integer).returns(String) }

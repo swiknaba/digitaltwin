@@ -41,7 +41,7 @@ module Services
 
         delivery = verified.result
         command = Commands::Parser.new.call(body: delivery.body, commander_handle: @commander, agent_handle: @agent)
-        start = command.is_a?(Commands::Dto::WorkerCommand) && command.action == Commands::Dto::WorkerAction::Start && command.single_space_separator
+        start = command.is_a?(Commands::Dto::AgentCommand) && command.action == Commands::Dto::AgentAction::Start && command.single_space_separator
         return failure(Code::StartRequired, "Human root start required") unless delivery.root_post && start
 
         project = @directory.for_channel(channel_id: delivery.channel_id)

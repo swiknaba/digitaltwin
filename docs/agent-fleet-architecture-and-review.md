@@ -111,7 +111,7 @@ The [Agents plugin](https://github.com/mattermost/mattermost-plugin-agents) is n
 Mattermost remains chat transport/UI; MCP integration is not required in a chat plugin.
 Its [commercial capability gates](https://github.com/mattermost/mattermost-plugin-agents/blob/master/enterprise/license.go) restrict multi-provider, external MCP, and state-changing tools.
 Its repository includes commercially licensed code despite its Apache label.
-Kirei's external Commander/Worker bots provide the selected path without promising free plugin MCP capabilities.
+Kirei's external Commander/Agent bots provide the selected path without promising free plugin MCP capabilities.
 The [LiteLLM/MCP direction](https://github.com/swiknaba/digitaltwin/issues/4) belongs after Phase 2; it adds no Phase 0/1/2 requirements.
 Keep current agent/Commander tool interfaces until that later design.
 Audit optional plugins individually. Hermes remains a candidate, not an adopted dependency.
@@ -348,10 +348,10 @@ The deployment uses two Mattermost bot accounts:
 - `@agent` handles project workflow phases.
 
 The exact account handles remain configurable for each deployment.
-The default handles are `agent` and `worker` when those names are available.
+The default handles are `commander` and `agent` when those names are available.
 An operator selects unique handles when multiple fleets use one Mattermost instance.
 
-Kirei holds the Mattermost credentials and posts under the configured Agent or Worker bot identity.
+Kirei holds the Mattermost credentials and posts under the configured Commander or Agent bot identity.
 Writer and Reviewer send interview questions and progress through a session-bound callback to Kirei's durable outbox.
 The callback uses the Runtime's Digitaltwin client and private Kirei endpoint.
 Kirei derives the channel, thread, active role, and bot identity from the verified session mapping.

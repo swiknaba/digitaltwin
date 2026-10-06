@@ -66,8 +66,8 @@ DATABASE_URL=... MIGRATION_TEST_DATABASE_URL=... bin/check   # specs, RuboCop, S
 | `DATABASE_URL` | Dedicated PostgreSQL database and role. Required. Never a Mattermost database. |
 | `MATTERMOST_URL` | Private base URL of the Mattermost server. |
 | `MATTERMOST_LISTENER_TOKEN_FILE` | File with the listener credential. |
-| `MATTERMOST_WORKER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE` | Files with the bot credentials used for delivery. |
-| `MATTERMOST_WORKER_BOT_ID`, `MATTERMOST_AGENT_BOT_ID` | Expected bot identities. Checked against the authenticated user. |
+| `MATTERMOST_COMMANDER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE` | Files with the Commander and Agent bot credentials used for delivery. |
+| `MATTERMOST_COMMANDER_BOT_ID`, `MATTERMOST_AGENT_BOT_ID` | Expected Commander and Agent bot identities. Checked against the authenticated user. |
 | `MATTERMOST_LOCAL_BOT_IDS` | Bots excluded from human authority. Required by the listener. |
 | `MATTERMOST_PEER_BOT_IDS` | Other bots to exclude. Optional. |
 | `MATTERMOST_CHANNEL_IDS` | Monitored channels. Listed explicitly, never inferred. |

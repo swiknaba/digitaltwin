@@ -4,11 +4,11 @@
 module Services
   module Commands
     module Dto
-      # `@<worker> <action>`. The start re-verification also requires a single space separator.
-      class WorkerCommand < T::Struct
+      # `@<agent> <action>`. The start re-verification requires one space.
+      class AgentCommand < T::Struct
         include Kirei::Domain::ValueObject
 
-        const :action, WorkerAction
+        const :action, AgentAction
         const :single_space_separator, T::Boolean
       end
     end

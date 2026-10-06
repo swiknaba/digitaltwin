@@ -83,7 +83,7 @@ module Services
           @audit.record(event_key: key, action: "verified_thread_reconciliation",
                         details: Domains::Workflows::Dto::ThreadRecoveryAudit.new(inbox_id: inbox_id, request_id: id, thread_id: thread_id))
           message = Messaging::Dto::OutgoingMessage.new(
-            channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: Messaging::Dto::Bot::Agent, role: Messaging::Dto::SpeakerRole::Commander,
+            channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: Messaging::Dto::Bot::Agent, role: Messaging::Dto::SpeakerRole::Writer,
             body: "Start #{id} reconciled to verified thread #{thread_id}; continuation queued without recreating the thread.", key: key
           )
           # A failed notice raises and rolls back the reconciliation, as before.
