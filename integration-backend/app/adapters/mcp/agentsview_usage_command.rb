@@ -12,8 +12,6 @@ module Adapters
       JsonObject = T.type_alias { T::Hash[String, Object] }
       Range = T.type_alias { T::Hash[String, String] }
       SourceRoots = T.type_alias { T::Array[String] }
-      CommandRunner = T.type_alias { T.proc.params(environment: T::Hash[String, String], argv: T::Array[String]).returns(String) }
-      Authorizer = T.type_alias { T.proc.params(token: String).void }
 
       EXECUTABLE = "/usr/local/bin/agentsview"
       SOURCE_MACHINE = "runtime"
