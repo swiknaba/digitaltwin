@@ -3,6 +3,24 @@
 
 module Adapters
   module Mcp
+    module AgentsviewUsageAuthorizerInterface
+      extend T::Helpers
+      extend T::Sig
+      interface!
+
+      sig { abstract.params(token: String).void }
+      def authorize(token:); end
+    end
+
+    module AgentsviewUsageRunnerInterface
+      extend T::Helpers
+      extend T::Sig
+      interface!
+
+      sig { abstract.params(environment: T::Hash[String, String], argv: T::Array[String]).returns(String) }
+      def run(environment:, argv:); end
+    end
+
     # Restricts local token reporting to one pinned executable, four agents,
     # calendar-day ranges, and a fixed local-only sync/query sequence.
     class AgentsviewUsageCommand
@@ -23,22 +41,17 @@ module Adapters
       ACTIVE_CONFIG_PATH = "/home/runtime/.agentsview/config.toml"
 
       sig do
-        params(authorizer: T.untyped, timezone: T.nilable(String), command_runner: T.untyped, source_roots: T.nilable(SourceRoots),
+        params(authorizer: AgentsviewUsageAuthorizerInterface, timezone: T.nilable(String), command_runner: T.nilable(AgentsviewUsageRunnerInterface), source_roots: T.nilable(SourceRoots),
                managed_config_path: T.nilable(String), active_config_path: T.nilable(String)).void
       end
       def initialize(authorizer:, timezone: nil, command_runner: nil, source_roots: nil, managed_config_path: MANAGED_CONFIG_PATH, active_config_path: ACTIVE_CONFIG_PATH)
         @timezone = T.let(timezone || ENV.fetch("RUNTIME_USAGE_TIMEZONE", "UTC"), String)
         validate_timezone!(@timezone)
-        raise ArgumentError, "AgentsView command runner is invalid" if command_runner && !command_runner.respond_to?(:call)
-        raise ArgumentError, "AgentsView authorizer is invalid" unless authorizer.respond_to?(:call)
-
-        # Proc signature reflection differs across supported Sorbet runtimes;
-        # this is a dependency-injection seam with explicit callable guards.
-        @command_runner = T.let(command_runner, T.untyped)
+        @command_runner = T.let(command_runner, T.nilable(AgentsviewUsageRunnerInterface))
         @source_roots = T.let(source_roots || SOURCE_ROOTS, SourceRoots)
         @managed_config_path = T.let(managed_config_path, T.nilable(String))
         @active_config_path = T.let(active_config_path, T.nilable(String))
-        @authorizer = T.let(authorizer, T.untyped)
+        @authorizer = T.let(authorizer, AgentsviewUsageAuthorizerInterface)
       end
 
       sig { override.returns(T::Array[JsonObject]) }
@@ -68,7 +81,7 @@ module Adapters
         raise ArgumentError, "Empty Commander request capability" if token.empty?
         raise ArgumentError, "Unexpected usage tool fields" unless [%w[range], %w[agent range]].include?(args.keys.sort)
 
-        @authorizer.call(token)
+        @authorizer.authorize(token: token)
         range = resolve_range(object(args, "range"))
         agent = optional_agent(args["agent"])
         ensure_managed_config!
@@ -169,7 +182,7 @@ module Adapters
           "GEMINI_DIR" => "/home/runtime/.gemini",
           "OPENCODE_DIR" => "/home/runtime/.local/share/opencode"
         }
-        return @command_runner.call(environment, [EXECUTABLE] + args) if @command_runner
+        return @command_runner.run(environment: environment, argv: [EXECUTABLE] + args) if @command_runner
 
         command = T.let([EXECUTABLE] + args, T::Array[String])
         stdout, _stderr, status = Timeout.timeout(TIMEOUT_SECONDS) { Open3.capture3(environment, command) }

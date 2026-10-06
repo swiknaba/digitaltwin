@@ -7,6 +7,7 @@ module Adapters
     # prove the live request capability; it cannot enumerate or invoke tools.
     class AgentsviewUsageAuthorizer
       extend T::Sig
+      include AgentsviewUsageAuthorizerInterface
 
       sig { params(url: String).void }
       def initialize(url:)

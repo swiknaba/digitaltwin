@@ -7,6 +7,30 @@ require "stringio"
 require "timeout"
 
 RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
+  class FixtureAuthorizer
+    include Adapters::Mcp::AgentsviewUsageAuthorizerInterface
+
+    def initialize(&implementation)
+      @implementation = implementation
+    end
+
+    def authorize(token:)
+      @implementation.call(token)
+    end
+  end
+
+  class FixtureRunner
+    include Adapters::Mcp::AgentsviewUsageRunnerInterface
+
+    def initialize(&implementation)
+      @implementation = implementation
+    end
+
+    def run(environment:, argv:)
+      @implementation.call(environment, argv)
+    end
+  end
+
   def usage_document(cost_source: "computed", amount: 23, matched_pattern: "gpt-5.1", tokens: 10, models: true)
     {
       "schema_version" => 6,
@@ -40,10 +64,10 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
     source_roots: nil,
     managed_config_path: nil,
     active_config_path: nil,
-    authorizer: ->(_token) {}
+    authorizer: FixtureAuthorizer.new { |_token| }
   )
     calls = []
-    runner = lambda do |environment, argv|
+    runner = FixtureRunner.new do |environment, argv|
       calls << [environment, argv]
       argv[1] == "sync" ? "" : JSON.generate(document)
     end
@@ -133,11 +157,11 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
       expect(rows.last.dig("error", "code")).to eq(-32_602)
       expect(calls).to be_empty
     end
-    expect { Adapters::Mcp::AgentsviewUsageCommand.new(timezone: "../../../etc/passwd", authorizer: ->(_token) {}) }.to raise_error(ArgumentError)
+    expect { Adapters::Mcp::AgentsviewUsageCommand.new(timezone: "../../../etc/passwd", authorizer: FixtureAuthorizer.new { |_token| }) }.to raise_error(ArgumentError)
   end
 
   it "requires a live request capability before touching source roots or AgentsView" do
-    rejected = ->(_token) { raise IOError, "rejected fixture capability" }
+    rejected = FixtureAuthorizer.new { |_token| raise IOError, "rejected fixture capability" }
     rows, calls = response_for({ "range" => { "today" => true } }, authorizer: rejected)
 
     expect(rows.last.dig("error", "code")).to eq(-32_602)
