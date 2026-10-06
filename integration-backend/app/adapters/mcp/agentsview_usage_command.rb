@@ -25,17 +25,22 @@ module Adapters
       ACTIVE_CONFIG_PATH = "/home/runtime/.agentsview/config.toml"
 
       sig do
-        params(authorizer: Authorizer, timezone: T.nilable(String), command_runner: T.nilable(CommandRunner), source_roots: T.nilable(SourceRoots),
+        params(authorizer: T.untyped, timezone: T.nilable(String), command_runner: T.untyped, source_roots: T.nilable(SourceRoots),
                managed_config_path: T.nilable(String), active_config_path: T.nilable(String)).void
       end
       def initialize(authorizer:, timezone: nil, command_runner: nil, source_roots: nil, managed_config_path: MANAGED_CONFIG_PATH, active_config_path: ACTIVE_CONFIG_PATH)
         @timezone = T.let(timezone || ENV.fetch("RUNTIME_USAGE_TIMEZONE", "UTC"), String)
         validate_timezone!(@timezone)
-        @command_runner = T.let(command_runner, T.nilable(CommandRunner))
+        raise ArgumentError, "AgentsView command runner is invalid" if command_runner && !command_runner.respond_to?(:call)
+        raise ArgumentError, "AgentsView authorizer is invalid" unless authorizer.respond_to?(:call)
+
+        # Proc signature reflection differs across supported Sorbet runtimes;
+        # this is a dependency-injection seam with explicit callable guards.
+        @command_runner = T.let(command_runner, T.untyped)
         @source_roots = T.let(source_roots || SOURCE_ROOTS, SourceRoots)
         @managed_config_path = T.let(managed_config_path, T.nilable(String))
         @active_config_path = T.let(active_config_path, T.nilable(String))
-        @authorizer = T.let(authorizer, Authorizer)
+        @authorizer = T.let(authorizer, T.untyped)
       end
 
       sig { override.returns(T::Array[JsonObject]) }
