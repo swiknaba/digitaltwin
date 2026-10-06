@@ -278,6 +278,7 @@
 - Document Runtime-persistent GitHub deploy-key setup and Git author identity before agent commit and push tests.
 - Document recovery from a stale one-off Runtime container that blocks the Codex callback port.
 - Make the chat listener wait for healthy Runtime and mount the private Herdr socket required by its local-dispatch preflight.
+- Preserve workflow source integrity across Mattermost root-thread reply activity by distinguishing real post edits from `update_at` reply timestamps.
 - Make the Runtime authentication and project-enrollment instructions work from a remote Docker host over SSH.
 - Make `@commander` the default public coordination handle and `@agent` the project-workflow handle.
 - Rename public handle configuration and service keywords to `COMMANDER_HANDLE`/`commander_handle` and `AGENT_HANDLE`/`agent_handle`.

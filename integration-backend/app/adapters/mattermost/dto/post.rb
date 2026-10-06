@@ -15,6 +15,7 @@ module Adapters
         const :message, String
         const :create_at, Integer
         const :update_at, Integer
+        const :edit_at, Integer, default: 0
         const :delete_at, Integer
         const :props, T::Hash[String, String]
       end

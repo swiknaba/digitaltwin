@@ -7,7 +7,7 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
   let(:post_id) { "p" * 26 }
   let(:root) {
     { "id" => root_id, "channel_id" => channel, "user_id" => user_id, "root_id" => "", "message" => "@agent start",
-      "create_at" => 1000, "update_at" => 1000, "delete_at" => 0, "props" => {}, "metadata" => { "embeds" => [] } }
+      "create_at" => 1000, "update_at" => 1000, "edit_at" => 0, "delete_at" => 0, "props" => {}, "metadata" => { "embeds" => [] } }
   }
   let(:reply) {
     root.merge("id" => post_id, "root_id" => root_id, "message" => "ordinary human reply", "create_at" => 2000,
@@ -43,6 +43,13 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
     expect(delivery.thread_id).to eq(root_id)
     expect(delivery.actor.bot).to be(false) # authenticated REST omits is_bot:false
     expect(delivery.post_revision).to eq(2000)
+  end
+  it "does not treat root reply activity as a human source edit" do
+    root["update_at"] = 3000
+    expect(verify(root).post_revision).to eq(1000)
+
+    root["edit_at"] = 4000
+    expect(verify(root).post_revision).to eq(4000)
   end
   it "rejects cross-channel roots, revoked membership and wrong is_bot types" do
     responses["/api/v4/posts/#{root_id}"]["channel_id"] = "x" * 26
