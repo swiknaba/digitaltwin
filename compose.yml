@@ -47,6 +47,9 @@ services:
     command:
     - bin/chat-listener
     depends_on:
+      agent-runtime:
+        condition: service_healthy
+        required: true
       backend-migrate:
         condition: service_completed_successfully
         required: true
@@ -74,6 +77,11 @@ services:
     profiles:
     - chat-validation
     user: 10001:10001
+    volumes:
+    - source: herdr-socket
+      target: "/run/herdr"
+      type: volume
+      volume: {}
   backend-migrate:
     build:
       context: "./integration-backend"

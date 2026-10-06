@@ -42,7 +42,7 @@ class RootContractTest(unittest.TestCase):
             self.assertEqual(self.services[name]["image"], "digitaltwin-integration-backend:local")
             self.assertEqual(self.services[name]["user"], "10001:10001")
             self.assertNotIn("privileged", self.services[name])
-            if name != "backend-worker":
+            if name in ["backend-migrate", "backend-web"]:
                 self.assertNotIn("volumes", self.services[name])
 
     def test_socket_stays_private_to_worker(self):
@@ -156,9 +156,17 @@ class CombinedRootContractTest(unittest.TestCase):
 
     def test_worker_and_listener_wait_for_dependencies(self):
         self.assertEqual(self.services["backend-worker"]["depends_on"]["agent-runtime"]["condition"], "service_healthy")
+        self.assertEqual(self.services["backend-chat-listener"]["depends_on"]["agent-runtime"]["condition"], "service_healthy")
         self.assertEqual(self.services["backend-chat-listener"]["depends_on"]["mattermost"]["condition"], "service_healthy")
         for name in ["backend-worker", "backend-chat-listener"]:
             self.assertEqual(self.services[name]["depends_on"]["backend-migrate"]["condition"], "service_completed_successfully")
+
+    def test_listener_receives_the_required_private_herdr_socket(self):
+        listener = self.services["backend-chat-listener"]
+        self.assertEqual(len(listener["volumes"]), 1)
+        self.assertEqual(listener["volumes"][0]["type"], "volume")
+        self.assertEqual(listener["volumes"][0]["source"], "herdr-socket")
+        self.assertEqual(listener["volumes"][0]["target"], "/run/herdr")
 
     def test_chat_derived_build_and_disabled_credentials_features(self):
         chat = self.services["mattermost"]
