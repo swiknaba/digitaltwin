@@ -1,4 +1,8 @@
 
+## 2026-10-06
+
+- Added a proposed task-first setup and daily-use specification. It keeps Commander central while allowing direct worker control, removes normal channel and start-command setup, and defines shared-boundary and observe-and-act behavior for normal engineering work.
+
 ## 2026-09-30
 
 - Added a reviewable Phase 0 implementation plan based on spec commit `6129059`, with interface validation gates and all 32 acceptance criteria mapped to evidence.
