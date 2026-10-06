@@ -21,13 +21,20 @@ module Adapters
       MAX_STDOUT_BYTES = 1_048_576
       ALLOWED_AGENTS = T.let(%w[claude codex gemini opencode].freeze, T::Array[String])
       SOURCE_ROOTS = T.let(["/home/runtime/.codex/sessions", "/home/runtime/.claude/projects", "/home/runtime/.gemini", "/home/runtime/.local/share/opencode"].freeze, SourceRoots)
+      MANAGED_CONFIG_PATH = "/opt/runtime/config/agentsview.toml"
+      ACTIVE_CONFIG_PATH = "/home/runtime/.agentsview/config.toml"
 
-      sig { params(authorizer: Authorizer, timezone: T.nilable(String), command_runner: T.nilable(CommandRunner), source_roots: T.nilable(SourceRoots)).void }
-      def initialize(authorizer:, timezone: nil, command_runner: nil, source_roots: nil)
+      sig do
+        params(authorizer: Authorizer, timezone: T.nilable(String), command_runner: T.nilable(CommandRunner), source_roots: T.nilable(SourceRoots),
+               managed_config_path: T.nilable(String), active_config_path: T.nilable(String)).void
+      end
+      def initialize(authorizer:, timezone: nil, command_runner: nil, source_roots: nil, managed_config_path: MANAGED_CONFIG_PATH, active_config_path: ACTIVE_CONFIG_PATH)
         @timezone = T.let(timezone || ENV.fetch("RUNTIME_USAGE_TIMEZONE", "UTC"), String)
         validate_timezone!(@timezone)
         @command_runner = T.let(command_runner, T.nilable(CommandRunner))
         @source_roots = T.let(source_roots || SOURCE_ROOTS, SourceRoots)
+        @managed_config_path = T.let(managed_config_path, T.nilable(String))
+        @active_config_path = T.let(active_config_path, T.nilable(String))
         @authorizer = T.let(authorizer, Authorizer)
       end
 
@@ -61,6 +68,7 @@ module Adapters
         @authorizer.call(token)
         range = resolve_range(object(args, "range"))
         agent = optional_agent(args["agent"])
+        ensure_managed_config!
         ensure_source_roots!
         run!(%w[sync])
         output = run!(usage_arguments(range, agent))
@@ -203,8 +211,20 @@ module Adapters
       end
 
       sig { void }
+      private def ensure_managed_config!
+        return unless @managed_config_path && @active_config_path
+
+        expected = File.binread(@managed_config_path)
+        active = File.binread(@active_config_path)
+        raise ArgumentError, "AgentsView managed configuration was changed" unless active == expected
+      rescue Errno::ENOENT, Errno::EACCES
+        raise ArgumentError, "AgentsView managed configuration is unavailable"
+      end
+
+      sig { void }
       private def ensure_source_roots!
-        raise ArgumentError, "AgentsView source roots are unavailable" unless @source_roots.all? { |path| File.directory?(path) }
+        valid = @source_roots.all? { |path| File.directory?(path) && File.realpath(path) == path }
+        raise ArgumentError, "AgentsView source roots are unavailable" unless valid
       end
 
       sig { params(timezone: String).void }

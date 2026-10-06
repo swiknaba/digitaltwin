@@ -97,6 +97,8 @@ RSpec.describe "POST /internal/commander/tools wire format" do
     expect(authorize).to eq([200, '{"status":"authorized"}'])
     expect(authorize("wrong-token")).to eq([403, '{"error":"Request rejected"}'])
     expect(authorize("request-token", '{"request_id":"request"}')).to eq([400, '{"error":"Unexpected fields"}'])
+    db[:commander_requests].where(id: "request").update(expires_at: Time.now - 1)
+    expect(authorize).to eq([403, '{"error":"Request rejected"}'])
   end
 
   it "keeps the list_projects body" do

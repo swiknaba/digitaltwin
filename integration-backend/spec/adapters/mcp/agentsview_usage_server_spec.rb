@@ -33,16 +33,30 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
     }
   end
 
-  def response_for(arguments, document: usage_document, timezone: "Europe/Berlin", authorizer: ->(_token) {})
+  def response_for(
+    arguments,
+    document: usage_document,
+    timezone: "Europe/Berlin",
+    source_roots: nil,
+    managed_config_path: nil,
+    active_config_path: nil,
+    authorizer: ->(_token) {}
+  )
     calls = []
     runner = lambda do |environment, argv|
       calls << [environment, argv]
       argv[1] == "sync" ? "" : JSON.generate(document)
     end
     Dir.mktmpdir do |dir|
-      source_roots = %w[codex claude gemini opencode].map { |name| File.join(dir, name) }
-      source_roots.each { |path| Dir.mkdir(path) }
-      command = Adapters::Mcp::AgentsviewUsageCommand.new(timezone: timezone, command_runner: runner, source_roots: source_roots, authorizer: authorizer)
+      roots = source_roots || begin
+        created = %w[codex claude gemini opencode].map { |name| File.join(dir, name) }
+        created.each { |path| Dir.mkdir(path) }
+        created.map { |path| File.realpath(path) }
+      end
+      command = Adapters::Mcp::AgentsviewUsageCommand.new(
+        timezone: timezone, command_runner: runner, source_roots: roots,
+        managed_config_path: managed_config_path, active_config_path: active_config_path, authorizer: authorizer
+      )
       token = File.join(dir, "request-token")
       File.write(token, "fixture-capability")
       input = StringIO.new(JSON.generate(jsonrpc: "2.0", id: 1, method: "tools/list") + "\n" + JSON.generate(jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "get_usage", arguments: arguments }) + "\n")
@@ -87,6 +101,11 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
     rows, = response_for({ "range" => { "today" => true } }, document: unavailable, timezone: "UTC")
     value = JSON.parse(rows.last.dig("result", "content", 0, "text"))
     expect(value.fetch("cost")).to eq({ "status" => "unavailable" })
+
+    mixed = usage_document(cost_source: "mixed", amount: 5)
+    rows, = response_for({ "range" => { "today" => true } }, document: mixed, timezone: "UTC")
+    value = JSON.parse(rows.last.dig("result", "content", 0, "text"))
+    expect(value.fetch("cost")).to eq({ "status" => "mixed", "microdollars" => 5 })
   end
 
   it "marks unpriced token rows as a partial estimate and accepts the supported calendar forms" do
@@ -123,6 +142,40 @@ RSpec.describe Adapters::Mcp::AgentsviewUsageServer do
 
     expect(rows.last.dig("error", "code")).to eq(-32_602)
     expect(calls).to be_empty
+  end
+
+  it "fails closed when any fixed source root is missing" do
+    missing = File.join(Dir.tmpdir, "agentsview-missing-root-#{Process.pid}")
+    rows, calls = response_for({ "range" => { "today" => true } }, source_roots: [missing])
+
+    expect(rows.last.dig("error", "code")).to eq(-32_602)
+    expect(calls).to be_empty
+  end
+
+  it "fails closed when a fixed source root is a symlink" do
+    Dir.mktmpdir do |dir|
+      target = File.join(dir, "target")
+      link = File.join(dir, "link")
+      Dir.mkdir(target)
+      File.symlink(target, link)
+      rows, calls = response_for({ "range" => { "today" => true } }, source_roots: [link])
+
+      expect(rows.last.dig("error", "code")).to eq(-32_602)
+      expect(calls).to be_empty
+    end
+  end
+
+  it "fails closed when the managed local-only configuration changes" do
+    Dir.mktmpdir do |dir|
+      expected = File.join(dir, "expected.toml")
+      active = File.join(dir, "active.toml")
+      File.write(expected, "archive_content = \"usage\"\n")
+      File.write(active, "[[remote_hosts]]\nhost = \"example.invalid\"\n")
+      rows, calls = response_for({ "range" => { "today" => true } }, managed_config_path: expected, active_config_path: active)
+
+      expect(rows.last.dig("error", "code")).to eq(-32_602)
+      expect(calls).to be_empty
+    end
   end
 
   it "does not alter the ordinary Commander bridge mode" do
