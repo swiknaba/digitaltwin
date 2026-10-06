@@ -27,7 +27,7 @@ module Adapters
         raise ArgumentError, "Expected private HTTP(S) base URL" unless valid
       end
 
-      sig { params(token: String).void }
+      sig { override.params(token: String).void }
       def authorize(token:)
         target = URI.join(@base.to_s, "/internal/commander/authorize")
         request = Net::HTTP::Post.new(target, { "Content-Type" => "application/json", "Authorization" => "Bearer #{token}" })
