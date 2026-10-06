@@ -11,7 +11,7 @@ manifest = json.loads((root / "agent-runtime/contracts/kirei-clients.json").read
 target = root / ".local/kirei-clients"
 try:
     files = manifest["files"]
-    if set(files) != {"digitaltwin", "digitaltwin-mcp", "mcp.rb", "http_tools.rb"}:
+    if set(files) != {"digitaltwin", "digitaltwin-mcp", "mcp.rb", "http_tools.rb", "agentsview_usage_response.rb", "agentsview_usage_authorizer.rb", "agentsview_usage_command.rb", "agentsview_usage_server.rb"}:
         raise ValueError("Unexpected client manifest")
     for name, entry in files.items():
         source = root / entry["source"]
@@ -25,7 +25,7 @@ try:
     for name, entry in files.items():
         shutil.copyfile(root / entry["source"], target / name)
         (target / name).chmod(0o755)
-    print("Prepared four pinned stdlib clients; no credentials or sessions created")
+    print("Prepared eight pinned stdlib clients; no credentials or sessions created")
 except (OSError, ValueError) as error:
     print(f"Client context failed: {error}", file=sys.stderr)
     sys.exit(1)

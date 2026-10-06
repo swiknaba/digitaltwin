@@ -250,3 +250,9 @@
 ## 2026-10-05 — Herdr accepted-start readiness
 
 - Retry a redacted transient `agent.get` rejection while polling an already accepted Herdr start. Never repeat the start effect; retain the readiness deadline and fail-closed behavior.
+
+## 2026-10-06 — AgentsView usage implementation
+
+- Package checksum-pinned AgentsView v0.44.0 in the Debian Runtime with usage-only archival, four scoped provider roots, no remote source or UI listener, and synthetic offline component evidence.
+- Add a separate checksum-pinned Commander MCP process exposing only calendar-range `get_usage`; validate timezones and distinguish reported zero, estimated, partial, mixed, and unavailable costs without exposing sessions or transcripts.
+- Require the same active, human-verified Commander request capability before reporting usage, and replace persisted AgentsView config on startup. Per-request config comparison and canonical root checks reject post-start remote hosts, extra roots, listeners, and root symlinks.

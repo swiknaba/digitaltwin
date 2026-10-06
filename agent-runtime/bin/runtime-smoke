@@ -3,6 +3,8 @@ set -euo pipefail
 [[ $(id -u) == 10001 ]]
 [[ $(node --version) == v22.23.2 ]]
 [[ $(herdr --version) == 'herdr 0.9.3' ]]
+agentsview --version | grep -Eq '^agentsview v0\.44\.0 '
+test "$(grep -E '^archive_content = "usage"$' "$AGENTSVIEW_DATA_DIR/config.toml")" = 'archive_content = "usage"'
 for command in codex claude opencode gemini grok wagglebot hermes; do
   timeout 45 "$command" --version
 done

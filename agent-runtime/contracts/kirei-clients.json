@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_revision": "fb32a32c98ea9d374c6a0751d1535cba163b1e78",
+  "source_revision": "bf3dd5d8905637e176e3be03bf5715193b83acdb",
   "validation": "isolated_fixtures_passed_live_dispatch_gated",
   "files": {
     "digitaltwin": {
@@ -9,7 +9,7 @@
     },
     "digitaltwin-mcp": {
       "source": "integration-backend/bin/mcp",
-      "sha256": "542ca58fc306f0b46f7cc99bc9ef5040297324c70767e2ff3d1724fadeabf099"
+      "sha256": "8eaa6aadf579a75d66886e21a91ceef6843cd96604d9cc8e5886337b87dcd037"
     },
     "mcp.rb": {
       "source": "integration-backend/app/adapters/mcp/server.rb",
@@ -18,6 +18,22 @@
     "http_tools.rb": {
       "source": "integration-backend/app/adapters/mcp/http_tools.rb",
       "sha256": "633326e1207c318a58c236b5117cd4bae6318f44c409f9e697113b361d6be83d"
+    },
+    "agentsview_usage_response.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_response.rb",
+      "sha256": "f3c65b279d3a0fc2843372ae18d0e440343d57b22ef3cc017bbb688b543bfe1d"
+    },
+    "agentsview_usage_authorizer.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_authorizer.rb",
+      "sha256": "2afcb2aaf7b72d0ae1db69179d396d2afff21b7144e633a56169f1bf28d955c4"
+    },
+    "agentsview_usage_command.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_command.rb",
+      "sha256": "e68a0208c365e1c61b127eedd18e664f4d4cb112d0e0b93497a8e4575fce285d"
+    },
+    "agentsview_usage_server.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_server.rb",
+      "sha256": "c1e9379f7f0116941f3e74819bddab3684194c9d0154b0f6a96e8e01c0f74556"
     }
   }
 }

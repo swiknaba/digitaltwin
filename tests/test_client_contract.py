@@ -14,7 +14,10 @@ class ClientContractTest(unittest.TestCase):
     def test_manifest_matches_frozen_backend_revision_and_docker_checks(self):
         manifest = json.loads((ROOT / "agent-runtime/contracts/kirei-clients.json").read_text())
         docker = (ROOT / "agent-runtime/Dockerfile").read_text()
-        self.assertEqual(set(manifest["files"]), {"digitaltwin", "digitaltwin-mcp", "mcp.rb", "http_tools.rb"})
+        self.assertEqual(set(manifest["files"]), {
+            "digitaltwin", "digitaltwin-mcp", "mcp.rb", "http_tools.rb",
+            "agentsview_usage_response.rb", "agentsview_usage_authorizer.rb", "agentsview_usage_command.rb", "agentsview_usage_server.rb",
+        })
         for name, item in manifest["files"].items():
             data = (ROOT / item["source"]).read_bytes()
             frozen = subprocess.run(["git", "show", manifest["source_revision"] + ":" + item["source"]], cwd=ROOT,

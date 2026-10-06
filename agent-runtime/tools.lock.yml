@@ -56,6 +56,27 @@ wagglebot:
   url: https://registry.npmjs.org/wagglebot/-/wagglebot-0.3.4.tgz
   sha256: d7d9d34067f19cf9cff42ac9ea4a2bbdfd4cbd08479f512776311d6857c6f2d1
   install: staged_self_contained_published_bundle
+agentsview:
+  version: "0.44.0"
+  source_revision: 413a87f7bfbd67b2815b1119ac51abc1efbeeaba
+  license: MIT
+  source: https://github.com/kenn-io/agentsview/releases/tag/v0.44.0
+  linux_amd64:
+    url: https://github.com/kenn-io/agentsview/releases/download/v0.44.0/agentsview_0.44.0_linux_amd64.tar.gz
+    sha256: 037ea7a46d52e06b20363b4aa7cd7f28e32f31d8215803d6e9a0c96bac5818e3
+  provenance:
+    url: https://github.com/kenn-io/agentsview/releases/download/v0.44.0/agentsview_0.44.0_linux_amd64.tar.gz.provenance.json
+    sha256: 80e6e67f61345e1fb509889a62aa3c050dec3330858475c50b03c23b170f51e3
+  spdx:
+    url: https://github.com/kenn-io/agentsview/releases/download/v0.44.0/agentsview_0.44.0_linux_amd64.tar.gz.spdx.json
+    sha256: 6b31b09e5c85f70d4578b5ba46b6c1058193d90562c22336f571b3e53d43b6a7
+  archive_content: usage
+  allowed_session_roots:
+    - /home/runtime/.claude/projects
+    - /home/runtime/.codex/sessions
+    - /home/runtime/.gemini
+    - /home/runtime/.local/share/opencode
+  validation: offline_synthetic_usage_only_no_remote_hosts_or_ui
 runtime:
   uid: 10001
   gid: 10001
@@ -70,6 +91,6 @@ runtime:
 callback_clients:
   owner: integration-backend
   manifest: contracts/kirei-clients.json
-  source_revision: 5efa1ee5eec492d693598d599e2b04f9c13e9980
+  source_revision: bf3dd5d8905637e176e3be03bf5715193b83acdb
   packaged_directory: /usr/local/bin
   validation: isolated_callback_stdio_fixtures_only_live_gates_open

@@ -96,12 +96,31 @@ mcp_servers:
          - start_workflow
          - send_prompt
          - workflow_control
+   agentsview_usage:
+     command: /usr/local/bin/digitaltwin-mcp
+     args: []
+     env:
+       DIGITALTWIN_MCP_TOOLSET: agentsview_usage
+       DIGITALTWIN_CALLBACK_URL: ${DIGITALTWIN_CALLBACK_URL}
+       DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE: ${DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE}
+     tools:
+       include:
+         - get_usage
 ```
 
 The explicit environment passes a capability-file path, not a token. Keep other Hermes permissions
 unchanged. The tool allowlist is the typed Kirei manifest. Runtime tests check profile creation,
 restart persistence, and the packaged MCP bridge. They do not prove authenticated Hermes startup,
 tool discovery, or tool calls.
+
+`agentsview_usage` is deliberately a separate one-tool process: its callback URL is used only to
+prove the live Commander capability, and it cannot discover or invoke generic backend tools or
+upstream AgentsView search, session, or transcript tools. It
+accepts only timezone-aware inclusive calendar reports (`today`, month-to-date, 1–90 days, or
+custom ISO dates), never an exact hour or a shell argument. The packaged upstream archive is
+configured for usage-only storage from the four Runtime agent roots, with no remote host or UI
+listener. A selected Commander MCP round trip remains an operator-only gate; no public route,
+Compose port, or Runtime security setting changes with this feature.
 
 ## Minimum evidence before enabling dispatch
 

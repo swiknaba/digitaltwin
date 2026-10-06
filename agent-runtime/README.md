@@ -54,10 +54,14 @@ application dependencies.
 AgentsView v0.44.0's verified Linux AMD64 artifact requires glibc: it runs in
 disposable Debian Bookworm and fails before startup in Alpine 3.23. The Runtime
 therefore uses Debian Bookworm slim, which also keeps the exact Node 22.23.2 base
-and standard Debian tooling. The image remains non-root and does not install
-AgentsView yet; that usage feature is deliberately deferred to its own post-merge
-PR. The checksum-verified Linux Herdr binary and all four real CLI version/startup
-checks must pass again on this base. Claude continues to use system ripgrep
+and standard Debian tooling. It installs the checksum-verified v0.44.0 archive,
+its provenance, and its SPDX document. AgentsView stores `usage` archive content
+only: transcript text, tool inputs/results, thinking text, and titles are excluded.
+It reads only the four declared Runtime roots for Claude, Codex, Gemini, and
+OpenCode. Other configurable filesystem providers are disabled; the packaged
+configuration declares no remote host, HTTP listener, public URL, or proxy. The
+checksum-verified Linux Herdr binary and all four real CLI version/startup checks
+must pass again on this base. Claude continues to use system ripgrep
 (`USE_BUILTIN_RIPGREP=0`). Live provider shell checks remain open.
 
 The previous Alpine image measured about 2.16 GB uncompressed; native CLI packages
@@ -125,8 +129,9 @@ docker build --platform linux/amd64 --target with-callback \
   -t digitaltwin-runtime-with-callback:local agent-runtime
 ```
 
-The named context contains exactly the four backend-owned files in `contracts/kirei-clients.json`:
-`digitaltwin`, `digitaltwin-mcp`, `mcp.rb`, and `http_tools.rb`. Source revision and SHA256 hashes
+The named context contains exactly the eight backend-owned files in `contracts/kirei-clients.json`:
+`digitaltwin`, `digitaltwin-mcp`, `mcp.rb`, `http_tools.rb`, and the four
+AgentsView-only usage bridge files. Source revision and SHA256 hashes
 are pinned; staging and image build both verify them. They use Ruby stdlib and no app/DB bundle.
 Run `scripts/prepare-callback-context` from the repository root before a combined build.
 Never copy a backend worktree or secret directory as the build context.
@@ -136,6 +141,43 @@ capabilities authenticate callbacks; the separate current-request token file aut
 and replies. `digitaltwin-mcp` bridges stdio to private Kirei HTTP with typed schemas and verified human
 request binding. Agents receive no Mattermost bot credentials. Packaging is implemented; actual selected
 Hermes MCP and CLI lifecycle/settled evidence remain open, and backend dispatch stays disabled.
+
+### AgentsView usage reports
+
+AgentsView is a local aggregate-reporting dependency, not a Runtime web service.
+`RUNTIME_USAGE_TIMEZONE` defaults to `UTC` and must be an IANA timezone. The
+Commander adapter first proves the live request capability, accepts calendar dates only, runs a local sync, then uses the
+pinned executable in offline report mode. It accepts inclusive `today`,
+month-to-date, `last_days` from 1 through 90 (including today), and custom
+`from`/`to` ISO dates. Exact-hour or arbitrary command requests are rejected.
+
+The Runtime owns and replaces its AgentsView configuration on each start, and
+the MCP compares that image-owned file before each report: it permits only the
+four listed local directories and rejects persisted or post-start remote-host
+or listener configuration. It never creates the source directories; missing or
+symlinked roots make the MCP request fail closed instead of reporting a
+misleading zero. For an operator SSH session, use the same date-bound interface without copying
+session data out of the Runtime:
+
+```sh
+agentsview usage daily --json --offline --no-sync --breakdown --timezone UTC --since 2026-10-06 --until 2026-10-06
+agentsview usage daily --json --offline --no-sync --breakdown --timezone Europe/Berlin --since 2026-10-01 --until 2026-10-06
+agentsview usage daily --json --offline --no-sync --breakdown --timezone UTC --since 2026-09-29 --until 2026-10-06 --agent codex
+agentsview usage daily --json --offline --no-sync --breakdown --timezone UTC --since 2026-09-01 --until 2026-10-06
+```
+
+The one Commander tool is `get_usage`. Its response labels reported zero cost as
+`reported`; computed catalog pricing as `estimated_api`; a mixed source as
+`mixed`; unpriced token rows as `partial_estimate`; and absent pricing or usage as
+`unavailable`. It includes the range, local-sync freshness, and pricing-table
+metadata so a caller does not mistake unknown cost for zero.
+
+No AgentsView UI is enabled or mapped by Compose. If an operator explicitly needs
+a private diagnostic UI, run it in the foreground bound to loopback and tunnel it
+over the already approved private SSH path: `agentsview serve --host 127.0.0.1
+--port 8080 --no-browser`, then `ssh -L 8080:127.0.0.1:8080 runtime-host` from
+the operator workstation. Binding it to Tailnet or any non-loopback interface
+requires a separate infrastructure/authentication review.
 
 ## Explicit provisioning and private terminal access
 
