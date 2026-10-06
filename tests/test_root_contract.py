@@ -100,6 +100,16 @@ class RootContractTest(unittest.TestCase):
 
 
 class CombinedRootContractTest(unittest.TestCase):
+    def test_local_activation_supplies_all_processes_with_the_chat_address(self):
+        environment = {**os.environ, "MATTERMOST_CHANNEL_IDS": "fixture-channel",
+                       "MATTERMOST_COMMANDER_BOT_ID": "fixture-commander", "MATTERMOST_AGENT_BOT_ID": "fixture-agent"}
+        command = ["docker", "compose", "--env-file", str(ROOT / ".env.example"), "--profile", "chat-validation",
+                   "-f", str(ROOT / "compose.yml"), "-f", str(ROOT / "compose.local-commander.yml"), "config", "--format", "json"]
+        result = subprocess.run(command, cwd=ROOT, env=environment, check=True, capture_output=True, text=True)
+        services = json.loads(result.stdout)["services"]
+        for name in ["backend-web", "backend-worker", "backend-chat-listener"]:
+            self.assertEqual(services[name]["environment"]["MATTERMOST_URL"], "http://mattermost:8065")
+
     @classmethod
     def setUpClass(cls):
         command = acceptance.COMPOSE + ["--profile", "*"]

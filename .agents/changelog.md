@@ -263,6 +263,9 @@
 - Add concrete role examples for explicit model arguments, saved CLI settings, Hermes Commander, and review diversity.
 - Record the requested login-only harness setup and automatic Writer/Reviewer selection as a requirements draft.
 - Require harness model defaults at session start; remove operator-maintained model IDs from the proposed setup.
+- Supply the Mattermost address to all local dispatch processes and load the local mapping directly in the validation script.
+- Document interactive Runtime login and status checks for Codex and Claude, persistent login storage, and local Herdr terminal attachment.
+- Add the required Mattermost team-membership command before project-channel membership in the local runbook.
 - Document the local Mattermost human, listener, Commander, and project-agent setup, including least-privileged bot-form choices, channel collaboration boundaries, capability settings, token-file contents, required memberships, and non-secret ID lookup.
 - Make `@commander` the default public coordination handle and `@agent` the project-workflow handle.
 - Rename public handle configuration and service keywords to `COMMANDER_HANDLE`/`commander_handle` and `AGENT_HANDLE`/`agent_handle`.

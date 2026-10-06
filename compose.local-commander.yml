@@ -5,6 +5,7 @@ services:
   backend-web:
     environment: &local_dispatch_environment
       CHAT_VALIDATION_MODE: "0"
+      MATTERMOST_URL: "http://mattermost:8065"
       COMMANDER_HANDLE: "${COMMANDER_HANDLE:-commander}"
       COMMANDER_CHANNEL_ID: "${COMMANDER_CHANNEL_ID:-}"
       LOCAL_DISPATCH_ACTIVATION_FILE: "/local-config/local-dispatch.json"

@@ -6,5 +6,5 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_root"
 
-docker compose -f compose.yml -f compose.local-commander.yml run --rm --no-deps -T backend-worker bin/validate-local-dispatch
-docker compose -f compose.yml -f compose.local-commander.yml exec -T agent-runtime sh -ec 'command -v hermes >/dev/null && herdr status --json'
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml run --rm --no-deps -T backend-worker bin/validate-local-dispatch
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml exec -T agent-runtime sh -ec 'command -v hermes >/dev/null && herdr status --json'

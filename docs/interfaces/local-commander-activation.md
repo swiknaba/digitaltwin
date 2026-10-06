@@ -163,10 +163,6 @@ grouping name here; this overlay sets `CHAT_VALIDATION_MODE=0` and relies on the
 file-gated local activation instead.
 
 ```sh
-set -a
-. .local/commander.env
-set +a
-
 ./scripts/dev --build
 
 docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml up -d --wait mattermost agent-runtime backend-migrate backend-web

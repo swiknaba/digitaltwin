@@ -109,6 +109,20 @@ docker compose exec -T mattermost /mattermost/bin/mmctl bot list --all --json --
 docker compose exec -T mattermost /mattermost/bin/mmctl channel search --team YOUR_TEAM_NAME YOUR_CHANNEL_NAME --json --local
 ```
 
+Add both bots to the team first, then to the channel. Use the team's URL name
+for `YOUR_TEAM_NAME` and the returned channel `id` below.
+Direct messages with a bot do not grant team or channel membership.
+
+```sh
+docker compose exec -T mattermost /mattermost/bin/mmctl team users add YOUR_TEAM_NAME commander agent --local
+docker compose exec -T mattermost /mattermost/bin/mmctl channel users add REPLACE_WITH_PROJECT_CHANNEL_ID commander agent --local
+docker compose exec -T mattermost /mattermost/bin/mmctl channel users list REPLACE_WITH_PROJECT_CHANNEL_ID --json --local
+```
+
+The list must include `root`, `commander`, and `agent`.
+
+If channel addition reports “No team member found”, run the team-add command first.
+
 Create `.local/commander.env` and replace each placeholder:
 
 ```sh
@@ -128,22 +142,76 @@ If `roles.json` includes a Commander role, also set
 `COMMANDER_CHANNEL_ID`. Use the project channel ID, or add a separate channel
 to `MATTERMOST_CHANNEL_IDS`. Add both bots to every monitored channel.
 
-## 5. Add roles and validate the chat setup
+## 5. Authenticate Codex and Claude
+
+Run these commands in your local terminal. Docker connects that terminal to
+Runtime, where the agents run and their login state is stored.
+Use `-it` for login; `-T` disables the interactive terminal.
+
+### Codex
+
+```sh
+docker compose exec -it agent-runtime codex login --device-auth
+```
+
+Open the displayed URL in your Mac browser. Sign in and enter the displayed
+one-time code. Enable device-code login in ChatGPT security settings if required.
+See [Codex authentication](https://developers.openai.com/codex/auth#login-on-headless-devices).
+
+Check the saved login:
+
+```sh
+docker compose exec -T agent-runtime codex login status
+```
+
+### Claude Code
+
+```sh
+docker compose exec -it agent-runtime claude auth login --claudeai
+```
+
+Open the displayed URL in your Mac browser and sign in with your Claude account.
+If the browser displays a login code, paste it into the waiting terminal.
+See [Claude authentication](https://code.claude.com/docs/en/authentication).
+
+Check the saved login:
+
+```sh
+docker compose exec -T agent-runtime claude auth status --text
+```
+
+Both logins persist in Runtime's `runtime-home` Docker volume across normal
+stops and restarts. Logging in on your Mac alone does not authenticate Runtime.
+Login-status checks do not run a model prompt.
+
+### Open the Herdr terminal interface
+
+To view Herdr's multiplexed terminals from your Mac terminal, run:
+
+```sh
+docker compose exec -it agent-runtime herdr
+```
+
+This attaches to the running Herdr server inside Runtime. It needs no SSH
+setup, forwarded port, or separate Herdr installation on your Mac.
+Agents started through Herdr use the same saved Codex and Claude logins.
+
+## 6. Add roles and validate the chat setup
 
 Create `.local/commander/roles.json` using the [role setup reference](../docs/interfaces/local-commander-activation.md#configure-the-role-agents).
 
-For example, this setup selects GPT-5 for Writer and Sonnet 4 for Reviewer:
+For this temporary local test, use Codex as Writer and Claude as Reviewer
+with their configured model defaults:
 
 ```json
 {
-  "writer": {"cli":"codex","provider":"openai","model":"gpt-5","family":"gpt","launch_args":["--model","gpt-5"]},
-  "reviewer": {"cli":"claude","provider":"anthropic","model":"claude-sonnet-4-20250514","family":"claude","launch_args":["--model","claude-sonnet-4-20250514"]}
+  "writer": {"cli":"codex","provider":"openai","model":"cli-default","family":"gpt","launch_args":[]},
+  "reviewer": {"cli":"claude","provider":"anthropic","model":"cli-default","family":"claude","launch_args":[]}
 }
 ```
 
-Use model IDs available to your accounts. `launch_args` selects the actual
-model; `model` records its name. Keep those values identical.
-Chat messages cannot currently change this selection.
+`cli-default` is a temporary audit label required by the current parser.
+It is not passed to the CLI. Empty `launch_args` uses the CLI's saved settings.
 
 Writer and Reviewer must use different providers and model families. The JSON
 key `family` means model family, such as `gpt` or `claude`.
@@ -161,10 +229,6 @@ chmod 600 .local/commander/{roles.json,local-dispatch.json}
 Start the read-only validation services:
 
 ```sh
-set -a
-. .local/commander.env
-set +a
-
 ./scripts/dev --build
 
 docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml up -d --wait mattermost agent-runtime backend-migrate backend-web
@@ -174,10 +238,7 @@ scripts/validate-local-commander
 The validation checks tokens, bot identities, membership, roles, and Herdr.
 It does not contact a provider or start a workflow.
 
-## 6. Enroll one project and run the test
-
-Configure provider access manually in the Runtime container. Do not save a
-provider credential in this repository, `.env`, a role file, or chat.
+## 7. Enroll one project and run the test
 
 Place the target checkout at `/workspace/repos/OWNER/REPOSITORY`, then enroll
 the channel and human:
