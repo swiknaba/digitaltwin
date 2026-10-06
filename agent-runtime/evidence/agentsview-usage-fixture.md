@@ -22,7 +22,7 @@ Recorded 2026-10-06 from the local `linux/amd64` Runtime component image.
   `remote_hosts` setting, restarts the container, and confirms Runtime replaces
   it with the managed local-only configuration.
 
-The callback-target build separately verified all eight pinned backend client
+The callback-target build separately verified all eleven pinned backend client
 files. Its network-isolated stdio `tools/list` response contained exactly `get_usage` for the
 AgentsView MCP process.
 

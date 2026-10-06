@@ -14,6 +14,16 @@ ready() {
   return 1
 }
 ready
+startup_probe() {
+  for attempt in $(seq 1 10); do
+    if docker exec -e CLI_STARTUP_PROBE_KINDS=gemini,hermes,grok "$name" sh -c 'python3 /opt/runtime/bin/cli-startup-probe.py > /tmp/cli-startup-probe.jsonl'; then
+      return
+    fi
+    sleep 1
+  done
+  docker logs "$name" >&2
+  return 1
+}
 # Deliberately fail the first assertion, followed by success. Neither shell may mask it.
 if docker exec "$name" sh -ec 'test -e /var/run/docker.sock; true'; then
   echo 'FAIL: noninteractive shell masked early assertion failure' >&2; exit 1
@@ -23,7 +33,9 @@ if docker exec "$name" bash -elc 'test "$(command -v rg)" = /deliberately-wrong-
 fi
 printf 'PASS: deliberately failed first assertion exits nonzero in both shells\n'
 docker exec "$name" /opt/runtime/bin/runtime-smoke --server
-docker exec -e CLI_STARTUP_PROBE_KINDS=gemini,hermes,grok "$name" sh -c 'python3 /opt/runtime/bin/cli-startup-probe.py > /tmp/cli-startup-probe.jsonl'
+# The socket health endpoint can become available shortly before agent-start
+# requests are accepted. Retry this fixture-only observation until it settles.
+startup_probe
 docker exec -i "$name" python3 - <<'PY'
 import json
 from pathlib import Path
@@ -59,6 +71,13 @@ docker exec "$name" sh -ec '
   python3 -c "import tomllib; config=tomllib.load(open(\"$fixture/data/config.toml\", \"rb\")); assert config[\"archive_content\"] == \"usage\"; assert set(config[\"agents\"]) == {\"claude\", \"codex\", \"gemini\", \"opencode\"}; assert not any(key in config for key in (\"remote_hosts\", \"host\", \"public_url\", \"public_origins\"))"
 '
 printf 'PASS: AgentsView offline synthetic usage fixture has no listener, transcript data, or remote source\n'
+if docker exec "$name" test -x /usr/local/bin/digitaltwin-mcp; then
+  docker exec "$name" sh -c 'printf fixture-capability > /tmp/agentsview-mcp-token'
+  printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
+    docker exec -i -e DIGITALTWIN_MCP_TOOLSET=agentsview_usage -e DIGITALTWIN_CALLBACK_URL=http://127.0.0.1:9 -e DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE=/tmp/agentsview-mcp-token "$name" /usr/local/bin/digitaltwin-mcp | \
+    python3 -c 'import json, sys; response=json.load(sys.stdin); assert [tool["name"] for tool in response["result"]["tools"]] == ["get_usage"]'
+  printf 'PASS: packaged AgentsView MCP bridge exposes only get_usage\n'
+fi
 # A second container using the shared volumes and agreed UID reaches the real API.
 docker run --rm --platform linux/amd64 --user 10001:10001 --volumes-from "$name" --cap-drop ALL --security-opt no-new-privileges --entrypoint /opt/runtime/bin/runtime-health "$image"
 docker exec "$name" sh -ec 'test "$(awk "/CapEff/ {print \$2}" /proc/1/status)" = 0000000000000000; test ! -e /var/run/docker.sock; printf preserved > /workspace/restart-fixture; printf preserved > "$HOME/restart-fixture"'

@@ -129,8 +129,8 @@ docker build --platform linux/amd64 --target with-callback \
   -t digitaltwin-runtime-with-callback:local agent-runtime
 ```
 
-The named context contains exactly the eight backend-owned files in `contracts/kirei-clients.json`:
-`digitaltwin`, `digitaltwin-mcp`, `mcp.rb`, `http_tools.rb`, and the four
+The named context contains exactly the eleven backend-owned files in `contracts/kirei-clients.json`:
+`digitaltwin`, `digitaltwin-mcp`, `mcp.rb`, `server/tool_gateway.rb`, `http_tools.rb`, and the six
 AgentsView-only usage bridge files. Source revision and SHA256 hashes
 are pinned; staging and image build both verify them. They use Ruby stdlib and no app/DB bundle.
 Run `scripts/prepare-callback-context` from the repository root before a combined build.

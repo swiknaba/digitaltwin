@@ -43,6 +43,11 @@ Dir.mktmpdir do |root|
   raise "Packaged MCP failed" unless status.success?
   rows = output.lines.map { |line| JSON.parse(line) }
   raise "MCP response mismatch" unless rows[0].dig("result", "serverInfo", "name") == "digitaltwin" && rows[1].dig("result", "tools", 0, "name") == "list_projects" && JSON.parse(rows[2].dig("result", "content", 0, "text")).first["id"] == "fixture-project"
+  usage_output, usage_error, usage_status = Open3.capture3(env.merge("DIGITALTWIN_MCP_TOOLSET" => "agentsview_usage"), "/usr/local/bin/digitaltwin-mcp", stdin_data: JSON.generate({ jsonrpc: "2.0", id: 4, method: "tools/list" }) + "\n")
+  raise "Packaged AgentsView MCP failed: #{usage_error}" unless usage_status.success?
+
+  usage_rows = usage_output.lines.map { |line| JSON.parse(line) }
+  raise "Packaged AgentsView toolset mismatch" unless usage_rows.length == 1 && usage_rows[0].dig("result", "tools")&.map { |tool| tool.fetch("name") } == ["get_usage"]
   output, error, status = Open3.capture3(env, "/usr/local/bin/digitaltwin", "artifact-ready", "--kind", "spec", "--commit", "a" * 40)
   raise "Packaged callback failed" unless status.success?
   fixture.join

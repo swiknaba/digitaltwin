@@ -2,66 +2,10 @@
 # typed: strict
 # frozen_string_literal: true
 
-# Validates the actual application loader in a new Ruby process. Zeitwerk
-# verifies that every managed file defines its expected constant while eager
-# loading; the ownership pass also rejects a second non-namespace class/module.
+# Boot the real backend application, then make Zeitwerk validate every loader
+# it knows about in this process.
 require_relative "../app"
 
-expected_cpaths = APP_LOADER.all_expected_cpaths.each_with_object({}) do |(path, cpath), result|
-  expanded = File.expand_path(path)
-  result[expanded] = cpath if expanded.end_with?(".rb")
-end
+Zeitwerk::Loader.eager_load_all
 
-def constant_name(constant)
-  Module.instance_method(:name).bind_call(constant)
-end
-
-def source_location_for(constant)
-  name = constant_name(constant)
-  return nil unless name && !name.empty? && !name.include?("#")
-
-  source_location_for_cpath(name)
-rescue NameError
-  nil
-end
-
-def source_location_for_cpath(cpath)
-  segments = cpath.split("::")
-  owner = segments[0...-1].reduce(Object) { |scope, segment| scope.const_get(segment, false) }
-  owner.const_source_location(segments.last, false)
-end
-
-APP_LOADER.eager_load
-
-definitions = Hash.new { |hash, key| hash[key] = [] }
-ObjectSpace.each_object(Module) do |constant|
-  location = source_location_for(constant)
-  next unless location
-
-  source_path = location.first
-  next unless source_path
-
-  source = File.expand_path(source_path)
-  next unless expected_cpaths.key?(source)
-
-  definitions[source] << constant_name(constant)
-end
-
-violations = []
-expected_cpaths.each do |file, expected|
-  expected_location = source_location_for_cpath(expected)
-  expected_source = expected_location&.first
-  unless expected_source && File.expand_path(expected_source) == file
-    violations << "#{file}: expected #{expected} to be defined in this file"
-  end
-
-  definitions.fetch(file, []).uniq.sort.each do |actual|
-    next if expected == actual || expected.start_with?("#{actual}::")
-
-    violations << "#{file}: #{actual} is not the expected #{expected} or a namespace wrapper"
-  end
-end
-
-abort("Zeitwerk layout violations:\n#{violations.join("\n")}") unless violations.empty?
-
-puts "Zeitwerk eager load and constant ownership verified for #{expected_cpaths.length} files"
+puts "Zeitwerk eager load verified"

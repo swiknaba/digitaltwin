@@ -10,22 +10,46 @@ root = Path(__file__).resolve().parent.parent
 manifest = json.loads((root / "agent-runtime/contracts/kirei-clients.json").read_text())
 target = root / ".local/kirei-clients"
 try:
+    if not target.resolve().is_relative_to(root.resolve()):
+        raise ValueError("Client context escapes repository")
     files = manifest["files"]
-    if set(files) != {"digitaltwin", "digitaltwin-mcp", "mcp.rb", "http_tools.rb", "agentsview_usage_response.rb", "agentsview_usage_authorizer.rb", "agentsview_usage_command.rb", "agentsview_usage_server.rb"}:
+    if set(files) != {"digitaltwin", "digitaltwin-mcp", "mcp.rb", "server/tool_gateway.rb", "http_tools.rb", "agentsview_usage_response.rb", "agentsview_usage_authorizer_interface.rb", "agentsview_usage_authorizer.rb", "agentsview_usage_runner_interface.rb", "agentsview_usage_command.rb", "agentsview_usage_server.rb"}:
         raise ValueError("Unexpected client manifest")
+    backend_root = (root / "integration-backend").resolve()
     for name, entry in files.items():
         source = root / entry["source"]
-        if not str(source.resolve()).startswith(str(root.resolve() / "integration-backend") + "/"):
+        if not source.resolve().is_relative_to(backend_root):
             raise ValueError("Client source escapes backend")
         if hashlib.sha256(source.read_bytes()).hexdigest() != entry["sha256"]:
             raise ValueError("Backend client differs from the pinned Runtime contract")
-    if target.exists() and any(path.name not in files for path in target.iterdir()):
-        raise ValueError("Client context contains unexpected files")
+    expected_targets = {target / name for name in files}
+    expected_directories = {target} | {destination.parent for destination in expected_targets}
+    if target.is_symlink():
+        raise ValueError("Client context must not be a symlink")
+    if target.exists():
+        for path in target.rglob("*"):
+            if path.is_symlink():
+                raise ValueError("Client context must not contain symlinks")
+            if path.is_dir() and path not in expected_directories:
+                raise ValueError("Client context contains unexpected directories")
+            if path.is_file() and path not in expected_targets:
+                raise ValueError("Client context contains unexpected files")
     target.mkdir(parents=True, exist_ok=True)
     for name, entry in files.items():
-        shutil.copyfile(root / entry["source"], target / name)
-        (target / name).chmod(0o755)
-    print("Prepared eight pinned stdlib clients; no credentials or sessions created")
+        destination = target / name
+        parent = destination.parent
+        while True:
+            if parent.is_symlink() or not parent.resolve().is_relative_to(target.resolve()):
+                raise ValueError("Client destination escapes context")
+            if parent == target:
+                break
+            parent = parent.parent
+        if destination.is_symlink():
+            raise ValueError("Client destination must not be a symlink")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / entry["source"], destination)
+        destination.chmod(0o755)
+    print("Prepared eleven pinned stdlib clients; no credentials or sessions created")
 except (OSError, ValueError) as error:
     print(f"Client context failed: {error}", file=sys.stderr)
     sys.exit(1)
