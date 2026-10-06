@@ -156,5 +156,17 @@ class CombinedRootContractTest(unittest.TestCase):
         self.assertNotIn("ports", push)
 
 
+class CiWorkflowContractTest(unittest.TestCase):
+    def test_fast_contracts_are_split_by_monorepo_component(self):
+        workflow = (ROOT / ".github/workflows/full-stack.yml").read_text()
+        self.assertNotIn("Fast source contract checks", workflow)
+        self.assertIn("name: Client Runtime contract", workflow)
+        self.assertIn("run: python3 -m unittest tests.test_client_contract -v", workflow)
+        self.assertIn("name: Chat Backend contract", workflow)
+        self.assertIn("run: python3 -m unittest discover -s chat-backend/tests -v", workflow)
+        self.assertIn("name: Root Compose contract", workflow)
+        self.assertIn("run: python3 -m unittest tests.test_root_contract -v", workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
