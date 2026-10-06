@@ -122,6 +122,13 @@ module Services
       @tools ||= Commander::Tools.new(source: source, authorize: authorize_request, request_start: request_start, route: route_followup)
     end
 
+    # Verifies the active Commander capability for local aggregate reporting.
+    # The endpoint intentionally returns no request or session information.
+    sig { params(token: String).returns(Commander::AuthorizeRequest::Outcome) }
+    def authorize_commander_request(token:)
+      authorize_request.current(token: token, states: [Domains::Commander::Dto::CommanderRequestState::Active])
+    end
+
     # Nil unless ROLE_CONFIG_FILE configures a commander role.
     sig { returns(T.nilable(Commander::Reply)) }
     def reply

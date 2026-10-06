@@ -117,7 +117,7 @@ Default `compose.yml` now contains the review-cleared service graph that passed 
 - A network-free one-shot initializer seeds partial chat config into writable storage and assigns named-volume ownership.
   It runs as root only for ownership changes; long-running Runtime/backend/chat/push processes keep their component UIDs.
 - Build Runtime target `with-callback` from `agent-runtime/`, using named context `kirei-clients` from ignored `.local/kirei-clients/`.
-  `scripts/prepare-callback-context` copies only the merged backend-owned client after its exact agreed SHA256 matches.
+  `scripts/prepare-callback-context` copies only the eleven pinned backend-owned files after their exact agreed SHA256 values match.
   Run this only after component review/merge; it creates no credentials and does not change component source.
 - Persist Runtime home/workspace and share `/run/herdr` with the worker. Publish no Runtime ports or host mounts.
 - Wait for healthy Runtime before worker startup, and healthy Mattermost before listener startup. Preserve the backend migration gate.
@@ -143,5 +143,5 @@ Root independently verified that supplied file hash and retained checksum enforc
 The reviewed Runtime follow-up merged in `3a84f89d39353f526cf679df14f920504bffe45f` pins the same frozen artifact.
 Root staging and Runtime checksum enforcement now match. Reviewed backend head `53c69b7d537b906a06303461c658f62b990f23d9`
 is integrated through merge `0c79c77719713ca38417d5ea6da63ca6bc0fa401`; the frozen client remains identical to source commit `81d5d5c714c73890efccff172103f65171ecde20`.
-The single-file context can now be staged from this checkout. Root callback image build, combined first boot, and actual delivery still require independent integration evidence.
+The pinned callback context can now be staged from this checkout. Root callback image build, combined first boot, and actual delivery still require independent integration evidence.
 Do not disable checks or duplicate the client to bypass that packaging gate.

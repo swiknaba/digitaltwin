@@ -14,7 +14,11 @@ class ClientContractTest(unittest.TestCase):
     def test_manifest_matches_frozen_backend_revision_and_docker_checks(self):
         manifest = json.loads((ROOT / "agent-runtime/contracts/kirei-clients.json").read_text())
         docker = (ROOT / "agent-runtime/Dockerfile").read_text()
-        self.assertEqual(set(manifest["files"]), {"digitaltwin", "digitaltwin-mcp", "mcp.rb", "http_tools.rb"})
+        self.assertEqual(set(manifest["files"]), {
+            "digitaltwin", "digitaltwin-mcp", "mcp.rb", "server/tool_gateway.rb", "http_tools.rb",
+            "agentsview_usage_response.rb", "agentsview_usage_authorizer_interface.rb", "agentsview_usage_authorizer.rb",
+            "agentsview_usage_runner_interface.rb", "agentsview_usage_command.rb", "agentsview_usage_server.rb",
+        })
         for name, item in manifest["files"].items():
             data = (ROOT / item["source"]).read_bytes()
             frozen = subprocess.run(["git", "show", manifest["source_revision"] + ":" + item["source"]], cwd=ROOT,
@@ -29,7 +33,7 @@ class ClientContractTest(unittest.TestCase):
                                 cwd=ROOT, capture_output=True)
         self.assertEqual(result.returncode, 0, "Client source revision must be retained in the checked-out history")
 
-    def test_staging_rejects_modified_source_and_unexpected_context_files(self):
+    def test_staging_rejects_modified_source_and_unexpected_context_paths(self):
         manifest = json.loads((ROOT / "agent-runtime/contracts/kirei-clients.json").read_text())
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -42,10 +46,31 @@ class ClientContractTest(unittest.TestCase):
             command = ["python3", str(root / "scripts/prepare-callback-context")]
             self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
             context = root / ".local/kirei-clients"
-            self.assertEqual({p.name for p in context.iterdir()}, set(manifest["files"]))
+            self.assertEqual({p.relative_to(context).as_posix() for p in context.rglob("*") if p.is_file()}, set(manifest["files"]))
+            with tempfile.TemporaryDirectory() as outside_directory:
+                outside = Path(outside_directory)
+                shutil.rmtree(context)
+                context.parent.rmdir()
+                context.parent.symlink_to(outside, target_is_directory=True)
+                result = subprocess.run(command, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((outside / "kirei-clients").exists())
+                context.parent.unlink()
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
             (context / "unexpected").write_text("fixture")
             self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
             (context / "unexpected").unlink()
+            (context / "unexpected-directory").mkdir()
+            self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            (context / "unexpected-directory").rmdir()
+            outside = root / "outside"
+            outside.mkdir()
+            shutil.rmtree(context / "server")
+            (context / "server").symlink_to(outside, target_is_directory=True)
+            result = subprocess.run(command, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((outside / "tool_gateway.rb").exists())
+            (context / "server").unlink()
             (root / "integration-backend/bin/digitaltwin").write_text("changed")
             self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
 

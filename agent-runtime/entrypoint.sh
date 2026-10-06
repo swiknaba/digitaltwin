@@ -8,7 +8,7 @@ done
 commander_workspace=/workspace/commander
 hermes_home="$commander_workspace/.hermes"
 grok_home="$HOME/.grok"
-mkdir -p "$commander_workspace" "$hermes_home" /workspace/repos /workspace/worktrees "$HOME/.agents/skills" "$HOME/.config/herdr" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode" "$grok_home"
+mkdir -p "$commander_workspace" "$hermes_home" /workspace/repos /workspace/worktrees "$HOME/.agents/skills" "$HOME/.config/herdr" "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode" "$AGENTSVIEW_DATA_DIR" "$grok_home"
 for file in AGENTS.md SOUL.md .gitignore; do
   if [ ! -e "$commander_workspace/$file" ]; then
     cp "/opt/runtime/config/commander/$file" "$commander_workspace/$file"
@@ -33,6 +33,14 @@ fi
 if [ ! -e "$grok_home/config.toml" ]; then
   cp /opt/runtime/config/grok/config.toml "$grok_home/config.toml"
 fi
+agentsview_config="$AGENTSVIEW_DATA_DIR/config.toml"
+[ ! -L "$agentsview_config" ] || { echo 'AgentsView configuration must not be a symlink' >&2; exit 1; }
+[ ! -e "$agentsview_config" ] || [ -f "$agentsview_config" ] || { echo 'AgentsView configuration must be a regular file' >&2; exit 1; }
+# This runtime owns the aggregate-only AgentsView configuration. Replace it on
+# each start so a persisted volume cannot add remote hosts, additional sources,
+# or a UI listener. The usage archive itself is not replaced.
+cp /opt/runtime/config/agentsview.toml "$agentsview_config"
+chmod 600 "$agentsview_config"
 # Supported upstream installations preserve existing operator configuration.
 for integration in codex claude opencode grok; do
   herdr integration install "$integration"

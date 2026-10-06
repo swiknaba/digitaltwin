@@ -43,9 +43,10 @@ stages the hash-checked callback, and executes default Compose `up --build -d --
 It builds images and creates/starts the core local containers and persistent named volumes; it creates no provider accounts or tokens.
 Extra arguments go to Compose `up`. It does not delete persistent data or enable listener/push profiles.
 
-`prepare-callback-context` requires the reviewed/merged backend `bin/digitaltwin` with the Runtime-agreed SHA256.
-It copies that single file into ignored `.local/kirei-clients/` for Runtime's `with-callback` named build context.
-It refuses changed artifacts or extra context files. It creates no credentials or provider state; exit `1` indicates failure.
+`prepare-callback-context` requires the reviewed/merged backend client set and the Runtime-agreed SHA256 values.
+It copies exactly the eleven pinned files listed in `agent-runtime/contracts/kirei-clients.json` into ignored
+`.local/kirei-clients/` for Runtime's `with-callback` named build context. It refuses changed artifacts,
+extra files or directories, and symlinks. It creates no credentials or provider state; exit `1` indicates failure.
 `init-local-volumes.sh` is the one-shot root initializer inside pinned BusyBox with no network.
 It seeds chat config if absent and changes only mounted named-volume ownership; it does not rotate existing database roles or credentials.
 The combined overlay opts into Runtime volume initialization; the default initializes chat storage only.
