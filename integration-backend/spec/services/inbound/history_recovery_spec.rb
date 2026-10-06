@@ -82,7 +82,7 @@ RSpec.describe Services::Inbound::HistoryRecovery do
   it "uses the covered history revision across a later refetch edit and reconnect" do
     @filter_since = true
     db[:chat_checkpoints].insert(channel_id: channel, post_revision: 1500)
-    @responses["/api/v4/posts/#{"d" * 26}"] = post("d", human, 2000).merge("update_at" => 10000)
+    @responses["/api/v4/posts/#{"d" * 26}"] = post("d", human, 2000).merge("update_at" => 10000, "edit_at" => 10000)
     expect(@service.call(channel_id: channel)).to eq(3000)
     expect(db[:inbox].where(post_id: "d" * 26).first[:post_revision]).to eq(10000)
     @posts = [post("f", human, 5000), @responses["/api/v4/posts/#{"d" * 26}"]]
