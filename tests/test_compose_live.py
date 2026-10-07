@@ -80,6 +80,8 @@ class DisposableComposeTest(unittest.TestCase):
     image: {cls.image_prefix}-backend:check
   agent-runtime:
     image: {cls.image_prefix}-runtime:check
+    ports: !override
+      - "127.0.0.1::1455"
 ''')
         cls.base = ["docker", "compose", "--env-file", str(ROOT / ".env.example"), "-p", cls.project]
         for name in [ROOT / "compose.yml", ROOT / "compose.backend.yml", ROOT / "compose.integration.yml", override]:
@@ -200,7 +202,15 @@ class DisposableComposeTest(unittest.TestCase):
                 self.assertNotIn("docker.sock", mount["Destination"])
             if service == "agent-runtime":
                 self.assertEqual(inspect["HostConfig"]["CapDrop"], ["ALL"])
-                self.assertFalse(inspect["HostConfig"]["PortBindings"])
+                bindings = inspect["HostConfig"]["PortBindings"]
+                self.assertEqual(set(bindings), {"1455/tcp"})
+                self.assertEqual(len(bindings["1455/tcp"]), 1)
+                self.assertEqual(bindings["1455/tcp"][0]["HostIp"], "127.0.0.1")
+                self.assertEqual(bindings["1455/tcp"][0]["HostPort"], "")
+                published = inspect["NetworkSettings"]["Ports"]["1455/tcp"]
+                self.assertEqual(len(published), 1)
+                self.assertEqual(published[0]["HostIp"], "127.0.0.1")
+                self.assertTrue(published[0]["HostPort"].isdigit())
         # Distroless chat has no shell. Inspect its container filesystem metadata.
         chat = self.compose(["ps", "-q", "mattermost"]).stdout.strip()
         import tarfile
