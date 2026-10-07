@@ -9,4 +9,19 @@ if [ ! -e .env ]; then
   cp .env.example .env
 fi
 scripts/prepare-callback-context
-exec docker compose -f compose.yml up --build -d --wait "$@"
+
+rebuild=
+if [ "${1:-}" = "--build" ]; then
+  rebuild=1
+  shift
+fi
+
+if [ -n "$rebuild" ]; then
+  docker compose -f compose.yml build
+fi
+
+docker compose -f compose.yml up -d --wait "$@"
+
+if [ -n "$rebuild" ]; then
+  docker image prune -f --filter dangling=true --filter label=com.docker.compose.project=digitaltwin
+fi

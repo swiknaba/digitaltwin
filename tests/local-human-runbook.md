@@ -1,233 +1,459 @@
-# Human local activation runbook
+# Local human test runbook
 
-Use this for one operator-owned **local Docker** stack. It is not a production
-or Hetzner deployment guide. The normal stack is credential-free; live worker
-and optional Commander effects require the explicit local activation below.
+Use this runbook for one disposable local Docker stack. It does not create
+production, Hetzner, provider, or Git credentials. You configure your own
+Runtime Git access before testing work that commits or pushes.
 
-For rationale, field definitions, and recovery rules, see the detailed
-[local activation reference](../docs/interfaces/local-commander-activation.md).
+The local Mattermost configuration enables bot creation and personal access
+tokens. This is intentional for local testing. Do not use this configuration
+as a production security baseline.
 
-## 1. Start the safe local core
+## What you need
 
-Prerequisite: Docker Desktop (or a compatible local Docker daemon) is running.
+Create one private project channel and add these three local accounts:
+
+| Identity | Mattermost username | Purpose | Local token file |
+| --- | --- | --- | --- |
+| Human | `root` | Starts and steers the test workflow. | None |
+| Listener | The same `root` account for this test | Reads posts and verifies identities. | `listener.token` |
+| Commander bot | `commander` | Posts Commander replies. | `commander.token` |
+| Agent bot | `agent` | Posts Writer and Reviewer workflow replies. | `agent.token` |
+
+The listener can use the human account during this local test. A separate
+non-bot listener account is optional later.
+
+A token file contains only one Mattermost personal access token. Do not add
+`Bearer `, JSON, labels, or an account ID. Mattermost displays each token once.
+
+## 1. Start Mattermost
 
 ```sh
-project=digitaltwin-local-commander
-COMPOSE_PROJECT_NAME="$project" ./scripts/dev
-docker compose -p "$project" ps
-curl -fsS http://localhost:3000/readyz
+./scripts/dev
+docker compose ps
 ```
 
-Open [http://localhost:8065](http://localhost:8065) to use the local Mattermost
-UI. `docker compose ps` should show the core services healthy; `/readyz` only
-shows backend health. Neither proves provider, listener, or Commander access.
+`compose.yml` fixes the local project name as `digitaltwin`. Plain
+`docker compose up`, `ps`, and `down` therefore target the same stack.
 
-To stop the core without deleting its local data:
+Open [http://localhost:8065](http://localhost:8065). Create the first account
+with username `root`; it becomes the local system administrator.
 
-```sh
-docker compose -p "$project" down
-```
+## 2. Create the channel and identities
 
-Do not add `--volumes` unless you intentionally want to erase this local stack.
+1. Create or select one local team.
+2. Create one private project channel.
+3. Add `root` to that channel.
+4. Open **Product menu → Integrations → Bot Accounts → Add Bot Account**.
+5. Create the Commander bot with these values:
 
-## 2. Prepare the human-owned chat and role setup
+   | Field | Value |
+   | --- | --- |
+   | Username | `commander` |
+   | Display Name | `Commander` |
+   | Description | `Local Commander status and follow-up bot` |
+   | Role | `Member` |
+   | Bot Icon | Default icon |
+   | `post:all` | Unchecked |
+   | `post:channels` | Unchecked |
 
-In the Mattermost UI, create or select the local project channel and the human
-and bot identities you will use. Obtain their existing authenticated token files
-through your normal Mattermost operator process; this repository does not create
-or print tokens.
+6. Select **Create Bot Account** and copy its token before selecting **Done**.
+7. Repeat for the Agent bot. Change only these values:
+
+   | Field | Value |
+   | --- | --- |
+   | Username | `agent` |
+   | Display Name | `Agent` |
+   | Description | `Local project workflow agent` |
+
+8. Add both bots to the local team and the project channel.
+9. As `root`, open **Profile → Security → Personal Access Tokens**. Create and
+   copy one listener token.
+
+Keep `post:all` and `post:channels` unchecked. Channel membership grants the
+bots the access that this stack needs. Do not grant either bot System Admin.
+
+## 3. Save the three tokens
+
+All files below are general local-stack configuration. They are not fixtures
+for one test run. Reuse them until you reset the local Mattermost data or
+revoke a token.
 
 ```sh
 mkdir -p .local/commander
-chmod 700 .local/commander
 ```
 
-Place these local-only files in `.local/commander/`:
+Create these ignored files under `.local/commander/` with an editor or password
+manager. Do not paste a token into a shell command, issue, chat, or Git file.
 
 ```text
-listener.token     authenticated listener token
-agent.token        authenticated agent-bot token
-worker.token       authenticated worker-bot token
-roles.json         Writer/Reviewer roles; optional Commander role
+listener.token     token for the local human listener account
+commander.token    token for the @commander bot
+agent.token        token for the @agent bot
 ```
 
-After you create those files with your existing values, lock their modes:
+Then lock them:
+
+## 4. Collect IDs and write the local mapping
+
+Get the project channel, `root` user, Commander bot, and Agent bot IDs. The
+listener token belongs to `root` in this runbook. Replace uppercase placeholders
+before running a command.
 
 ```sh
-chmod 600 .local/commander/{listener,agent,worker}.token .local/commander/roles.json
+docker compose exec -T mattermost /mattermost/bin/mmctl user search root --json --local
+docker compose exec -T mattermost /mattermost/bin/mmctl bot list --all --json --local
+docker compose exec -T mattermost /mattermost/bin/mmctl channel search --team YOUR_TEAM_NAME YOUR_CHANNEL_NAME --json --local
 ```
 
-Create `.local/commander.env` with your own IDs. Keep it local and mode 0600:
+Add both bots to the team first, then to the channel. Use the team's URL name
+for `YOUR_TEAM_NAME` and the returned channel `id` below.
+Direct messages with a bot do not grant team or channel membership.
 
 ```sh
-cat > .local/commander.env <<'EOF'
-DIGITALTWIN_LOCAL_CONFIG_DIR=/absolute/path/to/digitaltwin/.local/commander
-MATTERMOST_CHANNEL_IDS=<project-channel-id>
-MATTERMOST_LOCAL_BOT_IDS=<agent-bot-id>,<worker-bot-id>
-MATTERMOST_AGENT_BOT_ID=<agent-bot-id>
-MATTERMOST_WORKER_BOT_ID=<worker-bot-id>
-MATTERMOST_PEER_BOT_IDS=
-# Optional: set this only when roles.json contains a commander role.
-# COMMANDER_CHANNEL_ID=<commander-channel-id>
-EOF
-chmod 600 .local/commander.env
+docker compose exec -T mattermost /mattermost/bin/mmctl team users add YOUR_TEAM_NAME commander agent --local
+docker compose exec -T mattermost /mattermost/bin/mmctl channel users add REPLACE_WITH_PROJECT_CHANNEL_ID commander agent --local
+docker compose exec -T mattermost /mattermost/bin/mmctl channel users list REPLACE_WITH_PROJECT_CHANNEL_ID --json --local
 ```
 
-`roles.json` must contain different Writer and Reviewer `provider` and `family`
-values. Add the optional Commander entry only when it uses `"cli":"hermes"`.
-Provider/model names describe a role; they are not credentials. Use the exact
-shape in the [detailed reference](../docs/interfaces/local-commander-activation.md#prepare-ignored-local-configuration).
+The list must include `root`, `commander`, and `agent`.
 
-After you review the roles, create the acknowledgement that binds activation to
-this exact file:
+If channel addition reports “No team member found”, run the team-add command first.
+
+Create `.local/commander.env` and replace each placeholder:
 
 ```sh
-role_hash=$(shasum -a 256 .local/commander/roles.json | awk '{print $1}')
-printf '{"schema":"digitaltwin.local-dispatch/v1","scope":"local","confirmed_at":"%s","role_config_sha256":"%s"}\n' \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$role_hash" > .local/commander/local-dispatch.json
-chmod 600 .local/commander/local-dispatch.json
+MATTERMOST_CHANNEL_IDS=REPLACE_WITH_PROJECT_CHANNEL_ID
+MATTERMOST_COMMANDER_BOT_ID=REPLACE_WITH_COMMANDER_BOT_ID
+MATTERMOST_AGENT_BOT_ID=REPLACE_WITH_AGENT_BOT_ID
 ```
 
-Changing `roles.json` invalidates this acknowledgement. Regenerate it only
-after reviewing the new role selection; do not edit it to bypass a failed check.
+`MATTERMOST_COMMANDER_*` always describes `@commander`.
+`MATTERMOST_AGENT_*` always describes `@agent`.
 
-## 3. Start and validate activation — no provider call
+If `roles.json` includes a Commander role, also set
+`COMMANDER_CHANNEL_ID`. Use the project channel ID, or add a separate channel
+to `MATTERMOST_CHANNEL_IDS`. Add both bots to every monitored channel.
+
+## 5. Authenticate the available harnesses
+
+Run these commands from the terminal that controls the Docker host. For a
+remote server, connect to that host with SSH first. Docker connects the command
+to Runtime, where the agents run and their login state is stored.
+Use `-it` for login; `-T` disables the interactive terminal.
+
+### Codex
+
+If the browser runs on the same Docker host, publish Runtime's callback and
+start the normal Codex login flow:
 
 ```sh
-set -a
-. .local/commander.env
-set +a
-
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml up --build -d --wait \
-  mattermost agent-runtime backend-migrate backend-web
-
-scripts/validate-local-commander "$project"
+docker compose up -d --force-recreate agent-runtime
+docker compose exec -it agent-runtime codex login
 ```
 
-Expected terminal output includes JSON with
-`"local_dispatch_activation":true`, `"provider_call":false`, and
-`"runtime_effect":false`, followed by a compatible `herdr status` JSON.
-If it fails, leave worker/listener stopped and fix the reported token, bot,
-channel, role, acknowledgement, Hermes, or socket problem.
+Open the displayed URL in a browser on that Docker host. After sign-in, Codex
+redirects to `127.0.0.1:1455`. Compose maps that address to Runtime only on the
+Docker host.
 
-## 4. Configure provider access manually, then map one project
-
-Provider login is a human action and may incur usage. In a Runtime shell, use
-the provider's normal Hermes and worker-CLI configuration flow; do not put a
-provider key, OAuth token, browser profile, or login command in this repository,
-`.env`, role file, or chat message.
+For a remote Docker host, use device-code login instead. It does not need a
+callback port:
 
 ```sh
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml exec -it agent-runtime sh
+docker compose exec -it agent-runtime codex login --device-auth
 ```
 
-Exit that shell after your provider's normal setup. This runbook does not start
-or prompt a provider for you.
+Use device-code login only when your ChatGPT workspace enables it. It is
+unavailable in some workspaces.
 
-Before the first worker request, place the intended checkout in the Runtime
-workspace. For a public repository, an operator can use:
+If Compose reports `Bind for 127.0.0.1:1455 failed: port is already allocated`,
+a stale one-off Runtime container owns the callback port. `docker compose down`
+does not remove one-off `docker compose run` containers. Identify it, then
+remove only that named `agent-runtime-run-...` container before retrying:
 
 ```sh
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml exec -T agent-runtime \
-  sh -lc 'mkdir -p /workspace/repos/OWNER && git clone -- https://github.com/OWNER/REPOSITORY.git /workspace/repos/OWNER/REPOSITORY'
+docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+docker rm -f THE_AGENT_RUNTIME_RUN_CONTAINER_NAME
 ```
 
-For a private repository, use your already authorized Git setup; do not add a
-Git credential to this repository or to chat. Then register the project channel
-and verified human. This is an authenticated read/registration, not a provider
-call or agent start:
+See [Codex authentication](https://developers.openai.com/codex/auth#login-on-headless-devices).
+
+Check the saved login:
 
 ```sh
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml run --rm --no-deps backend-worker \
-  bin/enroll-local-project --channel-id <project-channel-id> \
-  --human-id <human-user-id> --slug OWNER/REPOSITORY
+docker compose exec -T agent-runtime codex login status
 ```
 
-Expected output includes `"enrollment":"..."`, `"provider_call":false`, and
-`"runtime_effect":false`.
-
-## 5. Start effects and perform the human test
+### Claude Code
 
 ```sh
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml --profile chat-validation up -d --wait \
-  backend-worker backend-chat-listener
-
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml ps
+docker compose exec -it agent-runtime claude auth login --claudeai
 ```
 
-Where to act and check:
+Open the displayed URL in your Mac browser and sign in with your Claude account.
+If the browser displays a login code, paste it into the waiting terminal.
+See [Claude authentication](https://code.claude.com/docs/en/authentication).
 
-- In Mattermost, use the mapped **project channel** as the verified human.
-  Start a new root thread with `@worker start` and one small, bounded test task.
-  Watch the same thread for its receipt/reply.
-- For optional Commander, use the configured **Commander channel**. Post
-  `@agent` asking for the status of that exact task, then send one bounded
-  follow-up to the same task. Confirm it refers to the existing task rather
-  than creating a replacement.
-- In a terminal, inspect only the relevant local services:
-
-  ```sh
-  docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-    -f compose.yml -f compose.local-commander.yml logs -f --tail=100 \
-    backend-worker backend-chat-listener agent-runtime
-  ```
-
-Success for this manual acceptance means a response appears in the original
-Mattermost thread and the follow-up stays on the same recorded task/session.
-Do not treat a container health check as provider success.
-
-## 6. Restart and memory check
-
-Restart only the application services, then post one more follow-up in the same
-Mattermost thread:
+Check the saved login:
 
 ```sh
-docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-  -f compose.yml -f compose.local-commander.yml --profile chat-validation restart \
-  backend-web backend-worker backend-chat-listener
+docker compose exec -T agent-runtime claude auth status --text
 ```
 
-Expected result: the follow-up returns to the original source thread, reuses
-the recorded session, and does not duplicate an earlier reply. Treat `queued`,
-`active`, `delivered`, and `uncertain` as different outcomes. If an effect is
-uncertain, do **not** repost or restart it; use the exact human recovery command
-in the [detailed reference](../docs/interfaces/commander-routing-setup.md#feature-boundary).
+This confirms that Runtime has saved Claude credentials. It does not send a
+model request. Start `claude` to confirm an interactive session.
 
-## Troubleshooting and safe stop
+If a Claude pane in Herdr requests login, do not copy its browser URL from the
+container UI. Authenticate from the terminal that controls the Docker host:
 
-- **Preflight or enrollment fails:** keep effects stopped; fix the named local
-  file, membership, channel/bot ID, workspace checkout, or Hermes/socket issue,
-  then rerun the same preflight.
-- **Service is not healthy:** run the `ps` and `logs` commands above. Do not
-  paste token values or private chat content into an issue or chat.
-- **Stop effects but retain data:**
+```sh
+docker compose exec -it agent-runtime claude auth login --claudeai
+```
 
-  ```sh
-  docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-    -f compose.yml -f compose.local-commander.yml --profile chat-validation stop \
-    backend-worker backend-chat-listener
-  rm .local/commander/local-dispatch.json
-  ```
+After login completes, cancel the old Claude pane with `Ctrl-C`, then run
+`claude`. Do not run `claude code`; `code` is only unnecessary prompt text.
 
-- **Stop the whole local stack but retain data:**
+### Gemini CLI
 
-  ```sh
-  docker compose --env-file .env --env-file .local/commander.env -p "$project" \
-    -f compose.yml -f compose.local-commander.yml --profile chat-validation down
-  ```
+Use Gemini's user-code flow. It works from Runtime without publishing a second
+browser callback port:
 
-Never use `down --volumes` unless you intentionally want to remove local data.
+```sh
+docker compose exec -it -e NO_BROWSER=true agent-runtime gemini
+```
 
-## Command verification
+Select **Log in with Google**. Open the displayed URL, sign in, then paste the
+displayed authorization code into the waiting terminal. Exit Gemini after it
+confirms authentication.
 
-The commands above are derived from the checked-in Compose files,
-`scripts/dev`, `scripts/validate-local-commander`, and the two backend commands.
-They are configuration-checked without credentials. Provider login, real chat
-identities, project enrollment, and any live provider prompt are deliberately
-not executed by this guide or its automated tests.
+Google Workspace accounts can require a Google Cloud project. Follow Gemini's
+[authentication guide](https://google-gemini.github.io/gemini-cli/docs/get-started/authentication.html)
+if it requests one.
+
+### Grok Build
+
+Use Grok's device-code flow:
+
+```sh
+docker compose exec -it agent-runtime grok login --device-auth
+```
+
+Open the displayed URL, sign in to xAI, and enter the displayed code.
+See the [Grok Build CLI reference](https://docs.x.ai/build/cli/reference).
+
+### Hermes Commander
+
+Hermes is its own harness. Codex, Gemini, and Grok CLI logins make those
+harnesses available to Herdr. They do not select or authenticate Hermes's
+inference provider.
+
+Configure Hermes separately before using Commander:
+
+```sh
+docker compose exec -it agent-runtime hermes model
+```
+
+Choose the provider and model in the Hermes picker. Complete any provider login
+that Hermes requests.
+
+`Google AI Studio` is Hermes's Gemini provider. It uses a Gemini API key; it
+does not reuse Gemini CLI's Google-account login. Hermes's `xAI Grok` provider
+is also separate from Grok Build login. Its picker offers either xAI API
+credentials or an eligible xAI subscription OAuth flow.
+
+Hermes uses one selected primary provider and model. Configuring other providers
+does not make Hermes rotate among them. A configured fallback runs only after
+the primary provider fails.
+
+`Mixture of Agents` is an explicit Hermes preset. It calls the preset's named
+reference models, then an aggregator model. It does not automatically use every
+installed or logged-in harness. Configure each referenced provider first. Expect
+one request per reference model plus the aggregator.
+
+All saved login state persists in Runtime's `runtime-home` Docker volume across
+normal stops and restarts. Logging in on your Mac alone does not authenticate
+Runtime. Status checks do not run a model prompt.
+
+### Open the Herdr terminal interface
+
+To view Herdr's multiplexed terminals from your Mac terminal, run:
+
+```sh
+docker compose exec -it agent-runtime herdr
+```
+
+This attaches to the running Herdr server inside Runtime. It needs no additional
+Herdr installation. Use it from your SSH terminal when Docker runs remotely.
+Agents started through Herdr use the matching saved harness login.
+
+To return to your Mac terminal, press `Ctrl-B`, release it, then press `Q`.
+This detaches the client. It does not stop Herdr or any running agent.
+
+## 6. Add roles and validate the chat setup
+
+Create `.local/commander/roles.json` using the [role setup reference](../docs/interfaces/local-commander-activation.md#configure-the-role-agents).
+
+For this temporary local test, use Codex as Writer and Claude as Reviewer
+with their configured model defaults:
+
+```json
+{
+  "writer": {"cli":"codex","provider":"openai","model":"cli-default","family":"gpt","launch_args":[]},
+  "reviewer": {"cli":"claude","provider":"anthropic","model":"cli-default","family":"claude","launch_args":[]}
+}
+```
+
+`cli-default` is a temporary audit label required by the current parser.
+It is not passed to the CLI. Empty `launch_args` uses the CLI's saved settings.
+
+Writer and Reviewer must use different providers and model families. The JSON
+key `family` means model family, such as `gpt` or `claude`.
+GPT-5 and GPT-5 mini both belong to `gpt`; they cannot form this review pair.
+
+For Commander and saved CLI defaults, use the examples in the role setup reference.
+
+Create the acknowledgement after reviewing the role file:
+
+```sh
+role_hash=$(shasum -a 256 .local/commander/roles.json | awk '{print $1}'); printf '{"schema":"digitaltwin.local-dispatch/v1","scope":"local","confirmed_at":"%s","role_config_sha256":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$role_hash" > .local/commander/local-dispatch.json
+```
+
+Start the read-only validation services:
+
+```sh
+./scripts/dev --build
+
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml up -d --wait mattermost agent-runtime backend-migrate backend-web
+scripts/validate-local-commander
+```
+
+The validation checks tokens, bot identities, membership, roles, and Herdr.
+It does not contact a provider or start a workflow.
+
+## 7. Add a repository, enroll it, and run the test
+
+This stack starts with an empty Runtime workspace. Do these steps in order:
+
+1. Clone the repository into Runtime.
+2. Enroll the checkout to the Mattermost project channel.
+3. Start the chat services.
+
+**Enrollment does not clone a repository.** It stores one mapping:
+Mattermost project channel + human identity -> existing Runtime checkout.
+It does not create Git credentials, make commits, push, or contact a provider.
+
+### Configure Runtime Git access
+
+Do this once for each Runtime volume. It is required for an agent to commit and
+push. Use a repository you own for the write test. A public repository that you
+do not own permits cloning, but cannot accept your push.
+
+Use a dedicated GitHub deploy key when testing one repository. It has access to
+that repository only. Run these commands from a regular Runtime shell:
+
+```sh
+docker compose exec -it agent-runtime bash
+mkdir -p ~/.ssh
+ssh-keygen -t ed25519 -C digitaltwin-runtime -f ~/.ssh/id_ed25519
+cat ~/.ssh/id_ed25519.pub
+```
+
+At the passphrase prompt, press Enter. Herdr cannot enter a passphrase for an
+unattended agent. Copy only the displayed public key. Do not copy the private
+key into GitHub, Mattermost, Git, or any local configuration file.
+
+In the GitHub repository, open **Settings** > **Deploy keys** > **Add deploy
+key**. Paste the public key, then select **Allow write access** for this test.
+Return to the Runtime shell and set the Git author identity used for commits:
+
+```sh
+git config --global user.name "YOUR_GIT_AUTHOR_NAME"
+git config --global user.email "YOUR_GIT_AUTHOR_EMAIL"
+ssh -T git@github.com
+exit
+```
+
+Confirm GitHub recognizes the key. GitHub's successful SSH authentication
+message can still return exit status 1; that is normal.
+
+### Clone the test repository into Runtime
+
+Use a regular Runtime shell. Do not use Herdr for setup commands.
+
+Replace the uppercase values below. Do not type angle brackets.
+
+```sh
+docker compose exec -it agent-runtime bash
+mkdir -p /workspace/repos/YOUR_GITHUB_OWNER
+git clone git@github.com:YOUR_GITHUB_OWNER/YOUR_REPOSITORY.git /workspace/repos/YOUR_GITHUB_OWNER/YOUR_REPOSITORY
+git -C /workspace/repos/YOUR_GITHUB_OWNER/YOUR_REPOSITORY status --short
+exit
+```
+
+For a clone-only test, HTTPS works without Git credentials. Do not use a
+repository you cannot write to when testing agent commits or pushes.
+
+### Enroll that checkout to the project channel
+
+Enrollment is a one-time command. It is not a Mattermost message, button, or
+configuration-file edit. The command below records this mapping in
+Digitaltwin's database:
+
+```text
+Mattermost project channel + root human account -> Runtime Git checkout
+```
+
+Calling `bin/enroll-local-project` below is the action that creates the mapping.
+
+Get the Mattermost user ID for the human account. `root` is the default human
+username in this runbook. Copy the value of its JSON `id` field.
+
+```sh
+docker compose exec -T mattermost /mattermost/bin/mmctl user search root --json --local
+```
+
+Run the enrollment command from the Docker host's shell, not from a Runtime or
+Herdr shell. Replace the uppercase values. `YOUR_PROJECT_CHANNEL_ID` is the channel ID you saved in
+`.local/commander.env`. `YOUR_ROOT_USER_ID` is the JSON `id` from the command
+above. `YOUR_GITHUB_OWNER/YOUR_REPOSITORY` must exactly match the directory
+you cloned in the preceding step.
+
+```sh
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml run --rm --no-deps backend-worker bin/enroll-local-project --channel-id YOUR_PROJECT_CHANNEL_ID --human-id YOUR_ROOT_USER_ID --slug YOUR_GITHUB_OWNER/YOUR_REPOSITORY
+```
+
+Expected output contains `"enrollment":"enrolled"`. Re-running the same
+command returns `"enrollment":"retained"`.
+
+Start effects:
+
+```sh
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml --profile chat-validation up -d --wait backend-worker backend-chat-listener
+```
+
+As the enrolled human, create a new root post in the project channel:
+
+```text
+@agent start
+<one small, bounded task>
+```
+
+Watch the same thread for the receipt and reply. If configured, use
+`@commander` in the Commander channel only for status and follow-up.
+
+## Stop safely
+
+Stop effects but retain local data:
+
+```sh
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml --profile chat-validation stop backend-worker backend-chat-listener
+rm .local/commander/local-dispatch.json
+```
+
+Stop the stack but retain local data:
+
+```sh
+docker compose --env-file .env --env-file .local/commander.env -f compose.yml -f compose.local-commander.yml --profile chat-validation down
+```
+
+Do not use `down --volumes` unless you intend to erase the local Mattermost
+accounts, tokens, and project data.

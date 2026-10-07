@@ -39,8 +39,9 @@ Production infrastructure provisioning remains separately authorized work in the
 The integration owner owns this folder. Component workers propose shared script changes through that owner.
 
 `dev` is the normal local boot entrypoint. It preserves existing `.env`, otherwise copies public samples with restrictive permissions,
-stages the hash-checked callback, and executes default Compose `up --build -d --wait`.
-It builds images and creates/starts the core local containers and persistent named volumes; it creates no provider accounts or tokens.
+stages the hash-checked callback, and executes default Compose `up -d --wait`.
+It creates or starts the core local containers and persistent named volumes; it creates no provider accounts or tokens.
+Use `dev --build` after changing an image input. It rebuilds, starts the stack, then removes only dangling images labeled for this local Compose project.
 Extra arguments go to Compose `up`. It does not delete persistent data or enable listener/push profiles.
 
 `prepare-callback-context` requires the reviewed/merged backend client set and the Runtime-agreed SHA256 values.

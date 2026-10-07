@@ -80,6 +80,8 @@ class DisposableComposeTest(unittest.TestCase):
     image: {cls.image_prefix}-backend:check
   agent-runtime:
     image: {cls.image_prefix}-runtime:check
+    ports: !override
+      - "127.0.0.1::1455"
 ''')
         cls.base = ["docker", "compose", "--env-file", str(ROOT / ".env.example"), "-p", cls.project]
         for name in [ROOT / "compose.yml", ROOT / "compose.backend.yml", ROOT / "compose.integration.yml", override]:
@@ -200,7 +202,15 @@ class DisposableComposeTest(unittest.TestCase):
                 self.assertNotIn("docker.sock", mount["Destination"])
             if service == "agent-runtime":
                 self.assertEqual(inspect["HostConfig"]["CapDrop"], ["ALL"])
-                self.assertFalse(inspect["HostConfig"]["PortBindings"])
+                bindings = inspect["HostConfig"]["PortBindings"]
+                self.assertEqual(set(bindings), {"1455/tcp"})
+                self.assertEqual(len(bindings["1455/tcp"]), 1)
+                self.assertEqual(bindings["1455/tcp"][0]["HostIp"], "127.0.0.1")
+                self.assertEqual(bindings["1455/tcp"][0]["HostPort"], "")
+                published = inspect["NetworkSettings"]["Ports"]["1455/tcp"]
+                self.assertEqual(len(published), 1)
+                self.assertEqual(published[0]["HostIp"], "127.0.0.1")
+                self.assertTrue(published[0]["HostPort"].isdigit())
         # Distroless chat has no shell. Inspect its container filesystem metadata.
         chat = self.compose(["ps", "-q", "mattermost"]).stdout.strip()
         import tarfile
@@ -264,7 +274,7 @@ class DisposableComposeTest(unittest.TestCase):
                 stale = callback.copy()
                 stale[stale.index("DIGITALTWIN_SESSION_GENERATION=1")] = "DIGITALTWIN_SESSION_GENERATION=2"
                 self.assertNotEqual(self.compose(stale, check=False).returncode, 0)
-            self.ruby("db=Kirei::App.raw_db_connection; rows=db[:outbox].where(Sequel.like(:response_key,'callback:integration:%')).all; abort unless rows.size==2 && rows.map{|r| [r[:channel_id],r[:thread_id],r[:bot],r[:role]]}.sort==[['fixture-channel','fixture-root-1','worker','writer'],['fixture-channel','fixture-root-2','worker','writer']]")
+            self.ruby("db=Kirei::App.raw_db_connection; rows=db[:outbox].where(Sequel.like(:response_key,'callback:integration:%')).all; abort unless rows.size==2 && rows.map{|r| [r[:channel_id],r[:thread_id],r[:bot],r[:role]]}.sort==[['fixture-channel','fixture-root-1','agent','writer'],['fixture-channel','fixture-root-2','agent','writer']]")
         finally:
             self.compose(["exec", "-T", "agent-runtime", "ruby", "-e", f"File.unlink('{token_file}') if File.exist?('{token_file}')"])
             self.ruby("db=Kirei::App.raw_db_connection; db[:sessions].where(Sequel.like(:id,'integration:%')).update(active:false,credential_expires_at:Time.now-1)")

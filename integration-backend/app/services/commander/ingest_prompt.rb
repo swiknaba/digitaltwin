@@ -65,7 +65,7 @@ module Services
         message = Messaging::Dto::OutgoingMessage.new(
           channel_id: delivery.channel_id,
           thread_id: delivery.thread_id,
-          bot: Messaging::Dto::Bot::Agent,
+          bot: Messaging::Dto::Bot::Commander,
           role: Messaging::Dto::SpeakerRole::Commander,
           body: "Request #{id} queued for Commander; delivery pending. Session #{commander}, start operation #{start&.id}.",
           key: "commander:queued:#{id}"

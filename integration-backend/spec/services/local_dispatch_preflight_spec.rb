@@ -12,19 +12,19 @@ RSpec.describe Services::LocalDispatchPreflight do
   end
   let(:configuration) do
     Services::Configuration.new(mattermost_url: "http://mattermost.test", mattermost_listener_token_file: "listener.token",
-                                mattermost_bot_token_files: { bot::Agent => "agent.token", bot::Worker => "worker.token" },
-                                mattermost_bot_ids: { bot::Agent => "agent", bot::Worker => "worker" }, mattermost_channel_ids: ["project"],
+                                mattermost_bot_token_files: { bot::Commander => "commander.token", bot::Agent => "agent.token" },
+                                mattermost_bot_ids: { bot::Commander => "commander", bot::Agent => "agent" }, mattermost_channel_ids: ["project"],
                                 local_dispatch_activation: activation)
   end
   let(:listener) { instance_double(Adapters::Mattermost::Api) }
   let(:agent) { instance_double(Adapters::Mattermost::Api) }
-  let(:worker) { instance_double(Adapters::Mattermost::Api) }
+  let(:commander) { instance_double(Adapters::Mattermost::Api) }
   let(:user) { Adapters::Mattermost::Dto::User.new(id: "listener", delete_at: 0, bot: true) }
 
   def preflight
     described_class.new(
       configuration: configuration,
-      api_factory: ->(_url, token_file) { { "listener.token" => listener, "agent.token" => agent, "worker.token" => worker }.fetch(token_file) },
+      api_factory: ->(_url, token_file) { { "listener.token" => listener, "commander.token" => commander, "agent.token" => agent }.fetch(token_file) },
       panes: -> { [Adapters::Herdr::Dto::PaneSummary.new(pane_id: "pane")] }
     )
   end
@@ -32,7 +32,7 @@ RSpec.describe Services::LocalDispatchPreflight do
   it "requires current authenticated bot identities, memberships, and Herdr before local effects" do
     allow(listener).to receive(:me).and_return(user)
     allow(listener).to receive(:channel).with("project").and_return(Adapters::Mattermost::Dto::Channel.new(id: "project"))
-    [[agent, "agent"], [worker, "worker"]].each do |api, id|
+    [[commander, "commander"], [agent, "agent"]].each do |api, id|
       allow(api).to receive(:me).and_return(Adapters::Mattermost::Dto::User.new(id: id, delete_at: 0, bot: true))
       expect(listener).to receive(:member!).with(channel_id: "project", user_id: id).and_return(Adapters::Mattermost::Dto::ChannelMember.new(channel_id: "project", user_id: id))
     end
@@ -42,7 +42,7 @@ RSpec.describe Services::LocalDispatchPreflight do
 
   it "fails closed when a configured bot token proves a different account" do
     allow(listener).to receive(:me).and_return(user)
-    allow(agent).to receive(:me).and_return(Adapters::Mattermost::Dto::User.new(id: "other", delete_at: 0, bot: true))
+    allow(commander).to receive(:me).and_return(Adapters::Mattermost::Dto::User.new(id: "other", delete_at: 0, bot: true))
 
     expect { preflight.call }.to raise_error(RuntimeError, "Configured bot identity mismatch")
   end

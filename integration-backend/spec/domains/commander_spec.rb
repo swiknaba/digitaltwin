@@ -315,7 +315,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     id = source
     d = resolver.delivery(post_id: db[:inbox][id: id][:post_id], channel_id: channel, event_kind: Domains::Messaging::Dto::EventKind::Posted)
     db[:inbox].delete
-    Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", commander_channel_id: channel).call(delivery: d)
+    Services::Inbound::RecordDelivery.new(commander_handle: "commander", agent_handle: "agent", commander_channel_id: channel).call(delivery: d)
     expect(db[:jobs].first[:kind]).to eq("commander.prompt")
   end
   it "records exact Commander-chat approval only for the latest reviewed current revision" do
@@ -323,7 +323,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     commit = "a" * 40
     db[:reviews].insert(id: "review_1", workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: session_configuration)
     service = Services::Commander::RecordApproval.new(resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit }, handle: "agent",
-                                                      worker_handle: "worker")
+                                                      agent_handle: "worker")
     approvals = Struct.new(:service) do
       def record(gate:, **args)
         result = service.call(gate: Domains::Workflows::Dto::Gate.deserialize(gate), **args)
@@ -431,7 +431,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     handler = Services::Commander::HandleCommanderPrompt.new(
       source: Domains::Messaging::VerifyHumanSource.new(verifier: resolver, membership: double(member?: true)), reconcile_start: double,
       reconcile_operation: double, reconcile_followup: reconciler, recover: nil, ingest_prompt: nil, handle_workflow_prompt: double,
-      advance_approval: double, agent_handle: "agent", worker_handle: "worker"
+      advance_approval: double, commander_handle: "agent", agent_handle: "worker"
     )
     inbox = db[:inbox][id: recovery]
     Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::CommanderPrompt, dispatch_key: "inbox:#{recovery}:commander.prompt",

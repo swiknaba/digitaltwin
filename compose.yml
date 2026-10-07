@@ -1,6 +1,8 @@
 # Reviewed local core. Listener and push require their opt-in profiles.
 # Stage the checksum-verified callback with scripts/prepare-callback-context.
 ---
+name: digitaltwin
+
 services:
   agent-runtime:
     build:
@@ -20,6 +22,8 @@ services:
         required: true
     image: digitaltwin-agent-runtime:local
     platform: linux/amd64
+    ports:
+    - 127.0.0.1:1455:1455
     security_opt:
     - no-new-privileges:true
     user: 10001:10001
@@ -43,6 +47,9 @@ services:
     command:
     - bin/chat-listener
     depends_on:
+      agent-runtime:
+        condition: service_healthy
+        required: true
       backend-migrate:
         condition: service_completed_successfully
         required: true
@@ -70,6 +77,11 @@ services:
     profiles:
     - chat-validation
     user: 10001:10001
+    volumes:
+    - source: herdr-socket
+      target: "/run/herdr"
+      type: volume
+      volume: {}
   backend-migrate:
     build:
       context: "./integration-backend"
@@ -235,7 +247,9 @@ services:
       MM_PLUGINSETTINGS_ENABLEMARKETPLACE: 'false'
       MM_PLUGINSETTINGS_ENABLEREMOTEMARKETPLACE: 'false'
       MM_PLUGINSETTINGS_ENABLEUPLOADS: 'false'
+      MM_SERVICESETTINGS_ENABLEBOTACCOUNTCREATION: 'true'
       MM_SERVICESETTINGS_ENABLELOCALMODE: 'true'
+      MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS: 'true'
       MM_SERVICESETTINGS_SITEURL: http://localhost:8065
       MM_SQLSETTINGS_DATASOURCE: postgres://mattermost:${MATTERMOST_DB_PASSWORD:?Set
         the local Mattermost database password}@postgres:5432/mattermost?sslmode=disable&connect_timeout=10

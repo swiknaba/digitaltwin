@@ -78,8 +78,8 @@ The artifact audit scans exported runtime paths and every saved final layer.
   seed it into the writable config volume with UID/GID 2000 before startup.
   Keep plugin enable/uploads/marketplaces/automatic-prepackaged flags false.
   Runtime image ENV also enforces these flags. Never enable plugins to add MCP.
-- Bot/account creation and user access tokens are off in the sample. Operator
-  provisioning is a separate approved step; existing credentials stay in Kirei.
+- Bot-account creation and user access tokens are enabled in the local sample.
+  Local operators provision disposable accounts and mount their credentials into Kirei.
 - Push/email are off in the sample. Push owner/integrator may select the separate
   upstream push proxy URL and compatible mobile identities; do not use hosted
   push as a fallback. No Calls/rtcd port/service or Phase 1 voice configuration.

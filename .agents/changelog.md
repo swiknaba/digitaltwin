@@ -253,6 +253,37 @@
 
 ## 2026-10-06 — AgentsView usage implementation
 
+- Replace pre-deployment Mattermost delivery identities everywhere with `Commander` and `Agent`. Use `commander.token` and `agent.token`, plus matching `MATTERMOST_COMMANDER_*` and `MATTERMOST_AGENT_*` settings.
+- Enable disposable bot-account and personal-access-token provisioning in the default local chat configuration. Rewrite the human local-test runbook as one ordered setup procedure.
+- Fix the local Compose project name as `digitaltwin`, and reuse images during ordinary starts. Rebuilds remove only superseded Digital Twin dangling images.
+- Use `agent` consistently for product-facing local-core and workflow terminology.
+- Use `root` as the documented local Mattermost administrator and listener account. Keep runbook commands single-line and shell-safe.
+- Simplify local dispatch mapping: derive bot-author IDs from the named delivery bots and mount the fixed ignored local directory.
+- Clarify role setup: CLI settings select models, role fields record their identities, and model families enforce independent review.
+- Add concrete role examples for explicit model arguments, saved CLI settings, Hermes Commander, and review diversity.
+- Record the requested login-only harness setup and automatic Writer/Reviewer selection as a requirements draft.
+- Require harness model defaults at session start; remove operator-maintained model IDs from the proposed setup.
+- Supply the Mattermost address to all local dispatch processes and load the local mapping directly in the validation script.
+- Document interactive Runtime login and status checks for Codex and Claude, persistent login storage, and local Herdr terminal attachment.
+- Publish the Runtime Codex callback only on Mac loopback so standard interactive Codex login works from the local container.
+- Remove unnecessary local permission-changing commands from the human setup runbook.
+- Add verified Runtime login procedures for Gemini and Grok, and distinguish their CLI credentials from Hermes Commander provider configuration.
+- Document the Herdr client detach shortcut without stopping Runtime or its agents.
+- Clarify that Hermes provider credentials are separate from CLI logins, explain Gemini, Grok, fallbacks, and Mixture of Agents, and keep browser login outside Herdr's container clipboard.
+- Remove unnecessary local permission-changing commands from the activation reference.
+- Add the required Mattermost team-membership command before project-channel membership in the local runbook.
+- Document the local Mattermost human, listener, Commander, and project-agent setup, including least-privileged bot-form choices, channel collaboration boundaries, capability settings, token-file contents, required memberships, and non-secret ID lookup.
+- Separate Runtime repository cloning, Git authentication, and Mattermost enrollment in the local test runbook. State that enrollment maps an existing checkout and never clones or pushes.
+- State explicitly that enrollment is a one-time backend command, not a Mattermost action or local configuration edit.
+- Document Runtime-persistent GitHub deploy-key setup and Git author identity before agent commit and push tests.
+- Document recovery from a stale one-off Runtime container that blocks the Codex callback port.
+- Make the chat listener wait for healthy Runtime and mount the private Herdr socket required by its local-dispatch preflight.
+- Preserve workflow source integrity across Mattermost root-thread reply activity by distinguishing real post edits from `update_at` reply timestamps.
+- Make the Runtime authentication and project-enrollment instructions work from a remote Docker host over SSH.
+- Make `@commander` the default public coordination handle and `@agent` the project-workflow handle.
+- Rename public handle configuration and service keywords to `COMMANDER_HANDLE`/`commander_handle` and `AGENT_HANDLE`/`agent_handle`.
+- Pin Runtime client provenance to the retained merged revision with matching hashes. Split CI into Client Runtime, Chat Backend, and root Compose contract steps.
+
 - Package checksum-pinned AgentsView v0.44.0 in the Debian Runtime with usage-only archival, four scoped provider roots, no remote source or UI listener, and synthetic offline component evidence.
 - Add a separate checksum-pinned Commander MCP process exposing only calendar-range `get_usage`; validate timezones and distinguish reported zero, estimated, partial, mixed, and unavailable costs without exposing sessions or transcripts.
 - Require the same active, human-verified Commander request capability before reporting usage, and replace persisted AgentsView config on startup. Per-request config comparison and canonical root checks reject post-start remote hosts, extra roots, listeners, and root symlinks.

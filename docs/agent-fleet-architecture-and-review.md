@@ -111,7 +111,7 @@ The [Agents plugin](https://github.com/mattermost/mattermost-plugin-agents) is n
 Mattermost remains chat transport/UI; MCP integration is not required in a chat plugin.
 Its [commercial capability gates](https://github.com/mattermost/mattermost-plugin-agents/blob/master/enterprise/license.go) restrict multi-provider, external MCP, and state-changing tools.
 Its repository includes commercially licensed code despite its Apache label.
-Kirei's external Commander/Worker bots provide the selected path without promising free plugin MCP capabilities.
+Kirei's external Commander/Agent bots provide the selected path without promising free plugin MCP capabilities.
 The [LiteLLM/MCP direction](https://github.com/swiknaba/digitaltwin/issues/4) belongs after Phase 2; it adds no Phase 0/1/2 requirements.
 Keep current agent/Commander tool interfaces until that later design.
 Audit optional plugins individually. Hermes remains a candidate, not an adopted dependency.
@@ -344,14 +344,14 @@ Mobile thread navigation and reply placement must pass on our own builds.
 
 The deployment uses two Mattermost bot accounts:
 
-- `@agent` is Commander.
-- `@worker` handles project workflow phases.
+- `@commander` is Commander.
+- `@agent` handles project workflow phases.
 
 The exact account handles remain configurable for each deployment.
-The default handles are `agent` and `worker` when those names are available.
+The default handles are `commander` and `agent` when those names are available.
 An operator selects unique handles when multiple fleets use one Mattermost instance.
 
-Kirei holds the Mattermost credentials and posts under the configured Agent or Worker bot identity.
+Kirei holds the Mattermost credentials and posts under the configured Commander or Agent bot identity.
 Writer and Reviewer send interview questions and progress through a session-bound callback to Kirei's durable outbox.
 The callback uses the Runtime's Digitaltwin client and private Kirei endpoint.
 Kirei derives the channel, thread, active role, and bot identity from the verified session mapping.
@@ -401,7 +401,7 @@ The operator can use a personal account or a bot account.
 
 ## 13. Starting and routing project work
 
-`@worker start` in a thread root post starts a fresh writer and reviewer workflow for that thread.
+`@agent start` in a thread root post starts a fresh writer and reviewer workflow for that thread.
 The verified human command routes through Commander to create fresh underlying agent sessions and bind them to the verified thread identity.
 This is the human authorization for the requested workflow; no second start approval or separate Commander-chat interaction is required.
 
@@ -411,7 +411,7 @@ The owner must use a new thread for a new workflow.
 Later human messages in an activated thread route to that workflow's active phase without another mention.
 The active phase determines whether the writer or reviewer receives the message.
 
-Ordinary Worker messages outside an activated thread require an explicit `@worker start` in a new thread root post.
+Ordinary Agent messages outside an activated thread require an explicit `@agent start` in a new thread root post.
 The system does not infer a workflow from an idle thread or an unactivated channel message.
 Commander start requests can use an existing verified thread in the selected project channel.
 Commander-created threads are an optional Phase 0 convenience when the API supports straightforward, verified creation with reconciliation.
@@ -420,12 +420,12 @@ An uncertain creation result requires reconciliation before another creation or 
 If this integration is complex, keep the existing-thread path and defer creation to the [Phase 1 roadmap](phase-1-voice-commander.md).
 Omitting this convenience does not block Phase 0 acceptance.
 
-The owner explicitly closes a delivered workflow with `@worker finish` in its thread.
+The owner explicitly closes a delivered workflow with `@agent finish` in its thread.
 The command stops its Herdr sessions, records the outcome, and archives the session metadata.
 It does not close a workflow from elapsed time, channel silence, or an idle Herdr state.
 
-`@worker cancel` explicitly terminates an incomplete workflow.
-`@worker pause` and `@worker resume` remain thread-scoped and do not bypass workflow gates.
+`@agent cancel` explicitly terminates an incomplete workflow.
+`@agent pause` and `@agent resume` remain thread-scoped and do not bypass workflow gates.
 Pause immediately blocks new step dispatches and lets the current dispatched step finish.
 The control plane still accepts verified callbacks and records that step's result, revision, phase, and blockers.
 It does not dispatch the next step while paused.
@@ -493,7 +493,7 @@ Its review scope is the diff from a frozen default-branch merge-base to that com
 The review records both commits so later default-branch changes cannot move its scope.
 It also checks the clean worktree and review diff before accepting the revision.
 
-The contextual approval command is `@worker approve`.
+The contextual approval command is `@agent approve`.
 The command is unambiguous because the verified thread identifies one workflow.
 Review findings and change requests use normal messages in that workflow thread.
 The system does not define a separate rejection command.
@@ -549,7 +549,7 @@ The worker asks an authorized human in Mattermost how to continue.
 
 ## 17. Commander
 
-`@agent` routes messages from any channel to one logical Commander session.
+`@commander` routes messages from any channel to one logical Commander session.
 Commander receives the source channel context with each request.
 Commander chat is the primary interface. Project threads support detailed updates and fine-tuning.
 Follow-ups continue the relevant existing workflow and Writer conversation, including parallel
@@ -632,7 +632,7 @@ remain authoritative. Completed replies are idempotent; a queue acknowledgment i
 
 Any channel member can create ordinary work and send project instructions.
 Peer agents can send instructions to existing workflows through explicit Mattermost mentions.
-A bot cannot run `@worker start` to create a workflow or independently managed session.
+A bot cannot run `@agent start` to create a workflow or independently managed session.
 A request for new work requires human approval and creation through Commander under §17.
 
 Mattermost owns user administration, team/channel access, and channel membership.
@@ -789,8 +789,8 @@ Phase 0 is acceptable when all criteria in this section pass.
 8. Each of the four supported agent CLIs starts through Herdr.
 9. The operator can attach to Herdr through the private tailnet.
 10. The public internet cannot connect directly to the runtime SSH port.
-11. `@agent` messages from any channel reach Commander with source channel context.
-12. `@worker start` creates fresh writer and reviewer sessions for the mapped repository.
+11. `@commander` messages from any channel reach Commander with source channel context.
+12. `@agent start` creates fresh writer and reviewer sessions for the mapped repository.
 13. A second start in an active thread is rejected without creating sessions; a new thread starts fresh sessions.
 14. A verified channel mapping resolves its explicitly enrolled repository slug under the configured workspace root.
 15. A missing repository offers clone, private creation, and stop choices.

@@ -175,7 +175,7 @@ module Services
 
       sig { params(d: Messaging::Dto::VerifiedDelivery, id: String, text: String, kind: String).void }
       private def acknowledge(d, id, text, kind)
-        message = Messaging::Dto::OutgoingMessage.new(channel_id: d.channel_id, thread_id: d.thread_id, bot: Messaging::Dto::Bot::Agent,
+        message = Messaging::Dto::OutgoingMessage.new(channel_id: d.channel_id, thread_id: d.thread_id, bot: Messaging::Dto::Bot::Commander,
                                                       role: Messaging::Dto::SpeakerRole::Commander, body: text, key: "commander:#{id}:#{kind}")
         Platform::Unwrap.call(@outbox.enqueue(message: message))
       end

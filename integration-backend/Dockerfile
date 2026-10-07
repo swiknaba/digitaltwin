@@ -16,7 +16,7 @@ COPY . .
 CMD ["bundle", "exec", "srb", "tc"]
 
 FROM ruby:4.0.7-alpine
-RUN apk add --no-cache libpq=18.6-r0 liburing=2.14-r0 git=2.54.0-r0 bash=5.3.9-r1 gcompat=1.1.0-r4 tzdata=2026d-r0 && addgroup -g 10001 digitaltwin && adduser -D -u 10001 -G digitaltwin digitaltwin
+RUN apk add --no-cache libpq=18.6-r0 liburing=2.14-r0 git=2.54.0-r0 bash=5.3.9-r1 gcompat=1.1.0-r4 tzdata=2026e-r0 && addgroup -g 10001 digitaltwin && adduser -D -u 10001 -G digitaltwin digitaltwin
 WORKDIR /app
 COPY --from=dependencies /usr/local/bundle /usr/local/bundle
 COPY --chown=10001:10001 . .

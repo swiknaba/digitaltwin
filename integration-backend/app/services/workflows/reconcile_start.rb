@@ -16,11 +16,11 @@ module Services
       Outcome = T.type_alias { Kirei::Services::Result[State] }
 
       sig do
-        params(source: Messaging::VerifyHumanSource, api: Adapters::Mattermost::Api, bot_id: String, agent_handle: String, directory: Domains::Projects::Directory,
+        params(source: Messaging::VerifyHumanSource, api: Adapters::Mattermost::Api, bot_id: String, commander_handle: String, directory: Domains::Projects::Directory,
                requests: Domains::Workflows::Requests, inbox: Messaging::Inbox, outbox: Messaging::Outbox, audit: Platform::Audit::Log,
                jobs: Jobs::Store).void
       end
-      def initialize(source:, api:, bot_id:, agent_handle:, directory: Domains::Projects::Directory.new, requests: Domains::Workflows::Requests.new,
+      def initialize(source:, api:, bot_id:, commander_handle:, directory: Domains::Projects::Directory.new, requests: Domains::Workflows::Requests.new,
                      inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, audit: Platform::Audit::Log.new, jobs: Jobs::Store.new)
         @source = source
         @api = api
@@ -32,7 +32,7 @@ module Services
         @outbox = outbox
         @audit = audit
         @jobs = jobs
-        @agent = agent_handle
+        @commander = commander_handle
       end
 
       sig { params(request_id: String, inbox_id: String, thread_id: String).returns(Outcome) }
@@ -57,7 +57,7 @@ module Services
 
         delivery = verified.result
         original = T.must(@inbox.find(id: request.inbox_id))
-        unless delivery.actor.user_id == original.user_id && delivery.body == "@#{@agent} recover-start #{id} #{thread_id}"
+        unless delivery.actor.user_id == original.user_id && delivery.body == "@#{@commander} recover-start #{id} #{thread_id}"
           return failure(Code::RecoveryNotAuthorized, "Exact original-human thread recovery required")
         end
 
@@ -83,7 +83,7 @@ module Services
           @audit.record(event_key: key, action: "verified_thread_reconciliation",
                         details: Domains::Workflows::Dto::ThreadRecoveryAudit.new(inbox_id: inbox_id, request_id: id, thread_id: thread_id))
           message = Messaging::Dto::OutgoingMessage.new(
-            channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: Messaging::Dto::Bot::Agent, role: Messaging::Dto::SpeakerRole::Commander,
+            channel_id: delivery.channel_id, thread_id: delivery.thread_id, bot: Messaging::Dto::Bot::Agent, role: Messaging::Dto::SpeakerRole::Writer,
             body: "Start #{id} reconciled to verified thread #{thread_id}; continuation queued without recreating the thread.", key: key
           )
           # A failed notice raises and rolls back the reconciliation, as before.

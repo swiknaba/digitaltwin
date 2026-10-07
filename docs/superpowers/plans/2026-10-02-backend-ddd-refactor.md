@@ -218,7 +218,7 @@ Each `services/*` file is one class with `call`. A use case that is also a job h
     - `Adapters::Git::Evidence` keeps today's checks with typed inputs: a `Dto::WorktreeRef(worktree_path, branch)` and commit strings in place of workflow hashes.
     - `Adapters::Git::Worktrees` with `#top_level`, `#remote`, `#add`, `#branch`, `#common_dir`.
   - `Adapters::Credentials::FileStore#write(name:, token:) -> String path`, `#read(name:) -> String`, `#delete(name:) -> void`.
-  - `Services::Commands::Parser#call(body: String, agent_handle:, worker_handle:) -> T.nilable(Commands::Dto::Command)`.
+  - `Services::Commands::Parser#call(body: String, commander_handle:, agent_handle:) -> T.nilable(Commands::Dto::Command)`.
     - `Command` is a union of `T::Struct`s: `RecoverStart(request_id, thread_id)`, `RecoverSession(operation_id, pane_id)`, `RecoverFollowup(followup_id: Integer, outcome: FollowupOutcome)`, `RecoverCommander(request_id)`, `Approve(workflow_id, gate, commit)`, `Route(workflow_id, text)`, `WorkerCommand(action: WorkerAction)`.
     - `WorkerAction` has `start approve pause resume finish cancel`.
     - The parser holds every regex now in `commander/services.rb`, `routing.rb` and `mattermost/router.rb`, unchanged.

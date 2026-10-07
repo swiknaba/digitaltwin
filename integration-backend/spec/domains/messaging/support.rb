@@ -9,7 +9,7 @@ module MessagingFixtures
                                                   post_revision: revision, body: body, root_post: root_post)
   end
 
-  def outgoing_message(key: "response", body: "hello", thread_id: "r" * 26, bot: Domains::Messaging::Dto::Bot::Worker,
+  def outgoing_message(key: "response", body: "hello", thread_id: "r" * 26, bot: Domains::Messaging::Dto::Bot::Agent,
                        role: Domains::Messaging::Dto::SpeakerRole::Writer)
     Domains::Messaging::Dto::OutgoingMessage.new(channel_id: "c" * 26, thread_id: thread_id, bot: bot, role: role, body: body, key: key)
   end

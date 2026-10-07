@@ -16,11 +16,11 @@ module Services
       sig do
         params(source: Domains::Messaging::VerifyHumanSource, reconcile_start: Workflows::ReconcileStart, reconcile_operation: Sessions::ReconcileOperation,
                reconcile_followup: ReconcileFollowup, recover: T.nilable(Recover), ingest_prompt: T.nilable(IngestPrompt),
-               handle_workflow_prompt: HandleWorkflowPrompt, advance_approval: Workflows::AdvanceApproval, agent_handle: String, worker_handle: String,
+               handle_workflow_prompt: HandleWorkflowPrompt, advance_approval: Workflows::AdvanceApproval, commander_handle: String, agent_handle: String,
                parser: ::Services::Commands::Parser).void
       end
       def initialize(source:, reconcile_start:, reconcile_operation:, reconcile_followup:, recover:, ingest_prompt:, handle_workflow_prompt:,
-                     advance_approval:, agent_handle:, worker_handle:, parser: ::Services::Commands::Parser.new)
+                     advance_approval:, commander_handle:, agent_handle:, parser: ::Services::Commands::Parser.new)
         @source = source
         @reconcile_start = reconcile_start
         @reconcile_operation = reconcile_operation
@@ -29,8 +29,8 @@ module Services
         @ingest_prompt = ingest_prompt
         @handle_workflow_prompt = handle_workflow_prompt
         @advance_approval = advance_approval
+        @commander_handle = commander_handle
         @agent_handle = agent_handle
-        @worker_handle = worker_handle
         @parser = parser
       end
 
@@ -74,7 +74,7 @@ module Services
           true
         when Commands::Approve, Commands::Route, Commands::MalformedDirective
           false
-        when Commands::WorkerCommand, NilClass
+        when Commands::AgentCommand, NilClass
           ingest = @ingest_prompt
           return false unless ingest
 
@@ -88,7 +88,7 @@ module Services
       sig { params(inbox_id: String).returns(T.nilable(Commands::Command)) }
       private def parse(inbox_id)
         body = Platform::Unwrap.call(@source.call(inbox_id: inbox_id)).body
-        @parser.call(body: body, agent_handle: @agent_handle, worker_handle: @worker_handle)
+        @parser.call(body: body, commander_handle: @commander_handle, agent_handle: @agent_handle)
       end
     end
   end

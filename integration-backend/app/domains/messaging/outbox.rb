@@ -10,8 +10,8 @@ module Domains
 
       sig { params(message: Dto::OutgoingMessage).returns(Kirei::Services::Result[String]) }
       def enqueue(message:)
-        if message.bot == Dto::Bot::Worker && (message.thread_id.to_s.empty? || ![Dto::SpeakerRole::Writer, Dto::SpeakerRole::Reviewer].include?(message.role))
-          return failure(Dto::ErrorCode::WorkerMessageRequiresThreadAndRole, "Worker messages require thread and role")
+        if message.bot == Dto::Bot::Agent && (message.thread_id.to_s.empty? || ![Dto::SpeakerRole::Writer, Dto::SpeakerRole::Reviewer].include?(message.role))
+          return failure(Dto::ErrorCode::AgentMessageRequiresThreadAndRole, "Agent messages require thread and role")
         end
 
         Entities::OutboxMessage.db.transaction do

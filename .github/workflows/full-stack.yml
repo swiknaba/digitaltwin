@@ -22,8 +22,12 @@ jobs:
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Stage pinned clients
         run: scripts/prepare-callback-context
-      - name: Fast source contract checks
-        run: python3 -m unittest discover -s tests -p 'test_*contract.py' -v
+      - name: Client Runtime contract
+        run: python3 -m unittest tests.test_client_contract -v
+      - name: Chat Backend contract
+        run: python3 -m unittest discover -s chat-backend/tests -v
+      - name: Root Compose contract
+        run: python3 -m unittest tests.test_root_contract -v
       - name: Cache backend build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:

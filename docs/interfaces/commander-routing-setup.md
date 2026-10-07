@@ -18,10 +18,10 @@ Lost effect receipts now have bounded recovery:
 
 | Exact human command in Commander chat | Evidence checked; no external action replayed |
 | --- | --- |
-| `@agent recover-followup ID delivered` or `discard` | Original human, destination membership, no live send lease, exact settled Writer conversation/generation. This records a human outcome, not an automatic socket receipt. Discard releases later queued instructions; a fresh human instruction is needed for any new send. |
-| `@agent recover-start REQUEST_ID THREAD_ID` | Original human; actual bot/channel/root/title/request correlation, undeleted root, no live creation lease. Continue against that root without posting another. |
-| `@agent recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Commander-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
-| `@agent recover-commander REQUEST_ID` | Original human, settled same Commander and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
+| `@commander recover-followup ID delivered` or `discard` | Original human, destination membership, no live send lease, exact settled Writer conversation/generation. This records a human outcome, not an automatic socket receipt. Discard releases later queued instructions; a fresh human instruction is needed for any new send. |
+| `@commander recover-start REQUEST_ID THREAD_ID` | Original human; actual bot/channel/root/title/request correlation, undeleted root, no live creation lease. Continue against that root without posting another. |
+| `@commander recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Commander-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
+| `@commander recover-commander REQUEST_ID` | Original human, settled same Commander and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
 
 IDs appear in queue/reservation receipts. Recovery is not proof of a send when the user selects
 `delivered`; the audit labels that as human confirmation. A missing conversation/receipt remains
@@ -42,12 +42,12 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    has neither Git workspaces nor the Herdr socket. Build clients with the checksum staging script.
 2. Provide existing authenticated chat identities through read-only token-file mounts. Listener
    needs `MATTERMOST_URL`, `MATTERMOST_LISTENER_TOKEN_FILE`, `MATTERMOST_LOCAL_BOT_IDS`,
-   and `MATTERMOST_CHANNEL_IDS` for the direct worker/project path. Optional
+   and `MATTERMOST_CHANNEL_IDS` for the project Agent path. Optional
    Commander routing additionally needs `COMMANDER_CHANNEL_ID` included in that
    monitored channel list.
-   Worker additionally needs `MATTERMOST_WORKER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE`,
+   The backend worker additionally needs `MATTERMOST_COMMANDER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE`,
    both corresponding `*_BOT_ID` values, and the same local-bot IDs. Web's request-bound MCP
-   services need the listener/Worker token-file references, Worker bot ID and chat/local-bot settings
+   services need the listener, Commander, and Agent token-file references, their bot IDs, and chat/local-bot settings
    for authoritative REST checks. Optional peers use `MATTERMOST_PEER_BOT_IDS`. No bot token
    goes to Runtime. `CHAT_VALIDATION_MODE=1` remains disposable transport validation and does not
    enable Herdr effects. The separate [local activation runbook](local-commander-activation.md)
@@ -56,7 +56,10 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    required when creating workflows or running review; an optional Commander
    entry enables Commander routing. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). The Commander entry must use
    `"cli": "hermes"`. Writer/Reviewer must differ in provider
-   and family. Use the actual already authorized models/login setup in Runtime; do not pass provider
+   and family. `family` means model family. `model` records the selected model; it does not configure the CLI.
+   Select the actual model through CLI settings or supported `launch_args` before activation. Chat cannot currently override it.
+   See the [role field reference](local-commander-activation.md#configure-the-role-agents).
+   Use the actual already authorized models/login setup in Runtime; do not pass provider
    credentials as launch arguments. The persistent Commander directory is `/workspace/commander`.
    Hermes is the harness; it does not fix Commander to Gemini or any other model. Its optional xAI Grok provider is
    supported natively as `provider: xai` (alias `grok`) with an existing `XAI_API_KEY`, or as

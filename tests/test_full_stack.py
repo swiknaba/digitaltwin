@@ -108,9 +108,11 @@ class FullStackChatTest(core.DisposableComposeTest):
         self.auth_volume = self.project + "_e2e-auth"
         environment = {
             "MATTERMOST_URL": "http://mattermost:8065",
+            "COMMANDER_HANDLE": "commander",
+            "AGENT_HANDLE": "agent",
             "MATTERMOST_LISTENER_TOKEN_FILE": "/auth/listener.token",
+            "MATTERMOST_COMMANDER_TOKEN_FILE": "/auth/commander.token",
             "MATTERMOST_AGENT_TOKEN_FILE": "/auth/agent.token",
-            "MATTERMOST_WORKER_TOKEN_FILE": "/auth/worker.token",
             "ROLE_CONFIG_FILE": "/auth/roles.json",
         }
         override = {
@@ -139,8 +141,8 @@ class FullStackChatTest(core.DisposableComposeTest):
         self.outsider, self.outsider_token = self.create_user("fixture-outsider")
         bots = {}
         tokens = {"listener": self.admin_token}
-        for role in ["agent", "worker"]:
-            bot, _ = self.request("POST", "/bots", {"username": role, "display_name": "Commander Shepard" if role == "agent" else "Fixture Worker"}, self.admin_token, 201)
+        for role, username in {"commander": "commander", "agent": "agent"}.items():
+            bot, _ = self.request("POST", "/bots", {"username": username, "display_name": "Commander" if role == "commander" else "Agent"}, self.admin_token, 201)
             bots[role] = bot["user_id"]
             credential, _ = self.request("POST", "/users/" + bot["user_id"] + "/tokens", {"description": "Disposable integration fixture"}, self.admin_token, 200)
             tokens[role] = credential["token"]
@@ -160,7 +162,7 @@ class FullStackChatTest(core.DisposableComposeTest):
             for post in initial["posts"].values():
                 self.request("DELETE", "/posts/" + post["id"], token=self.admin_token)
         environment.update({"MATTERMOST_LOCAL_BOT_IDS": ",".join(bots.values()), "MATTERMOST_CHANNEL_IDS": ",".join(self.channels),
-                            "COMMANDER_CHANNEL_ID": self.channels[0], "MATTERMOST_AGENT_BOT_ID": bots["agent"], "MATTERMOST_WORKER_BOT_ID": bots["worker"]})
+                            "COMMANDER_CHANNEL_ID": self.channels[0], "MATTERMOST_COMMANDER_BOT_ID": bots["commander"], "MATTERMOST_AGENT_BOT_ID": bots["agent"]})
         for service in ["backend-web", "backend-worker", "backend-chat-listener"]:
             override["services"][service]["environment"].update(environment)
         path.write_text(json.dumps(override))
@@ -172,6 +174,8 @@ class FullStackChatTest(core.DisposableComposeTest):
         self.base[2:2] = ["--profile", "chat-validation"]
         self.compose(["up", "-d", "--no-build", "--wait", "--wait-timeout", "120", "backend-web", "backend-worker", "backend-chat-listener"], timeout=180)
         self.refresh_addresses()
+        self.commander_id = bots["commander"]
+        self.commander_token = tokens["commander"]
         self.agent_id = bots["agent"]
         self.agent_token = tokens["agent"]
 
@@ -373,16 +377,16 @@ print(json.dumps(observations))
         self.request("POST", "/posts", {"channel_id": self.channels[0], "message": "E2E_MESSAGE=forbidden"}, self.outsider_token, 403)
         roots = []
         for index, channel in enumerate(self.channels):
-            root, _ = self.request("POST", "/posts", {"channel_id": channel, "message": "@agent E2E_MESSAGE=bot-forbidden"}, self.agent_token, 201)
+            root, _ = self.request("POST", "/posts", {"channel_id": channel, "message": "@commander E2E_MESSAGE=bot-forbidden"}, self.commander_token, 201)
             roots.append(root["id"])
         posts = []
         for index, channel in enumerate(self.channels):
-            post, _ = self.request("POST", "/posts", {"channel_id": channel, "root_id": roots[index], "message": "@agent E2E_MESSAGE=chat-" + str(index)}, self.human_token, 201)
+            post, _ = self.request("POST", "/posts", {"channel_id": channel, "root_id": roots[index], "message": "@commander E2E_MESSAGE=chat-" + str(index)}, self.human_token, 201)
             posts.append(post["id"])
         for index, channel in enumerate(self.channels):
             replies = self.poll(lambda: self.reply_for("chat-" + str(index), channel), "chat reply did not reach real Mattermost")
             self.assertEqual(len(replies), 1)
-            self.assertEqual((replies[0]["root_id"], replies[0]["user_id"]), (roots[index], self.agent_id))
+            self.assertEqual((replies[0]["root_id"], replies[0]["user_id"]), (roots[index], self.commander_id))
             self.assertFalse(self.reply_for("chat-" + str(index), self.channels[1 - index]))
         before = self.poll(lambda: [row for row in self.effects() if row["request_id"]], "chat prompts did not reach agent")
         self.assertEqual({row["nonce"] for row in before}, {"chat-0", "chat-1"})
@@ -402,7 +406,7 @@ print(json.dumps(observations))
         self.assertEqual([row for row in self.effects() if row["request_id"]], before)
         for index, channel in enumerate(self.channels):
             self.assertEqual(len(self.reply_for("chat-" + str(index), channel)), 1)
-        followup, _ = self.request("POST", "/posts", {"channel_id": self.channels[0], "root_id": roots[0], "message": "@agent E2E_MESSAGE=after-restart"}, self.human_token, 201)
+        followup, _ = self.request("POST", "/posts", {"channel_id": self.channels[0], "root_id": roots[0], "message": "@commander E2E_MESSAGE=after-restart"}, self.human_token, 201)
         self.poll(lambda: self.reply_for("after-restart", self.channels[0]), "restart lost chat routing")
         after = self.poll(lambda: [row for row in self.effects() if row["nonce"] == "after-restart"], "restart prompt did not reach existing agent")
         self.assertEqual(len(after), 1)
