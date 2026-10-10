@@ -49,7 +49,7 @@ module Adapters
         raise ArgumentError,
               "Cross-channel or non-root thread" unless root.id == thread && root.channel_id == channel_id && (root_root_id.nil? || root_root_id.empty?)
 
-        revision = revision(post)
+        revision = source_revision(post)
         revision(root)
         raise ArgumentError, "Deleted thread root" unless root.delete_at.zero?
         raise ArgumentError, "Deleted post" if event_kind != EventKind::PostDeleted && !post.delete_at.zero?
@@ -78,6 +78,13 @@ module Adapters
       sig { params(post: Dto::Post).returns(Integer) }
       def revision(post)
         [post.create_at, post.update_at, post.delete_at].max
+      end
+
+      # Mattermost advances a root post's UpdateAt when its thread receives a
+      # reply. Source integrity must reject human edits, not normal replies.
+      sig { params(post: Dto::Post).returns(Integer) }
+      def source_revision(post)
+        [post.create_at, post.edit_at, post.delete_at].max
       end
 
       sig { params(value: String).returns(String) }

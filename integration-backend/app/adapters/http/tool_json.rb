@@ -21,6 +21,8 @@ module Adapters
           response.workflows.map { |workflow| workflow(workflow) }
         when Responses::ContextList
           response.entries.map { |entry| { "inbox_id" => entry.inbox_id, "channel_id" => entry.channel_id, "thread_id" => entry.thread_id, "text" => entry.text } }
+        when Responses::WorkflowStatusList
+          response.workflows.map { |entry| status(entry) }
         when Responses::StartReceipt
           { "request_id" => response.request_id }
         when Responses::RouteOutcome
@@ -37,6 +39,13 @@ module Adapters
       private_class_method def self.workflow(workflow)
         { "id" => workflow.id, "project_id" => workflow.project_id, "channel_id" => workflow.channel_id, "thread_id" => workflow.thread_id,
           "phase" => workflow.phase.serialize, "version" => workflow.version, "artifacts" => workflow.artifacts.serialize, "source_inbox_id" => workflow.source_inbox_id }
+      end
+
+      sig { params(entry: Responses::WorkflowStatus).returns(JsonObject) }
+      private_class_method def self.status(entry)
+        { "project_id" => entry.project_id, "project_slug" => entry.project_slug, "workflow_id" => entry.workflow_id, "thread_id" => entry.thread_id,
+          "phase" => entry.phase, "wait_reason" => entry.wait_reason, "session_state" => entry.session_state, "last_verified_at" => entry.last_verified_at,
+          "review_state" => entry.review_state, "approval_state" => entry.approval_state, "delivery_state" => entry.delivery_state, "artifact_links" => entry.artifact_links }
       end
 
       # Times stay Time values: the JSON encoder writes them as Time#to_s.

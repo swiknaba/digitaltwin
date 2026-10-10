@@ -3,7 +3,7 @@
 
 module Services
   module Workflows
-    # Handles workflow.approve: a contextual `@worker approve` in the workflow
+    # Handles workflow.approve: a contextual `@agent approve` by default in the workflow
     # thread approves the artifact of the current human approval gate at the
     # version the router saw, then advances the workflow.
     class ApproveCurrent

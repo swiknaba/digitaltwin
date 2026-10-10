@@ -1,4 +1,8 @@
 
+## 2026-10-06
+
+- Added a proposed task-first setup and daily-use specification. It keeps Commander central while allowing direct worker control, removes normal channel and start-command setup, and defines shared-boundary and observe-and-act behavior for normal engineering work.
+
 ## 2026-09-30
 
 - Added a reviewable Phase 0 implementation plan based on spec commit `6129059`, with interface validation gates and all 32 acceptance criteria mapped to evidence.
@@ -201,3 +205,91 @@
 - Reserve Commander Herdr workspaces at `/workspace/commander`, independently of worker worktrees.
 - Create that directory during Runtime startup and retain it through Runtime restart checks.
 - Add the persistent Commander memory scaffold. Provider dispatch remains disabled pending live operator evidence.
+
+## 2026-10-04 — Commander workflow status
+
+- Add the request-bound `workflow_status` MCP operation. It filters workflows by authenticated channel access and reports durable workflow, review, approval, artifact, and last-verified session state without asserting live Runtime or delivery success.
+
+## 2026-10-04 — Migration annotation stability
+
+- Synchronize generated entity schema annotations and verify that the clean migration entrypoint does not rewrite them.
+
+## 2026-10-04 — Commander context window
+
+- Extend the bounded readable Commander context from 10 to 50 accessible recent messages for project and task routing.
+## 2026-10-04 — Durable Commander memory
+
+- Add bounded, source-attributed global and project Commander memory with optimistic corrections, idempotent requests, scope serialization, and atomic local Markdown rendering.
+- Add the durable memory schema and clean-migration coverage. Optional Git synchronization remains unimplemented and disabled because no configured repository or operator credentials are available.
+
+## 2026-10-04 — Commander Hermes architecture
+
+- Revise the Commander specification and implementation plan to use Hermes-native Markdown memory, SQLite history, and skills.
+- Plan removal of the Kirei Commander memory subsystem with a forward migration. Preserve Kirei authority for orchestration and verified approvals.
+- Use the latest Hermes stable release; upstream publishes dated stable tags, not minor-line tags. Initialize a local Commander Git repository for portable files only; defer automated commits and remote backup.
+- Install Hermes in the Runtime final image stage and initialize its persistent Commander workspace as a local repository. Ignore SQLite history, credentials, and runtime state.
+- Remove the Kirei Commander-memory implementation and add migration 010 to drop schema-9 memory tables without rewriting migration history.
+# 2026-10-04
+
+- Align Commander attribution prompt and tool-response contracts with verified routing metadata.
+- Serialize bounded concurrent Commander-memory writes through the scope lock.
+
+## 2026-10-04 — Hermes Commander completion
+
+- Require Hermes for Commander session reservation, dispatch, and recovery; keep Writer and Reviewer profiles independent.
+- Initialize Hermes with the request-scoped Kirei MCP allowlist and preserve Commander instructions, native Markdown memory, and skills in local Git.
+- Stop migration 010 when legacy Commander memory has data. Require export or explicit disposal before removal.
+- Add typed reversible-migration DSL support and deterministic Runtime persistence, Git-ignore, and backend migration coverage.
+
+## 2026-10-04 — Wagglebot reference setup
+
+- Reference Wagglebot's shared worker setup from Commander documentation.
+- Keep Commander role instructions and native Hermes state local until Wagglebot supports Hermes provisioning.
+- Configure Hermes to read the provisioned shared library at `/home/runtime/.agents/skills`, with deterministic Runtime image coverage.
+- Hash underscore-bearing Kirei session aliases before starting Herdr, whose agent names accept hyphens but not underscores.
+- Keep the Wagglebot shared-worker baseline product-agnostic; Commander-local guidance now uses only its supplied coordination tools rather than backend implementation names.
+- Forward the approved optional company subdirectory through `runtime-provision connect`. Keep the Runtime pin at 0.3.0 until a Wagglebot release fixes its own pinned-runtime install path.
+- Remove the legacy tracked Commander Markdown-memory mirror; Hermes-native profile memory is the Commander knowledge source. Keep project `.agents/memory.md` only as task-scoped repository context.
+
+## 2026-10-05 — Herdr accepted-start readiness
+
+- Retry a redacted transient `agent.get` rejection while polling an already accepted Herdr start. Never repeat the start effect; retain the readiness deadline and fail-closed behavior.
+
+## 2026-10-06 — AgentsView usage implementation
+
+- Replace pre-deployment Mattermost delivery identities everywhere with `Commander` and `Agent`. Use `commander.token` and `agent.token`, plus matching `MATTERMOST_COMMANDER_*` and `MATTERMOST_AGENT_*` settings.
+- Enable disposable bot-account and personal-access-token provisioning in the default local chat configuration. Rewrite the human local-test runbook as one ordered setup procedure.
+- Fix the local Compose project name as `digitaltwin`, and reuse images during ordinary starts. Rebuilds remove only superseded Digital Twin dangling images.
+- Use `agent` consistently for product-facing local-core and workflow terminology.
+- Use `root` as the documented local Mattermost administrator and listener account. Keep runbook commands single-line and shell-safe.
+- Simplify local dispatch mapping: derive bot-author IDs from the named delivery bots and mount the fixed ignored local directory.
+- Clarify role setup: CLI settings select models, role fields record their identities, and model families enforce independent review.
+- Add concrete role examples for explicit model arguments, saved CLI settings, Hermes Commander, and review diversity.
+- Record the requested login-only harness setup and automatic Writer/Reviewer selection as a requirements draft.
+- Require harness model defaults at session start; remove operator-maintained model IDs from the proposed setup.
+- Supply the Mattermost address to all local dispatch processes and load the local mapping directly in the validation script.
+- Document interactive Runtime login and status checks for Codex and Claude, persistent login storage, and local Herdr terminal attachment.
+- Publish the Runtime Codex callback only on Mac loopback so standard interactive Codex login works from the local container.
+- Remove unnecessary local permission-changing commands from the human setup runbook.
+- Add verified Runtime login procedures for Gemini and Grok, and distinguish their CLI credentials from Hermes Commander provider configuration.
+- Document the Herdr client detach shortcut without stopping Runtime or its agents.
+- Clarify that Hermes provider credentials are separate from CLI logins, explain Gemini, Grok, fallbacks, and Mixture of Agents, and keep browser login outside Herdr's container clipboard.
+- Remove unnecessary local permission-changing commands from the activation reference.
+- Add the required Mattermost team-membership command before project-channel membership in the local runbook.
+- Document the local Mattermost human, listener, Commander, and project-agent setup, including least-privileged bot-form choices, channel collaboration boundaries, capability settings, token-file contents, required memberships, and non-secret ID lookup.
+- Separate Runtime repository cloning, Git authentication, and Mattermost enrollment in the local test runbook. State that enrollment maps an existing checkout and never clones or pushes.
+- State explicitly that enrollment is a one-time backend command, not a Mattermost action or local configuration edit.
+- Document Runtime-persistent GitHub deploy-key setup and Git author identity before agent commit and push tests.
+- Document recovery from a stale one-off Runtime container that blocks the Codex callback port.
+- Make the chat listener wait for healthy Runtime and mount the private Herdr socket required by its local-dispatch preflight.
+- Preserve workflow source integrity across Mattermost root-thread reply activity by distinguishing real post edits from `update_at` reply timestamps.
+- Make the Runtime authentication and project-enrollment instructions work from a remote Docker host over SSH.
+- Make `@commander` the default public coordination handle and `@agent` the project-workflow handle.
+- Rename public handle configuration and service keywords to `COMMANDER_HANDLE`/`commander_handle` and `AGENT_HANDLE`/`agent_handle`.
+- Pin Runtime client provenance to the retained merged revision with matching hashes. Split CI into Client Runtime, Chat Backend, and root Compose contract steps.
+
+- Package checksum-pinned AgentsView v0.44.0 in the Debian Runtime with usage-only archival, four scoped provider roots, no remote source or UI listener, and synthetic offline component evidence.
+- Add a separate checksum-pinned Commander MCP process exposing only calendar-range `get_usage`; validate timezones and distinguish reported zero, estimated, partial, mixed, and unavailable costs without exposing sessions or transcripts.
+- Require the same active, human-verified Commander request capability before reporting usage, and replace persisted AgentsView config on startup. Per-request config comparison and canonical root checks reject post-start remote hosts, extra roots, listeners, and root symlinks.
+- Exercise a synthetic recognized usage record containing transcript- and credential-like sentinels, and assert that neither reaches the usage response or local usage archive.
+- Run the backend's standard `Zeitwerk::Loader.eager_load_all` validation in `bin/check`. Split the MCP tool and AgentsView interfaces into matching files and package each standalone dependency with checksum verification. The Runtime fixture retries initial agent-start readiness and checks its packaged MCP bridge exposes only `get_usage`.

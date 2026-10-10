@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_revision": "fb32a32c98ea9d374c6a0751d1535cba163b1e78",
+  "source_revision": "e2e1de18e036643ecc7c397e7e61c11a7c99b007",
   "validation": "isolated_fixtures_passed_live_dispatch_gated",
   "files": {
     "digitaltwin": {
@@ -9,15 +9,43 @@
     },
     "digitaltwin-mcp": {
       "source": "integration-backend/bin/mcp",
-      "sha256": "542ca58fc306f0b46f7cc99bc9ef5040297324c70767e2ff3d1724fadeabf099"
+      "sha256": "57379a772e504fa0c6d5e74fbfbcd75b311efbaae15aabec0b9629d50b23b1a8"
     },
     "mcp.rb": {
       "source": "integration-backend/app/adapters/mcp/server.rb",
-      "sha256": "e4cfea5ff6390c684873093d5c79920a840e458abffd47d9cbef21593e19bd5c"
+      "sha256": "d0cf74e4ead5a290d051644cbe17e531f818bbcf1eff63d97a94740bdcc4bf67"
+    },
+    "server/tool_gateway.rb": {
+      "source": "integration-backend/app/adapters/mcp/server/tool_gateway.rb",
+      "sha256": "3ef88ed944f6564265d94a81564188aa6193dab5d3176232d16c09b850714e06"
     },
     "http_tools.rb": {
       "source": "integration-backend/app/adapters/mcp/http_tools.rb",
       "sha256": "633326e1207c318a58c236b5117cd4bae6318f44c409f9e697113b361d6be83d"
+    },
+    "agentsview_usage_response.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_response.rb",
+      "sha256": "f3c65b279d3a0fc2843372ae18d0e440343d57b22ef3cc017bbb688b543bfe1d"
+    },
+    "agentsview_usage_authorizer_interface.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_authorizer_interface.rb",
+      "sha256": "e2ee814d50053ffbd5aeb628dd80e38978debb9951cb110fa60d6b73f1c78248"
+    },
+    "agentsview_usage_authorizer.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_authorizer.rb",
+      "sha256": "71297d3ab9683d8ff0e0c9e55a1272e8d4f39e76e8b555d2c79bb3964b545567"
+    },
+    "agentsview_usage_runner_interface.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_runner_interface.rb",
+      "sha256": "4c77819b18322d9122a393e164818229bc5547793f3797e0d8862db4bd1de939"
+    },
+    "agentsview_usage_command.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_command.rb",
+      "sha256": "1ce2032618dd760c872492b2b61a80342e5890a9201f73c340cae42f907bd634"
+    },
+    "agentsview_usage_server.rb": {
+      "source": "integration-backend/app/adapters/mcp/agentsview_usage_server.rb",
+      "sha256": "c1e9379f7f0116941f3e74819bddab3684194c9d0154b0f6a96e8e01c0f74556"
     }
   }
 }

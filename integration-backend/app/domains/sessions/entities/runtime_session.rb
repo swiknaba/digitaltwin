@@ -17,9 +17,9 @@
 #  active              :boolean             not null
 #  last_verified_at    :timestamp without time zone, null
 #  state               :text                not null
+#  created_at          :timestamp without time zone, not null
 #  runtime_identity    :jsonb               null
 #  workspace_id        :text                null
-#  created_at          :timestamp without time zone, not null
 #
 
 module Domains

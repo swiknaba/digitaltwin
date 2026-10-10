@@ -1,7 +1,7 @@
 # Phase 1: Group Calls and AI Voice
 
 Phase 1 independently integrates self-hosted LiveKit with Mattermost for group calls and AI voice conversation.
-Voice uses the same Kirei Commander service, status registry, verified context, and operational tools as `@agent`.
+Voice uses the same Kirei Commander service, status registry, verified context, and operational tools as `@commander`.
 Commander keeps its operational/emergency role; ordinary coding retains Writer/Reviewer gates.
 Mattermost remains the chat UI and transport. No chat-plugin MCP integration is required.
 

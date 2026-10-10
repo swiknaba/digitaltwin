@@ -6,9 +6,9 @@
 # Table name: commander_requests
 #
 #  id                  :text                not null, primary key
-#  inbox_id            :text                not null, unique
+#  inbox_id            :text                not null
 #  session_id          :text                not null
-#  credential_digest   :text                not null, unique
+#  credential_digest   :text                not null
 #  expires_at          :timestamp without time zone, not null
 #  state               :text                not null
 #  reason              :text                null

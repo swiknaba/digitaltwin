@@ -77,6 +77,7 @@ module Services
         row = T.must(@followups.find(id: id))
         return row.status unless row.status == Status::Queued
         return Status::Queued unless @policy.dispatch_allowed?
+        return block(id, "Attribution reconciliation required") unless row.evidence.attribution
 
         w = T.must(@catalog.find(id: row.workflow_id))
         phase = w.phase
@@ -124,7 +125,7 @@ module Services
         begin
           raise IOError, "Dispatch lease lost" unless lease.begin_effect
 
-          @herdr.prompt(pane_id: session.pane_id, text: source.verified_delivery.body.sub(/\A@#{Regexp.escape(@handle)} route [a-zA-Z0-9_-]+\n/, ""))
+          @herdr.prompt(pane_id: session.pane_id, text: rendered_prompt(T.must(@followups.find(id: id)), source))
           @followups.mark(id: id, status: Status::Delivered, delivered_at: Time.now)
           Status::Delivered
         rescue StandardError
@@ -133,7 +134,7 @@ module Services
             message = Messaging::Dto::OutgoingMessage.new(
               channel_id: source.channel_id,
               thread_id: source.thread_id,
-              bot: Messaging::Dto::Bot::Agent,
+              bot: Messaging::Dto::Bot::Commander,
               role: Messaging::Dto::SpeakerRole::Commander,
               body: "Instruction #{id} has an uncertain send result. Inspect this conversation, then use @#{@handle} recover-followup #{id} delivered|discard. No automatic resend.",
               key: "followup:uncertain:#{id}"
@@ -142,6 +143,15 @@ module Services
           end
           Status::Uncertain
         end
+      end
+
+      sig { params(row: Followup, source: Messaging::Dto::InboxRecord).returns(String) }
+      private def rendered_prompt(row, source)
+        attribution = row.evidence.attribution
+        raise ArgumentError, "Missing trusted instruction attribution" unless attribution
+
+        "Verified instruction sender: #{attribution.effective_sender} (#{attribution.mode}); origin: #{attribution.origin_inbox_id}.\n\n" +
+          source.verified_delivery.body.sub(/\A@#{Regexp.escape(@handle)} route [a-zA-Z0-9_-]+\n/, "")
       end
 
       # The follow-up's Writer session of exactly its recorded generation.

@@ -1,12 +1,12 @@
-# Commander First Release Implementation Plan
+# Commander Hermes Integration Implementation Plan
 
-> **For agentic workers:** Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement the approved tasks. Track progress with checkboxes.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Track progress with checkboxes.
 
-**Goal:** Let us talk to Commander, delegate work to our fleet, and steer existing projects without losing context.
+**Goal:** Run Commander through Hermes while preserving Kirei's verified orchestration and approval boundaries.
 
-**Architecture:** Extend the existing Kirei backend and Herdr sessions. Keep authorization, workflow state, and delivery checks in the backend. Commander interprets requests through its selected CLI and private MCP tools.
+**Architecture:** Hermes is the Commander harness. It owns native Markdown memory, SQLite conversation history, and skills in its persistent Runtime profile. Kirei exposes narrowly scoped MCP tools and keeps verified sender provenance, authorization, routing, sessions, jobs, workflow state, approvals, and delivery recovery authoritative.
 
-**Tech stack:** Ruby 4.0, Kirei, Sorbet, PostgreSQL, Mattermost, Herdr, and the existing Runtime clients.
+**Tech stack:** Ruby 4.0, Kirei, Sorbet, PostgreSQL, Mattermost, Herdr, Hermes Agent, and the existing Runtime clients.
 
 **Spec:** [Approved Commander behavior](../../commander-feature-spec.md). This plan is a draft for review; it does not authorize feature implementation or provider calls.
 
@@ -23,37 +23,51 @@ Project enrollment, emergency tools, deployment tools, voice, and mobile accepta
 - Keep instruction sender, originating human request, and backend workflow instructions distinct. Attribution never grants additional authority.
 - Do not merge, deploy, create credentials, or make paid provider calls through plan approval alone.
 - Keep dispatch disabled until the relevant real CLI checks pass and activation receives approval.
+- Use the latest supported Hermes stable release. Hermes publishes dated stable tags, not minor-line tags. Advance on a normal Runtime rebuild; no separate source-URL or artifact-digest record is required.
+- Hermes native Markdown memory, SQLite history, and skills are Commander-local. Do not create a Kirei memory adapter, Commander knowledge tables, or Markdown mirrors.
+- Use the Wagglebot `examples/reference-setup` subdirectory as the shared worker baseline after a release supports both company-subdirectory connections and its own pinned-runtime provisioning. Connect it through `runtime-provision connect URL examples/reference-setup`, then use the documented Wagglebot cache flow. Hermes reads the provisioned shared library at `/home/runtime/.agents/skills`; Commander’s local `AGENTS.md` and `SOUL.md` remain authoritative for its coordinator role. Hermes learned state stays per profile. Hermes is not a Wagglebot provisioning target.
+- Hermes is the Commander harness, not a fixed Gemini/Grok model choice. Support native optional xAI Grok
+  provider selection (`xai`/`grok` API key or `xai-oauth`/`grok-oauth` operator OAuth) through
+  Hermes' private profile. Do not create credentials, browser login, a default model, paid calls,
+  or a default Grok Build role in this task. Package official xAI Grok Build as an additional
+  Herdr-native `grok` worker CLI, with background self-update disabled. It may be selected only
+  through an operator role configuration and official API-key/login setup outside Git; it never
+  replaces the Hermes-only Commander role.
+- Mattermost PostgreSQL chat storage and Hermes SQLite history coexist. Neither replaces Kirei's orchestration records.
 
 ## Starting point
 
 The automated stack already verifies real chat, queues, Herdr transport, callbacks, and restart behavior with a scripted agent.
 It does not verify a real provider conversation. Production dispatch remains disabled.
 The app has not been deployed. Application names and fresh-database schema now use Commander.
-The initial [Commander base instructions](../../../commander/AGENTS.md) define task model tiers; runtime loading and profile selection remain planned.
+The initial [Commander base instructions](../../../commander/AGENTS.md) define task model tiers; Hermes installation, profile isolation, and MCP wiring remain planned.
 Verified human sources already exist; uniform worker-prompt attribution and project-thread sender labels still need implementation.
 
 Complete these tasks in order. Each task ends with a tested commit and review before the next task begins.
 Use failing behavior tests, implement the smallest change, then run the checks below.
 
-## Task 1: Talk to a real Commander
+## Task 1: Run Hermes as Commander
 
 **Goal:** A human can mention Commander and receive its actual CLI response in the same conversation.
 
 **Work:**
 
-- [ ] Load the existing `commander/AGENTS.md`; scaffold persistent `commander/memory.md` for working preferences and global learnings.
-- [ ] Mount that folder at `/workspace/commander`; start and recover the Commander Herdr session from that directory.
-- [ ] Verify that the selected CLI loads the base instructions and global memory on a fresh conversation.
-- [ ] Configure the selected Commander profile through private operator files.
-- [ ] Use the specified Gemini default, or an operator-selected CLI whose Herdr and MCP behavior passes validation.
+- [ ] Install the latest supported Hermes stable release and record the resolved release and supported CLI profile configuration in sanitized evidence.
+- [ ] Install Hermes in the Runtime Dockerfile final image stage. Run it as the unprivileged Runtime user with a persistent, Commander-only profile and workspace.
+- [ ] Configure the Commander model and private Kirei MCP server through private operator files. Do not store credentials in the image or repository.
+- [ ] When an authorized Wagglebot company repository is identified, connect and provision its pinned shared templates/skills with Wagglebot. Keep Commander learned skills and memory in its own Hermes profile; do not replace Kirei role/permission validation.
+- [ ] Map Hermes context files to `commander/AGENTS.md` and Hermes-native Markdown memory. Let Hermes retain SQLite history and skills in its profile storage.
+- [ ] Initialize a local Git repository in the Commander workspace. Track portable instructions, Markdown memory, and skills; ignore SQLite/WAL files, credentials, and runtime state. Create no automatic Kirei commit job, remote, or push schedule.
+- [ ] Verify that a fresh Hermes Commander session loads its instructions and native memory, retains conversation history after restart, and can invoke only the intended MCP tools.
 - [ ] Separate conversation permission from permission to start worker workflows.
-- [ ] Verify one bounded real CLI conversation, including MCP calls, completion, and a repeated callback.
+- [ ] Verify one bounded real Hermes conversation, including an MCP call, completion, restart recovery, and a repeated callback.
 - [ ] Record the selected versions and sanitized evidence; request approval before enabling conversation dispatch.
 
 **Done:** The real Commander replies once to the correct source thread.
 An unauthorized sender, stale request credential, or mismatched session cannot prompt it.
 Missing credentials leave this task explicitly blocked; scripted-agent results cannot complete it.
-A fresh session reads its workspace instructions and memory; recovery verifies the same working directory.
+A fresh Hermes session reads its instructions and native memory; recovery verifies the same profile and working directory.
+The local Commander repository provides revision history only for explicitly committed portable files. Automated commits and remote backup are deferred to a separately approved task.
 
 ## Task 2: Ask what the fleet is doing
 
@@ -100,23 +114,20 @@ Simple, medium, and complex tasks select suitable configured profiles; unavailab
 Direct human, Commander-forwarded, and Commander-written instructions remain distinguishable in stored records, worker prompts, and project-thread delivery labels.
 Forged sender labels or generated approval claims cannot change identity, permissions, or approval state.
 
-## Task 4: Remember decisions and working preferences
+## Task 4: Remove the Kirei Commander memory subsystem
 
-**Goal:** Later conversations retain project decisions, our working preferences, and lessons learned.
+**Goal:** Hermes retains Commander knowledge without duplicating it in Kirei or project files.
 
 **Work:**
 
-- [ ] Add bounded operations to read, remember, and correct entries.
-- [ ] Store global preferences and learnings in `commander/memory.md`; keep project decisions in each project’s `.agents/memory.md`.
-- [ ] Update `commander/AGENTS.md` through explicit steering requests; memory entries do not become new permissions.
-- [ ] Keep the Commander folder persistent locally; sync it to a configured Git repository only when enabled.
-- [ ] Record sources and revisions; serialize conflicting writes for both local memory and optional Git sync.
-- [ ] Reconcile uncertain Git outcomes when optional sync is enabled.
+- [ ] Delete `Domains::Memory`, `Adapters::Memory`, `Services::Commander::Memory`, their specs, and all calls, registrations, and documentation that make Kirei memory authoritative or mirror it into Markdown.
+- [ ] Inspect migration `009_commander_memory` against deployed-schema support. Preserve the migration if it can have run. Migration 010 must stop when either table has data; an operator must export or explicitly discard that legacy content before it drops the tables. Its rollback recreates only the schema.
+- [ ] Remove memory tables from test truncation and clean-schema expectations. Test zero-to-current migration, rollback, and upgrade from schema version 9.
+- [ ] Keep Commander instruction changes explicit. Hermes memory and skills remain unable to alter Kirei authorization, sender attribution, approvals, or independent-session restrictions.
 
-**Done:** A remembered preference survives a fresh conversation and backend restart.
-A correction updates the intended entry. Duplicate requests create no duplicate memory.
-Memory updates follow human requests or agent instructions; no scheduled grooming or Hermes integration is added.
-Local persistence works without Git sync. When enabled, sync preserves the same instructions, entries, sources, and revisions.
+**Done:** A Hermes memory and history entry survives a fresh Commander conversation and Runtime restart.
+No Kirei memory tables, Markdown mirrors, or memory operations remain after migration.
+Hermes memory and skills cannot change verified backend authority.
 
 ## Task 5: Steer work while it runs
 
@@ -172,10 +183,10 @@ Keep new Ruby values in separate, strictly typed files and retain the repository
 
 | Task | Main changes | Behavior tests |
 | --- | --- | --- |
-| 1 | `commander/{AGENTS.md,memory.md}`, Runtime workspace mount, `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend Commander and session specs for cwd and instruction loading; add a separately approved real-CLI acceptance runner |
+| 1 | `commander/AGENTS.md`, Runtime Dockerfile/profile mount, Commander workspace `.gitignore`, Hermes release evidence, `services/commander/{ingest_prompt,dispatch,reply}.rb`, `services/sessions/`, `domains/workflows/policy.rb`, `services/job_handlers.rb` | Extend Commander and session specs for profile/cwd recovery and ignored state; add Hermes image and separately approved real-CLI acceptance coverage |
 | 2 | Add `services/commander/workflow_status.rb` and typed status DTOs; extend `tools.rb`, HTTP serialization, and milestone delivery | Add status specs; extend Commander tool and outbox specs |
 | 3 | `services/commander/{tools,route_followup,deliver_followup}.rb`, `services/workflows/{request_start,provision,dispatch_phase_prompt}.rb`, review prompt builders, outbound delivery, typed attribution, and role base instructions | Test model tiers, unavailable profiles, human overrides, review diversity, and existing attribution/routing/lifecycle/outbox cases |
-| 4 | Add a memory domain, typed entry DTOs, `services/commander/` memory operations, a local file adapter, and optional Git sync | Test global/project scope, instruction corrections, concurrent writes, restart, local persistence, and optional sync |
+| 4 | Remove `domains/memory`, `adapters/memory`, `services/commander/memory.rb`, memory specs, and their wiring; add a forward migration after `009_commander_memory` | Test fresh install, schema-9 upgrade, rollback, and absence of Kirei memory calls while Hermes profile persistence remains covered in Task 1 |
 | 5 | `services/workflows/control.rb`, `services/reviews/release_queued.rb`, Commander tools | Extend lifecycle/review specs with attribution-preserving queues, pause boundaries, cancellation, and premature finish |
 | 6 | Commander/session recovery services and `platform/jobs/store.rb` | Extend lifecycle/job specs with lost receipts, revoked sources, matching-session recovery, and unchanged attribution on replay |
 | 7 | `tests/`, `scripts/`, current interface docs, operator evidence | Run automated and separately authorized real CLI acceptance against the release commit |
@@ -186,10 +197,11 @@ Keep new Ruby values in separate, strictly typed files and retain the repository
 - `start_workflow` accepts `project_id`, `title`, proposed `thread_id`, cited inbox IDs, `writer_profile_id`, and `reviewer_profile_id`.
 - Profile IDs resolve through the backend’s trusted configuration to typed `RoleConfig` values; unknown or unavailable profiles return a typed failure.
 - Persist selected profiles with the request. The backend returns a verified receipt and retains existing approval and diversity checks.
-- Memory operations identify global or project scope and return an entry ID, content, source, and revision.
-- Commander uses `/workspace/commander` as its durable working directory. Its scaffold contains `AGENTS.md` and `memory.md`.
-- Provisioning and recovery verify that directory; the selected CLI loads its instruction format and reads global memory.
-- Git sync is optional and uses configured repository access. Scaffolding creates no remote repository or provider credentials.
+- Commander has a persistent Hermes profile and `/workspace/commander` working directory. Hermes owns its Markdown memory, SQLite history, and skills.
+- Provisioning and recovery verify the same Commander profile, workspace, instruction file, and private MCP configuration.
+- Hermes memory and session storage receive no Kirei authority data beyond verified, request-scoped MCP context.
+- Commander initialization creates a local repository for portable instructions, Markdown memory, and skills. SQLite history, WAL files, credentials, and runtime state stay ignored.
+- The first release has no Kirei commit job, remote, or push schedule. Automated commits and backup are deferred.
 - Controls retain `workflow_id`, action, and expected version. The backend derives actor authority from the verified human source.
 - `Domains::Messaging::Dto::InstructionAttribution` records the human or Commander sender, originating authenticated request/message/thread, target workflow/session generation, and dispatch ID.
 - Persist that attribution with the existing durable request, follow-up, and dispatch records; omit nonexistent immediate human messages.
@@ -217,5 +229,5 @@ Neither command proves real provider behavior because the full-stack agent is sc
 2. Access revoked after queueing: reject before delivery or recovery; test in Tasks 1 and 6.
 3. New instructions during review: preserve the reviewed revision and queue order; test in Task 5.
 4. A result may already exist after a lost receipt: reconcile without replay; test in Tasks 4 and 6.
-5. Fresh workspace or disabled Git sync: load base instructions and retain memory locally; test in Tasks 1 and 4.
+5. Fresh workspace or restarted Hermes profile: load Commander instructions and retain native memory/history without recreating Kirei knowledge; test in Tasks 1 and 4.
 6. Text claims another sender or human approval: preserve verified attribution and ordinary approval gates; test in Task 3.

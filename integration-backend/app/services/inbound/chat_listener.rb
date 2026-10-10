@@ -13,10 +13,10 @@ module Services
 
       sig do
         params(client: Adapters::Mattermost::Client, api: Adapters::Mattermost::Api, verifier: Adapters::Mattermost::DeliveryVerifier,
-               channels: T::Array[String], router: RecordDelivery, validation_mode: T::Boolean, heartbeat_dir: String).void
+               channels: T::Array[String], router: RecordDelivery, transport_enabled: T::Boolean, heartbeat_dir: String).void
       end
-      def initialize(client:, api:, verifier:, channels:, router:, validation_mode:, heartbeat_dir:)
-        @validation_mode = validation_mode
+      def initialize(client:, api:, verifier:, channels:, router:, transport_enabled:, heartbeat_dir:)
+        @transport_enabled = transport_enabled
         @heartbeat_dir = heartbeat_dir
         @client = T.let(client, Adapters::Mattermost::Client)
         @api = T.let(api, Adapters::Mattermost::Api)
@@ -28,7 +28,7 @@ module Services
 
       sig { returns(T.noreturn) }
       def call
-        raise "Chat transport live evidence pending; set CHAT_VALIDATION_MODE=1 only for disposable validation" unless @validation_mode
+        raise "Chat transport disabled; use disposable validation or the checked local activation path" unless @transport_enabled
 
         delay = T.let(1, Integer)
         loop do

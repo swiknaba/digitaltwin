@@ -62,13 +62,34 @@ We can ask for status, add instructions, pause, resume, cancel unfinished work, 
 
 During review, new Writer instructions wait. They cannot change the reviewed version or start a competing Writer. Commander explains the wait and releases instructions when work may continue.
 
-## Memory, failures, and restarts
+## Hermes memory, skills, failures, and restarts
 
-Durable memory should retain project decisions, our working preferences, and lessons learned beyond a conversation. The project scaffolds a persistent `commander/` folder containing its base instructions in `AGENTS.md` and global preferences and learnings in `memory.md`.
-Commander’s Herdr CLI session runs from that folder and reads it on a fresh conversation.
-Git sync for this folder is optional; local persistence does not depend on it.
-Project decisions stay in each project’s `.agents/memory.md`.
-Explicit steering requests update base instructions; memory updates follow human requests or agent instructions, with no scheduled grooming job. Hermes is not integrated or required.
+Commander runs through the latest supported Hermes Agent stable release. Hermes publishes dated stable tags, not minor-line tags. A normal Runtime rebuild can advance to the next stable release. Hermes owns Commander-native Markdown memory, SQLite conversation history and search, and reusable skills. Its persistent profile and workspace stay on the Runtime volume. Hermes reads Commander instructions and memory on a new conversation.
+
+Hermes, not Grok Build, is the Commander harness. Hermes natively supports optional xAI Grok inference
+through `xai`/`grok` with an existing `XAI_API_KEY`, or `xai-oauth`/`grok-oauth` after an operator
+performs its OAuth login. The user has not selected a Commander default model, so this release sets
+none: an operator selects the provider and model in the private Hermes profile. Gemini remains
+optional and is never assumed. No key, OAuth token, browser login, paid call, or live-provider
+claim is created by this implementation.
+
+Runtime also packages official xAI Grok Build as an additional, separately configured worker
+CLI. Herdr starts it natively as `grok` and installs its local session-state hook. An operator may
+select it for a Writer or Reviewer role with the official API-key or login setup outside Git;
+Commander still requires `hermes`. Grok Build’s background updater is disabled in Runtime, and
+the offline startup test makes no model request or authentication claim.
+
+Kirei does not store Commander knowledge, mirror memory into Markdown, or adapt an external memory provider. Mattermost retains chat transcripts in PostgreSQL for chat delivery and audit. Hermes history serves Commander recall. These stores have different purposes.
+
+Kirei remains authoritative for verified sender provenance, authorization, project membership, workflow state, sessions, jobs, approvals, routing, delivery receipts, and recovery. Hermes-provided memory or skill content cannot grant permission, identify a sender, approve a change, or start an independent fleet session.
+
+Commander initialization creates a local Git repository in the Commander workspace. It tracks the Commander-only `SOUL.md` and instructions, Markdown memory, curated skills, and separately stored learned skills. Hermes gets its own `HERMES_HOME` there. Its generic Runtime defaults are the official packaged `weekly-review-planning` and `grounded-citations` skills; agent-authored skills go to `learned-skills`.
+
+The shared worker baseline is the Wagglebot [reference setup](https://github.com/swiknaba/wagglebot/tree/main/examples/reference-setup). Once a Wagglebot release has both company-subdirectory support and a working pinned-runtime package, connect it with `runtime-provision connect https://github.com/swiknaba/wagglebot.git examples/reference-setup`, then run the documented Wagglebot update/provisioning flow for compatible worker harnesses. Hermes reads that shared library from `/home/runtime/.agents/skills`; it does not use it for memory or history. Commander’s Runtime-local `AGENTS.md` and `SOUL.md` define its coordinator role. Hermes is not a Wagglebot provisioning target; its native memory, SQLite history, and learned skills remain per Commander profile. Kirei continues to validate role selection and every workflow authorization. This is role guidance and profile isolation, not a security boundary between processes that share the Runtime user.
+
+The workspace ignores SQLite databases, WAL files, credentials, and runtime state. The first release creates no automatic Kirei commit job, remote, or push schedule. Therefore, local Git history is not a backup. Automated commits and remote backup need a separate retention, credential, conflict, and recovery design.
+
+Explicit steering changes Commander instructions. Hermes learns through its native memory and skills mechanisms. No Kirei memory grooming is required.
 
 After restart, Commander restores verified task state and reuses healthy matching conversations. Missing conversations or actions with uncertain outcomes are reported for reconciliation. It never invents success, repeats a potentially completed action, or creates replacement work to clear an error.
 
@@ -80,4 +101,4 @@ Real service connections, replies, duplicate handling, and restart recovery pass
 
 The first enabled version focuses on conversation, status, and routing for existing projects. Project enrollment and emergency tools come afterward.
 
-Commander selects the correct thread from context itself, with clarification only when needed. Durable memory includes working preferences and lessons learned alongside project decisions.
+Commander selects the correct thread from context itself, with clarification only when needed. Hermes retains Commander memory, conversation history, and skills; Kirei retains the durable orchestration record.

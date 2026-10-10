@@ -11,7 +11,7 @@ RSpec.describe Services::JobHandlers do
     kind::ReviewPrompt, kind::ReviewRelease, kind::ReviewCallback, kind::CommanderControl, kind::SessionRenew, kind::WorkflowPhasePrompt,
     kind::WorkflowStart, kind::WorkflowPause, kind::WorkflowResume, kind::WorkflowFinish, kind::WorkflowCancel, kind::WorkflowApprove
   ].freeze
-  commander = { "cli" => "gemini", "provider" => "google", "model" => "fixture-gemini", "family" => "gemini", "launch_args" => [] }
+  commander = { "cli" => "hermes", "provider" => "fixture", "model" => "fixture-hermes", "family" => "fixture", "launch_args" => [] }
 
   around do |example|
     Dir.mktmpdir("job-handlers") do |dir|
@@ -22,10 +22,10 @@ RSpec.describe Services::JobHandlers do
   end
 
   def handlers(roles)
-    bot = Domains::Messaging::Dto::Bot::Worker
+    bot = Domains::Messaging::Dto::Bot::Agent
     configuration = Services::Configuration.new(
       mattermost_url: "http://mattermost.test", mattermost_listener_token_file: File.join(@dir, "listener-token"), mattermost_local_bot_ids: [],
-      mattermost_bot_token_files: { bot => File.join(@dir, "worker-token") }, mattermost_bot_ids: { bot => "b" * 26 }, roles: roles,
+      mattermost_bot_token_files: { bot => File.join(@dir, "agent-token") }, mattermost_bot_ids: { bot => "b" * 26 }, roles: roles,
       workspace_root: File.join(@dir, "repos"), worktree_root: File.join(@dir, "worktrees")
     )
     described_class.new(composition: Services::Composition.new(configuration: configuration)).call

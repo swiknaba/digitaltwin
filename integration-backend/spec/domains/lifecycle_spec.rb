@@ -33,17 +33,17 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   let(:bootstrap) { Services::Sessions::BootstrapCommander.new(credentials: credentials) }
   let(:execute_operation) { Services::Sessions::ExecuteOperation.new(herdr: herdr, source: source, credentials: credentials, callback_url: "http://fixture.invalid", commander_workspace: "/workspace/commander", policy: policy) }
   let(:renew_service) { Services::Sessions::Renew.new(herdr: herdr, source: source, credentials: credentials, policy: policy, renewals: renewals) }
-  let(:reconcile_operation) { Services::Sessions::ReconcileOperation.new(herdr: herdr, source: source, credentials: credentials, handle: "agent") }
+  let(:reconcile_operation) { Services::Sessions::ReconcileOperation.new(herdr: herdr, source: source, credentials: credentials, handle: "commander") }
   let(:stop_sessions) { Services::Sessions::StopWorkflowSessions.new }
   let(:role_assignments) { Domains::Workflows::Dto::RoleAssignments.from_hash(roles) }
   let(:request_start) { Services::Workflows::RequestStart.new(source: source, roles: role_assignments) }
   let(:provision) { Services::Workflows::Provision.new(source: source, api: api, bot_id: bot, worktrees: worktrees, reserve_session: reserve_session, worktree_root: "/workspace/worktrees", commander_channel_id: nil, policy: policy) }
-  let(:reconcile_start) { Services::Workflows::ReconcileStart.new(source: source, api: api, bot_id: bot, agent_handle: "agent") }
+  let(:reconcile_start) { Services::Workflows::ReconcileStart.new(source: source, api: api, bot_id: bot, commander_handle: "commander") }
   let(:artifact_ready) { Services::Reviews::ArtifactReady.new(herdr: herdr, evidence: evidence) }
   let(:review_finished) { Services::Reviews::ReviewFinished.new(herdr: herdr, evidence: evidence) }
   let(:dispatch_review) { Services::Reviews::DispatchReview.new(herdr: herdr, evidence: evidence, policy: policy) }
   let(:release_queued) { Services::Reviews::ReleaseQueued.new(route: routing) }
-  let(:control_service) { Services::Workflows::Control.new(source: source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions, worker_handle: "worker") }
+  let(:control_service) { Services::Workflows::Control.new(source: source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions, agent_handle: "agent") }
   let(:advance) { Services::Workflows::AdvanceApproval.new(evidence: evidence) }
   let(:dispatch) { Services::Workflows::DispatchPhasePrompt.new(source: source, herdr: herdr, evidence: evidence, policy: policy) }
   before do
@@ -143,9 +143,9 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   # their detail, as the pre-refactor Commander did.
   def commander_use_cases(config)
     ingest = Services::Commander::IngestPrompt.new(source: source, bootstrap: bootstrap, configuration: config, credentials: credentials)
-    dispatch = Services::Commander::Dispatch.new(source: source, herdr: herdr, credentials: credentials, policy: policy)
+    dispatch = Services::Commander::Dispatch.new(source: source, herdr: herdr, credentials: credentials, policy: policy, handle: "commander")
     reply = Services::Commander::Reply.new(authorize: Services::Commander::AuthorizeRequest.new(source: source))
-    recover = Services::Commander::Recover.new(source: source, herdr: herdr, handle: "agent")
+    recover = Services::Commander::Recover.new(source: source, herdr: herdr, handle: "commander")
     Struct.new(:ingest_prompt, :dispatch, :reply_service, :recover_service) do
       def ingest(inbox_id) = Platform::Unwrap.call(ingest_prompt.call(inbox_id: inbox_id))
       def call(job:) = dispatch.call(job: job)
@@ -221,22 +221,35 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect(execute(op[:id])).to eq("complete")
     expect(db[:sessions][id: id][:runtime_identity]).to eq(identity)
     launch = Adapters::Herdr::Dto::LaunchSpec.new(cli: "codex", launch_args: ["--model", "fixture-gpt"])
-    expect(herdr).to have_received(:start).once.with(pane_id: "pane", name: Domains::Sessions::Registry.new.find(id: id).alias, launch: launch)
+    expect(herdr).to have_received(:start).once.with(
+      pane_id: "pane", name: Domains::Sessions::Registry.new.find(id: id).alias,
+      launch: launch, workspace_id: "runtime-workspace"
+    )
     expect(herdr).to have_received(:create_workspace).with(hash_including(env: hash_including("DIGITALTWIN_SESSION_GENERATION" => "1",
                                                                                               "DIGITALTWIN_SESSION_TOKEN_FILE" => File.join(@credential_root, "#{id}.token"))))
     expect(File.stat(File.join(@credential_root, "#{id}.token")).mode & 0777).to eq(0600)
     expect { reserve("commander") }.to raise_error(ArgumentError)
   end
   it "starts Commander in its persistent workspace" do
-    commander = Domains::Workflows::Dto::RoleConfig.new(cli: "gemini", provider: "google", model: "fixture-gemini", family: "gemini", launch_args: [])
+    commander = Domains::Workflows::Dto::RoleConfig.new(cli: "hermes", provider: "fixture", model: "fixture-hermes", family: "fixture", launch_args: [])
     id = Platform::Unwrap.call(bootstrap.call(configuration: commander))
     allow(herdr).to receive(:create_workspace).and_return(herdr_workspace(workspace_id: "commander-workspace", pane_id: "commander-pane"))
-    identity = { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "commander-conversation" }
+    identity = { "source" => "fixture", "agent" => "hermes", "kind" => "id", "value" => "commander-conversation" }
     allow(herdr).to receive(:start).and_return(herdr_pane("agent_session" => identity, "agent_status" => "idle"))
 
     op = db[:session_operations][session_id: id]
     expect(execute(op[:id])).to eq("complete")
     expect(herdr).to have_received(:create_workspace).with(hash_including(cwd: "/workspace/commander"))
+    expect(herdr).to have_received(:start).with(hash_including(launch: Adapters::Herdr::Dto::LaunchSpec.new(cli: "hermes", launch_args: [])))
+  end
+  it "rejects a non-Hermes Commander profile before it reserves a session" do
+    commander = Domains::Workflows::Dto::RoleConfig.new(cli: "gemini", provider: "google", model: "fixture-gemini", family: "gemini", launch_args: [])
+
+    result = bootstrap.call(configuration: commander)
+
+    expect(result.failed?).to be(true)
+    expect(result.errors.first.code).to eq("incomplete_configuration")
+    expect(db[:sessions].where(role: "commander").count).to eq(0)
   end
   it "does not repeat an uncertain session start or create another conversation" do
     workflow(active_sessions: false)
@@ -371,9 +384,9 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
 
   it "keeps Commander busy requests pending and recovers expired requests only for the bound human" do
-    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini"))
+    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "hermes", "provider" => "fixture", "family" => "fixture"))
     sid = Platform::Unwrap.call(bootstrap.call(configuration: config))
-    identity = { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "commander-conversation" }
+    identity = { "source" => "fixture", "agent" => "hermes", "kind" => "id", "value" => "commander-conversation" }
     db[:sessions].where(id: sid).update(active: true, pane_id: "commander-pane", runtime_identity: Sequel.pg_jsonb(identity))
     commander = commander_use_cases(config)
     request = commander.ingest(@inbox)
@@ -393,7 +406,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     expect { commander.reply(request_id: request, token: token, text: "Changed") }.to raise_error(ArgumentError)
     db[:commander_requests].where(id: request).update(state: "uncertain", expires_at: Time.now - 1)
     recovery = delivery.dup
-    allow(recovery).to receive(:body).and_return("@agent recover-commander #{request}")
+    allow(recovery).to receive(:body).and_return("@commander recover-commander #{request}")
     allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     commander.recover(request_id: request, inbox_id: @inbox)
     expect(db[:commander_requests][id: request][:state]).to eq("complete")
@@ -416,7 +429,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
              "props" => { "digitaltwin_workflow_request" => id } }
     allow(client).to receive(:get).with("/api/v4/posts/#{thread_id}").and_return(root)
     recovery = delivery.dup
-    allow(recovery).to receive(:body).and_return("@agent recover-start #{id} #{thread_id}")
+    allow(recovery).to receive(:body).and_return("@commander recover-start #{id} #{thread_id}")
     allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     2.times { expect(Platform::Unwrap.call(reconcile_start.call(request_id: id, inbox_id: @inbox, thread_id: thread_id)).serialize).to eq("queued") }
     expect(provision_request(id)).to eq("bound")
@@ -433,7 +446,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     op = db[:session_operations][session_id: sid]
     expect(execute(op[:id])).to eq("uncertain")
     recovery = delivery.dup
-    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} pane")
+    allow(recovery).to receive(:body).and_return("@commander recover-session #{op[:id]} pane")
     allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     live = { "agent_session" => { "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
              "name" => Domains::Sessions::Registry.new.find(id: sid).alias, "cwd" => "/workspace/worktrees/workflow", "agent" => "codex" }
@@ -453,7 +466,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     allow(herdr).to receive(:close).and_raise(IOError)
     expect(execute(op[:id])).to eq("uncertain")
     recovery = delivery.dup
-    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} writer")
+    allow(recovery).to receive(:body).and_return("@commander recover-session #{op[:id]} writer")
     allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     allow(herdr).to receive(:panes).and_return([Adapters::Herdr::Dto::PaneSummary.new(pane_id: "writer")])
     expect { reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "writer") }.to raise_error(ArgumentError)
@@ -480,7 +493,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
 
   it "recovers Commander startup only for the first associated human request and exact neutral conversation" do
-    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini"))
+    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "hermes", "provider" => "fixture", "family" => "fixture"))
     commander = commander_use_cases(config)
     commander.ingest(@inbox)
     commander = db[:sessions][role: "commander"]
@@ -488,10 +501,10 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     db[:sessions].where(id: commander[:id]).update(pane_id: "commander-pane")
     db[:session_operations].where(id: op[:id]).update(state: "uncertain")
     recovery = delivery.dup
-    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} commander-pane")
+    allow(recovery).to receive(:body).and_return("@commander recover-session #{op[:id]} commander-pane")
     allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
-    live = { "agent_session" => { "source" => "fixture", "agent" => "gemini", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
-             "name" => commander[:alias], "cwd" => "/home/runtime", "agent" => "gemini" }
+    live = { "agent_session" => { "source" => "fixture", "agent" => "hermes", "kind" => "id", "value" => "conversation" }, "agent_status" => "idle", "interactive_ready" => true, "launch_pending" => false,
+             "name" => commander[:alias], "cwd" => "/workspace/commander", "agent" => "hermes" }
     allow(herdr).to receive(:pane).and_return(herdr_pane(live))
     expect(reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "commander-pane")).to eq("complete")
     expect(db[:sessions][id: commander[:id]][:active]).to eq(true)
@@ -499,7 +512,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
   end
 
   it "binds Commander recovery to the earliest human request even when a later request has a smaller inbox id" do
-    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "gemini", "provider" => "google", "family" => "gemini"))
+    config = Domains::Workflows::Dto::RoleConfig.from_hash(roles["writer"].merge("cli" => "hermes", "provider" => "fixture", "family" => "fixture"))
     commander = commander_use_cases(config)
     commander.ingest(@inbox)
     commander = db[:sessions][role: "commander"]
@@ -511,7 +524,7 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     db[:sessions].where(id: commander[:id]).update(pane_id: "commander-pane")
     db[:session_operations].where(id: op[:id]).update(state: "uncertain")
     recovery = delivery.dup
-    allow(recovery).to receive(:body).and_return("@agent recover-session #{op[:id]} commander-pane")
+    allow(recovery).to receive(:body).and_return("@commander recover-session #{op[:id]} commander-pane")
     allow(source).to receive(:call).and_return(Kirei::Services::Result.new(result: recovery))
     expect { reconcile(operation_id: op[:id], inbox_id: @inbox, pane_id: "commander-pane") }
       .to raise_error(Platform::Errors::ResultFailed, "Exact original-human session recovery required")
@@ -521,10 +534,10 @@ RSpec.describe "Workflow/session/review lifecycle (isolated PostgreSQL fixtures)
     let(:kinds) { Platform::Jobs::Dto::JobKind }
     let(:thread_control) do
       worker_source = double(call: Kirei::Services::Result.new(result: Domains::Messaging::Dto::VerifiedDelivery.new(
-        channel_id: channel, thread_id: "t" * 26, post_id: "q" * 26, post_revision: 1, event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: false, body: "@worker pause",
+        channel_id: channel, thread_id: "t" * 26, post_id: "q" * 26, post_revision: 1, event_kind: Domains::Messaging::Dto::EventKind::Posted, root_post: false, body: "@agent pause",
         actor: Domains::Messaging::Dto::VerifiedActor.new(user_id: "u" * 26, channel_id: channel, member: true, bot: false)
       )))
-      Services::Workflows::Control.new(source: worker_source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions, worker_handle: "worker")
+      Services::Workflows::Control.new(source: worker_source, herdr: herdr, evidence: evidence, stop_sessions: stop_sessions, agent_handle: "agent")
     end
 
     def job_status(kind) = db[:jobs][kind: kind.serialize][:status]

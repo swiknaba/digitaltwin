@@ -107,7 +107,7 @@ module Services
           message = Messaging::Dto::OutgoingMessage.new(
             channel_id: d.channel_id,
             thread_id: d.thread_id,
-            bot: Messaging::Dto::Bot::Agent,
+            bot: Messaging::Dto::Bot::Commander,
             role: Messaging::Dto::SpeakerRole::Commander,
             body: "Instruction #{id}: human confirmed #{outcome.serialize}; no prompt was resent.",
             key: receipt_key

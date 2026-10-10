@@ -3,8 +3,8 @@
     "ListenAddress": ":8065",
     "EnableLocalMode": true,
     "LocalModeSocketLocation": "/var/tmp/mattermost_local.socket",
-    "EnableBotAccountCreation": false,
-    "EnableUserAccessTokens": false
+    "EnableBotAccountCreation": true,
+    "EnableUserAccessTokens": true
   },
   "SqlSettings": {"DriverName": "postgres"},
   "FileSettings": {"DriverName": "local", "Directory": "/mattermost/data"},

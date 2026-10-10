@@ -82,7 +82,7 @@ module Services
         message = Messaging::Dto::OutgoingMessage.new(
           channel_id: workflow.channel_id,
           thread_id: workflow.thread_id,
-          bot: Messaging::Dto::Bot::Worker,
+          bot: Messaging::Dto::Bot::Agent,
           role: Messaging::Dto::SpeakerRole.deserialize(role.serialize),
           body: "#{role.serialize.capitalize} session #{session_id} reserved; start operation #{operation_id} is queued, not started.",
           key: "session:reserved:#{session_id}"

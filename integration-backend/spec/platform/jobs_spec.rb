@@ -135,7 +135,7 @@ RSpec.describe Platform::Jobs::Store do
     expect {
       db.transaction {
         enqueue
-        message = Domains::Messaging::Dto::OutgoingMessage.new(channel_id: "c", thread_id: "r", bot: Domains::Messaging::Dto::Bot::Worker,
+        message = Domains::Messaging::Dto::OutgoingMessage.new(channel_id: "c", thread_id: "r", bot: Domains::Messaging::Dto::Bot::Agent,
                                                                role: Domains::Messaging::Dto::SpeakerRole::Writer, body: "hello", key: "response")
         Domains::Messaging::Outbox.new.enqueue(message: message)
         raise "abort"
@@ -147,7 +147,7 @@ RSpec.describe Platform::Jobs::Store do
 
   it "deduplicates responses and rejects changed bodies" do
     outbox = Domains::Messaging::Outbox.new
-    args = { channel_id: "c", thread_id: "r", bot: Domains::Messaging::Dto::Bot::Worker, role: Domains::Messaging::Dto::SpeakerRole::Writer, body: "hello", key: "response" }
+    args = { channel_id: "c", thread_id: "r", bot: Domains::Messaging::Dto::Bot::Agent, role: Domains::Messaging::Dto::SpeakerRole::Writer, body: "hello", key: "response" }
     message = ->(**changes) { Domains::Messaging::Dto::OutgoingMessage.new(**args.merge(changes)) }
     expect(outbox.enqueue(message: message.call).result).to eq(outbox.enqueue(message: message.call).result)
     expect(outbox.enqueue(message: message.call(body: "changed")).errors.first&.detail).to eq("Response key reused with changed content")

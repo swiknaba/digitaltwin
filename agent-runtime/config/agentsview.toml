@@ -1,0 +1,29 @@
+# Runtime usage reporting keeps only aggregate metadata, never transcript or
+# tool text. This file intentionally declares no remote hosts or UI settings.
+archive_content = "usage"
+disable_update_check = true
+disabled_agents = [
+  "openclaude", "cowork", "traex", "augure-code", "copilot", "mimocode",
+  "opencodereview", "kilo", "kilo-legacy", "openhands", "cursor", "cursor-ide",
+  "amp", "zencoder", "iflow", "vscode-copilot", "windsurf", "trae",
+  "visualstudio-copilot", "pi", "tau", "prime-agent", "omp", "qwen",
+  "commandcode", "deepseek-tui", "deepseek-harness", "openclaw", "qclaw",
+  "kimi", "kimi-work", "kiro", "kiro-ide", "cortex", "hermes",
+  "augure-desktop", "grok", "goose", "workbuddy", "codebuddy", "forge",
+  "devin", "piebald", "warp", "positron", "posit-assistant", "zcode", "zed",
+  "antigravity", "antigravity-cli", "qwenpaw", "gptme", "qoder", "shelley",
+  "vibe", "aider", "evener", "reasonix", "icodemate", "roocode", "cline",
+  "poolside", "omnigent", "codebuff", "crush"
+]
+
+[agents.claude]
+dirs = ["/home/runtime/.claude/projects"]
+
+[agents.codex]
+dirs = ["/home/runtime/.codex/sessions"]
+
+[agents.gemini]
+dirs = ["/home/runtime/.gemini"]
+
+[agents.opencode]
+dirs = ["/home/runtime/.local/share/opencode"]

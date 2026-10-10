@@ -9,6 +9,10 @@ Shared service fixtures and acceptance checks belong here when they exercise mul
 Component tests cannot establish that independently built services work together.
 This folder verifies shared contracts and recovery without giving one component ownership of another component's source.
 
+For a concise human-operated local startup, activation, and live-acceptance
+sequence, see [local-human-runbook.md](local-human-runbook.md). It keeps
+provider login and paid calls as explicit operator actions.
+
 ## API and Configuration Contract
 
 Run tests from the repository root against local Compose with disposable data and simulated providers by default.
@@ -104,6 +108,11 @@ Run `scripts/test-full-stack` with local Docker running. The proposed
 `.github/workflows/full-stack.yml` uses this command on ordinary PRs without repository/provider secrets.
 The workflow is published; its real GitHub execution is tracked by PR checks.
 It includes the existing core checks, then starts an isolated test chat transport.
+
+CI first runs source-only contract checks, then loads the cached backend, chat, and Runtime images once for
+one disposable project. Within that project it gates the full chat round trip behind the complete backend
+check and a real Ruby `UNIXSocket`/Herdr fixture probe. The probe records only sanitized connect/write/read
+durations and agent state; it makes no provider request.
 
 Mattermost HTTP/WebSocket, authorization/refetch, PostgreSQL, durable jobs, Herdr
 server/CLI, installed MCP/callback clients and bot delivery are real. Only the agent

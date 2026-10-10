@@ -22,11 +22,19 @@ jobs:
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Stage pinned clients
         run: scripts/prepare-callback-context
+      - name: Client Runtime contract
+        run: python3 -m unittest tests.test_client_contract -v
+      - name: Chat Backend contract
+        run: python3 -m unittest discover -s chat-backend/tests -v
+      - name: Root Compose contract
+        run: python3 -m unittest tests.test_root_contract -v
       - name: Cache backend build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: integration-backend
           platforms: linux/amd64
+          tags: digitaltwin-ci-backend:check
+          load: true
           cache-from: type=gha,scope=full-stack-backend
           cache-to: type=gha,scope=full-stack-backend,mode=max
       - name: Cache chat build
@@ -34,6 +42,8 @@ jobs:
         with:
           context: chat-backend
           platforms: linux/amd64
+          tags: digitaltwin-ci-chat:check
+          load: true
           cache-from: type=gha,scope=full-stack-chat
           cache-to: type=gha,scope=full-stack-chat,mode=max
       - name: Cache Runtime build
@@ -42,12 +52,15 @@ jobs:
           context: agent-runtime
           target: with-callback
           platforms: linux/amd64
+          tags: digitaltwin-ci-runtime:check
+          load: true
           build-contexts: kirei-clients=./.local/kirei-clients
           cache-from: type=gha,scope=full-stack-runtime
           cache-to: type=gha,scope=full-stack-runtime,mode=max
-      - name: Test real disposable stack
+      - name: Test staged real disposable stack
         env:
           DIGITALTWIN_TEST_ARTIFACTS: ${{ runner.temp }}/digitaltwin-test-artifacts
+          DIGITALTWIN_TEST_IMAGE_PREFIX: digitaltwin-ci
         run: scripts/test-full-stack
       - name: Upload sanitized failure evidence
         if: failure()

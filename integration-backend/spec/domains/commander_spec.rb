@@ -51,6 +51,10 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     db[:followups][id: id][:status]
   end
 
+  def attributed_prompt(row, text)
+    "Verified instruction sender: #{user} (direct_human); origin: #{row.fetch(:inbox_id)}.\n\n#{text}"
+  end
+
   def reconcile(id:, inbox_id:, outcome:)
     result = reconciler.call(id: id, inbox_id: inbox_id, outcome: Services::Commands::Dto::FollowupOutcome.deserialize(outcome))
     raise ArgumentError, result.errors.first.detail if result.failed?
@@ -172,7 +176,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     db[:workflows].update(phase: "implementation", version: 1)
     expect(deliver(row[:id])).to eq("delivered")
     expect(deliver(row[:id])).to eq("delivered")
-    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
+    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: attributed_prompt(row, "Please also cover that case"))
   end
   it "strips the route header of a human workflow id before prompting the Writer" do
     id = "workflow_Ab3dEf9hJk2m"
@@ -182,7 +186,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
                          credential_digest: "digest1", credential_expires_at: Time.now + 3600, configuration: session_configuration, runtime_identity: Sequel.pg_jsonb({ "source" => "fixture", "agent" => "codex", "kind" => "id", "value" => "conversation1" }))
     row = routing.route(inbox_id: source(body: "@agent route #{id}\nPlease also cover that case"), selection: id)
     expect(deliver(row[:id])).to eq("delivered")
-    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
+    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: attributed_prompt(row, "Please also cover that case"))
   end
   it "delivers a busy-session follow-up through worker ticks after the writer becomes idle" do
     workflow
@@ -203,7 +207,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     Async { expect(worker.tick).to eq(true) }.wait
     expect(db[:jobs][id: job[:id]][:status]).to eq("complete")
     expect(db[:followups][id: row[:id]][:status]).to eq("delivered")
-    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
+    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: attributed_prompt(row, "Please also cover that case"))
     Async { expect(worker.tick).to eq(false) }.wait
   end
   it "keeps a review-locked worker job retryable and delivers after writing resumes" do
@@ -224,7 +228,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     Async { expect(worker.tick).to eq(true) }.wait
     expect(db[:jobs][id: job[:id]][:status]).to eq("complete")
     expect(db[:followups][id: row[:id]][:status]).to eq("delivered")
-    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: "Please also cover that case")
+    expect(herdr).to have_received(:prompt).once.with(pane_id: "pane1", text: attributed_prompt(row, "Please also cover that case"))
   end
   it "keeps production dispatch gated" do
     workflow
@@ -311,7 +315,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     id = source
     d = resolver.delivery(post_id: db[:inbox][id: id][:post_id], channel_id: channel, event_kind: Domains::Messaging::Dto::EventKind::Posted)
     db[:inbox].delete
-    Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", commander_channel_id: channel).call(delivery: d)
+    Services::Inbound::RecordDelivery.new(commander_handle: "commander", agent_handle: "agent", commander_channel_id: channel).call(delivery: d)
     expect(db[:jobs].first[:kind]).to eq("commander.prompt")
   end
   it "records exact Commander-chat approval only for the latest reviewed current revision" do
@@ -319,7 +323,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     commit = "a" * 40
     db[:reviews].insert(id: "review_1", workflow_id: "w1", gate: "spec", round: 1, target_commit: commit, verdict: "approve", review_path: "review.md", reviewer_configuration: session_configuration)
     service = Services::Commander::RecordApproval.new(resolver: resolver, membership: membership, current_commit: ->(_worktree) { commit }, handle: "agent",
-                                                      worker_handle: "worker")
+                                                      agent_handle: "worker")
     approvals = Struct.new(:service) do
       def record(gate:, **args)
         result = service.call(gate: Domains::Workflows::Dto::Gate.deserialize(gate), **args)
@@ -396,8 +400,8 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     expect(db[:audit].where(action: "human_followup_reconciliation").count).to eq(1)
     allow(herdr).to receive(:prompt)
     expect(deliver(later[:id])).to eq("delivered")
-    expect(herdr).to have_received(:prompt).with(pane_id: "pane1", text: "First instruction").once
-    expect(herdr).to have_received(:prompt).with(pane_id: "pane1", text: "Second instruction").once
+    expect(herdr).to have_received(:prompt).with(pane_id: "pane1", text: attributed_prompt(row, "First instruction")).once
+    expect(herdr).to have_received(:prompt).with(pane_id: "pane1", text: attributed_prompt(later, "Second instruction")).once
   end
 
   it "rejects bot, changed outcome, live send leases and replaced conversation recovery" do
@@ -427,7 +431,7 @@ RSpec.describe "Commander contextual routing (isolated fixtures)" do
     handler = Services::Commander::HandleCommanderPrompt.new(
       source: Domains::Messaging::VerifyHumanSource.new(verifier: resolver, membership: double(member?: true)), reconcile_start: double,
       reconcile_operation: double, reconcile_followup: reconciler, recover: nil, ingest_prompt: nil, handle_workflow_prompt: double,
-      advance_approval: double, agent_handle: "agent", worker_handle: "worker"
+      advance_approval: double, commander_handle: "agent", agent_handle: "worker"
     )
     inbox = db[:inbox][id: recovery]
     Platform::Jobs::Store.new.enqueue(kind: Platform::Jobs::Dto::JobKind::CommanderPrompt, dispatch_key: "inbox:#{recovery}:commander.prompt",

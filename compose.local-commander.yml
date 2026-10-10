@@ -1,0 +1,30 @@
+# Local-only Commander or direct-agent activation. The ignored directory holds
+# existing chat credential files, the role configuration and the explicit
+# activation acknowledgement. It does not mount provider credentials into Kirei.
+services:
+  backend-web:
+    environment: &local_dispatch_environment
+      CHAT_VALIDATION_MODE: "0"
+      MATTERMOST_URL: "http://mattermost:8065"
+      COMMANDER_HANDLE: "${COMMANDER_HANDLE:-commander}"
+      COMMANDER_CHANNEL_ID: "${COMMANDER_CHANNEL_ID:-}"
+      LOCAL_DISPATCH_ACTIVATION_FILE: "/local-config/local-dispatch.json"
+      MATTERMOST_COMMANDER_BOT_ID: "${MATTERMOST_COMMANDER_BOT_ID:?Set the local Commander bot id}"
+      MATTERMOST_COMMANDER_TOKEN_FILE: "/local-config/commander.token"
+      MATTERMOST_CHANNEL_IDS: "${MATTERMOST_CHANNEL_IDS:?Set monitored Mattermost channel ids}"
+      MATTERMOST_LISTENER_TOKEN_FILE: "/local-config/listener.token"
+      MATTERMOST_AGENT_BOT_ID: "${MATTERMOST_AGENT_BOT_ID:?Set the local project Agent bot id}"
+      MATTERMOST_AGENT_TOKEN_FILE: "/local-config/agent.token"
+      ROLE_CONFIG_FILE: "/local-config/roles.json"
+      AGENT_HANDLE: "${AGENT_HANDLE:-agent}"
+    volumes: &local_dispatch_volumes
+      - type: bind
+        source: "./.local/commander"
+        target: "/local-config"
+        read_only: true
+  backend-worker:
+    environment: *local_dispatch_environment
+    volumes: *local_dispatch_volumes
+  backend-chat-listener:
+    environment: *local_dispatch_environment
+    volumes: *local_dispatch_volumes

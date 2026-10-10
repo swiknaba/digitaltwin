@@ -11,9 +11,11 @@ import time
 import uuid
 
 # Herdr reads the process-start environment when identifying a managed agent.
-# Re-exec once so the fixture hint is present there, before reporting hooks.
-if os.environ.get("HERDR_AGENT") != "pi":
-    os.execvpe(sys.executable, [sys.executable, *sys.argv], {**os.environ, "HERDR_AGENT": "pi"})
+# This deterministic fixture is mounted under both the Pi and Hermes names;
+# preserve the invoked CLI identity without contacting any model provider.
+AGENT = Path(sys.argv[0]).name
+if os.environ.get("HERDR_AGENT") != AGENT:
+    os.execvpe(sys.executable, [sys.executable, *sys.argv], {**os.environ, "HERDR_AGENT": AGENT})
 PANE = os.environ["HERDR_PANE_ID"]
 SESSION = uuid.uuid4().hex
 TRACE = Path.home() / "fixture-effects.jsonl"
@@ -37,10 +39,10 @@ def herdr(*args):
 def state(value):
     global SEQUENCE
     SEQUENCE += 1
-    herdr("report-agent", PANE, "--source", "herdr:pi", "--agent", "pi", "--state", value, "--agent-session-id", SESSION, "--seq", str(SEQUENCE))
+    herdr("report-agent", PANE, "--source", "herdr:" + AGENT, "--agent", AGENT, "--state", value, "--agent-session-id", SESSION, "--seq", str(SEQUENCE))
 
 
-herdr("report-agent-session", PANE, "--source", "herdr:pi", "--agent", "pi", "--agent-session-id", SESSION, "--seq", str(SEQUENCE), "--session-start-source", "startup")
+herdr("report-agent-session", PANE, "--source", "herdr:" + AGENT, "--agent", AGENT, "--agent-session-id", SESSION, "--seq", str(SEQUENCE), "--session-start-source", "startup")
 state("idle")
 for line in sys.stdin:
     match = re.search(r"(?:E2E_MESSAGE|DIRECT_MESSAGE)=([a-z0-9-]+)", line)

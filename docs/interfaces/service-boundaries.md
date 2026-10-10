@@ -102,8 +102,11 @@ cli/provider/model/family/launch_args), current bot/token file references, verif
 and repository origin. Supply these through a private operator overlay to web, listener and worker
 as needed; mount no provider state into Git/images. Only the worker mounts `/workspace` and
 `/run/herdr`; web has neither. Runtime packages backend-owned clients from a checksum manifest.
-No environment variable enables `dispatch_allowed?`; live evidence and reviewed policy code are
-still required. Gemini remains the specified Commander CLI; its actual launch/MCP profile is unproved.
+No boolean environment variable enables `dispatch_allowed?`; the local-only
+`LOCAL_DISPATCH_ACTIVATION_FILE` is an explicit, role-hash-bound acknowledgement
+that effect-owning services revalidate against chat and Herdr before startup.
+Hermes is the required Commander CLI when Commander is configured; authenticated
+launch and MCP behavior remain unproved.
 
 Bounded recovery commands and the minimum operator setup/evidence are recorded in
 [Commander routing setup](commander-routing-setup.md). Human follow-up outcome confirmation is explicitly

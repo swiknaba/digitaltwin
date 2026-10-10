@@ -13,6 +13,20 @@ module Adapters
         render_json({ "tools" => manifest_definitions }, status: 200)
       end
 
+      # Narrow token-only capability check for the local AgentsView aggregate
+      # reporter. It accepts no user input and discloses no request metadata.
+      sig { returns(Response) }
+      def authorize
+        return unexpected_fields_response unless request_params.empty?
+
+        result = Services::Composition.instance.authorize_commander_request(token: bearer)
+        return rejected_response if result.failed?
+
+        render_json({ "status" => "authorized" }, status: 200)
+      rescue ArgumentError, Sequel::Error
+        rejected_response
+      end
+
       sig { returns(Response) }
       def tools
         values = request_params

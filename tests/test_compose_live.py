@@ -59,24 +59,29 @@ class DisposableComposeTest(unittest.TestCase):
         if len(context) != 1 or not context[0]["Endpoints"]["docker"]["Host"].startswith("unix://"):
             raise RuntimeError("suite requires a local Unix Docker endpoint; remote infrastructure is excluded")
         cls.project = "digitaltwin-integration-" + uuid.uuid4().hex[:12]
+        cls.image_prefix = os.environ.get("DIGITALTWIN_TEST_IMAGE_PREFIX", cls.project)
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", cls.image_prefix):
+            raise RuntimeError("test image prefix must be a local image name")
         cls.temporary = tempfile.TemporaryDirectory(prefix=cls.project)
         cls.addClassCleanup(cls.temporary.cleanup)
         override = Path(cls.temporary.name) / "compose.yml"
         override.write_text(f'''services:
   mattermost:
-    image: {cls.project}-chat:check
+    image: {cls.image_prefix}-chat:check
     ports: !override
       - "127.0.0.1::8065"
   backend-migrate:
-    image: {cls.project}-backend:check
+    image: {cls.image_prefix}-backend:check
   backend-web:
-    image: {cls.project}-backend:check
+    image: {cls.image_prefix}-backend:check
     ports: !override
       - "127.0.0.1::3000"
   backend-worker:
-    image: {cls.project}-backend:check
+    image: {cls.image_prefix}-backend:check
   agent-runtime:
-    image: {cls.project}-runtime:check
+    image: {cls.image_prefix}-runtime:check
+    ports: !override
+      - "127.0.0.1::1455"
 ''')
         cls.base = ["docker", "compose", "--env-file", str(ROOT / ".env.example"), "-p", cls.project]
         for name in [ROOT / "compose.yml", ROOT / "compose.backend.yml", ROOT / "compose.integration.yml", override]:
@@ -84,14 +89,24 @@ class DisposableComposeTest(unittest.TestCase):
         cls.addClassCleanup(cls.cleanup)
         cls.command([str(ROOT / "scripts/prepare-callback-context")])
         cls.compose(["config", "--quiet"])
-        cls.compose(["build", "mattermost", "backend-web", "agent-runtime"], timeout=1800)
+        images = [f"{cls.image_prefix}-{service}:check" for service in ["chat", "backend", "runtime"]]
+        if cls.image_prefix == cls.project:
+            cls.compose(["build", "mattermost", "backend-web", "agent-runtime"], timeout=1800)
+        else:
+            cls.command(["docker", "image", "inspect", *images])
         try:
             cls.compose(["up", "-d", "--no-build", "--pull", "never", "--wait", "--wait-timeout", "240"], timeout=300)
         except RuntimeError as error:
             # Fresh disposable stack contains only checked-in public DB samples.
             state = cls.compose(["ps", "--all", "--format", "json"], check=False)
+            runtime_diagnostic = cls.compose(["logs", "--no-color", "--tail", "60", "agent-runtime"], check=False)
             diagnostic = cls.compose(["logs", "--no-color", "--tail", "30", "postgres", "local-volume-init", "backend-migrate", "backend-web", "backend-worker", "agent-runtime", "mattermost"], check=False)
-            detail = "Container states:\n" + state.stdout + state.stderr + "\nService logs:\n" + diagnostic.stdout + diagnostic.stderr
+            # Keep the failing service's own output before verbose Compose state.
+            # The raised diagnostic is deliberately bounded below, and the state
+            # records can otherwise hide the only actionable startup error.
+            detail = ("Agent-runtime logs:\n" + runtime_diagnostic.stdout + runtime_diagnostic.stderr +
+                      "\nService logs:\n" + diagnostic.stdout + diagnostic.stderr +
+                      "\nContainer states:\n" + state.stdout + state.stderr)
             for marker in ["local-only-postgres", "local-only-kirei", "local-only-mattermost"]:
                 detail = detail.replace(marker, "<sample-redacted>")
             detail = re.sub(r"(postgres(?:ql)?://)[^@\s]+@", r"\1<redacted>@", detail)
@@ -117,7 +132,8 @@ class DisposableComposeTest(unittest.TestCase):
     def cleanup(cls):
         result = cls.compose(["down", "--volumes", "--remove-orphans"], check=False)
         # Only uniquely tagged images from this run; no other workers' artifacts.
-        cls.command(["docker", "image", "rm", *[f"{cls.project}-{s}:check" for s in ["chat", "backend", "runtime"]]], check=False)
+        if cls.image_prefix == cls.project:
+            cls.command(["docker", "image", "rm", *[f"{cls.project}-{s}:check" for s in ["chat", "backend", "runtime"]]], check=False)
         if result.returncode:
             raise RuntimeError(f"cleanup failed for own project {cls.project}")
         label = "label=com.docker.compose.project=" + cls.project
@@ -133,6 +149,10 @@ class DisposableComposeTest(unittest.TestCase):
     @classmethod
     def ruby(cls, source, **kwargs):
         return cls.compose(["exec", "-T", "backend-web", "bundle", "exec", "ruby", "-r", "./app", "-"], source=source, **kwargs)
+
+    @classmethod
+    def ruby_with_runtime_socket(cls, source, **kwargs):
+        return cls.compose(["exec", "-T", "backend-worker", "bundle", "exec", "ruby", "-r", "./app", "-"], source=source, **kwargs)
 
     def get(self, service, path):
         with urllib.request.urlopen(self.addresses[service] + path, timeout=10) as response:
@@ -182,7 +202,15 @@ class DisposableComposeTest(unittest.TestCase):
                 self.assertNotIn("docker.sock", mount["Destination"])
             if service == "agent-runtime":
                 self.assertEqual(inspect["HostConfig"]["CapDrop"], ["ALL"])
-                self.assertFalse(inspect["HostConfig"]["PortBindings"])
+                bindings = inspect["HostConfig"]["PortBindings"]
+                self.assertEqual(set(bindings), {"1455/tcp"})
+                self.assertEqual(len(bindings["1455/tcp"]), 1)
+                self.assertEqual(bindings["1455/tcp"][0]["HostIp"], "127.0.0.1")
+                self.assertEqual(bindings["1455/tcp"][0]["HostPort"], "")
+                published = inspect["NetworkSettings"]["Ports"]["1455/tcp"]
+                self.assertEqual(len(published), 1)
+                self.assertEqual(published[0]["HostIp"], "127.0.0.1")
+                self.assertTrue(published[0]["HostPort"].isdigit())
         # Distroless chat has no shell. Inspect its container filesystem metadata.
         chat = self.compose(["ps", "-q", "mattermost"]).stdout.strip()
         import tarfile
@@ -246,7 +274,7 @@ class DisposableComposeTest(unittest.TestCase):
                 stale = callback.copy()
                 stale[stale.index("DIGITALTWIN_SESSION_GENERATION=1")] = "DIGITALTWIN_SESSION_GENERATION=2"
                 self.assertNotEqual(self.compose(stale, check=False).returncode, 0)
-            self.ruby("db=Kirei::App.raw_db_connection; rows=db[:outbox].where(Sequel.like(:response_key,'callback:integration:%')).all; abort unless rows.size==2 && rows.map{|r| [r[:channel_id],r[:thread_id],r[:bot],r[:role]]}.sort==[['fixture-channel','fixture-root-1','worker','writer'],['fixture-channel','fixture-root-2','worker','writer']]")
+            self.ruby("db=Kirei::App.raw_db_connection; rows=db[:outbox].where(Sequel.like(:response_key,'callback:integration:%')).all; abort unless rows.size==2 && rows.map{|r| [r[:channel_id],r[:thread_id],r[:bot],r[:role]]}.sort==[['fixture-channel','fixture-root-1','agent','writer'],['fixture-channel','fixture-root-2','agent','writer']]")
         finally:
             self.compose(["exec", "-T", "agent-runtime", "ruby", "-e", f"File.unlink('{token_file}') if File.exist?('{token_file}')"])
             self.ruby("db=Kirei::App.raw_db_connection; db[:sessions].where(Sequel.like(:id,'integration:%')).update(active:false,credential_expires_at:Time.now-1)")

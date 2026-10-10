@@ -13,10 +13,10 @@ module Services
       Messaging = Domains::Messaging
 
       sig do
-        params(route: RouteFollowup, approvals: RecordApproval, handle: String, worker_handle: String, inbox: Messaging::Inbox,
+        params(route: RouteFollowup, approvals: RecordApproval, handle: String, agent_handle: String, inbox: Messaging::Inbox,
                outbox: Messaging::Outbox, parser: Commands::Parser).void
       end
-      def initialize(route:, approvals:, handle:, worker_handle:, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new,
+      def initialize(route:, approvals:, handle:, agent_handle:, inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new,
                      parser: Commands::Parser.new)
         @route = route
         @approvals = approvals
@@ -24,7 +24,7 @@ module Services
         @outbox = outbox
         @parser = parser
         @handle = handle
-        @worker_handle = worker_handle
+        @agent_handle = agent_handle
       end
 
       # Failures raise, so the worker keeps today's retry path.
@@ -33,7 +33,7 @@ module Services
         Kirei::Services::Runner.call(self.class.name.to_s) do
           id = Domains::Commander::Dto::InboxDispatchJob.from_hash(job.payload, true).inbox_id
           source = T.must(@inbox.find(id: id))
-          command = @parser.call(body: source.verified_delivery.body, agent_handle: @handle, worker_handle: @worker_handle)
+          command = @parser.call(body: source.verified_delivery.body, commander_handle: @handle, agent_handle: @agent_handle)
           if command.is_a?(Commands::Dto::Approve)
             gate = command.gate.serialize
             Platform::Unwrap.call(@approvals.call(inbox_id: id, workflow_id: command.workflow_id, gate: Domains::Workflows::Dto::Gate.deserialize(gate), commit: command.commit))
@@ -48,7 +48,7 @@ module Services
 
       sig { params(source: Messaging::Dto::InboxRecord, body: String, key: String).void }
       private def notify(source, body, key)
-        message = Messaging::Dto::OutgoingMessage.new(channel_id: source.channel_id, thread_id: source.thread_id, bot: Messaging::Dto::Bot::Agent,
+        message = Messaging::Dto::OutgoingMessage.new(channel_id: source.channel_id, thread_id: source.thread_id, bot: Messaging::Dto::Bot::Commander,
                                                       role: Messaging::Dto::SpeakerRole::Commander, body: body, key: key)
         Platform::Unwrap.call(@outbox.enqueue(message: message))
       end

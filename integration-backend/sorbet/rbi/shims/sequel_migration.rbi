@@ -39,4 +39,10 @@ class Sequel::MigrationDSL
 
   sig { params(block: T.proc.bind(Sequel::Database).void).void }
   def change(&block); end
+
+  sig { params(block: T.proc.bind(Sequel::Database).void).void }
+  def up(&block); end
+
+  sig { params(block: T.proc.bind(Sequel::Database).void).void }
+  def down(&block); end
 end

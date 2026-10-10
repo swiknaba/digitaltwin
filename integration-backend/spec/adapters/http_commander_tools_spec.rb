@@ -60,7 +60,12 @@ RSpec.describe "POST /internal/commander/tools wire format" do
     route = Services::Commander::RouteFollowup.new(resolver: resolver, membership: membership, handle: "agent", commander_channel_id: nil)
     tools = Services::Commander::Tools.new(source: source, authorize: Services::Commander::AuthorizeRequest.new(source: source), route: route,
                                            request_start: double(call: Kirei::Services::Result.new(result: "workflow_request_1")))
-    allow(Services::Composition).to receive(:instance).and_return(double(tools: tools))
+    authorization = Services::Commander::AuthorizeRequest.new(source: source)
+    composition = double(tools: tools)
+    allow(composition).to receive(:authorize_commander_request) do |token:|
+      authorization.current(token: token, states: [Domains::Commander::Dto::CommanderRequestState::Active])
+    end
+    allow(Services::Composition).to receive(:instance).and_return(composition)
   end
 
   def tool(name, arguments = {}, token = "request-token")
@@ -71,13 +76,29 @@ RSpec.describe "POST /internal/commander/tools wire format" do
     [status, chunks.join]
   end
 
+  def authorize(token = "request-token", body = "{}")
+    env = Rack::MockRequest.env_for("http://localhost/internal/commander/authorize", method: "POST", input: body, "CONTENT_TYPE" => "application/json")
+    env.merge!("REQUEST_PATH" => "/internal/commander/authorize", "HTTP_HOST" => "localhost", "REMOTE_ADDR" => "127.0.0.1", "HTTP_AUTHORIZATION" => "Bearer #{token}")
+    status, _headers, chunks = app.call(env)
+    [status, chunks.join]
+  end
+
   it "keeps the manifest body" do
     env = Rack::MockRequest.env_for("http://localhost/internal/commander/manifest", method: "GET")
     env.merge!("REQUEST_PATH" => "/internal/commander/manifest", "HTTP_HOST" => "localhost", "REMOTE_ADDR" => "127.0.0.1")
     status, _headers, chunks = app.call(env)
-    # SHA-256 of the pre-refactor manifest with Ruling 31 applied: evidence items are strings.
-    expect([status, Digest::SHA256.hexdigest(chunks.join)]).to eq([200, "7e7744e0fa9b0bdfdd5803f657474c6a8e3bfae08c0b7b78710c22c9c5775632"])
+    # SHA-256 of the review-approved manifest: evidence items are strings and
+    # workflow_status is request-bound with no model-supplied fields.
+    expect([status, Digest::SHA256.hexdigest(chunks.join)]).to eq([200, "24609bf55d54ee9456326839adccbe86278932bc3d7bc1f308ab63ef50e75d5a"])
     expect(chunks.join).to include('"evidence_inbox_ids":{"type":"array","items":{"type":"string"},"maxItems":10}')
+  end
+
+  it "proves only the active request capability without accepting arguments" do
+    expect(authorize).to eq([200, '{"status":"authorized"}'])
+    expect(authorize("wrong-token")).to eq([403, '{"error":"Request rejected"}'])
+    expect(authorize("request-token", '{"request_id":"request"}')).to eq([400, '{"error":"Unexpected fields"}'])
+    db[:commander_requests].where(id: "request").update(expires_at: Time.now - 1)
+    expect(authorize).to eq([403, '{"error":"Request rejected"}'])
   end
 
   it "keeps the list_projects body" do
@@ -105,6 +126,7 @@ RSpec.describe "POST /internal/commander/tools wire format" do
     expect([status, body]).to eq([200, "{\"result\":{\"id\":\"#{row[:id]}\",\"inbox_id\":\"inbox_1\",\"workflow_id\":\"w1\",\"session_id\":\"s1\",\"generation\":1," \
                                        "\"status\":\"queued\",\"reason\":null,\"evidence\":{\"selection\":null,\"direct_thread\":null," \
                                        "\"interpretation\":{\"workflow_id\":\"w1\",\"evidence_inbox_ids\":[\"inbox_2\"]},\"recent_binding\":null," \
+                                       "\"attribution\":{\"effective_sender\":\"Commander\",\"origin_inbox_id\":\"inbox_1\",\"origin_user_id\":\"#{user}\",\"mode\":\"commander_forwarded\"}," \
                                        "\"source_inbox_id\":\"inbox_1\"},\"created_at\":\"#{row[:created_at]}\",\"delivered_at\":null}}"])
     expect(tool("send_prompt", "workflow_id" => "w1", "evidence_inbox_ids" => ["inbox_2"])).to eq([status, body])
     # A request from w2's thread: direct w2 plus interpreted w1 needs clarification.

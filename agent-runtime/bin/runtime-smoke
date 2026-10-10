@@ -3,7 +3,9 @@ set -euo pipefail
 [[ $(id -u) == 10001 ]]
 [[ $(node --version) == v22.23.2 ]]
 [[ $(herdr --version) == 'herdr 0.9.3' ]]
-for command in codex claude opencode gemini wagglebot; do
+agentsview --version | grep -Eq '^agentsview v0\.44\.0 '
+test "$(grep -E '^archive_content = "usage"$' "$AGENTSVIEW_DATA_DIR/config.toml")" = 'archive_content = "usage"'
+for command in codex claude opencode gemini grok wagglebot hermes; do
   timeout 45 "$command" --version
 done
 node -e 'const {createRequire}=require("node:module"); const r=createRequire("/opt/wagglebot/dist/index.js"); if (r("skills/package.json").version !== "1.5.23") process.exit(1)'
@@ -33,5 +35,6 @@ if [[ ${1:-} == --server ]]; then
   herdr api snapshot > "$scratch/snapshot.json"
   jq -e '.result.snapshot.protocol == 22 and .result.snapshot.version == "0.9.3"' "$scratch/snapshot.json" >/dev/null
 fi
+test -x /opt/hermes-agent/.venv/bin/hermes
 printf 'PASS: offline versions, Linux schema, role shells, tools%s\n' "${1:+, live Herdr server}"
 printf 'OPEN: authenticated four-CLI prompt/state/idle, selected Commander MCP, callback delivery, Tailnet SSH\n'

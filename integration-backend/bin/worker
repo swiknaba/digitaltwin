@@ -7,8 +7,9 @@ exit if ENV["BOOT_CHECK_ONLY"] == "1"
 require "async"
 Async do
   composition = Services::Composition.instance
+  composition.local_dispatch_preflight.call
   handlers = {}
-  if composition.configuration.chat_validation_mode
+  if composition.configuration.chat_transport_enabled?
     handlers[Platform::Jobs::Dto::JobKind::MattermostPost] = composition.deliver_outbox
     handlers.merge!(Services::JobHandlers.new(composition: composition).call)
     Domains::Sessions::Renewals.new.schedule_active

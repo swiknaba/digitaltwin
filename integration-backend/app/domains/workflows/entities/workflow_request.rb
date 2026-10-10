@@ -6,7 +6,7 @@
 # Table name: workflow_requests
 #
 #  id                  :text                not null, primary key
-#  inbox_id            :integer             not null
+#  inbox_id            :text                not null
 #  project_id          :text                not null
 #  workflow_id         :text                null
 #  request_digest      :text                not null

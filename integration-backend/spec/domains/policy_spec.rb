@@ -26,4 +26,11 @@ RSpec.describe "Workflow policy preparation" do
   it "keeps dispatch closed pending live prerequisite evidence" do
     expect(policy.dispatch_allowed?).to be(false)
   end
+
+  it "allows only an explicit local activation record" do
+    activation = Domains::Workflows::Dto::LocalDispatchActivation.new(
+      schema: "digitaltwin.local-dispatch/v1", scope: "local", confirmed_at: "2026-10-05T12:00:00Z", role_config_sha256: "a" * 64
+    )
+    expect(Domains::Workflows::Policy.new(local_dispatch_activation: activation).dispatch_allowed?).to be(true)
+  end
 end

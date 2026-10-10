@@ -2,9 +2,9 @@
 
 Current commands below match the installed implementation.
 
-Gemini was already the specified Commander default on main `f01b846` (§17 of the specification).
-This feature did not select another runtime or configure/authenticate Gemini. Runtime packages
-Gemini CLI 0.62.0; the actual operator role/model/launch profile remains to be supplied and validated.
+Commander runs through Hermes. Runtime packages the latest supported Hermes stable release during
+its normal image build. Hermes provider setup remains private operator configuration and is not
+authenticated or validated by this repository.
 
 ## Feature boundary
 
@@ -18,10 +18,10 @@ Lost effect receipts now have bounded recovery:
 
 | Exact human command in Commander chat | Evidence checked; no external action replayed |
 | --- | --- |
-| `@agent recover-followup ID delivered` or `discard` | Original human, destination membership, no live send lease, exact settled Writer conversation/generation. This records a human outcome, not an automatic socket receipt. Discard releases later queued instructions; a fresh human instruction is needed for any new send. |
-| `@agent recover-start REQUEST_ID THREAD_ID` | Original human; actual bot/channel/root/title/request correlation, undeleted root, no live creation lease. Continue against that root without posting another. |
-| `@agent recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Commander-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
-| `@agent recover-commander REQUEST_ID` | Original human, settled same Commander and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
+| `@commander recover-followup ID delivered` or `discard` | Original human, destination membership, no live send lease, exact settled Writer conversation/generation. This records a human outcome, not an automatic socket receipt. Discard releases later queued instructions; a fresh human instruction is needed for any new send. |
+| `@commander recover-start REQUEST_ID THREAD_ID` | Original human; actual bot/channel/root/title/request correlation, undeleted root, no live creation lease. Continue against that root without posting another. |
+| `@commander recover-session OPERATION_ID PANE_ID` | Original workflow human (or initial Commander-request human), latest generation, no live effect lease. Start recovery verifies exact alias/cwd/CLI/conversation and credential digest; stop recovery requires authoritative unfiltered pane inventory proving absence. No start/close repeat. |
+| `@commander recover-commander REQUEST_ID` | Original human, settled same Commander and no unresolved associated workflow/session/review effects. Complete the old request and unblock later requests; no prompt replay. |
 
 IDs appear in queue/reservation receipts. Recovery is not proof of a send when the user selects
 `delivered`; the audit labels that as human confirmation. A missing conversation/receipt remains
@@ -42,18 +42,36 @@ writing/review phases; PR delivery only determines when later `finish` can archi
    has neither Git workspaces nor the Herdr socket. Build clients with the checksum staging script.
 2. Provide existing authenticated chat identities through read-only token-file mounts. Listener
    needs `MATTERMOST_URL`, `MATTERMOST_LISTENER_TOKEN_FILE`, `MATTERMOST_LOCAL_BOT_IDS`,
-   `MATTERMOST_CHANNEL_IDS` (including Commander and project), and `COMMANDER_CHANNEL_ID`.
-   Worker additionally needs `MATTERMOST_WORKER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE`,
+   and `MATTERMOST_CHANNEL_IDS` for the project Agent path. Optional
+   Commander routing additionally needs `COMMANDER_CHANNEL_ID` included in that
+   monitored channel list.
+   The backend worker additionally needs `MATTERMOST_COMMANDER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE`,
    both corresponding `*_BOT_ID` values, and the same local-bot IDs. Web's request-bound MCP
-   services need the listener/Worker token-file references, Worker bot ID and chat/local-bot settings
+   services need the listener, Commander, and Agent token-file references, their bot IDs, and chat/local-bot settings
    for authoritative REST checks. Optional peers use `MATTERMOST_PEER_BOT_IDS`. No bot token
-   goes to Runtime. Activate only the disposable chat-validation listener/worker transport for acceptance;
-   `CHAT_VALIDATION_MODE=1` does not enable Herdr effects.
-3. Supply `ROLE_CONFIG_FILE` to web and worker: a trusted Commander entry; Writer/Reviewer
-   entries are additionally required when creating workflows or running review. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). Commander remains
-   Gemini unless the operator explicitly chooses otherwise. Writer/Reviewer must differ in provider
-   and family. Use the actual already authorized models/login setup in Runtime; do not pass provider
-   credentials as launch arguments. The neutral Commander directory is `/home/runtime`.
+   goes to Runtime. `CHAT_VALIDATION_MODE=1` remains disposable transport validation and does not
+   enable Herdr effects. The separate [local activation runbook](local-commander-activation.md)
+   validates the same mappings without storing provider credentials or adding a boolean production override.
+3. Supply `ROLE_CONFIG_FILE` to web and worker: Writer/Reviewer entries are
+   required when creating workflows or running review; an optional Commander
+   entry enables Commander routing. Each entry contains `cli`, `provider`, `model`, `family`, `launch_args` (string array). The Commander entry must use
+   `"cli": "hermes"`. Writer/Reviewer must differ in provider
+   and family. `family` means model family. `model` records the selected model; it does not configure the CLI.
+   Select the actual model through CLI settings or supported `launch_args` before activation. Chat cannot currently override it.
+   See the [role field reference](local-commander-activation.md#configure-the-role-agents).
+   Use the actual already authorized models/login setup in Runtime; do not pass provider
+   credentials as launch arguments. The persistent Commander directory is `/workspace/commander`.
+   Hermes is the harness; it does not fix Commander to Gemini or any other model. Its optional xAI Grok provider is
+   supported natively as `provider: xai` (alias `grok`) with an existing `XAI_API_KEY`, or as
+   `provider: xai-oauth` (alias `grok-oauth`) after an operator-run `hermes model`/`hermes auth add
+   xai-oauth` login. Select the actual Grok model in the private Hermes profile or interactive
+   model picker; do not add a key, OAuth token, model default, or provider value to Git, launch
+   arguments, logs, or this setup file. Gemini remains an optional Hermes provider, not a default.
+   Runtime also packages the official xAI Grok Build CLI for a separately configured Writer or
+   Reviewer role (`"cli": "grok"`); it is not a Commander replacement or a Hermes provider
+   setting. Grok Build accepts an operator-provided `XAI_API_KEY` or its official login outside
+   Git. Its default Runtime config disables background self-updates. No role is enabled merely by
+   installing the binary; Kirei still verifies the configured role and all workflow authorization.
 4. Retain a verified `projects` row binding the project channel to its repository slug/origin and
    `/workspace/repos/owner/repo`. Repository origin must match; branches/worktrees are verified.
    For existing-session acceptance, bind Writer's actual Herdr pane, alias, cwd, CLI, opaque
@@ -61,29 +79,51 @@ writing/review phases; PR delivery only determines when later `finish` can archi
 5. Set `DIGITALTWIN_CALLBACK_URL=http://backend-web:3000` for the worker's session environment.
    Herdr workspace creation supplies the generated session-token file, generation and current
   Commander-request token-file path; the operator does not create or transmit their values.
-6. In the operator-owned Runtime Gemini user settings (`/home/runtime/.gemini/settings.json`),
-   merge this server entry without replacing other settings or login state:
+6. Runtime initializes `/workspace/commander/.hermes/config.yaml` when it does not exist. It registers
+   the private Kirei MCP server below without replacing an existing Hermes profile or provider configuration:
 
-```json
-{
-  "mcpServers": {
-    "digitaltwin": {
-      "command": "/usr/local/bin/digitaltwin-mcp",
-      "env": {
-        "DIGITALTWIN_CALLBACK_URL": "$DIGITALTWIN_CALLBACK_URL",
-        "DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE": "$DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE"
-      }
-    }
-  }
-}
+```yaml
+mcp_servers:
+   digitaltwin:
+     command: /usr/local/bin/digitaltwin-mcp
+     args: []
+     env:
+       DIGITALTWIN_CALLBACK_URL: ${DIGITALTWIN_CALLBACK_URL}
+       DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE: ${DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE}
+     tools:
+       include:
+         - list_projects
+         - list_workflows
+         - read_context
+         - workflow_status
+         - start_workflow
+         - send_prompt
+         - workflow_control
+   agentsview_usage:
+     command: /usr/local/bin/digitaltwin-mcp
+     args: []
+     env:
+       DIGITALTWIN_MCP_TOOLSET: agentsview_usage
+       DIGITALTWIN_CALLBACK_URL: ${DIGITALTWIN_CALLBACK_URL}
+       DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE: ${DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE}
+     tools:
+       include:
+         - get_usage
 ```
 
-Gemini sanitizes inherited `*TOKEN*` variables; this explicit `env` passes the file path, not a token.
-Approve only the reviewed Digitaltwin MCP tool policy in the operator's existing CLI confirmation
-settings so normal typed calls can proceed. Keep other permissions unchanged. The pinned package's
-`mcpServers` shape was inspected offline; the current [official MCP configuration documentation](https://geminicli.com/docs/tools/mcp-server/)
-confirms command/env expansion and explicit environment overrides. Configuration inspection is
-not proof that authenticated Gemini startup, tool discovery and tools/call succeed.
+The explicit environment passes a capability-file path, not a token. Keep other Hermes permissions
+unchanged. The tool allowlist is the typed Kirei manifest. Runtime tests check profile creation,
+restart persistence, and the packaged MCP bridge. They do not prove authenticated Hermes startup,
+tool discovery, or tool calls.
+
+`agentsview_usage` is deliberately a separate one-tool process: its callback URL is used only to
+prove the live Commander capability, and it cannot discover or invoke generic backend tools or
+upstream AgentsView search, session, or transcript tools. It
+accepts only timezone-aware inclusive calendar reports (`today`, month-to-date, 1–90 days, or
+custom ISO dates), never an exact hour or a shell argument. The packaged upstream archive is
+configured for usage-only storage from the four Runtime agent roots, with no remote host or UI
+listener. A selected Commander MCP round trip remains an operator-only gate; no public route,
+Compose port, or Runtime security setting changes with this feature.
 
 ## Minimum evidence before enabling dispatch
 
@@ -91,7 +131,7 @@ Capture sanitized artifact/version/schema identities, state transitions and opaq
 
 - Actual chat human/bot identities, both memberships, ordinary Commander posts, project root/replies,
   and reconnect/refetch behavior on the selected server.
-- Actual Gemini start through Herdr, exact conversation identity and settled/readiness fields;
+- Actual Hermes start through Herdr, exact conversation identity and settled/readiness fields;
   installed MCP initialize/list/read-context/tool-call for the verified human request. Wrong or
   expired capabilities must fail; no provider value/token appears in evidence.
 - Actual Writer start/get/prompt/settled on the same conversation and a source-thread callback.
@@ -101,10 +141,13 @@ Capture sanitized artifact/version/schema identities, state transitions and opaq
   review-lock queue/release and concurrent follow-ups; show IDs/generations did not change and
   acknowledgments distinguish queued, delivered and human-reconciled outcomes.
 
-Then review a bounded policy-code change and re-arm only unsent evidence-blocked jobs after
-source/state revalidation. `Policy#dispatch_allowed?` is intentionally hard-coded false: there is
-no ENV switch, and setup alone cannot enable this branch. No authenticated/provider run has been
-performed by this task. Obtain authorization for any acceptance run that could consume paid usage.
+For one operator-controlled local stack, use the separate
+[file-gated activation runbook](local-commander-activation.md) only after those prerequisites and
+the read-only preflight pass. It binds the checked role file, chat identities, memberships and runtime
+socket before effects are started; it is not an ENV switch and is not a Hetzner/production deployment
+path. Re-arm only unsent evidence-blocked jobs after source/state revalidation. No
+authenticated/provider run has been performed by this task. Obtain authorization for any acceptance
+run that could consume paid usage.
 
 ## Review and CI
 

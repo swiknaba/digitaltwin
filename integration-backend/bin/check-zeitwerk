@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+# typed: strict
+# frozen_string_literal: true
+
+# Boot the real backend application, then make Zeitwerk validate every loader
+# it knows about in this process.
+require_relative "../app"
+
+Zeitwerk::Loader.eager_load_all
+
+puts "Zeitwerk eager load verified"

@@ -1,0 +1,13 @@
+*
+!.gitignore
+!AGENTS.md
+!SOUL.md
+!hermes-config.yaml
+!.hermes/
+.hermes/*
+!.hermes/memories/
+!.hermes/memories/**
+!.hermes/skills/
+!.hermes/skills/**
+!.hermes/learned-skills/
+!.hermes/learned-skills/**

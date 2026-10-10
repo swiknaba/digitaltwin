@@ -136,6 +136,7 @@ module Adapters
                       message: string(object, "message", malformed),
                       create_at: non_negative_integer(object, "create_at", invalid_revision),
                       update_at: non_negative_integer(object, "update_at", invalid_revision),
+                      edit_at: non_negative_integer_or_default(object, "edit_at", 0, invalid_revision),
                       delete_at: non_negative_integer(object, "delete_at", invalid_revision),
                       props: props(object, malformed))
       end
@@ -171,6 +172,13 @@ module Adapters
         raise Errors::MalformedResponse, message unless value.is_a?(Integer) && value >= 0
 
         value
+      end
+
+      sig { params(object: Client::JsonObject, key: String, default: Integer, message: String).returns(Integer) }
+      private def non_negative_integer_or_default(object, key, default, message)
+        return default unless object.key?(key)
+
+        non_negative_integer(object, key, message)
       end
 
       sig { params(object: Client::JsonObject, message: String).returns(T::Hash[String, String]) }

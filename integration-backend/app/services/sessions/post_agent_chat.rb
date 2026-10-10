@@ -3,9 +3,9 @@
 
 module Services
   module Sessions
-    # Queues a Worker/Reviewer chat message in the thread bound to the
-    # session's workflow. The callback key makes retries idempotent.
-    class PostWorkerChat
+    # Queues an Agent chat message in the thread bound to the session's
+    # workflow. The callback key makes retries idempotent.
+    class PostAgentChat
       extend T::Sig
 
       Messaging = Domains::Messaging
@@ -77,7 +77,7 @@ module Services
         recorded = @callbacks.record(session_id: session.id, generation: generation, key: key, body_digest: Digest::SHA256.hexdigest(body))
         return failure(Code::CallbackKeyReused, "Callback key reused with changed body") if recorded.failed?
 
-        message = Messaging::Dto::OutgoingMessage.new(channel_id: workflow.channel_id, thread_id: workflow.thread_id, bot: Messaging::Dto::Bot::Worker, role: role,
+        message = Messaging::Dto::OutgoingMessage.new(channel_id: workflow.channel_id, thread_id: workflow.thread_id, bot: Messaging::Dto::Bot::Agent, role: role,
                                                       body: "[#{session.role.serialize}] #{body}", key: "callback:#{session.id}:#{generation}:#{key}")
         enqueued = @outbox.enqueue(message: message)
         return Kirei::Services::Result.new(errors: enqueued.errors) if enqueued.failed?

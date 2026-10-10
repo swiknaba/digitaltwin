@@ -6,8 +6,8 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
   let(:root_id) { "r" * 26 }
   let(:post_id) { "p" * 26 }
   let(:root) {
-    { "id" => root_id, "channel_id" => channel, "user_id" => user_id, "root_id" => "", "message" => "@worker start",
-      "create_at" => 1000, "update_at" => 1000, "delete_at" => 0, "props" => {}, "metadata" => { "embeds" => [] } }
+    { "id" => root_id, "channel_id" => channel, "user_id" => user_id, "root_id" => "", "message" => "@agent start",
+      "create_at" => 1000, "update_at" => 1000, "edit_at" => 0, "delete_at" => 0, "props" => {}, "metadata" => { "embeds" => [] } }
   }
   let(:reply) {
     root.merge("id" => post_id, "root_id" => root_id, "message" => "ordinary human reply", "create_at" => 2000,
@@ -43,6 +43,13 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
     expect(delivery.thread_id).to eq(root_id)
     expect(delivery.actor.bot).to be(false) # authenticated REST omits is_bot:false
     expect(delivery.post_revision).to eq(2000)
+  end
+  it "does not treat root reply activity as a human source edit" do
+    root["update_at"] = 3000
+    expect(verify(root).post_revision).to eq(1000)
+
+    root["edit_at"] = 4000
+    expect(verify(root).post_revision).to eq(4000)
   end
   it "rejects cross-channel roots, revoked membership and wrong is_bot types" do
     responses["/api/v4/posts/#{root_id}"]["channel_id"] = "x" * 26
@@ -80,7 +87,7 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
     expect { verify }.to raise_error(ArgumentError)
   end
   it "durably deduplicates inbox before dispatching and ignores unactivated ordinary replies" do
-    router = Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", commander_channel_id: nil)
+    router = Services::Inbound::RecordDelivery.new(commander_handle: "commander", agent_handle: "agent", commander_channel_id: nil)
     2.times { router.call(delivery: verify) }
     expect(db[:inbox].count).to eq(1)
     expect(db[:jobs].count).to eq(0)
@@ -90,7 +97,7 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
     expect(db[:jobs].first[:kind]).to eq("workflow.start")
   end
   it "deduplicates WS/backfill overlap without relying on socket seq" do
-    router = Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", commander_channel_id: nil)
+    router = Services::Inbound::RecordDelivery.new(commander_handle: "commander", agent_handle: "agent", commander_channel_id: nil)
     event = { "event" => "posted", "data" => { "post" => JSON.generate(root) },
               "broadcast" => { "channel_id" => channel }, "seq" => 10 }
     2.times { router.call(delivery: resolver.event(event.merge("seq" => 20))) }
@@ -102,7 +109,7 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
                          workspace: "/tmp/fixture")
     db[:workflows].insert(id: "w", project_id: "p", channel_id: channel, thread_id: root_id, branch: "digitaltwin/w",
                           worktree_path: "/tmp/w", phase: "spec_review", role_configurations: workflow_roles)
-    router = Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", commander_channel_id: nil)
+    router = Services::Inbound::RecordDelivery.new(commander_handle: "commander", agent_handle: "agent", commander_channel_id: nil)
     router.call(delivery: verify)
     expect(db[:queued_messages].count).to eq(1)
     expect(db[:outbox].count).to eq(1)
@@ -112,7 +119,7 @@ RSpec.describe "Source-derived Mattermost delivery verification contracts (offli
     expect(router.call(delivery: verify(root)).result.status).to eq(statuses::Rejected)
   end
   it "records edits without starting new workflow effects" do
-    router = Services::Inbound::RecordDelivery.new(agent_handle: "agent", worker_handle: "worker", commander_channel_id: nil)
+    router = Services::Inbound::RecordDelivery.new(commander_handle: "commander", agent_handle: "agent", commander_channel_id: nil)
     expect(router.call(delivery: verify(root, kinds::PostEdited)).result.status).to eq(statuses::Accepted)
     expect(db[:jobs].count).to eq(0)
   end

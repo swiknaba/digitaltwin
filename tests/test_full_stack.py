@@ -48,6 +48,7 @@ class FullStackChatTest(core.DisposableComposeTest):
             diagnostic["fixture_errors"] = self.compose(["exec", "-T", "agent-runtime", "python3", "-c",
                                                          "from pathlib import Path; p=Path.home()/'fixture-errors.jsonl'; print(p.read_text() if p.exists() else '')"], check=False).stdout
             diagnostic["raw_start_probe"] = getattr(self, "raw_start_probe", None)
+            diagnostic["ruby_start_probe"] = getattr(self, "ruby_start_probe", None)
             diagnostic["herdr_panes"] = self.compose(["exec", "-T", "agent-runtime", "herdr", "pane", "list"], check=False).stdout
             diagnostic["herdr_server_log"] = self.compose(["exec", "-T", "agent-runtime", "sh", "-ec",
                                                             "tail -n 200 /home/runtime/.config/herdr/herdr-server.log"], check=False).stdout[-12000:]
@@ -102,13 +103,16 @@ class FullStackChatTest(core.DisposableComposeTest):
         return user, headers["Token"]
 
     def configure_chat(self):
+        self.configure_fixture_runtime()
         fixture = core.ROOT / "tests/fixtures/full_stack"
         self.auth_volume = self.project + "_e2e-auth"
         environment = {
             "MATTERMOST_URL": "http://mattermost:8065",
+            "COMMANDER_HANDLE": "commander",
+            "AGENT_HANDLE": "agent",
             "MATTERMOST_LISTENER_TOKEN_FILE": "/auth/listener.token",
+            "MATTERMOST_COMMANDER_TOKEN_FILE": "/auth/commander.token",
             "MATTERMOST_AGENT_TOKEN_FILE": "/auth/agent.token",
-            "MATTERMOST_WORKER_TOKEN_FILE": "/auth/worker.token",
             "ROLE_CONFIG_FILE": "/auth/roles.json",
         }
         override = {
@@ -119,8 +123,9 @@ class FullStackChatTest(core.DisposableComposeTest):
                 "backend-web": {"environment": environment, "volumes": ["e2e-auth:/auth:ro", str(fixture) + ":/app/e2e_fixtures:ro"]},
                 "backend-worker": {"environment": {**environment, "RACK_ENV": "test", "CHAT_VALIDATION_MODE": "1", "DIGITALTWIN_DISPOSABLE_TEST_PROJECT": self.project},
                                    "volumes": ["e2e-auth:/auth", str(fixture) + ":/e2e:ro"], "command": ["bundle", "exec", "ruby", "/e2e/worker.rb"]},
-                "backend-chat-listener": {"image": self.project + "-backend:check", "environment": environment, "volumes": ["e2e-auth:/auth:ro"]},
-                "agent-runtime": {"volumes": [str(fixture / "pi") + ":/usr/local/bin/pi:ro"]},
+                "backend-chat-listener": {"image": self.image_prefix + "-backend:check", "environment": environment, "volumes": ["e2e-auth:/auth:ro"]},
+                "agent-runtime": {"volumes": [str(fixture / "pi") + ":/usr/local/bin/pi:ro",
+                                              str(fixture / "pi") + ":/usr/local/bin/hermes:ro"]},
             },
             "volumes": {"e2e-auth": {}},
         }
@@ -136,8 +141,8 @@ class FullStackChatTest(core.DisposableComposeTest):
         self.outsider, self.outsider_token = self.create_user("fixture-outsider")
         bots = {}
         tokens = {"listener": self.admin_token}
-        for role in ["agent", "worker"]:
-            bot, _ = self.request("POST", "/bots", {"username": role, "display_name": "Commander Shepard" if role == "agent" else "Fixture Worker"}, self.admin_token, 201)
+        for role, username in {"commander": "commander", "agent": "agent"}.items():
+            bot, _ = self.request("POST", "/bots", {"username": username, "display_name": "Commander" if role == "commander" else "Agent"}, self.admin_token, 201)
             bots[role] = bot["user_id"]
             credential, _ = self.request("POST", "/users/" + bot["user_id"] + "/tokens", {"description": "Disposable integration fixture"}, self.admin_token, 200)
             tokens[role] = credential["token"]
@@ -157,11 +162,11 @@ class FullStackChatTest(core.DisposableComposeTest):
             for post in initial["posts"].values():
                 self.request("DELETE", "/posts/" + post["id"], token=self.admin_token)
         environment.update({"MATTERMOST_LOCAL_BOT_IDS": ",".join(bots.values()), "MATTERMOST_CHANNEL_IDS": ",".join(self.channels),
-                            "COMMANDER_CHANNEL_ID": self.channels[0], "MATTERMOST_AGENT_BOT_ID": bots["agent"], "MATTERMOST_WORKER_BOT_ID": bots["worker"]})
+                            "COMMANDER_CHANNEL_ID": self.channels[0], "MATTERMOST_COMMANDER_BOT_ID": bots["commander"], "MATTERMOST_AGENT_BOT_ID": bots["agent"]})
         for service in ["backend-web", "backend-worker", "backend-chat-listener"]:
             override["services"][service]["environment"].update(environment)
         path.write_text(json.dumps(override))
-        role = {"cli": "pi", "provider": "fixture", "model": "deterministic", "family": "fixture", "launch_args": []}
+        role = {"cli": "hermes", "provider": "fixture", "model": "deterministic", "family": "fixture", "launch_args": []}
         files = {**{name + ".token": value for name, value in tokens.items()}, "roles.json": json.dumps({"commander": role}), "ready": self.project}
         # Ruby has no app bootstrap here: write secret values from stdin, never argv/env/logs.
         self.compose(["run", "--rm", "--no-deps", "-T", "--entrypoint", "ruby", "backend-worker", "-rjson", "-e",
@@ -169,8 +174,25 @@ class FullStackChatTest(core.DisposableComposeTest):
         self.base[2:2] = ["--profile", "chat-validation"]
         self.compose(["up", "-d", "--no-build", "--wait", "--wait-timeout", "120", "backend-web", "backend-worker", "backend-chat-listener"], timeout=180)
         self.refresh_addresses()
+        self.commander_id = bots["commander"]
+        self.commander_token = tokens["commander"]
         self.agent_id = bots["agent"]
         self.agent_token = tokens["agent"]
+
+    def configure_fixture_runtime(self):
+        if getattr(type(self), "fixture_runtime_configured", False):
+            return
+        fixture = core.ROOT / "tests/fixtures/full_stack"
+        override = {"services": {
+            "agent-runtime": {"volumes": [str(fixture / "pi") + ":/usr/local/bin/pi:ro",
+                                                str(fixture / "pi") + ":/usr/local/bin/hermes:ro"]},
+            "backend-worker": {"volumes": [str(fixture) + ":/e2e:ro"]},
+        }}
+        path = Path(self.temporary.name) / "fixture-runtime.json"
+        path.write_text(json.dumps(override))
+        type(self).base += ["-f", str(path)]
+        self.compose(["up", "-d", "--no-build", "--wait", "--wait-timeout", "120", "agent-runtime", "backend-worker"], timeout=180)
+        type(self).fixture_runtime_configured = True
 
     def effects(self):
         result = self.compose(["exec", "-T", "agent-runtime", "python3", "-c",
@@ -181,7 +203,7 @@ class FullStackChatTest(core.DisposableComposeTest):
         data, _ = self.request("GET", "/channels/" + channel + "/posts", token=self.human_token)
         return [post for post in data["posts"].values() if post["message"] == "E2E_REPLY=" + nonce]
 
-    def test_backend_checks(self):
+    def test_07_fast_backend_checks(self):
         for database in ["digitaltwin_backend_test", "digitaltwin_migration_test"]:
             self.compose(["exec", "-T", "postgres", "createdb", "-U", "postgres", database])
         result = self.compose(["run", "--rm", "--no-deps", "-T",
@@ -197,7 +219,81 @@ class FullStackChatTest(core.DisposableComposeTest):
         self.evidence["backend_examples"] = sum(int(examples) for examples, _ in counts)
         self.evidence["backend_failures"] = sum(int(failures) for _, failures in counts)
 
-    def test_real_chat_and_herdr_roundtrip(self):
+    def test_08_ruby_client_herdr_startup(self):
+        self.configure_fixture_runtime()
+        source = r'''
+require "json"
+require "securerandom"
+require "socket"
+require "async"
+require "./app"
+require "/e2e/observed_herdr"
+
+clock = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+
+def raw_call(clock, method, params)
+  opened = clock.call
+  socket = UNIXSocket.new("/run/herdr/herdr.sock")
+  connected = clock.call
+  request = JSON.generate({ id: SecureRandom.uuid, method: method, params: params }) + "\n"
+  bytes = socket.write(request)
+  written = clock.call
+  abort "partial Herdr request write" unless bytes == request.bytesize
+  line = socket.gets("\n", 1_048_577)
+  received = clock.call
+  abort "invalid Herdr response" unless line&.end_with?("\n") && line.bytesize <= 1_048_576
+  [{ "method" => method, "connect_ms" => ((connected - opened) * 1000).round(1),
+     "write_ms" => ((written - connected) * 1000).round(1), "read_ms" => ((received - written) * 1000).round(1) },
+   JSON.parse(line)]
+ensure
+  socket&.close
+end
+
+raw_workspace_timing, raw_workspace = raw_call(clock, "workspace.create",
+                                                { "cwd" => "/workspace/commander", "label" => "ruby-transport-probe", "env" => {}, "focus" => false })
+raw_pane_id = raw_workspace.fetch("result").fetch("root_pane").fetch("pane_id")
+raw_workspace_id = raw_workspace.fetch("result").fetch("workspace").fetch("workspace_id")
+raw_start_timing, = raw_call(clock, "agent.start", { "pane_id" => raw_pane_id, "name" => "ruby-transport-probe", "kind" => "pi", "args" => [] })
+raw_close_timing, = raw_call(clock, "workspace.close", { "workspace_id" => raw_workspace_id })
+
+# Use the same test-only subclass that the worker composition uses. This
+# catches an adapter-signature drift before the chat/worker roundtrip.
+client = FullStackFixture::ObservedHerdr.new
+client_probe = Async do
+  Kirei::Services::Runner.call("FullStackFixture::HerdrProbe") do
+    lock = Platform::Lock.new
+    workspace = nil
+    started = clock.call
+    begin
+      lock.call(key: "ruby-socket-probe") do
+        workspace = client.create_workspace(cwd: "/workspace/commander", label: "ruby-socket-probe", env: {})
+        created = clock.call
+        # Execute the same second database checkout as record_workspace while
+        # the advisory lock keeps its first checkout pinned.
+        Kirei::App.raw_db_connection[:sessions].where(id: "fixture-none").update(alias: "fixture-none")
+        recorded = clock.call
+        pane = client.start(pane_id: workspace.root_pane_id, name: "ruby-socket-probe",
+                            launch: Adapters::Herdr::Dto::LaunchSpec.new(cli: "pi", launch_args: []), workspace_id: workspace.workspace_id)
+        settled = clock.call
+        { "workspace_create_ms" => ((created - started) * 1000).round(1),
+          "workspace_record_ms" => ((recorded - created) * 1000).round(1),
+          "agent_start_ms" => ((settled - recorded) * 1000).round(1),
+          "agent" => pane.agent, "proven_session" => !pane.agent_session.nil? }
+      end
+    ensure
+      client.close(pane_id: workspace.root_pane_id) if workspace
+    end
+  end
+end.wait
+puts JSON.generate({ "ruby_transport" => [raw_workspace_timing, raw_start_timing, raw_close_timing], **client_probe })
+'''
+        result = self.ruby_with_runtime_socket(source)
+        self.ruby_start_probe = json.loads(result.stdout.splitlines()[-1])
+        print("Ruby Herdr startup probe: " + json.dumps(self.ruby_start_probe, sort_keys=True))
+        self.assertEqual(self.ruby_start_probe["agent"], "pi")
+        self.assertTrue(self.ruby_start_probe["proven_session"])
+
+    def test_09_real_chat_and_herdr_roundtrip(self):
         self.configure_chat()
         self.ruby("abort 'production gate opened' if Domains::Workflows::Policy.new.dispatch_allowed?")
         checkpoint_json = self.ruby("c=Domains::Messaging::Checkpoints.new; puts JSON.generate(" + json.dumps(self.channels) + ".to_h{|id| [id,c.revision(channel_id:id)]})").stdout.splitlines()[-1]
@@ -216,16 +312,25 @@ def call(method, params):
         return json.loads(stream.readline())
 
 observations = []
-for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-session_abCDEF123xyz')]:
+# Keep this transport probe to valid Herdr agent names. Mixed-case durable IDs
+# are covered by the backend runtime-alias spec; injecting a known-invalid name
+# here can leave a transient server error immediately before the real chat test.
+for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-alias-probe')]:
     created = call('workspace.create', {'cwd': '/home/runtime', 'label': 'wire-probe', 'env': {}, 'focus': False})['result']
     try:
         time.sleep(delay)
         started = call('agent.start', {'pane_id': created['root_pane']['pane_id'], 'name': name, 'kind': 'pi', 'args': []})
         agent = started.get('result', {}).get('agent', {})
+        listed = [item for item in call('agent.list', {})['result']['agents']
+                  if item.get('pane_id') == created['root_pane']['pane_id']]
+        registered = listed[0] if len(listed) == 1 else {}
         observations.append({'delay': delay, 'name': name, 'error_code': started.get('error', {}).get('code'),
                              'result_type': started.get('result', {}).get('type'),
                              'state': agent.get('agent_status'), 'launch_pending': agent.get('launch_pending'),
-                             'interactive_ready': agent.get('interactive_ready'), 'has_session': bool(agent.get('agent_session'))})
+                             'interactive_ready': agent.get('interactive_ready'), 'has_session': bool(agent.get('agent_session')),
+                             'agent_list_count': len(listed),
+                             'agent_list_name': registered.get('name'),
+                             'agent_list_launch_pending': registered.get('launch_pending')})
     finally:
         call('workspace.close', {'workspace_id': created['workspace']['workspace_id']})
         deadline = time.monotonic() + 5
@@ -239,6 +344,23 @@ for delay, name in [(0, 'wire-probe'), (0.5, 'wire-probe'), (0, 'digitaltwin-ses
 print(json.dumps(observations))
 """
         self.raw_start_probe = json.loads(self.compose(["exec", "-T", "agent-runtime", "python3", "-c", probe]).stdout)
+        # Pin the recovery invariant for the selected Herdr binary. A just
+        # closed pane can receive Herdr's explicit pre-start
+        # ``agent_pane_busy`` rejection; it must not invent an agent.list
+        # entry, and the retry must still record the accepted launch. Do not
+        # demand agent.list evidence for the rejected request itself.
+        accepted_starts = [row for row in self.raw_start_probe if row["error_code"] is None]
+        rejected_starts = [row for row in self.raw_start_probe if row["error_code"] is not None]
+        self.assertTrue(all(row["error_code"] == "agent_pane_busy" for row in rejected_starts),
+                        "raw start probe received an unexpected Herdr rejection")
+        self.assertTrue(all(row["agent_list_count"] == 0 and row["agent_list_name"] is None and row["agent_list_launch_pending"] is None
+                            for row in rejected_starts), "rejected starts must not create agent.list entries")
+        self.assertTrue(all(row["agent_list_name"] == row["name"] and row["agent_list_launch_pending"] is True
+                            for row in accepted_starts), "agent.list did not record accepted starts")
+        self.assertTrue(any(row["name"] == "wire-probe" and row["delay"] == 0.5 for row in accepted_starts),
+                        "wire-probe did not recover after a busy rejection")
+        self.assertTrue(any(row["name"] == "digitaltwin-alias-probe" for row in accepted_starts),
+                        "alias probe did not start")
         created = json.loads(self.compose(["exec", "-T", "agent-runtime", "herdr", "workspace", "create", "--label", "direct-fixture", "--cwd", "/home/runtime"]).stdout)["result"]
         pane = created["root_pane"]["pane_id"]
         try:
@@ -255,16 +377,16 @@ print(json.dumps(observations))
         self.request("POST", "/posts", {"channel_id": self.channels[0], "message": "E2E_MESSAGE=forbidden"}, self.outsider_token, 403)
         roots = []
         for index, channel in enumerate(self.channels):
-            root, _ = self.request("POST", "/posts", {"channel_id": channel, "message": "@agent E2E_MESSAGE=bot-forbidden"}, self.agent_token, 201)
+            root, _ = self.request("POST", "/posts", {"channel_id": channel, "message": "@commander E2E_MESSAGE=bot-forbidden"}, self.commander_token, 201)
             roots.append(root["id"])
         posts = []
         for index, channel in enumerate(self.channels):
-            post, _ = self.request("POST", "/posts", {"channel_id": channel, "root_id": roots[index], "message": "@agent E2E_MESSAGE=chat-" + str(index)}, self.human_token, 201)
+            post, _ = self.request("POST", "/posts", {"channel_id": channel, "root_id": roots[index], "message": "@commander E2E_MESSAGE=chat-" + str(index)}, self.human_token, 201)
             posts.append(post["id"])
         for index, channel in enumerate(self.channels):
             replies = self.poll(lambda: self.reply_for("chat-" + str(index), channel), "chat reply did not reach real Mattermost")
             self.assertEqual(len(replies), 1)
-            self.assertEqual((replies[0]["root_id"], replies[0]["user_id"]), (roots[index], self.agent_id))
+            self.assertEqual((replies[0]["root_id"], replies[0]["user_id"]), (roots[index], self.commander_id))
             self.assertFalse(self.reply_for("chat-" + str(index), self.channels[1 - index]))
         before = self.poll(lambda: [row for row in self.effects() if row["request_id"]], "chat prompts did not reach agent")
         self.assertEqual({row["nonce"] for row in before}, {"chat-0", "chat-1"})
@@ -284,7 +406,7 @@ print(json.dumps(observations))
         self.assertEqual([row for row in self.effects() if row["request_id"]], before)
         for index, channel in enumerate(self.channels):
             self.assertEqual(len(self.reply_for("chat-" + str(index), channel)), 1)
-        followup, _ = self.request("POST", "/posts", {"channel_id": self.channels[0], "root_id": roots[0], "message": "@agent E2E_MESSAGE=after-restart"}, self.human_token, 201)
+        followup, _ = self.request("POST", "/posts", {"channel_id": self.channels[0], "root_id": roots[0], "message": "@commander E2E_MESSAGE=after-restart"}, self.human_token, 201)
         self.poll(lambda: self.reply_for("after-restart", self.channels[0]), "restart lost chat routing")
         after = self.poll(lambda: [row for row in self.effects() if row["nonce"] == "after-restart"], "restart prompt did not reach existing agent")
         self.assertEqual(len(after), 1)
@@ -297,7 +419,19 @@ print(json.dumps(observations))
 
 
 def load_tests(loader, tests, pattern):
-    # Reuse Compose lifecycle; the six base checks run once in their original module.
-    cases = [FullStackChatTest("test_real_chat_and_herdr_roundtrip"), FullStackChatTest("test_backend_checks")]
+    # Keep the expensive disposable stack alive across all gates. The source
+    # contract tests run before this module in CI; these checks then fail fast
+    # from backend validation, through the real Ruby socket client, to chat.
+    cases = [FullStackChatTest(name) for name in [
+        "test_01_health_migrations_database_ownership",
+        "test_02_container_uid_socket_callback_and_plugin_boundary",
+        "test_03_falcon_parallel_http_and_rejected_json",
+        "test_04_durable_jobs_and_restart",
+        "test_05_packaged_callback_synthetic_thread_binding",
+        "test_06_pending_migrations_fail_closed_and_pool_bounds",
+        "test_07_fast_backend_checks",
+        "test_08_ruby_client_herdr_startup",
+        "test_09_real_chat_and_herdr_roundtrip",
+    ]]
     return unittest.TestSuite(case for case in cases if not loader.testNamePatterns or
                               any(fnmatch.fnmatchcase(case.id(), pattern) for pattern in loader.testNamePatterns))

@@ -90,7 +90,7 @@ module Services
         created = @herdr.create_workspace(cwd: workspace_path(session, workflow), label: session.alias, env: env)
         @operations.record_workspace(session_id: session.id, pane_id: created.root_pane_id, workspace_id: created.workspace_id)
         launch = Adapters::Herdr::Dto::LaunchSpec.new(cli: session.configuration.cli, launch_args: session.configuration.launch_args)
-        live = @herdr.start(pane_id: created.root_pane_id, name: session.alias, launch: launch)
+        live = @herdr.start(pane_id: created.root_pane_id, name: session.alias, launch: launch, workspace_id: created.workspace_id)
         identity = live.agent_session
         raise IOError, "Unproved conversation identity" unless identity && Identity.proven?(identity)
 

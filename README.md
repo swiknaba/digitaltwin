@@ -4,22 +4,37 @@ Digitaltwin is a self-hosted AI team for people who want durable, reviewable wor
 
 ## Why it exists
 
-Long-running AI work is difficult to trust when the request, session, code, review, and follow-up live in different places. Digitaltwin joins those pieces without treating an agent conversation as authority by itself:
+Long-running AI work is difficult to trust when the request, session, code, review, and follow-up live in different places. Digitaltwin gives the person responsible for that work one team they can guide and inspect without treating an agent conversation as authority by itself:
 
-- Mattermost is where people and bots converse in threads.
-- The Kirei integration backend verifies the human, thread, workflow state, and exact artifact before it routes or delivers work.
-- Herdr runs the selected coding CLIs in a persistent but private Runtime.
-- Git holds the durable specification, plan, implementation, review evidence, and approvals.
+- A chat interface lets people and bots keep questions, direction, and results together; a CLI provides a second direct way to control agents.
+- A control service keeps the human, request, current work, and result connected so only authorized work moves forward.
+- Private agent environments give agents a durable place to complete bounded tasks without exposing their sessions.
+- Git keeps the specification, plan, changes, review evidence, and approvals available for inspection.
 
 The outcome is a small remote team that can preserve context across restarts and make its work inspectable, while still stopping for the human decisions that matter.
 
+```mermaid
+flowchart TD
+  human[Human]
+  access[Chat or CLI]
+  commander[Commander<br/> as optional copilot]
+  agents[Agents]
+
+  human <--> access
+  access <--> agents
+  access <--> commander
+  commander <--> agents
+```
+
+People can work directly with agents through chat or a CLI. They can also ask Commander to coordinate a fleet; Commander is an optional copilot, not a required gateway. Each connection is two-way, so questions, direction, status, and results can travel both ways. This diagram shows the product flow, not implementation technology.
+
 ## Commander
 
-Commander is the fleet’s main interface for conversation, coordination, and status.
+Commander is an optional copilot for coordinating a fleet, sharing status, and helping people steer work. People can also work directly with agents through chat or a CLI.
 
 ## What is available today
 
-The reviewed local core can build and start PostgreSQL, a plugin-free Mattermost image, Kirei web/worker processes, and the Runtime. It has durable jobs, migrations, health checks, private socket ownership, checksum-pinned Runtime clients, synthetic callback coverage, and restart/durable-job checks.
+The reviewed local core can build and start PostgreSQL, a plugin-free Mattermost image, Kirei web and background-job processes, and the Runtime. It has durable jobs, migrations, health checks, private socket ownership, checksum-pinned Runtime clients, synthetic callback coverage, and restart/durable-job checks.
 
 It is **not yet an enabled autonomous fleet**. Dispatch remains hard-blocked until authenticated chat/thread behavior, actual CLI lifecycle and settled-state evidence, and a selected Commander MCP round trip are captured. Signed mobile push/deep links, production infrastructure, provider credentials, and deployment operations also need their own operator evidence and authorization.
 
@@ -46,9 +61,9 @@ docker compose --env-file .env.example build mattermost
 scripts/dev
 ```
 
-`scripts/dev` preserves an existing ignored `.env`; otherwise it copies the public sample, stages the checksum-verified callback client, and runs `docker compose up --build -d --wait`. The default core starts PostgreSQL, Mattermost, backend web/worker, and Runtime after migrations and volume initialization.
+`scripts/dev` preserves an existing ignored `.env`, stages the checksum-verified callback client, and runs `docker compose up -d --wait`. The default core starts PostgreSQL, Mattermost, backend web and background-job services, and Runtime after migrations and volume initialization. Run `scripts/dev --build` after changing an image input; it removes this stack's superseded dangling images after a successful rebuild.
 
-For the equivalent manual flow, run `cp .env.example .env`, `scripts/prepare-callback-context`, then `docker compose up --build -d --wait`. Visit the local Mattermost port in `compose.yml` and use backend `/livez` or `/readyz` only as process health signals—not as evidence that provider/chat dispatch works.
+For the equivalent manual flow, run `cp .env.example .env`, `scripts/prepare-callback-context`, then `docker compose up -d --wait`. Visit the local Mattermost port in `compose.yml` and use backend `/livez` or `/readyz` only as process health signals—not as evidence that provider/chat dispatch works.
 
 Stop the local stack with `docker compose down`; volumes are retained for the next boot. Use `docker compose down --volumes` only for deliberately disposable data. Changing `.env` does not rotate roles in an existing PostgreSQL volume.
 

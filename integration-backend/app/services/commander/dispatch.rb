@@ -19,15 +19,16 @@ module Services
 
       sig do
         params(source: Messaging::VerifyHumanSource, herdr: Adapters::Herdr::Client, credentials: Adapters::Credentials::FileStore,
-               policy: Domains::Workflows::Policy, requests: Domains::Commander::CommanderRequests, registry: Domains::Sessions::Registry,
+               policy: Domains::Workflows::Policy, handle: String, requests: Domains::Commander::CommanderRequests, registry: Domains::Sessions::Registry,
                inbox: Messaging::Inbox, outbox: Messaging::Outbox, lock: Platform::Lock).void
       end
-      def initialize(source:, herdr:, credentials:, policy:, requests: Domains::Commander::CommanderRequests.new, registry: Domains::Sessions::Registry.new,
+      def initialize(source:, herdr:, credentials:, policy:, handle:, requests: Domains::Commander::CommanderRequests.new, registry: Domains::Sessions::Registry.new,
                      inbox: Messaging::Inbox.new, outbox: Messaging::Outbox.new, lock: Platform::Lock.new)
         @source = source
         @herdr = herdr
         @credentials = credentials
         @policy = policy
+        @handle = handle
         @requests = requests
         @registry = registry
         @inbox = inbox
@@ -90,9 +91,9 @@ module Services
         message = Messaging::Dto::OutgoingMessage.new(
           channel_id: old_source.channel_id,
           thread_id: old_source.thread_id,
-          bot: Messaging::Dto::Bot::Agent,
+          bot: Messaging::Dto::Bot::Commander,
           role: Messaging::Dto::SpeakerRole::Commander,
-          body: "Commander request #{old.id} expired without a completion receipt. Verify its outcome, then use @agent recover-commander #{old.id} to continue the same session.",
+          body: "Commander request #{old.id} expired without a completion receipt. Verify its outcome, then use @#{@handle} recover-commander #{old.id} to continue the same session.",
           key: "commander:expired:#{old.id}"
         )
         Platform::Unwrap.call(@outbox.enqueue(message: message))

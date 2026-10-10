@@ -30,7 +30,7 @@ module Services
       @listener_client = T.let(nil, T.nilable(Mattermost::Client))
       @listener_api = T.let(nil, T.nilable(Mattermost::Api))
       @verifier = T.let(nil, T.nilable(Mattermost::DeliveryVerifier))
-      @worker_api = T.let(nil, T.nilable(Mattermost::Api))
+      @project_agent_api = T.let(nil, T.nilable(Mattermost::Api))
       @herdr = T.let(nil, T.nilable(Adapters::Herdr::Client))
       @revision = T.let(nil, T.nilable(Adapters::Git::Revision))
       @evidence = T.let(nil, T.nilable(Adapters::Git::Evidence))
@@ -67,6 +67,7 @@ module Services
       @start_existing = T.let(nil, T.nilable(Workflows::StartExisting))
       @deliver_outbox = T.let(nil, T.nilable(Outbound::DeliverOutbox))
       @chat_listener = T.let(nil, T.nilable(Inbound::ChatListener))
+      @local_dispatch_preflight = T.let(nil, T.nilable(LocalDispatchPreflight))
     end
 
     sig { returns(Domains::Messaging::VerifyHumanSource) }
@@ -79,21 +80,21 @@ module Services
       @approvals ||= begin
         revision = git_revision
         current_commit = ->(worktree) { revision.call(worktree_path: worktree.worktree_path, branch: worktree.branch) }
-        Commander::RecordApproval.new(resolver: verifier, membership: listener_api, current_commit: current_commit, handle: @configuration.agent_handle,
-                                      worker_handle: @configuration.worker_handle, evidence: evidence)
+        Commander::RecordApproval.new(resolver: verifier, membership: listener_api, current_commit: current_commit, handle: @configuration.commander_handle,
+                                      agent_handle: @configuration.agent_handle, evidence: evidence)
       end
     end
 
     sig { returns(Commander::RouteFollowup) }
     def route_followup
-      @route_followup ||= Commander::RouteFollowup.new(resolver: verifier, membership: listener_api, handle: @configuration.agent_handle,
+      @route_followup ||= Commander::RouteFollowup.new(resolver: verifier, membership: listener_api, handle: @configuration.commander_handle,
                                                        commander_channel_id: @configuration.commander_channel_id)
     end
 
     sig { returns(Commander::HandleWorkflowPrompt) }
     def handle_workflow_prompt
-      @handle_workflow_prompt ||= Commander::HandleWorkflowPrompt.new(route: route_followup, approvals: approvals, handle: @configuration.agent_handle,
-                                                                      worker_handle: @configuration.worker_handle)
+      @handle_workflow_prompt ||= Commander::HandleWorkflowPrompt.new(route: route_followup, approvals: approvals, handle: @configuration.commander_handle,
+                                                                      agent_handle: @configuration.agent_handle)
     end
 
     sig { returns(Commander::HandleCommanderPrompt) }
@@ -101,24 +102,31 @@ module Services
       @handle_commander_prompt ||= Commander::HandleCommanderPrompt.new(
         source: source, reconcile_start: reconcile_start, reconcile_operation: reconcile_operation, reconcile_followup: reconcile_followup,
         recover: recover, ingest_prompt: ingest_prompt, handle_workflow_prompt: handle_workflow_prompt, advance_approval: advance_approval,
-        agent_handle: @configuration.agent_handle, worker_handle: @configuration.worker_handle
+        commander_handle: @configuration.commander_handle, agent_handle: @configuration.agent_handle
       )
     end
 
     sig { returns(Commander::DeliverFollowup) }
     def deliver_followup
-      @deliver_followup ||= Commander::DeliverFollowup.new(herdr: herdr, resolver: verifier, membership: listener_api, handle: @configuration.agent_handle,
+      @deliver_followup ||= Commander::DeliverFollowup.new(herdr: herdr, resolver: verifier, membership: listener_api, handle: @configuration.commander_handle,
                                                            policy: policy)
     end
 
     sig { returns(Commander::ReconcileFollowup) }
     def reconcile_followup
-      @reconcile_followup ||= Commander::ReconcileFollowup.new(herdr: herdr, resolver: verifier, membership: listener_api, handle: @configuration.agent_handle)
+      @reconcile_followup ||= Commander::ReconcileFollowup.new(herdr: herdr, resolver: verifier, membership: listener_api, handle: @configuration.commander_handle)
     end
 
     sig { returns(Commander::Tools) }
     def tools
       @tools ||= Commander::Tools.new(source: source, authorize: authorize_request, request_start: request_start, route: route_followup)
+    end
+
+    # Verifies the active Commander capability for local aggregate reporting.
+    # The endpoint intentionally returns no request or session information.
+    sig { params(token: String).returns(Commander::AuthorizeRequest::Outcome) }
+    def authorize_commander_request(token:)
+      authorize_request.current(token: token, states: [Domains::Commander::Dto::CommanderRequestState::Active])
     end
 
     # Nil unless ROLE_CONFIG_FILE configures a commander role.
@@ -144,7 +152,7 @@ module Services
     def dispatch
       return nil unless commander_role
 
-      @dispatch ||= Commander::Dispatch.new(source: source, herdr: herdr, credentials: credentials, policy: policy)
+      @dispatch ||= Commander::Dispatch.new(source: source, herdr: herdr, credentials: credentials, policy: policy, handle: @configuration.commander_handle)
     end
 
     # Nil unless ROLE_CONFIG_FILE configures a commander role.
@@ -152,7 +160,7 @@ module Services
     def recover
       return nil unless commander_role
 
-      @recover ||= Commander::Recover.new(source: source, herdr: herdr, handle: @configuration.agent_handle)
+      @recover ||= Commander::Recover.new(source: source, herdr: herdr, handle: @configuration.commander_handle)
     end
 
     sig { returns(Sessions::ReserveSession) }
@@ -173,7 +181,10 @@ module Services
 
     sig { returns(Sessions::ReconcileOperation) }
     def reconcile_operation
-      @reconcile_operation ||= Sessions::ReconcileOperation.new(herdr: herdr, source: source, credentials: credentials, handle: @configuration.agent_handle)
+      @reconcile_operation ||= Sessions::ReconcileOperation.new(
+        herdr: herdr, source: source, credentials: credentials, handle: @configuration.commander_handle,
+        commander_workspace: @configuration.commander_workspace
+      )
     end
 
     sig { returns(Reviews::DispatchReview) }
@@ -204,7 +215,7 @@ module Services
 
     sig { returns(Workflows::ReconcileStart) }
     def reconcile_start
-      @reconcile_start ||= Workflows::ReconcileStart.new(source: source, api: worker_api, bot_id: worker_bot_id, agent_handle: @configuration.agent_handle)
+      @reconcile_start ||= Workflows::ReconcileStart.new(source: source, api: project_agent_api, bot_id: project_agent_bot_id, commander_handle: @configuration.commander_handle)
     end
 
     sig { returns(Projects::PrepareWorktree) }
@@ -216,7 +227,7 @@ module Services
 
     sig { returns(Workflows::Provision) }
     def provision
-      @provision ||= Workflows::Provision.new(source: source, api: worker_api, bot_id: worker_bot_id, worktrees: prepare_worktree,
+      @provision ||= Workflows::Provision.new(source: source, api: project_agent_api, bot_id: project_agent_bot_id, worktrees: prepare_worktree,
                                               reserve_session: reserve_session, worktree_root: @configuration.worktree_root,
                                               commander_channel_id: @configuration.commander_channel_id, policy: policy)
     end
@@ -224,7 +235,7 @@ module Services
     sig { returns(Workflows::Control) }
     def control
       @control ||= Workflows::Control.new(source: source, herdr: herdr, evidence: evidence, stop_sessions: Sessions::StopWorkflowSessions.new,
-                                          worker_handle: @configuration.worker_handle)
+                                          agent_handle: @configuration.agent_handle)
     end
 
     sig { returns(Workflows::DispatchPhasePrompt) }
@@ -239,11 +250,11 @@ module Services
 
     sig { returns(Workflows::StartExisting) }
     def start_existing
-      @start_existing ||= Workflows::StartExisting.new(source: source, request_start: request_start, agent_handle: @configuration.agent_handle,
-                                                       worker_handle: @configuration.worker_handle)
+      @start_existing ||= Workflows::StartExisting.new(source: source, request_start: request_start, commander_handle: @configuration.commander_handle,
+                                                       agent_handle: @configuration.agent_handle)
     end
 
-    # Needs MATTERMOST_<BOT>_TOKEN_FILE and MATTERMOST_<BOT>_BOT_ID for every bot.
+    # Needs the configured Commander and project Agent token files and bot IDs.
     sig { returns(Outbound::DeliverOutbox) }
     def deliver_outbox
       @deliver_outbox ||= begin
@@ -259,12 +270,17 @@ module Services
     sig { returns(Inbound::ChatListener) }
     def chat_listener
       @chat_listener ||= begin
-        router = Inbound::RecordDelivery.new(agent_handle: @configuration.agent_handle, worker_handle: @configuration.worker_handle,
+        router = Inbound::RecordDelivery.new(commander_handle: @configuration.commander_handle, agent_handle: @configuration.agent_handle,
                                              commander_channel_id: @configuration.commander_channel_id)
         Inbound::ChatListener.new(client: listener_client, api: listener_api, verifier: verifier,
                                   channels: required(@configuration.mattermost_channel_ids, "MATTERMOST_CHANNEL_IDS"), router: router,
-                                  validation_mode: @configuration.chat_validation_mode, heartbeat_dir: @configuration.heartbeat_dir)
+                                  transport_enabled: @configuration.chat_transport_enabled?, heartbeat_dir: @configuration.heartbeat_dir)
       end
+    end
+
+    sig { returns(LocalDispatchPreflight) }
+    def local_dispatch_preflight
+      @local_dispatch_preflight ||= LocalDispatchPreflight.new(configuration: @configuration)
     end
 
     sig { returns(T.nilable(Domains::Workflows::Dto::RoleConfig)) }
@@ -301,16 +317,16 @@ module Services
     end
 
     sig { returns(Mattermost::Api) }
-    private def worker_api
-      @worker_api ||= begin
-        token_file = required(@configuration.mattermost_bot_token_files[Bot::Worker], "MATTERMOST_WORKER_TOKEN_FILE")
+    private def project_agent_api
+      @project_agent_api ||= begin
+        token_file = required(@configuration.mattermost_bot_token_files[Bot::Agent], "MATTERMOST_AGENT_TOKEN_FILE")
         Mattermost::Api.new(client: Mattermost::Client.new(url: mattermost_url, token_file: token_file))
       end
     end
 
     sig { returns(String) }
-    private def worker_bot_id
-      bot_id(Bot::Worker)
+    private def project_agent_bot_id
+      bot_id(Bot::Agent)
     end
 
     sig { params(bot: Bot).returns(String) }
@@ -340,7 +356,7 @@ module Services
 
     sig { returns(Domains::Workflows::Policy) }
     private def policy
-      @policy ||= Domains::Workflows::Policy.new
+      @policy ||= Domains::Workflows::Policy.new(local_dispatch_activation: @configuration.local_dispatch_activation)
     end
 
     sig { type_parameters(:Value).params(value: T.nilable(T.type_parameter(:Value)), name: String).returns(T.type_parameter(:Value)) }
