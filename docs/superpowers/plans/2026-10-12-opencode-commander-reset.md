@@ -16,16 +16,14 @@ and no Kirei workflow approval/review gate on ordinary OpenCode work.
 
 ## Current evidence and first decision
 
-- The host's existing OpenCode service log reports `2.0.27` (2026-10-12) and is
-  listening locally. `opencode` is not executable from this task's PATH, so its CLI
-  help and installed plugin type definitions have not been inspected yet.
-- Its local `/api/info` endpoint is password-protected (`401` when read without a
-  credential). The service password was deliberately not read or placed in a command.
-- The current OpenCode documentation supports global plugins
-  (`~/.config/opencode/plugins/`) and global custom tools
-  (`~/.config/opencode/tools/`), but documents event/tool hooks rather than a
-  top-bar item or an external, embedded conversation view. This is documentation
-  evidence only, not a compatibility test.
+- The installed desktop bundle's CLI reports `OpenCode v2.0.27`; it runs against the
+  existing local service. Its public OpenAPI proves session create/prompt/log/steer/
+  interrupt and pairing controls, sufficient for a bridge's runtime mechanics.
+- That release has no installed plugins. Its documented and inspected plugin surface
+  exposes server hooks, tools, listing/update, and plugin RPC—not a top-bar, toolbar,
+  sidebar, view, or UI registration operation. No plugin/configuration was changed
+  for the investigation. Release-bound details and Gate 1 pass criteria are in
+  [OpenCode Commander Gate 1 evidence](../../interfaces/opencode-commander-gate.md).
 - Claude Code `2.1.267` is installed; `claude auth status` reports `loggedIn: false`.
   An Opus 5.5 review cannot be claimed until the configured authenticated account
   accepts `--model opus --effort medium`.
