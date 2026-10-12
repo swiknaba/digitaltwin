@@ -19,10 +19,11 @@ The enabled local installation is a symlink, not a copied plugin:
   -> <digitaltwin worktree>/commander/opencode-gate-plugin/commander-gate-probe.ts
 ```
 
-OpenCode loads global local plugins at startup. Reload the existing service with:
+OpenCode loads global local plugins at startup. Restart the existing service after
+installing or editing this probe:
 
 ```sh
-/Applications/OpenCode.app/Contents/Resources/opencode-cli reload
+/Applications/OpenCode.app/Contents/Resources/opencode-cli service restart
 ```
 
 Successful loading is verified with:
@@ -40,11 +41,11 @@ reconnect behavior, or trusted bridge capability.
 ## Disable and restore
 
 To disable the probe without touching any other OpenCode configuration, remove only
-its symlink and reload:
+its symlink and restart the service:
 
 ```sh
 rm ~/.config/opencode/plugins/digitaltwin-commander-gate-probe.ts
-/Applications/OpenCode.app/Contents/Resources/opencode-cli reload
+/Applications/OpenCode.app/Contents/Resources/opencode-cli service restart
 ```
 
 The source stays in this directory for later manual testing. Do not copy API keys,
