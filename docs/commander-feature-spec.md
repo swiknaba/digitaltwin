@@ -1,104 +1,159 @@
-# Commander: feature behavior
+# Digitaltwin: OpenCode and Commander product specification
 
-Approved high-level behavior, consolidating the [Phase 0 specification](agent-fleet-architecture-and-review.md), sections 11–20. This describes the intended feature, not current readiness or an implementation plan.
+**Status:** Proposed target architecture. This specification approves no migration, provider login, deployment, or runtime effect.
 
-## One main conversation
+## Purpose
 
-Commander is our main interface to the agent team. Through normal conversation, we can ask questions, request work, change direction, and check progress.
+Digitaltwin is a self-hosted development cockpit for one software engineer.
 
-Project channels and task threads hold detailed questions, progress, reviews, and results. Commander chat brings back important milestones, approval requests, blockers, and results with links, rather than copying every message.
+OpenCode is the primary coding interface. It provides project organization, focused conversations, agent execution, and Git-oriented feedback. Digitaltwin adds one capability that an ordinary coding chat does not provide: a persistent Commander that remembers, coordinates, and keeps future commitments.
 
-Commander uses context across our projects while checking who can act in each channel. Separate fleets do not share private context.
+The user sees **Commander**. The selected Commander runtime is an implementation detail. Hermes is the initial candidate, not a product name or stable UI contract.
 
-## Understand the request before acting
+## User model
 
-Commander uses the thread, named project, earlier conversation, and actual running work to understand requests such as “also add a search box.”
+The user has:
 
-If several tasks fit, Commander asks a short question before acting. It makes the chosen project and task clear and never silently switches the target.
+- one global Commander conversation;
+- multiple projects;
+- multiple focused OpenCode sessions in each project;
+- remote agent execution against the user's Git repositories.
 
-New work gets its own workflow and project thread. Commander selects the appropriate existing thread from context rather than asking us to choose it each time. Follow-ups stay with their existing task. It asks only when the context is insufficient or genuinely ambiguous.
+A project is a context and navigation boundary. It starts an agent in the project's directory and keeps the conversation narrow. It is not an access-control boundary. An agent may work across services when the task requires it.
 
-## Know who sent each instruction
+Commander is independent of projects. A persistent top-bar control opens the same Commander conversation from every OpenCode screen. Opening Commander preserves the current project session. Commander has visibly distinct branding and must never expose its underlying runtime name as its identity.
 
-Kirei records whether an instruction reaches a worker directly from a human or through Commander.
-It separately retains the authenticated human request and source message behind the work.
-Commander’s generated instructions do not become direct human instructions, even when they follow a human request.
+Mobile access is secondary. It uses the chosen OpenCode remote-web or pairing path. Digitaltwin does not create a separate mobile chat application.
 
-Every worker prompt and follow-up includes backend-verified sender context.
-Worker base instructions explain the human and Commander roles and how forwarded requests differ from generated follow-ups.
-Prompt text alone cannot establish sender identity or human approval.
-Backend-generated phase and review instructions remain separate from the attributed request text.
+## OpenCode owns project chats
 
-Project threads show who sent an instruction and link its originating request when accessible:
+Project chats use upstream OpenCode directly.
 
-- **Human:** Alice writes “Add search” directly in the task thread.
-- **Commander, forwarding Alice:** Alice asks in Commander chat; Commander forwards or rephrases that request for the worker.
-- **Commander, follow-up:** Commander writes “Also check keyboard navigation” within already authorized work; this is not a new instruction from Alice.
+```text
+Project chat → OpenCode → remote project workspace → Git
+```
 
-Kirei records forwarding or rewriting, the target task and session, and the request relationship.
-Queued delivery, retries, and recovery retain the original attribution.
-Attribution explains an instruction’s source; it grants no additional permissions and cannot replace exact human approvals.
+Kirei does not receive, proxy, store, approve, or deliver ordinary project-chat prompts, transcripts, tool calls, or agent events. A project chat remains usable if Kirei is unavailable.
 
-## Delegate and keep work separate
+OpenCode and Git are the developer feedback loop. OpenCode presents session progress and repository changes. Git remains the durable authority for commits, branches, diffs, and pull requests.
 
-Commander delegates normal coding and research to workers. Coding follows specification and approval, plan and approval, implementation and review, then a pull request. Both specification and plan are reviewed before human approval. Approvals name the task and exact version. Opening a pull request does not automatically merge or deploy it.
+Digitaltwin must install its OpenCode additions globally through operator-managed configuration. Project configuration must not replace Commander behavior or gain access to its runtime credentials.
 
-Commander chooses a suitable model for each task using its [base instructions](../commander/AGENTS.md).
-Simple work uses Haiku or Lunar; medium work uses Sonnet or Terra; complex work uses Opus, Fable, or Sol.
-Model names map to available backend-verified profiles. Explicit human choices take precedence.
-Writer and Reviewer selections retain different providers and model families.
+## Commander is the Digitaltwin feature
 
-Parallel tasks in one repository use separate branches and worktrees. Each task’s Writer and Reviewer share its worktree and take turns.
+Commander is a durable, cross-project counterpart for the user. It can retain its own memory and skills, connect current work across projects, and perform scheduled check-ins.
 
-Follow-ups reuse the relevant conversation; unrelated tasks start fresh. Only Commander starts independent fleet sessions. Workers ask for approval for additional independent sessions. Already authorized workflow roles need no repeated spawn approval. Workers may use their harness’s subordinate agents within their session.
+Commander does not replace normal project coding chats. It is used for work such as:
 
-Commander chat has no coding review cycle. Commander may make a targeted emergency change through available tools; ordinary feature work still goes to workers. Destructive or irreversible operations require a specific second confirmation.
+- asking what is currently in progress;
+- deciding which project work needs attention;
+- retaining a follow-up for a future date;
+- reviewing a scheduled check-in and deciding whether to delegate work;
+- coordinating a task that crosses project context.
 
-## Questions, progress, and controls
+The Commander implementation may run through Herdr so Digitaltwin can retain one runtime adapter for non-OpenCode CLIs. Herdr is not required in the normal OpenCode project-chat path.
 
-Workers ask questions in the task thread; we can answer there or through Commander. Results explain what changed, what was checked, remaining problems, and artifact or pull-request links. Replies return to their source conversation. “Received,” “queued,” and “delivered” mean different things.
+The Commander bridge is deliberately thin:
 
-We can ask for status, add instructions, pause, resume, cancel unfinished work, or finish delivered work. Commander clarifies the target. Pause lets the current step finish but prevents the next. Resume preserves results and rechecks the normal gates. Cancel confirms what actually stopped without erasing results. Finish explicitly closes delivered work; silence does not.
+```text
+OpenCode Commander control → Commander bridge → Commander runtime
+                                      ↕
+                             Kirei future-task API
+```
 
-During review, new Writer instructions wait. They cannot change the reviewed version or start a competing Writer. Commander explains the wait and releases instructions when work may continue.
+The bridge must preserve a durable Commander conversation identity. It must support streaming, steering, cancellation, reload, and result collection. Whether an upstream OpenCode plugin can provide the required top-bar control and transparent external conversation remains a validation gate.
 
-## Hermes memory, skills, failures, and restarts
+## Kirei owns future commitments
 
-Commander runs through the latest supported Hermes Agent stable release. Hermes publishes dated stable tags, not minor-line tags. A normal Runtime rebuild can advance to the next stable release. Hermes owns Commander-native Markdown memory, SQLite conversation history and search, and reusable skills. Its persistent profile and workspace stay on the Runtime volume. Hermes reads Commander instructions and memory on a new conversation.
+Kirei is not the general chat control plane. It is the durable time-and-work service for Commander.
 
-Hermes, not Grok Build, is the Commander harness. Hermes natively supports optional xAI Grok inference
-through `xai`/`grok` with an existing `XAI_API_KEY`, or `xai-oauth`/`grok-oauth` after an operator
-performs its OAuth login. The user has not selected a Commander default model, so this release sets
-none: an operator selects the provider and model in the private Hermes profile. Gemini remains
-optional and is never assumed. No key, OAuth token, browser login, paid call, or live-provider
-claim is created by this implementation.
+Kirei accepts a future-task request, stores a durable record, and uses its worker queue to execute due work. Its existing job primitive supports `available_at`, idempotency keys, leases, retry handling, and uncertain-effect recovery. A future-task domain is still required; a queue job alone cannot represent recurrence, changes, cancellation, or an execution history.
 
-Runtime also packages official xAI Grok Build as an additional, separately configured worker
-CLI. Herdr starts it natively as `grok` and installs its local session-state hook. An operator may
-select it for a Writer or Reviewer role with the official API-key or login setup outside Git;
-Commander still requires `hermes`. Grok Build’s background updater is disabled in Runtime, and
-the offline startup test makes no model request or authentication claim.
+Each future task records:
 
-Kirei does not store Commander knowledge, mirror memory into Markdown, or adapt an external memory provider. Mattermost retains chat transcripts in PostgreSQL for chat delivery and audit. Hermes history serves Commander recall. These stores have different purposes.
+- a stable task id;
+- the creating actor and originating Commander or project context;
+- a target, which defaults to Commander;
+- task text and relevant project or repository references;
+- one-time timing or recurrence with an explicit timezone;
+- state: scheduled, running, completed, failed, canceled, or uncertain;
+- execution attempts, outcomes, and the next occurrence.
 
-Kirei remains authoritative for verified sender provenance, authorization, project membership, workflow state, sessions, jobs, approvals, routing, delivery receipts, and recovery. Hermes-provided memory or skill content cannot grant permission, identify a sender, approve a change, or start an independent fleet session.
+When due, a future task appends a visible check-in message to the one Commander conversation. It states the stored task and asks the user what to do. It does not start project work automatically. The result appears in Commander only. It does not inject a message into the originating project chat.
 
-Commander initialization creates a local Git repository in the Commander workspace. It tracks the Commander-only `SOUL.md` and instructions, Markdown memory, curated skills, and separately stored learned skills. Hermes gets its own `HERMES_HOME` there. Its generic Runtime defaults are the official packaged `weekly-review-planning` and `grounded-citations` skills; agent-authored skills go to `learned-skills`.
+An agent may create a future check-in from a project chat. That check-in still targets Commander unless the request explicitly names another target. A due task must not silently revive a stale project session.
 
-The shared worker baseline is the Wagglebot [reference setup](https://github.com/swiknaba/wagglebot/tree/main/examples/reference-setup). Once a Wagglebot release has both company-subdirectory support and a working pinned-runtime package, connect it with `runtime-provision connect https://github.com/swiknaba/wagglebot.git examples/reference-setup`, then run the documented Wagglebot update/provisioning flow for compatible worker harnesses. Hermes reads that shared library from `/home/runtime/.agents/skills`; it does not use it for memory or history. Commander’s Runtime-local `AGENTS.md` and `SOUL.md` define its coordinator role. Hermes is not a Wagglebot provisioning target; its native memory, SQLite history, and learned skills remain per Commander profile. Kirei continues to validate role selection and every workflow authorization. This is role guidance and profile isolation, not a security boundary between processes that share the Runtime user.
+The user's reply determines whether Commander assesses the item, starts project work, reschedules it, or cancels it. The task record must show that outcome.
 
-The workspace ignores SQLite databases, WAL files, credentials, and runtime state. The first release creates no automatic Kirei commit job, remote, or push schedule. Therefore, local Git history is not a backup. Automated commits and remote backup need a separate retention, credential, conflict, and recovery design.
+## Agent scheduling capability
 
-Explicit steering changes Commander instructions. Hermes learns through its native memory and skills mechanisms. No Kirei memory grooming is required.
+All supported agents receive one logical future-task capability. Kirei exposes a typed API and owns validation, persistence, scheduling, cancellation, and execution records.
 
-After restart, Commander restores verified task state and reuses healthy matching conversations. Missing conversations or actions with uncertain outcomes are reported for reconciliation. It never invents success, repeats a potentially completed action, or creates replacement work to clear an error.
+The capability has two transport adapters:
 
-## What works today
+- an MCP tool for Commander and other MCP-capable agents;
+- an OpenCode global custom tool for project agents.
 
-Real service connections, replies, duplicate handling, and restart recovery pass automated tests with a scripted agent. Live provider behavior remains unverified, and production dispatch is disabled in code. Commander enrollment, Git/deployment/emergency tools, and durable memory have implementation or acceptance gaps.
+Both adapters call the same Kirei API. Neither adapter writes queue rows directly or implements its own scheduler.
 
-## Agreed first version
+The first capability set must support:
 
-The first enabled version focuses on conversation, status, and routing for existing projects. Project enrollment and emergency tools come afterward.
+- create a one-time future task;
+- list relevant future tasks;
+- read one task and its outcome;
+- update timing or task text before execution;
+- cancel an unstarted task.
 
-Commander selects the correct thread from context itself, with clarification only when needed. Hermes retains Commander memory, conversation history, and skills; Kirei retains the durable orchestration record.
+Recurrence may be added after one-time execution, restart recovery, and cancellation are proven. Recurrence must use an explicit timezone and define how a missed occurrence is handled.
+
+Digitaltwin ships a shared `future-work` skill. It explains when a future check-in is useful, how to express a useful task, how to select a timezone, and how to update or cancel a commitment. A concise baseline instruction tells every supported agent that the capability exists and that it must wait for a returned task id before claiming work is scheduled. The skill holds the operating detail; the injected instruction makes the capability discoverable.
+
+## Commander learning visibility
+
+Commander may retain compact durable facts and reusable procedures through its selected runtime. A learning action must appear as a compact item in Commander when it is accepted or staged. The item identifies whether it changed memory or a skill and gives a concise summary. It must not expose the full private transcript by default.
+
+The Commander bridge, not a terminal-only runtime notification, is responsible for presenting these items in the OpenCode Commander conversation. A full learning-history visualizer is deferred. Obsidian is not part of the first release.
+
+The cadence and approval policy for background learning remain open. The first configuration must record whether memories write automatically, whether skill changes are staged for review, and the selected notification detail.
+
+## Authority and limits
+
+The user deliberately directs and steers agents. Project selection is primarily a context choice, not a Kirei approval gate.
+
+Scheduled execution still has an explicit, observable boundary:
+
+- a future-task record is a durable commitment, not a hidden prompt;
+- the task result identifies the triggering record and the work it started;
+- a runtime failure remains failed or uncertain until reconciled;
+- a scheduled task cannot claim success without a recorded outcome;
+- runtime tool permissions and external service authentication remain independent of agent instructions.
+
+Exact Git-version approvals, review gates, and a broader workflow ledger are optional later Kirei capabilities. They are not prerequisites for the OpenCode-first product.
+
+## Out of scope
+
+This product direction excludes:
+
+- Mattermost channels, threads, bots, mobile builds, and push delivery;
+- Kirei mediation of ordinary project chats;
+- a replacement OpenCode project/session UI;
+- a Digitaltwin-specific mobile application;
+- an Obsidian integration or a separate learning-history application;
+- automatic migration of existing Mattermost conversations;
+- an agent-created independent scheduler outside Kirei;
+- automatic code changes, merges, or deployment caused solely by a schedule.
+
+## Validation gates
+
+The following are not yet proven in the selected versions:
+
+1. An unmodified upstream OpenCode installation can host a stable global Commander control through a supported extension point.
+2. The Commander bridge can show a transparent persistent conversation, stream replies, steer active work, cancel it, and recover after a restart.
+3. A remote OpenCode session works through the selected authenticated desktop and mobile access path.
+4. A direct OpenCode project session can create, modify, and recover real Git work in the intended remote workspace.
+5. Kirei can wake the selected Commander runtime exactly once for a due future task and reconcile an interrupted delivery.
+6. The shared skill and baseline instruction cause Commander and project agents to use the same scheduling capability correctly.
+
+Gate 1 is the first implementation validation. Do not build the Commander bridge, future-task API, or learning integration before an unmodified pinned OpenCode installation proves a supported global Commander control and conversation surface. A failure means Digitaltwin must choose an upstream contribution or a deliberately maintained small UI patch; it must not depend on DOM injection.
+
+After Gate 1 passes, the next validation slice uses one disposable remote repository. It proves direct OpenCode work, cancellation, restart behavior, and mobile access before any Mattermost removal or Kirei workflow redesign.

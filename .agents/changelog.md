@@ -293,3 +293,11 @@
 - Require the same active, human-verified Commander request capability before reporting usage, and replace persisted AgentsView config on startup. Per-request config comparison and canonical root checks reject post-start remote hosts, extra roots, listeners, and root symlinks.
 - Exercise a synthetic recognized usage record containing transcript- and credential-like sentinels, and assert that neither reaches the usage response or local usage archive.
 - Run the backend's standard `Zeitwerk::Loader.eager_load_all` validation in `bin/check`. Split the MCP tool and AgentsView interfaces into matching files and package each standalone dependency with checksum verification. The Runtime fixture retries initial agent-start readiness and checks its packaged MCP bridge exposes only `get_usage`.
+
+## 2026-10-12 — OpenCode-first Commander direction
+
+- Replace the Mattermost-centered Commander specification with the OpenCode-first product contract: direct upstream OpenCode project chats, a global generic-branded Commander, and no Digitaltwin mobile application.
+- Restrict Kirei's target role to durable Commander future commitments. Define one shared agent scheduling capability, its skill and baseline instruction, Commander-only delivery, and explicit unproven integration gates.
+- Require each due future task to append a Commander check-in and await the user's reply before starting project work.
+- Require compact Commander-visible memory and skill learning notices; defer Obsidian and the learning-history visualizer.
+- Make the supported OpenCode global Commander-control proof the first implementation validation gate.

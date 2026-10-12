@@ -1,0 +1,48 @@
+<h2>Commander is global, not a project chat</h2>
+<p class="subtitle">A small top-bar control opens the same persistent Commander conversation from any project or session.</p>
+
+<div class="mockup">
+  <div class="mockup-header">OpenCode with the Digitaltwin extension</div>
+  <div style="background:#fbfbfc; color:#292b30; min-height:520px; border:1px solid #dedee3; border-radius:10px; overflow:hidden;">
+    <div style="height:58px; display:flex; align-items:center; gap:16px; padding:0 18px; border-bottom:1px solid #e4e4e8; background:#fff;">
+      <div style="font-size:20px; color:#737780;">▦</div>
+      <div style="padding:8px 12px; border-radius:8px; color:#535660;">⌂ Home</div>
+      <div style="color:#c7c8cd;">|</div>
+      <div style="font-size:15px; color:#747780;">Voucherhub · API v3</div>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+        <div style="font-size:13px; color:#80828a;">Remote runtime · connected</div>
+        <div style="padding:9px 13px; border-radius:8px; background:#172554; color:#fff; font-weight:700; box-shadow:0 1px 2px #b9c2d0;">✦ Commander</div>
+      </div>
+    </div>
+    <div style="display:flex; min-height:462px;">
+      <aside style="width:235px; padding:24px 18px; border-right:1px solid #e6e6ea; background:#fff;">
+        <div class="label" style="color:#8a8d96;">PROJECTS</div>
+        <div style="margin-top:15px; font-weight:700;">▣ Digitaltwin</div>
+        <div style="margin:9px 0 22px; padding-left:20px; color:#777b85;">Agent Runtime</div>
+        <div style="font-weight:700;">▣ Voucherhub</div>
+        <div style="margin:9px 0 22px; padding-left:20px; border-left:2px solid #172554; color:#172554; font-weight:700;">API v3</div>
+        <div style="font-weight:700;">▣ Infrastructure</div>
+        <div style="margin:9px 0 22px; padding-left:20px; color:#777b85;">Fleet MDM</div>
+        <div style="border-top:1px solid #e6e6ea; padding-top:18px; color:#72757e;">⚙ Settings</div>
+      </aside>
+      <main style="flex:1; padding:34px 42px; background:#fcfcfd;">
+        <div class="label" style="color:#858891;">PROJECT CHAT · VOUCHERHUB</div>
+        <h3 style="margin:8px 0 21px; font-size:24px;">API v3</h3>
+        <div style="max-width:620px; padding:13px 15px; border-radius:9px; background:#fff; border:1px solid #e2e2e7;">You: Reproduce the booking error and prepare a focused fix.</div>
+        <div style="max-width:620px; margin-top:13px; padding:13px 15px; border-radius:9px; background:#eef3ff; border:1px solid #d7e1f9;">Project agent: I started in <code>voucherhub/</code>. I am tracing the API contract now.</div>
+        <div style="margin-top:54px; color:#81848c; font-size:14px;">The <strong style="color:#4d515a;">Commander</strong> button is always available. It opens one durable, cross-project conversation without changing this project session.</div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="global-control" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>Global top-bar control</h3><p>Commander is available everywhere but never competes with project sessions in the sidebar.</p></div>
+  </div>
+  <div class="option" data-choice="placement" onclick="toggleSelect(this)">
+    <div class="letter">↔</div>
+    <div class="content"><h3>Placement remains open</h3><p>The action could sit at the left near Home or at the right near runtime status.</p></div>
+  </div>
+</div>

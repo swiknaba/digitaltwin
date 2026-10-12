@@ -1,0 +1,44 @@
+<h2>Digitaltwin as an engineering cockpit</h2>
+<p class="subtitle">One persistent Commander, with focused project chats that share the same trusted remote runtime.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Digitaltwin</div>
+  <div style="display:flex; min-height:500px; background:#0f172a; color:#e2e8f0;">
+    <aside style="width:245px; padding:22px 16px; border-right:1px solid #334155;">
+      <div class="label" style="color:#94a3b8;">CONTROL</div>
+      <div style="margin:10px 0 26px; padding:12px; background:#1e293b; border-radius:8px; font-weight:700;">✦ Commander</div>
+      <div class="label" style="color:#94a3b8;">PROJECTS</div>
+      <div style="margin-top:10px; line-height:2.25;">
+        <div>▣ Digitaltwin</div>
+        <div style="padding-left:16px; color:#94a3b8;">Agent runtime</div>
+        <div>▣ Voucherhub</div>
+        <div style="padding-left:16px; color:#94a3b8;">API v3</div>
+        <div>▣ Infrastructure</div>
+        <div style="padding-left:16px; color:#94a3b8;">Fleet MDM</div>
+      </div>
+    </aside>
+    <main style="flex:1; padding:34px;">
+      <div class="label" style="color:#94a3b8;">PROJECT CHAT · DIGITALTWIN</div>
+      <h3 style="font-size:24px; margin:8px 0 18px;">Agent Runtime</h3>
+      <div style="max-width:660px; padding:14px 16px; border-radius:10px; background:#1e293b; margin:12px 0;">You: Trace the failed Runtime callback and fix it.</div>
+      <div style="max-width:660px; padding:14px 16px; border-radius:10px; background:#172554; margin:12px 0 30px;">Project agent: I started in <code>digitaltwin/</code>. The failure crosses into the shared callback client. I will inspect both repositories and report the changed Git artifacts.</div>
+      <div style="display:flex; gap:12px; color:#cbd5e1;">
+        <div style="border:1px solid #475569; border-radius:8px; padding:11px 13px;">Remote machine</div>
+        <div style="border:1px solid #475569; border-radius:8px; padding:11px 13px;">Herdr CLI session</div>
+        <div style="border:1px solid #475569; border-radius:8px; padding:11px 13px;">Git worktree</div>
+      </div>
+      <div style="margin-top:30px; padding-top:20px; border-top:1px solid #334155; color:#94a3b8; font-size:14px;">The project chat starts the CLI in its bound project directory. It may work across repositories when the task requires it; repository selection stays visible in the task record.</div>
+    </main>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="shape-right" onclick="toggleSelect(this)">
+    <div class="letter">✓</div>
+    <div class="content"><h3>This is the right shape</h3><p>Commander is a persistent cross-project expert. Project chats are focused workspaces.</p></div>
+  </div>
+  <div class="option" data-choice="shape-adjust" onclick="toggleSelect(this)">
+    <div class="letter">↺</div>
+    <div class="content"><h3>Adjust the hierarchy</h3><p>Use the terminal to describe what should move, disappear, or become more prominent.</p></div>
+  </div>
+</div>
