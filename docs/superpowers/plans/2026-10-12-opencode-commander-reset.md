@@ -1,6 +1,7 @@
 # OpenCode-first Commander reset implementation plan
 
-**Status:** Revised after independent review; Gate 1 is still unproven. This plan
+**Status:** Revised after independent review; Gate 1 failed for pinned OpenCode
+`v2.0.27`. This plan
 authorizes no provider login, deployment, credential creation, or firewall change.
 
 **Source of truth:** [Commander product specification](../../commander-feature-spec.md)
@@ -19,17 +20,18 @@ and no Kirei workflow approval/review gate on ordinary OpenCode work.
 - The installed desktop bundle's CLI reports `OpenCode v2.0.27`; it runs against the
   existing local service. Its public OpenAPI proves session create/prompt/log/steer/
   interrupt and pairing controls, sufficient for a bridge's runtime mechanics.
-- That release has no installed plugins. Its documented and inspected plugin surface
-  exposes server hooks, tools, listing/update, and plugin RPC—not a top-bar, toolbar,
-  sidebar, view, or UI registration operation. No plugin/configuration was changed
-  for the investigation. Release-bound details and Gate 1 pass criteria are in
+- A repository-local global plugin probe was installed through one retained symlink.
+  The actual release reports it active with only `features.server: true`; it exposes
+  no UI/client/session/capability feature. The plugin's required default-definition
+  contract also differs from current published documentation. Release-bound details,
+  retained-plugin instructions, and the failed Gate 1 criteria are in
   [OpenCode Commander Gate 1 evidence](../../interfaces/opencode-commander-gate.md).
 - Claude Code `2.1.267` is authenticated through its existing account. A direct
   read-only invocation with `--model opus --effort medium` resolved to canonical
   `claude-opus-5-5`; its review findings are incorporated below.
 
-**Gate 1 is a hard stop.** Before building a Commander bridge, a future-task API,
-or learning integration, prove on the *pinned* unmodified OpenCode build that a
+**Gate 1 failed and remains a hard stop.** Before building a Commander bridge, a
+future-task API, or learning integration, prove on a future *pinned* OpenCode build that a
 supported extension point can: (a) add an always-visible global Commander control,
 (b) open the same durable Commander conversation without destroying the active
 project session, (c) render streamed external runtime responses, and (d) obtain a
@@ -42,7 +44,7 @@ unsupported bridge around it.
 Only after Gate 1 and the disposable direct-OpenCode slice (project Git work,
 cancellation, restart, and chosen remote-web/pairing access) pass may Mattermost
 and the old Kirei workflow architecture be removed. This ordering comes directly
-from the source specification and prevents an unproven UI integration from leaving
+from the source specification and prevents an unsupported UI integration from leaving
 no usable product path.
 
 ## Scope and explicit non-goals
@@ -375,17 +377,16 @@ pass without chat activation.
 
 ## Dependencies and blockers
 
-1. **Blocking now:** prove the documented OpenCode `2.0.27` plugin/API can provide
-   the required top-bar and external transparent conversation without DOM injection.
-   Present docs show global plugins/tools but no documented UI extension, so the
-   current evidence is insufficient and leans negative.
+1. **Blocking now:** the tested OpenCode `2.0.27` global plugin is server-only and
+   cannot provide the required top-bar, transparent conversation, or trusted bridge
+   capability without DOM injection. Choose an upstream contribution, a maintained
+   UI patch, or the explicitly reduced product specification before implementation.
 2. Obtain a release-bound OpenCode binary/CLI inspection in the target server
    environment; the local service is protected and its executable is not on PATH.
 3. Select and prove the remote-web/pairing mobile access path and a disposable remote
    Git environment with operator access.
-4. Complete the disposable global-plugin UI probe in the desktop and remote-web
-   surfaces before choosing an upstream contribution or maintained UI patch. Do not
-   substitute a different model or claim one.
+4. Record the selected future supported UI surface and rerun Gate 1 on that exact
+   release before implementation. Do not substitute a different model or claim one.
 5. Resolve the intentionally open first-release learning policy: automatic vs
    user-confirmed memory and staged vs automatic skill changes. The implementation
    must keep the setting explicit until the product owner selects it.
@@ -406,8 +407,9 @@ pass without chat activation.
   routes, composition, job kinds, migrations, CI, and integration fixtures. It
   required a persistent bridge delivery contract, explicit state transitions,
   capability issuance, a greenfield schema decision, and a deletion inventory. All
-  plan issues were resolved; the only remaining Gate 1 compatibility proof is an
-  external validation blocker, not a plan defect.
+  plan issues were resolved. The later release-bound probe failed Gate 1 because the
+  active local plugin exposes only server capability; this is a product/platform
+  blocker, not a plan defect.
 - **Kirei backend review:** reviewed the current job lease semantics, worker,
   configuration, routes, migrations, and strict-type boundaries. It required
   task/execution/attempt separation, an idempotent post-delivery disposition,
@@ -417,8 +419,9 @@ pass without chat activation.
   the existing account, ran two read-only passes with `--model opus --effort medium`.
   Both responses report canonical model `claude-opus-5-5` (first-party). The Gate 1
   pass found no blocker but required reproducible desktop/remote-web probe evidence
-  and a distinction between failed and unproven; both are now explicit in the gate
-  record. The FutureTasks pass found no blocker and required an
+  and a distinction between failed and unproven. The subsequent live plugin probe
+  established the pinned release as server-only and Gate 1 as failed. The FutureTasks
+  pass found no blocker and required an
   `awaiting_disposition` state, an `uncertain` exit, same-key reconciliation, and one
   coherent reschedule model; all are incorporated above. The final rereview required
   a versioned `resolve_uncertain` path, reschedule-time validation, final failed

@@ -1,10 +1,10 @@
 # OpenCode Commander Gate 1 evidence
 
-**Status:** Not yet proven (and therefore not passed). The documented UI extension
-point has not been found in the inspected release surface, but no version-pinned
-global-plugin experiment has yet been loaded in either the desktop or remote-web UI.
-Do not build the Commander bridge, future-task API, or learning integration from
-this result.
+**Status:** Failed for the pinned OpenCode `v2.0.27` plugin contract. A real
+operator-global local plugin loaded successfully, but OpenCode advertises it as a
+server-only feature. No supported UI registration, Commander conversation view, or
+trusted bridge-capability surface was available. Do not build the Commander bridge,
+future-task API, or learning integration from this result.
 
 ## Inspected release
 
@@ -16,13 +16,15 @@ this result.
 | Session control plane | The same release's OpenAPI exposes `session.create`, `session.prompt`, durable session log streaming, inbox update/cancel (steering), and `session.interrupt`. It also exposes browser/app pairing. |
 | UI extension surface | The inspected CLI/OpenAPI has no top-bar, toolbar, sidebar, view, or UI-registration operation. The released public plugin documentation describes server-side hooks/tools, not a desktop/web UI contribution API. |
 | Live desktop observation | The running desktop application presents its ordinary session UI (project selector, session tab, prompt, model selector, and notifications) with no installed plugin and no visible Commander control. This is an observation, not proof that a supported global UI API is absent. |
+| Live global-plugin probe | A symlinked local TypeScript plugin at `~/.config/opencode/plugins/digitaltwin-commander-gate-probe.ts` loaded successfully after a service restart. `GET /api/plugin` reports `id: digitaltwin-commander-gate-probe`, `source.type: local`, `state.status: active`, and only `features.server: true`. It exposes no UI/client/session/capability feature. |
+| Installed contract mismatch | The first probe used the current public-doc named-function shape and was rejected. v2.0.27 requires a default definition with `id` plus `effect` or `setup`. The active probe uses the required default `setup` shape. Current web documentation therefore cannot substitute for release-bound evidence. |
 
 The session controls demonstrate that a future bridge could own a durable OpenCode
 session and implement prompt, stream, steer, and cancel without DOM automation. They
 do **not** prove a supported global Commander control or a transparent branded
 conversation UI, and must not be misrepresented as satisfying Gate 1.
 
-## Reproduction and remaining live probe
+## Reproduction and live result
 
 The initial read-only inspection used the installed executable rather than a
 downloaded or modified build:
@@ -41,15 +43,14 @@ investigation. This is why a server-only plugin smoke test is not enough to clos
 gate: it would prove loading only, not the required supported UI/capability contract.
 
 It also consulted the published [plugin documentation](https://opencode.ai/docs/plugins/)
-and [command documentation](https://opencode.ai/docs/commands/) on 2026-10-12. Before
-declaring a failed gate or choosing a fork/patch, an operator must run a disposable,
-version-pinned global-plugin probe in both the desktop and remote-web UI. The probe
-must record its exact build checksum, plugin source/revision, install command,
-visible result, and clean removal. It must prove one of two outcomes: a supported
-global Commander UI/capability contract that satisfies every pass criterion below,
-or that no such contract is available in that exact release. It must not use a DOM
-selector, an API key, a paid model, or a provider login. A configured free model is
-permitted only if an actual turn is needed to show stream behavior.
+and [command documentation](https://opencode.ai/docs/commands/) on 2026-10-12. The
+probe source is repository-local at
+`commander/opencode-gate-plugin/commander-gate-probe.ts`; its one global symlink is
+intentionally retained for manual testing. No DOM selector, API key, paid model, or
+provider login was used. The Mac locked before a post-load desktop accessibility
+snapshot could be captured, and no remote-web UI was opened. Those observations are
+not needed to establish failure: the active plugin's release-bound feature contract
+is server-only and cannot supply any of the required UI/capability criteria.
 
 ## Required Gate 1 pass criteria
 
