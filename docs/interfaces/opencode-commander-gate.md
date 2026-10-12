@@ -43,3 +43,14 @@ deliberately maintained small OpenCode UI patch** that supplies the four pass
 criteria above. A global custom tool, a slash command, a plugin RPC, or an external
 browser window alone is not an equivalent substitute because it does not provide the
 required persistent top-bar control and transparent Commander surface.
+
+### Alternative only if the product specification changes
+
+The smallest reduced-scope product would replace the top-bar/transparent-conversation
+requirement with an operator-global `/commander` command that opens a separate,
+explicitly branded Commander web route. OpenCode 2.0.27's global command and plugin
+configuration can make this discoverable, while the OpenAPI session controls can
+support the bridge behind it. This is a materially weaker UX: it does not preserve
+the current project screen in one native OpenCode surface and does not meet the
+current specification. Choose it only by an explicit product decision; it is not a
+silent fallback.
