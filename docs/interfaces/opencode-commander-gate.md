@@ -33,6 +33,13 @@ downloaded or modified build:
 /Applications/OpenCode.app/Contents/Resources/opencode-cli api GET /openapi.json
 ```
 
+The same release's `plugin --help` states that `plugin add` installs a package into
+the active **global configuration**, and the CLI exposes no isolated configuration
+flag. A live global-plugin experiment would therefore alter the active desktop
+configuration before its clean removal. No such change was made during this
+investigation. This is why a server-only plugin smoke test is not enough to close the
+gate: it would prove loading only, not the required supported UI/capability contract.
+
 It also consulted the published [plugin documentation](https://opencode.ai/docs/plugins/)
 and [command documentation](https://opencode.ai/docs/commands/) on 2026-10-12. Before
 declaring a failed gate or choosing a fork/patch, an operator must run a disposable,
