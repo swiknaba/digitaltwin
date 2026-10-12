@@ -1,23 +1,48 @@
 # OpenCode Commander Gate 1 evidence
 
-**Status:** Not passed — documented UI extension point is absent from the inspected
-release surface. Do not build the Commander bridge, future-task API, or learning
-integration from this result.
+**Status:** Not yet proven (and therefore not passed). The documented UI extension
+point has not been found in the inspected release surface, but no version-pinned
+global-plugin experiment has yet been loaded in either the desktop or remote-web UI.
+Do not build the Commander bridge, future-task API, or learning integration from
+this result.
 
 ## Inspected release
 
 | Evidence | Result |
 | --- | --- |
-| Installed desktop CLI | `/Applications/OpenCode.app/Contents/Resources/opencode-cli` reports `opencode v2.0.27`. |
+| Installed desktop CLI | `/Applications/OpenCode.app/Contents/Resources/opencode-cli` reports `opencode v2.0.27`; SHA-256 is `c60d9b61fe4ed3f1387efb6e101d81f052085ce64aada93d8e6937fbe80fbfa4`. |
 | Global plugin state | `opencode plugin list` reports `No plugins found`. No global or project plugin was installed or modified for this check. |
 | Plugin contract | The release CLI supports plugin list/add/check/update/remove. Its server OpenAPI exposes plugin listing/update and plugin RPC, while the published plugin documentation describes hooks and custom tools. |
 | Session control plane | The same release's OpenAPI exposes `session.create`, `session.prompt`, durable session log streaming, inbox update/cancel (steering), and `session.interrupt`. It also exposes browser/app pairing. |
 | UI extension surface | The inspected CLI/OpenAPI has no top-bar, toolbar, sidebar, view, or UI-registration operation. The released public plugin documentation describes server-side hooks/tools, not a desktop/web UI contribution API. |
+| Live desktop observation | The running desktop application presents its ordinary session UI (project selector, session tab, prompt, model selector, and notifications) with no installed plugin and no visible Commander control. This is an observation, not proof that a supported global UI API is absent. |
 
 The session controls demonstrate that a future bridge could own a durable OpenCode
 session and implement prompt, stream, steer, and cancel without DOM automation. They
 do **not** prove a supported global Commander control or a transparent branded
 conversation UI, and must not be misrepresented as satisfying Gate 1.
+
+## Reproduction and remaining live probe
+
+The initial read-only inspection used the installed executable rather than a
+downloaded or modified build:
+
+```text
+/Applications/OpenCode.app/Contents/Resources/opencode-cli --version
+/Applications/OpenCode.app/Contents/Resources/opencode-cli plugin list
+/Applications/OpenCode.app/Contents/Resources/opencode-cli api GET /openapi.json
+```
+
+It also consulted the published [plugin documentation](https://opencode.ai/docs/plugins/)
+and [command documentation](https://opencode.ai/docs/commands/) on 2026-10-12. Before
+declaring a failed gate or choosing a fork/patch, an operator must run a disposable,
+version-pinned global-plugin probe in both the desktop and remote-web UI. The probe
+must record its exact build checksum, plugin source/revision, install command,
+visible result, and clean removal. It must prove one of two outcomes: a supported
+global Commander UI/capability contract that satisfies every pass criterion below,
+or that no such contract is available in that exact release. It must not use a DOM
+selector, an API key, a paid model, or a provider login. A configured free model is
+permitted only if an actual turn is needed to show stream behavior.
 
 ## Required Gate 1 pass criteria
 

@@ -1,7 +1,7 @@
 # OpenCode-first Commander reset implementation plan
 
-**Status:** Proposed for independent review. This plan authorizes no provider login,
-deployment, credential creation, or firewall change.
+**Status:** Revised after independent review; Gate 1 is still unproven. This plan
+authorizes no provider login, deployment, credential creation, or firewall change.
 
 **Source of truth:** [Commander product specification](../../commander-feature-spec.md)
 at `9575ff1` (`main` on 2026-10-12). The earlier Phase 0 and Commander/Hermes
@@ -24,16 +24,18 @@ and no Kirei workflow approval/review gate on ordinary OpenCode work.
   sidebar, view, or UI registration operation. No plugin/configuration was changed
   for the investigation. Release-bound details and Gate 1 pass criteria are in
   [OpenCode Commander Gate 1 evidence](../../interfaces/opencode-commander-gate.md).
-- Claude Code `2.1.267` is installed; `claude auth status` reports `loggedIn: false`.
-  An Opus 5.5 review cannot be claimed until the configured authenticated account
-  accepts `--model opus --effort medium`.
+- Claude Code `2.1.267` is authenticated through its existing account. A direct
+  read-only invocation with `--model opus --effort medium` resolved to canonical
+  `claude-opus-5-5`; its review findings are incorporated below.
 
 **Gate 1 is a hard stop.** Before building a Commander bridge, a future-task API,
 or learning integration, prove on the *pinned* unmodified OpenCode build that a
 supported extension point can: (a) add an always-visible global Commander control,
 (b) open the same durable Commander conversation without destroying the active
-project session, and (c) render streamed external runtime responses. DOM injection
-is prohibited. If the supported surface cannot do this, stop and choose either an
+project session, (c) render streamed external runtime responses, and (d) obtain a
+trusted user-and-conversation-bound bridge capability without a static credential in
+project configuration. DOM injection is prohibited. If the supported surface cannot
+do this, stop and choose either an
 upstream contribution or a narrowly maintained OpenCode UI patch; do not build an
 unsupported bridge around it.
 
@@ -79,9 +81,9 @@ credential provisioning.
    write jobs directly. Ordinary OpenCode sessions must run if Kirei is stopped.
 5. **Scheduling safety.** Separate mutable task state from an immutable execution
    attempt. Version each task, use a unique due-execution key, lease the queued
-   operation, and persist `running`, `completed`, `failed`, or `uncertain` before/
-   after each external delivery. A due task only posts a Commander check-in; it
-   never starts project work itself.
+   operation, and persist `running`, `awaiting_disposition`, `completed`, `failed`,
+   or `uncertain` before/after each external delivery. A due task only posts a
+   Commander check-in; it never starts project work itself.
 6. **Learning visibility.** Bridge events are compact and reveal `memory` or `skill`
    plus a summary, never transcript text. Initial configuration explicitly chooses
    automatic-memory and staged-skill policies before runtime learning is enabled.
@@ -103,13 +105,20 @@ credential provisioning.
 `FutureTask` is the mutable user commitment: immutable `id`, authenticated `actor`,
 server-derived `origin`, Commander-only `target` for v1, bounded text/references,
 original IANA timezone/local request, canonical UTC `due_at`, `version`, and state.
-It starts `scheduled`; a due claim moves it to `running`. It becomes `completed`
-only after the user/Commander disposition is durably recorded, `failed` after a
-reconciled terminal execution failure, `canceled` either before execution starts or
-by the capability-verified post-delivery `user_canceled` disposition, or `uncertain`
-after an unreconciled external effect. Rescheduling updates only a
-`scheduled` task with the exact `expected_version`, increments `version`, and creates
-one new schedule generation. No v1 operation targets a project session.
+It starts `scheduled`; a due claim moves it to `running`; a persisted bridge receipt
+moves it to `awaiting_disposition`. It becomes `completed` only after the
+user/Commander disposition is durably recorded, `failed` after a reconciled terminal
+execution failure, `canceled` either before execution starts or by the
+capability-verified post-delivery `user_canceled` disposition or the owner-only
+unrecoverable-effect resolution, or `uncertain` after an unreconciled external effect.
+A late receipt/reconciliation transitions
+`uncertain` to `awaiting_disposition` or `failed`. Rescheduling updates one task with
+the exact `expected_version`, increments `version`, and creates one new schedule
+generation: before delivery it is the normal update operation; after delivery it is
+the capability-verified `rescheduled` disposition and carries a newly validated
+`due_at`, IANA zone, and local time. A `failed` task is final; the actor can create a
+new task deliberately but cannot reschedule the failed record. No v1 operation
+targets a project session.
 
 `FutureTaskExecution` is the mutable schedule-generation record: `id`, task id, task
 version/generation, unique `delivery_key`, job reference, bridge receipt, timestamps,
@@ -130,21 +139,33 @@ API exposes the domain state, retained attempts, and typed outcome.
   superseded job conditionally records `stale` and performs no bridge I/O.
 - The worker claims only a current `queued` execution. Immediately before bridge I/O
   it marks `delivering`, calls `lease.begin_effect`, and passes the immutable
-  `delivery_key`. A bridge timeout/lost result after that point is `uncertain`;
-  there is no automatic send retry. A receipt is persisted before the job completes.
-- A bridge duplicate delivery-key request returns its original receipt. An owner-only
-  reconciliation reads the bridge's recorded key and records `delivered` or `failed`;
-  it never issues a new delivery. The regular cancel/update API applies only before
-  a task starts. After a delivered check-in, a separate capability-verified
+  `delivery_key`. A bridge timeout/lost result after that point is `uncertain`; a
+  reconciliation job retries the same idempotency key after a bounded delay. A
+  duplicate returns the original receipt, while a request that never reached the
+  bridge is delivered once. An unreachable bridge remains `uncertain` for owner
+  recovery; the worker never invents a second key. A receipt is persisted before the
+  job completes.
+- Reconciliation records either `delivered` (and task `awaiting_disposition`) or
+  `failed` (and task `failed`) under the task lock. The regular cancel/update API
+  applies only before a task starts. After a delivered check-in, a separate
+  capability-verified
   `record_disposition` transition holds the task lock and requires the exact task
   version plus an actor-scoped disposition idempotency key. It records one immutable
   outcome: `assessed` or `project_work_requested` marks the original task
   `completed`; `user_canceled` marks it `canceled`; `rescheduled` marks it
-  `completed` and transactionally creates a **new** FutureTask/schedule/execution
-  with a successor ID. A disposition is rejected until its exact execution has a
-  persisted delivery receipt; duplicate same-body dispositions return the saved
-  outcome and changed/out-of-order ones conflict. `project_work_requested` is a
+  `scheduled`, increments its version, and transactionally creates the next schedule
+  generation/execution on that same task ID. A disposition is rejected until its
+  exact execution has a persisted delivery receipt; duplicate same-body dispositions
+  return the saved outcome and changed/out-of-order ones conflict. `project_work_requested` is a
   visible user decision reference only: it cannot itself start project work.
+- After the bounded automatic reconcile period, an owner-only, capability-verified
+  `resolve_uncertain` operation requires the task's exact version and a resolution
+  idempotency key. It may query/retry only the existing delivery key; it records
+  `awaiting_disposition` for a receipt, `failed` for a terminal bridge failure, or
+  `canceled` with an immutable operator reason when the external effect remains
+  unknowable. A late bridge receipt is retained as an immutable attempt/audit event
+  but never reopens that canceled task. The operation may never create a new delivery
+  key or a second check-in.
 - Retry exhaustion that never crossed the effect boundary produces a visible domain
   `failed`, not an opaque queue-only `blocked` state. The first release supports
   one-time dates only. Store canonical UTC plus original IANA zone/local time; reject
@@ -199,13 +220,21 @@ documented local reset procedure; it may not target a user database.
   the same key with a changed body conflicts. Concurrent update-versus-claim and
   cancel-versus-claim leave at most one current execution; stale jobs make no bridge
   call.
-- A delivered task accepts exactly one disposition: assessed, user-canceled,
-  rescheduled to a successor task, or a recorded project-work request. Duplicate
+- A delivered task becomes `awaiting_disposition` and accepts exactly one disposition:
+  assessed, user-canceled, rescheduled on the same task ID with a new generation, or
+  a recorded project-work request. Duplicate
   dispositions return the first recorded outcome; changed or out-of-order retries
   conflict, and no disposition can itself launch project work.
 - A due task is delivered once to Commander after worker restart. A crash before
   delivery is retried through the same execution record; a crash after an unknown
-  bridge result becomes `uncertain` and needs reconciliation, not a blind resend.
+  bridge result becomes `uncertain` and is reconciled by retrying its exact delivery
+  key, never by blind/new-key resend. An unreachable bridge remains explicitly
+  uncertain for owner recovery.
+- An owner resolves an `uncertain` task only through the exact-version,
+  capability-verified path: a recovered receipt yields `awaiting_disposition`, a
+  terminal bridge failure yields `failed`, and a final unrecoverable effect can be
+  canceled with a recorded reason. A failed task cannot be rescheduled; creating a
+  new task is explicit.
 - If the OpenCode UI is disconnected, the bridge records one pending visible
   Commander item. Restart/reconnect produces it once. An unavailable Kirei makes
   direct project work continue normally and returns an explicit scheduling failure;
@@ -225,7 +254,7 @@ documented local reset procedure; it may not target a user database.
 
 ### Deletion/regression
 
-- After Gate 2, default startup contains no Mattermost, push, mobile, chat listener,
+- After Gates 1 and 2 and FutureTasks acceptance, default startup contains no Mattermost, push, mobile, chat listener,
   Mattermost environment variables, or chat-only database role. No historical chat
   data is migrated.
 - The remaining Kirei runtime accepts only future-task operations and worker jobs;
@@ -324,7 +353,8 @@ pass without chat activation.
 - Rewrite root/component READMEs, layout/service-boundary documents, `.env.example`,
   runbooks, and planning index to state the new product/authority boundaries.
 - Run focused TypeScript and Ruby checks plus full backend `bundle exec spoom srb tc`,
-  RuboCop, RSpec, migration up/down from an empty database, and root acceptance.
+  RuboCop, RSpec, migration up/down within the new empty-database baseline, and root
+  acceptance.
   Resolve rather than suppress all new type/RBI diagnostics.
 - Record release-bound OpenCode/runtime evidence, tests, known live/operator gaps, and
   rollback/disable procedure in the handoff.
@@ -353,8 +383,9 @@ pass without chat activation.
    environment; the local service is protected and its executable is not on PATH.
 3. Select and prove the remote-web/pairing mobile access path and a disposable remote
    Git environment with operator access.
-4. Authenticate Claude Code if an external Opus 5.5 review is still required; current
-   CLI authentication is absent. Do not substitute a different model or claim one.
+4. Complete the disposable global-plugin UI probe in the desktop and remote-web
+   surfaces before choosing an upstream contribution or maintained UI patch. Do not
+   substitute a different model or claim one.
 5. Resolve the intentionally open first-release learning policy: automatic vs
    user-confirmed memory and staged vs automatic skill changes. The implementation
    must keep the setting explicit until the product owner selects it.
@@ -382,8 +413,14 @@ pass without chat activation.
   task/execution/attempt separation, an idempotent post-delivery disposition,
   capability and mutation contracts, timezone/DST behavior, and worker/composition
   cutover coverage. All design-level P0 findings were resolved.
-- **Requested Claude Code review:** direct CLI invocation used
-  `--model opus --effort medium` with tools disabled. Claude Code `2.1.267` stopped
-  before inference with `Not logged in · Please run /login`; usage was zero and no
-  model was selected. This is recorded as an unavailable review, not an Opus 5.5
-  review or a substitute-model review.
+- **Claude Code review:** the installed direct CLI `2.1.267`, authenticated through
+  the existing account, ran two read-only passes with `--model opus --effort medium`.
+  Both responses report canonical model `claude-opus-5-5` (first-party). The Gate 1
+  pass found no blocker but required reproducible desktop/remote-web probe evidence
+  and a distinction between failed and unproven; both are now explicit in the gate
+  record. The FutureTasks pass found no blocker and required an
+  `awaiting_disposition` state, an `uncertain` exit, same-key reconciliation, and one
+  coherent reschedule model; all are incorporated above. The final rereview required
+  a versioned `resolve_uncertain` path, reschedule-time validation, final failed
+  tasks, a CLI checksum, and the hard-stop capability criterion; all are incorporated
+  above. It also noted the baseline migration wording, now clarified.
