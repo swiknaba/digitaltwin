@@ -30,7 +30,20 @@ export interface CapabilityVerifier {
   consume(input: Readonly<{ action: CapabilityAction; expectedAudience: "commander-bridge"; expectedConversationId: CommanderConversationId; expectedBinding?: CapabilityBinding; presentation: CapabilityPresentation; now: Date }>): Promise<CapabilityDecision>
 }
 
-type StreamEventBase = Readonly<{ conversationId: CommanderConversationId; cursor: StreamCursor; deliveryId: string; text: string }>
+/**
+ * An optional, non-authorizing reference to an OpenCode message. The runtime and
+ * project namespaces prevent identical local session ids from being conflated.
+ */
+export type OpenCodeMessageProvenance = Readonly<{
+  runtimeId: string
+  projectId: string
+  sessionId: string
+  messageId: string
+  agentId?: string
+  parentSessionId?: string
+}>
+
+type StreamEventBase = Readonly<{ conversationId: CommanderConversationId; cursor: StreamCursor; deliveryId: string; text: string; provenance?: OpenCodeMessageProvenance }>
 export type StreamEvent =
   | (StreamEventBase & Readonly<{ turnId: CommanderTurnId; kind: "delta" | "notice"; outcome?: never }>)
   | (StreamEventBase & Readonly<{ turnId: CommanderTurnId; kind: "final"; outcome: "completed" | "canceled" | "failed" }>)
@@ -108,11 +121,21 @@ export function decodeStreamEvent(value: unknown): StreamEvent | undefined {
   if (!isRecord(value) || typeof value.conversationId !== "string" || typeof value.turnId !== "string" || typeof value.cursor !== "number" || typeof value.deliveryId !== "string" || typeof value.text !== "string") return undefined
   if (!Number.isSafeInteger(value.cursor) || value.cursor < 1 || value.deliveryId.length === 0 || value.deliveryId.length > 256 || value.text.length > 64_000) return undefined
   try {
-    const base = { conversationId: commanderConversationId(value.conversationId), turnId: commanderTurnId(value.turnId), cursor: streamCursor(value.cursor), deliveryId: value.deliveryId, text: value.text }
+    const provenance = value.provenance === undefined ? undefined : decodeOpenCodeMessageProvenance(value.provenance)
+    if (value.provenance !== undefined && provenance === undefined) return undefined
+    const base = { conversationId: commanderConversationId(value.conversationId), turnId: commanderTurnId(value.turnId), cursor: streamCursor(value.cursor), deliveryId: value.deliveryId, text: value.text, ...(provenance === undefined ? {} : { provenance }) }
     if (value.kind === "delta" || value.kind === "notice") return { ...base, kind: value.kind }
     if (value.kind === "final" && (value.outcome === "completed" || value.outcome === "canceled" || value.outcome === "failed")) return { ...base, kind: "final", outcome: value.outcome }
   } catch {}
   return undefined
+}
+
+export function decodeOpenCodeMessageProvenance(value: unknown): OpenCodeMessageProvenance | undefined {
+  if (!isRecord(value) || typeof value.runtimeId !== "string" || typeof value.projectId !== "string" || typeof value.sessionId !== "string" || typeof value.messageId !== "string") return undefined
+  if (!nonEmptyIdentifier(value.runtimeId) || !nonEmptyIdentifier(value.projectId) || !/^ses_[a-zA-Z0-9_-]+$/.test(value.sessionId) || !/^msg_[a-zA-Z0-9_-]+$/.test(value.messageId)) return undefined
+  if (value.agentId !== undefined && (typeof value.agentId !== "string" || !nonEmptyIdentifier(value.agentId))) return undefined
+  if (value.parentSessionId !== undefined && (typeof value.parentSessionId !== "string" || !/^ses_[a-zA-Z0-9_-]+$/.test(value.parentSessionId))) return undefined
+  return { runtimeId: value.runtimeId, projectId: value.projectId, sessionId: value.sessionId, messageId: value.messageId, ...(value.agentId === undefined ? {} : { agentId: value.agentId }), ...(value.parentSessionId === undefined ? {} : { parentSessionId: value.parentSessionId }) }
 }
 
 export function decodeCommanderConversation(value: unknown): CommanderConversation | undefined {
@@ -152,4 +175,5 @@ function isStatus(value: unknown): value is ConversationStatus { return value ==
 function isRequestedAction(value: unknown): value is RequestedAction { return value === "prompt" || value === "steer" || value === "cancel" }
 function isRequestState(value: unknown): value is RequestState { return value === "pending" || value === "dispatched" || value === "uncertain" }
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> { return typeof value === "object" && value !== null && !Array.isArray(value) }
+function nonEmptyIdentifier(value: string): boolean { return value.length > 0 && value.length <= 256 }
 function allDefined<T>(values: readonly (T | undefined)[]): values is readonly T[] { return values.every((value): value is T => value !== undefined) }

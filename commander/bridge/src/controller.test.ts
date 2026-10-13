@@ -99,3 +99,16 @@ test("failed runtime request remains uncertain across a controller restart", asy
   const restarted = new CommanderBridgeController({ actorId: actor, conversationId: conversation, store: input.store, runtime: input.runtime, verifier: input.verifier, now: () => now })
   assert.deepEqual(await restarted.prompt(input.verifier.issue("retry", "prompt"), "request-start", "hello"), { ok: false, reason: "uncertain" })
 })
+
+test("persists exact optional OpenCode provenance without treating it as authority", async () => {
+  const input = subject()
+  await input.controller.prompt(input.verifier.issue("start", "prompt"), "request-start", "hello")
+  const event = {
+    ...runtimeEvent("request-start", 1),
+    provenance: { runtimeId: "desktop:operator-a", projectId: "project-a", sessionId: "ses_child", messageId: "msg_reply", agentId: "reviewer", parentSessionId: "ses_parent" },
+  }
+  assert.deepEqual(await input.controller.apply(event), { ok: true, state: "applied" })
+  const restarted = new CommanderBridgeController({ actorId: actor, conversationId: conversation, store: input.store, runtime: input.runtime, verifier: input.verifier, now: () => now })
+  assert.deepEqual(await restarted.provenanceForDelivery("event-1"), event.provenance)
+  assert.equal(await restarted.provenanceForDelivery("missing"), undefined)
+})

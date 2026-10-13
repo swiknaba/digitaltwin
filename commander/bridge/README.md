@@ -86,6 +86,14 @@ events but never capability proofs, endpoint configuration, actor identity, or
 runtime credentials. The maintained OpenCode patch must instantiate it only from an
 operator bootstrap; an absent bootstrap remains visibly `not-configured`.
 
+Runtime events may optionally carry `OpenCodeMessageProvenance`: a runtime namespace,
+project ID, exact `ses_` session ID, exact `msg_` message ID, and optional agent and
+parent-session IDs. The bridge persists it with the Commander event and exposes it
+only to trusted runtime code by delivery ID; panel state does not project it. It is a
+lookup reference, never an authorization grant. A missing, deleted, or inaccessible
+reference must fail explicitly at the trusted OpenCode adapter; it must not fall back
+to titles, agent names, or a replacement session.
+
 `FileConversationStore` and `FileFutureTaskDeliveryStore` are single-operator durable
 adapters; they atomically write replay metadata and delivery receipts with mode
 `0600`. A scaled deployment must replace them with a transactional operator-owned

@@ -43,6 +43,11 @@ export class CommanderBridgeController {
   async steer(presentation: CapabilityPresentation, requestId: unknown, text: unknown): Promise<ActionResult> { return this.dispatch("steer", presentation, requestId, text) }
   async cancel(presentation: CapabilityPresentation, requestId: unknown): Promise<ActionResult> { return this.dispatch("cancel", presentation, requestId) }
 
+  /** Trusted runtime lookup only: provenance locates work but grants no OpenCode authority. */
+  async provenanceForDelivery(deliveryId: string): Promise<StreamEvent["provenance"] | undefined> {
+    return this.serial(async () => (await this.loadOrCreate()).events.find((event) => event.deliveryId === deliveryId)?.provenance)
+  }
+
   /** Trusted bridge-internal delivery path; never accepts renderer input or a panel proof. */
   async appendFutureTask(deliveryKey: string, text: string): Promise<string> {
     return this.serial(async () => {
@@ -182,7 +187,7 @@ function validText(value: unknown): string | undefined { return typeof value ===
 function retainEvents(events: readonly StreamEvent[]): readonly StreamEvent[] { return events.slice(-retainedEvents) }
 function retainRequests(requests: readonly BridgeRequest[]): readonly BridgeRequest[] { const unresolved = requests.filter((request) => request.state === "pending" || request.state === "uncertain"); const dispatched = requests.filter((request) => request.state === "dispatched").slice(-Math.max(0, retainedRequests - unresolved.length)); return [...unresolved, ...dispatched] }
 function replaceRequest(requests: readonly BridgeRequest[], id: BridgeRequestId, state: BridgeRequest["state"]): readonly BridgeRequest[] { return requests.map((request) => request.id === id ? { ...request, state } : request) }
-function sameEvent(left: StreamEvent, right: StreamEvent): boolean { return left.cursor === right.cursor && left.deliveryId === right.deliveryId && left.turnId === right.turnId && left.kind === right.kind && left.text === right.text && left.outcome === right.outcome }
+function sameEvent(left: StreamEvent, right: StreamEvent): boolean { return left.cursor === right.cursor && left.deliveryId === right.deliveryId && left.turnId === right.turnId && left.kind === right.kind && left.text === right.text && left.outcome === right.outcome && JSON.stringify(left.provenance) === JSON.stringify(right.provenance) }
 function readyConversation(conversation: CommanderConversation, updates: Readonly<Partial<Pick<CommanderConversation, "lastCursor" | "events" | "requests">>>): CommanderConversation {
   const { activeTurn: _activeTurn, ...withoutActiveTurn } = conversation
   return { ...withoutActiveTurn, ...updates, status: "ready" }
