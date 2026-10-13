@@ -65,6 +65,5 @@ module Services
 
       Adapters::CommanderBridge::ConfiguredGateway.new(base_url: url, identity: identity)
     end
-
   end
 end
