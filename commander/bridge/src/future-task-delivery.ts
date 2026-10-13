@@ -75,9 +75,10 @@ export class FileFutureTaskDeliveryStore implements FutureTaskDeliveryStore {
 export class FutureTaskDeliveryService {
   private readonly store: FutureTaskDeliveryStore
   private readonly publish: (input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>) => Promise<string>
+  private readonly publishOutcome: (input: Readonly<{ deliveryKey: string; outcome: string }>) => Promise<string>
   private tail: Promise<void> = Promise.resolve()
 
-  constructor(input: Readonly<{ store: FutureTaskDeliveryStore; publish: (input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>) => Promise<string> }>) { this.store = input.store; this.publish = input.publish }
+  constructor(input: Readonly<{ store: FutureTaskDeliveryStore; publish: (input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>) => Promise<string>; publishOutcome?: (input: Readonly<{ deliveryKey: string; outcome: string }>) => Promise<string> }>) { this.store = input.store; this.publish = input.publish; this.publishOutcome = input.publishOutcome ?? (async () => "") }
 
   async deliver(input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): Promise<FutureTaskResolution> {
     const result = this.tail.then(() => this.deliverNow(input), () => this.deliverNow(input))
@@ -102,6 +103,12 @@ export class FutureTaskDeliveryService {
   }
 
   async reconcile(deliveryKey: string): Promise<FutureTaskResolution | undefined> { return this.store.load(deliveryKey) }
+
+  async recordOutcome(deliveryKey: string, outcome: string): Promise<void> {
+    const delivery = await this.store.load(deliveryKey)
+    if (!delivery || isTerminal(delivery)) throw new Error("unknown_delivery")
+    await this.publishOutcome({ deliveryKey, outcome })
+  }
 }
 
 function sameDelivery(existing: FutureTaskDelivery, input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): boolean {

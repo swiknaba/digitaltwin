@@ -86,6 +86,10 @@ test("private future-task delivery is authenticated, receipt-idempotent, and rec
     assert.match(visible ?? "", /Scheduled: 2026-10-13T12:00:00Z \(UTC\)/)
     assert.match(visible ?? "", /Attempt: 1/)
     assert.match(visible ?? "", /Outcome: awaiting user disposition/)
+    const outcome = await fetch(`${endpoint}/delivery-1/outcome`, { method: "POST", headers: { authorization: "Bearer operator-identity", "content-type": "application/json" }, body: JSON.stringify({ outcome: "project_work_requested" }) })
+    assert.equal(outcome.status, 200)
+    const outcomePanel = await controller.open((await authority.issue({ action: "read" })))
+    assert.equal(outcomePanel.ok && outcomePanel.conversation.events.at(-1)?.text, "[Future task delivery-1] Outcome: project_work_requested")
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
 })
 

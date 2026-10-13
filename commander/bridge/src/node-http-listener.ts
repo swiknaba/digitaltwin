@@ -16,7 +16,7 @@ export type FutureTaskListenerOptions = Readonly<{ identity: string; store: Futu
  * RuntimeEventIngress instead of this public action surface.
  */
 export function createCommanderBridgeNodeListener(service: CommanderBridgeHttpService, futureTasks?: FutureTaskListenerOptions): Server {
-  const deliveries = futureTasks === undefined ? undefined : new FutureTaskDeliveryService({ store: futureTasks.store, publish: (delivery) => service.controller.appendFutureTask(delivery.deliveryKey, futureTaskNotice(delivery)) })
+  const deliveries = futureTasks === undefined ? undefined : new FutureTaskDeliveryService({ store: futureTasks.store, publish: (delivery) => service.controller.appendFutureTask(delivery.deliveryKey, futureTaskNotice(delivery)), publishOutcome: (outcome) => service.controller.appendFutureTaskOutcome(outcome.deliveryKey, outcome.outcome) })
   return createServer((request, response) => { void handle(service, deliveries, futureTasks?.identity, request, response).catch(() => send(response, 500, { ok: false, reason: "internal" })) })
 }
 
@@ -44,6 +44,13 @@ async function handle(service: CommanderBridgeHttpService, deliveries: FutureTas
 
 async function handleFutureTaskDelivery(deliveries: FutureTaskDeliveryService | undefined, identity: string | undefined, path: string, request: IncomingMessage, response: ServerResponse): Promise<void> {
   if (!deliveries || !identity || !authorized(request.headers.authorization, identity)) return send(response, 401, { ok: false, reason: "unauthorized" })
+  if (request.method === "POST" && path.endsWith("/outcome")) {
+    const deliveryKey = decodeURIComponent(path.slice(`${deliveriesRoute}/`.length, -"/outcome".length))
+    const body = await readJson(request)
+    const outcome = body.ok && isRecord(body.value) && typeof body.value.outcome === "string" ? body.value.outcome : undefined
+    if (!deliveryKey || !outcome) return send(response, 400, { ok: false, reason: "invalid_request" })
+    try { await deliveries.recordOutcome(deliveryKey, outcome); return send(response, 200, { ok: true }) } catch { return send(response, 404, { ok: false, reason: "not_found" }) }
+  }
   if (request.method === "GET") {
     const deliveryKey = decodeURIComponent(path.slice(`${deliveriesRoute}/`.length))
     if (!deliveryKey || path === deliveriesRoute) return send(response, 404, { ok: false, reason: "not_found" })

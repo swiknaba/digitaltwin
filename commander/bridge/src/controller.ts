@@ -56,6 +56,18 @@ export class CommanderBridgeController {
     })
   }
 
+  /** Trusted bridge-internal disposition path for an already visible FutureTask. */
+  async appendFutureTaskOutcome(deliveryKey: string, outcome: string): Promise<string> {
+    return this.serial(async () => {
+      const conversation = await this.loadOrCreate()
+      const deliveryId = `future-task-outcome:${deliveryKey}:${outcome}`
+      if (conversation.events.some((event) => event.deliveryId === deliveryId)) return deliveryId
+      const event: StreamEvent = { conversationId: this.input.conversationId, turnId: turnIdForRequest(bridgeRequestId(`future-outcome-${deliveryKey}`)), cursor: streamCursor(conversation.lastCursor + 1), deliveryId, kind: "notice", text: `[Future task ${deliveryKey}] Outcome: ${outcome}` }
+      if (!(await this.persist({ ...conversation, lastCursor: event.cursor, events: retainEvents([...conversation.events, event]) }))) throw new Error("Future-task outcome persistence conflict")
+      return deliveryId
+    })
+  }
+
   async apply(input: unknown): Promise<ApplyResult> {
     return this.serial(async () => {
       const event = decodeStreamEvent(input)
