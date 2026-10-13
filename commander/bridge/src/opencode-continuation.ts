@@ -1,41 +1,73 @@
-import { createHash } from "node:crypto"
-import { bridgeRequestId, capabilityPayloadDigest, type CapabilityPresentation, type CapabilityVerifier, type CommanderConversationId, type OpenCodeMessageProvenance } from "./contract.ts"
+import { type BridgeRequestId, type CapabilityPresentation, type OpenCodeMessageProvenance } from "./contract.ts"
 import type { CommanderBridgeController } from "./controller.ts"
 
 export type ContinuationResult =
   | Readonly<{ ok: true; state: "continued" }>
-  | Readonly<{ ok: false; reason: "invalid" | "missing" | "inaccessible" | "stale" | "unauthorized" }>
+  | Readonly<{ ok: false; reason: "invalid" | "missing" | "inaccessible" | "stale" | "unauthorized" | "request_conflict" | "uncertain" }>
 
-/** Trusted adapter for exact OpenCode continuation; no renderer or HTTP route mounts this class. */
+/**
+ * Trusted exact-session facade. Implementations must pass the idempotency key to
+ * the pinned OpenCode client and answer reconciliation without title or agent
+ * matching. This adapter has no renderer, HTTP, or bootstrap registration.
+ */
 export interface OpenCodeSessionClient {
   session(input: OpenCodeMessageProvenance): Promise<"found" | "missing" | "inaccessible">
   message(input: OpenCodeMessageProvenance): Promise<"found" | "missing" | "inaccessible">
-  prompt(input: Readonly<{ provenance: OpenCodeMessageProvenance; text: string }>): Promise<"accepted" | "stale" | "missing" | "inaccessible">
+  prompt(input: Readonly<{ provenance: OpenCodeMessageProvenance; text: string; idempotencyKey: string }>): Promise<"accepted" | "stale" | "missing" | "inaccessible" | "unknown">
+  reconcile(input: Readonly<{ provenance: OpenCodeMessageProvenance; idempotencyKey: string }>): Promise<"accepted" | "unknown">
 }
 
 export class TrustedOpenCodeContinuation {
-  private readonly input: Readonly<{ controller: CommanderBridgeController; verifier: CapabilityVerifier; conversationId: CommanderConversationId; client: OpenCodeSessionClient; now: () => Date }>
+  private readonly input: Readonly<{ controller: CommanderBridgeController; client: OpenCodeSessionClient }>
 
-  constructor(input: Readonly<{ controller: CommanderBridgeController; verifier: CapabilityVerifier; conversationId: CommanderConversationId; client: OpenCodeSessionClient; now: () => Date }>) {
+  constructor(input: Readonly<{ controller: CommanderBridgeController; client: OpenCodeSessionClient }>) {
     this.input = input
   }
 
   async continue(input: Readonly<{ presentation: CapabilityPresentation; deliveryId: string; requestId: string; text: string }>): Promise<ContinuationResult> {
-    if (!valid(input.deliveryId) || !valid(input.requestId) || !valid(input.text)) return { ok: false, reason: "invalid" }
-    const provenance = await this.input.controller.provenanceForDelivery(input.deliveryId)
-    if (!provenance) return { ok: false, reason: "missing" }
-    let requestId
-    try { requestId = bridgeRequestId(input.requestId) } catch { return { ok: false, reason: "invalid" } }
-    const binding = capabilityPayloadDigest(createHash("sha256").update(JSON.stringify([input.deliveryId, provenance, input.requestId, input.text])).digest("hex"))
-    const decision = await this.input.verifier.consume({ action: "continue", expectedAudience: "commander-bridge", expectedConversationId: this.input.conversationId, expectedBinding: { requestId, payloadDigest: binding }, presentation: input.presentation, now: this.input.now() })
-    if (!decision.ok) return { ok: false, reason: "unauthorized" }
-    const session = await this.input.client.session(provenance)
-    if (session !== "found") return { ok: false, reason: session }
-    const message = await this.input.client.message(provenance)
-    if (message !== "found") return { ok: false, reason: message }
-    const prompted = await this.input.client.prompt({ provenance, text: input.text })
-    return prompted === "accepted" ? { ok: true, state: "continued" } : { ok: false, reason: prompted }
+    const prepared = await this.input.controller.prepareContinuation(input.presentation, input.deliveryId, input.requestId, input.text)
+    if (!prepared.ok) return { ok: false, reason: continuationFailure(prepared.reason) }
+    if (prepared.state === "already_recorded") return { ok: true, state: "continued" }
+
+    try {
+      const session = await this.input.client.session(prepared.provenance)
+      if (session !== "found") return this.reject(prepared.requestId, session)
+      const message = await this.input.client.message(prepared.provenance)
+      if (message !== "found") return this.reject(prepared.requestId, message)
+      const prompted = await this.input.client.prompt({ provenance: prepared.provenance, text: input.text, idempotencyKey: prepared.idempotencyKey })
+      if (prompted === "accepted") return this.complete(prepared.requestId)
+      if (prompted !== "unknown") return this.reject(prepared.requestId, prompted)
+    } catch {
+      // An interrupted client call may have reached OpenCode; reconcile below.
+    }
+    return this.reconcile(prepared.requestId, prepared.provenance, prepared.idempotencyKey)
+  }
+
+  private async complete(requestId: BridgeRequestId): Promise<ContinuationResult> {
+    return await this.input.controller.settleContinuation(requestId, "continued")
+      ? { ok: true, state: "continued" }
+      : { ok: false, reason: "uncertain" }
+  }
+
+  private async reject(requestId: BridgeRequestId, reason: "missing" | "inaccessible" | "stale"): Promise<ContinuationResult> {
+    return await this.input.controller.settleContinuation(requestId, reason)
+      ? { ok: false, reason }
+      : { ok: false, reason: "uncertain" }
+  }
+
+  private async reconcile(requestId: BridgeRequestId, provenance: OpenCodeMessageProvenance, idempotencyKey: string): Promise<ContinuationResult> {
+    try {
+      if (await this.input.client.reconcile({ provenance, idempotencyKey }) === "accepted") return this.complete(requestId)
+    } catch {
+      // The durable request remains uncertain; it must not be replayed.
+    }
+    await this.input.controller.settleContinuation(requestId, "uncertain")
+    return { ok: false, reason: "uncertain" }
   }
 }
 
-function valid(value: string): boolean { return value.trim().length > 0 && value.length <= 16_000 }
+function continuationFailure(reason: string): "invalid" | "missing" | "inaccessible" | "stale" | "unauthorized" | "request_conflict" | "uncertain" {
+  if (reason === "missing" || reason === "inaccessible" || reason === "stale" || reason === "request_conflict" || reason === "uncertain") return reason
+  if (reason === "invalid_request") return "invalid"
+  return "unauthorized"
+}

@@ -2,16 +2,18 @@ import {
   emptyConversation, bridgeRequestId, decodeStreamEvent, maxCapabilityLifetimeMs, streamCursor, turnIdForRequest,
   type ActionResult, type ApplyResult, type AuthorizeResult, type BridgeActorId, type BridgeRequest, type BridgeRequestId,
   type CapabilityAction, type CapabilityBinding, type CapabilityPresentation, type CapabilityRejection, type CapabilityVerifier,
-  type CommanderConversation, type CommanderConversationId, type CommanderRuntime, type CommanderTurnId,
+  type CommanderConversation, type CommanderConversationId, type CommanderRuntime, type CommanderTurnId, type ContinuationFailure,
+  type ContinuationRequest, type OpenCodeMessageProvenance,
   type ConversationStore, type RequestedAction, type StreamEvent,
 } from "./contract.ts"
-import { commandCapabilityBinding } from "./capability-binding.ts"
+import { commandCapabilityBinding, continuationCapabilityBinding } from "./capability-binding.ts"
 
 const retainedEvents = 512
 const retainedRequests = 256
 type OpenResult = Readonly<{ ok: true; actorId: BridgeActorId; conversation: CommanderConversation }> | Readonly<{ ok: false; reason: CapabilityRejection }>
 type ReconnectResult = Readonly<{ ok: true; conversation: CommanderConversation; events: readonly StreamEvent[]; resyncRequired: boolean }> | Readonly<{ ok: false; reason: "invalid_request" | CapabilityRejection }>
 type PreparedDispatch = Readonly<{ ok: true; action: RequestedAction; requestId: BridgeRequestId; turnId: CommanderTurnId; text?: string; actorId: BridgeActorId }> | Readonly<{ ok: false; result: ActionResult }>
+export type PreparedContinuation = Readonly<{ ok: true; state: "prepared" | "already_recorded"; requestId: BridgeRequestId; provenance: OpenCodeMessageProvenance; idempotencyKey: string }> | Readonly<{ ok: false; reason: CapabilityRejection | "invalid_request" | "missing" | "inaccessible" | "stale" | "request_conflict" | "persistence_conflict" | "uncertain" }>
 
 /** Persists a turn before runtime I/O; only durable mutations use the local queue. */
 export class CommanderBridgeController {
@@ -46,6 +48,52 @@ export class CommanderBridgeController {
   /** Trusted runtime lookup only: provenance locates work but grants no OpenCode authority. */
   async provenanceForDelivery(deliveryId: string): Promise<StreamEvent["provenance"] | undefined> {
     return this.serial(async () => (await this.loadOrCreate()).events.find((event) => event.deliveryId === deliveryId)?.provenance)
+  }
+
+  /**
+   * Trusted-only prepare path for a non-runtime external continuation.  It uses
+   * the same capability verification as all panel actions and records intent
+   * before the OpenCode adapter is allowed to perform I/O.
+   */
+  async prepareContinuation(presentation: CapabilityPresentation, rawDeliveryId: unknown, rawRequestId: unknown, rawText: unknown): Promise<PreparedContinuation> {
+    return this.serial(async () => {
+      if (typeof rawDeliveryId !== "string" || !validDeliveryId(rawDeliveryId) || typeof rawRequestId !== "string") return { ok: false, reason: "invalid_request" }
+      const text = validText(rawText)
+      if (text === undefined) return { ok: false, reason: "invalid_request" }
+      let requestId: BridgeRequestId
+      try { requestId = bridgeRequestId(rawRequestId) } catch { return { ok: false, reason: "invalid_request" } }
+      const conversation = await this.loadOrCreate()
+      const provenance = conversation.events.find((event) => event.deliveryId === rawDeliveryId)?.provenance
+      if (!provenance) return { ok: false, reason: "missing" }
+      const binding = continuationCapabilityBinding(rawDeliveryId, provenance, rawRequestId, text)
+      const authorization = await this.authorize("continue", presentation, binding)
+      if (!authorization.ok) return authorization
+      const existing = conversation.continuations.find((candidate) => candidate.id === requestId)
+      if (existing) {
+        if (existing.deliveryId !== rawDeliveryId || existing.payloadDigest !== binding.payloadDigest || !sameProvenance(existing.provenance, provenance)) return { ok: false, reason: "request_conflict" }
+        if (existing.state === "continued") return { ok: true, state: "already_recorded", requestId, provenance: existing.provenance, idempotencyKey: existing.idempotencyKey }
+        if (existing.state === "rejected") return { ok: false, reason: existing.failure ?? "uncertain" }
+        return { ok: false, reason: "uncertain" }
+      }
+      const continuation: ContinuationRequest = { id: requestId, deliveryId: rawDeliveryId, provenance, payloadDigest: binding.payloadDigest, idempotencyKey: continuationIdempotencyKey(this.input.conversationId, requestId, binding.payloadDigest), state: "pending" }
+      if (!(await this.persist({ ...conversation, continuations: [...conversation.continuations, continuation] }))) return { ok: false, reason: "persistence_conflict" }
+      return { ok: true, state: "prepared", requestId, provenance, idempotencyKey: continuation.idempotencyKey }
+    })
+  }
+
+  /** Trusted-only settlement path; a pending external effect is never retried. */
+  async settleContinuation(requestId: BridgeRequestId, outcome: "continued" | "uncertain" | ContinuationFailure): Promise<boolean> {
+    return this.serial(async () => {
+      const conversation = await this.loadOrCreate()
+      const current = conversation.continuations.find((candidate) => candidate.id === requestId)
+      if (!current) return false
+      const state = outcome === "continued" ? "continued" : outcome === "uncertain" ? "uncertain" : "rejected"
+      if (current.state !== "pending") return current.state === state && (state !== "rejected" || current.failure === outcome)
+      const next: ContinuationRequest = outcome === "continued" || outcome === "uncertain"
+        ? { ...current, state: outcome }
+        : { ...current, state: "rejected", failure: outcome }
+      return this.persist({ ...conversation, continuations: conversation.continuations.map((candidate) => candidate.id === requestId ? next : candidate) })
+    })
   }
 
   /** Trusted bridge-internal delivery path; never accepts renderer input or a panel proof. */
@@ -184,9 +232,12 @@ export class CommanderBridgeController {
 
 function sameBinding(left: CapabilityBinding | undefined, right: CapabilityBinding | undefined): boolean { return left === undefined && right === undefined || left !== undefined && right !== undefined && left.requestId === right.requestId && left.payloadDigest === right.payloadDigest }
 function validText(value: unknown): string | undefined { return typeof value === "string" && value.trim().length > 0 && value.length <= 16_000 ? value : undefined }
+function validDeliveryId(value: string): boolean { return value.length > 0 && value.length <= 256 }
+function continuationIdempotencyKey(conversationId: CommanderConversationId, requestId: BridgeRequestId, payloadDigest: CapabilityBinding["payloadDigest"]): string { return `commander-continue:${conversationId}:${requestId}:${payloadDigest}` }
 function retainEvents(events: readonly StreamEvent[]): readonly StreamEvent[] { return events.slice(-retainedEvents) }
 function retainRequests(requests: readonly BridgeRequest[]): readonly BridgeRequest[] { const unresolved = requests.filter((request) => request.state === "pending" || request.state === "uncertain"); const dispatched = requests.filter((request) => request.state === "dispatched").slice(-Math.max(0, retainedRequests - unresolved.length)); return [...unresolved, ...dispatched] }
 function replaceRequest(requests: readonly BridgeRequest[], id: BridgeRequestId, state: BridgeRequest["state"]): readonly BridgeRequest[] { return requests.map((request) => request.id === id ? { ...request, state } : request) }
+function sameProvenance(left: OpenCodeMessageProvenance, right: OpenCodeMessageProvenance): boolean { return left.runtimeId === right.runtimeId && left.projectId === right.projectId && left.sessionId === right.sessionId && left.messageId === right.messageId && left.agentId === right.agentId && left.parentSessionId === right.parentSessionId }
 function sameEvent(left: StreamEvent, right: StreamEvent): boolean { return left.cursor === right.cursor && left.deliveryId === right.deliveryId && left.turnId === right.turnId && left.kind === right.kind && left.text === right.text && left.outcome === right.outcome && JSON.stringify(left.provenance) === JSON.stringify(right.provenance) }
 function readyConversation(conversation: CommanderConversation, updates: Readonly<Partial<Pick<CommanderConversation, "lastCursor" | "events" | "requests">>>): CommanderConversation {
   const { activeTurn: _activeTurn, ...withoutActiveTurn } = conversation
