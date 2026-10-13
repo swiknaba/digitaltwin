@@ -40,6 +40,13 @@ class UncertainThenReconciledGateway < RecordingCommanderGateway
   end
 end
 
+class FailingAfterEnqueueStore < Platform::Jobs::Store
+  def enqueue(kind:, payload:, dispatch_key:, available_at: Time.now)
+    super
+    raise "force transaction rollback"
+  end
+end
+
 RSpec.describe Domains::FutureTasks::Tasks do
   let(:tasks) { described_class.new }
   let(:now) { Time.utc(2026, 10, 13, 12, 0, 0) }
@@ -75,6 +82,33 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect { create_task(due_at: now + 120) }.to raise_error(ArgumentError, /Idempotency key reused/)
   end
 
+  it "rolls back a queued job with its task when persistence fails after enqueue" do
+    failing = described_class.new(jobs: FailingAfterEnqueueStore.new)
+    expect { failing.create(actor_id: "operator-1", idempotency_key: "rollback", text: "Check", due_at: now + 60, timezone: "UTC", local_time: (now + 60).utc.iso8601, now:) }.to raise_error(RuntimeError, "force transaction rollback")
+    database = Kirei::App.raw_db_connection
+    expect(database[:future_tasks].count).to eq(0)
+    expect(database[:future_task_executions].count).to eq(0)
+    expect(database[:jobs].count).to eq(0)
+  end
+
+  it "returns one matching task when concurrent callers reuse an idempotency key" do
+    ready = Queue.new
+    start = Queue.new
+    outcomes = 2.times.map do
+      Thread.new do
+        ready << true
+        start.pop
+        create_task(key: "concurrent-create")
+      end
+    end
+    2.times { ready.pop }
+    2.times { start << true }
+    tasks_created = outcomes.map(&:value)
+    expect(tasks_created.map(&:id).uniq).to have_attributes(length: 1)
+    expect(Kirei::App.raw_db_connection[:future_tasks].count).to eq(1)
+    expect(Kirei::App.raw_db_connection[:jobs].count).to eq(1)
+  end
+
   it "updates or cancels only an unstarted expected version and stales its prior execution" do
     task = create_task
     updated = tasks.update(actor_id: "operator-1", id: task.id, expected_version: 1, text: "Review the revised plan", due_at: now + 120,
@@ -105,6 +139,10 @@ RSpec.describe Domains::FutureTasks::Tasks do
     completed = api.record_disposition(token: capability(secret:, id: "disposition-1"), id: task.id, expected_version: 1, disposition_key: "answer-1",
                                        outcome: "project_work_requested")
     expect(completed.state).to eq(Domains::FutureTasks::Dto::TaskState::Completed)
+    retried = api.record_disposition(token: capability(secret:, id: "disposition-2"), id: task.id, expected_version: 1, disposition_key: "answer-1",
+                                     outcome: "project_work_requested")
+    expect(retried.state).to eq(Domains::FutureTasks::Dto::TaskState::Completed)
+    expect { api.record_disposition(token: capability(secret:, id: "disposition-3"), id: task.id, expected_version: 1, disposition_key: "answer-1", outcome: "assessed") }.to raise_error(ArgumentError, /changed body/)
     expect(Kirei::App.raw_db_connection[:future_task_dispositions].first[:outcome]).to eq("project_work_requested")
   end
 
@@ -119,7 +157,7 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect(Kirei::App.raw_db_connection[:future_task_executions].first[:state]).to eq("uncertain")
   end
 
-  it "accepts only one authenticated capability and never trusts a caller-supplied actor" do
+  it "accepts only one authenticated capability, preserves Commander provenance, and authorizes actor-owned Commander tasks across contexts" do
     secret = "test-capability-secret"
     api = Services::FutureTasks::CapabilityApi.new(tasks:, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:))
     token = capability(secret:, id: "cap-1", actor: "operator-1")
@@ -131,25 +169,12 @@ RSpec.describe Domains::FutureTasks::Tasks do
     foreign = capability(secret:, id: "cap-2", actor: "operator-2")
     expect(api.find(token: foreign, id: task.id)).to be_nil
     other_conversation = capability(secret:, id: "cap-3", conversation: "commander:other")
-    expect(api.find(token: other_conversation, id: task.id)).to be_nil
+    expect(api.find(token: other_conversation, id: task.id)).to have_attributes(id: task.id)
     expect(task.origin).to eq("commander:main")
-  end
-
-  it "keeps a daily recurrence at the submitted local wall time across DST" do
-    recurrence_now = Time.utc(2027, 3, 1, 0, 0, 0)
-    due_at = Time.utc(2027, 3, 13, 14, 30, 0)
-    task = tasks.create(actor_id: "operator-1", idempotency_key: "dst", text: "Daily check-in", due_at:, timezone: "America/New_York",
-                        local_time: "2027-03-13T09:30:00-05:00", recurrence: "daily", now: recurrence_now)
-    Kirei::App.raw_db_connection[:jobs].update(available_at: Time.now - 1)
-    gateway = RecordingCommanderGateway.new
-    handler = Services::FutureTasks::DeliverDue.new(tasks:, gateway:)
-    Async { Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::FutureTaskDue => handler }).tick }.wait
-
-    next_task = tasks.record_disposition(actor_id: "operator-1", id: task.id, expected_version: 1, disposition_key: "dst-answer", outcome: "assessed", now: recurrence_now)
-    expect(next_task.state).to eq(Domains::FutureTasks::Dto::TaskState::Scheduled)
-    expect(next_task.version).to eq(2)
-    expect(next_task.local_time).to eq("2027-03-14T09:30:00-04:00")
-    expect(next_task.due_at).to eq(Time.utc(2027, 3, 14, 13, 30, 0))
+    project_task = tasks.create(actor_id: "operator-1", origin: "project:repo", idempotency_key: "project-origin", text: "Open a Commander check-in", due_at: due_at + 60,
+                                timezone: "UTC", local_time: (due_at + 60).utc.iso8601)
+    cross_context = capability(secret:, id: "cap-4", conversation: "commander:other")
+    expect(api.find(token: cross_context, id: project_task.id)).to have_attributes(id: project_task.id)
   end
 
   it "reconciles an uncertain bridge result with its original delivery key" do
@@ -187,6 +212,8 @@ RSpec.describe Domains::FutureTasks::Tasks do
     failed = api.resolve_uncertain(token: owner, id: task.id, expected_version: 1, resolution_key: "resolve-1", outcome: "failed", reason: "bridge rejected the key")
 
     expect(failed.state).to eq(Domains::FutureTasks::Dto::TaskState::Failed)
+    retried = api.resolve_uncertain(token: capability(secret:, id: "cap-owner-retry", owner: true), id: task.id, expected_version: 1, resolution_key: "resolve-1", outcome: "failed", reason: "bridge rejected the key")
+    expect(retried.state).to eq(Domains::FutureTasks::Dto::TaskState::Failed)
     expect { tasks.update(actor_id: "operator-1", id: task.id, expected_version: 1, text: "retry", now:) }.to raise_error(ArgumentError, /already started/)
   end
 

@@ -20,10 +20,10 @@ module Domains
         @jobs = jobs
       end
 
-      sig { params(actor_id: String, idempotency_key: String, text: String, due_at: Time, timezone: String, local_time: String, references: T::Array[String], recurrence: T.nilable(String), origin: String, now: Time).returns(Dto::TaskView) }
-      def create(actor_id:, idempotency_key:, text:, due_at:, timezone:, local_time:, references: [], recurrence: nil, origin: "commander", now: Time.now)
-        validate_create!(actor_id:, origin:, idempotency_key:, text:, due_at:, timezone:, local_time:, references:, recurrence:, now:)
-        digest = Digest::SHA256.hexdigest([origin, text.strip, due_at.utc.iso8601, timezone, local_time, recurrence.to_s, references.sort.join("\u0000")].join("\u0000"))
+      sig { params(actor_id: String, idempotency_key: String, text: String, due_at: Time, timezone: String, local_time: String, references: T::Array[String], origin: String, now: Time).returns(Dto::TaskView) }
+      def create(actor_id:, idempotency_key:, text:, due_at:, timezone:, local_time:, references: [], origin: "commander", now: Time.now)
+        validate_create!(actor_id:, origin:, idempotency_key:, text:, due_at:, timezone:, local_time:, references:, now:)
+        digest = Digest::SHA256.hexdigest([origin, text.strip, due_at.utc.iso8601, timezone, local_time, references.sort.join("\u0000")].join("\u0000"))
         existing = tasks.where(actor_id:, idempotency_key:).first
         return view(existing) if existing && existing.fetch(:idempotency_digest) == digest
         raise ArgumentError, "Idempotency key reused with changed task" if existing
@@ -31,14 +31,20 @@ module Domains
         task_id = SecureRandom.uuid
         execution_id = SecureRandom.uuid
         delivery_key = SecureRandom.uuid
-        @jobs.enqueue(kind: Kind::FutureTaskDue, payload: Dto::DueJob.new(execution_id:), dispatch_key: "future-task:#{task_id}:1", available_at: due_at)
-        job = T.must(@jobs.find_by_key(dispatch_key: "future-task:#{task_id}:1"))
         database.transaction do
-          tasks.insert(id: task_id, actor_id:, origin:, target: "commander", text: text.strip, references: Sequel.pg_jsonb(references), timezone:, local_time:, recurrence: normalized_recurrence(recurrence),
+          dispatch_key = "future-task:#{task_id}:1"
+          @jobs.enqueue(kind: Kind::FutureTaskDue, payload: Dto::DueJob.new(execution_id:), dispatch_key:, available_at: due_at)
+          job = T.must(@jobs.find_by_key(dispatch_key:))
+          tasks.insert(id: task_id, actor_id:, origin:, target: "commander", text: text.strip, references: Sequel.pg_jsonb(references), timezone:, local_time:,
                        due_at:, version: 1, state: TaskState::Scheduled.serialize, idempotency_key:, idempotency_digest: digest, created_at: now, updated_at: now)
           executions.insert(id: execution_id, task_id:, generation: 1, delivery_key:, job_id: job.id, state: ExecutionState::Queued.serialize, created_at: now, updated_at: now)
         end
         T.must(find(actor_id:, id: task_id, origin:))
+      rescue Sequel::UniqueConstraintViolation
+        existing = tasks.where(actor_id:, idempotency_key:).first
+        return view(existing) if existing && existing.fetch(:idempotency_digest) == digest
+
+        raise ArgumentError, "Idempotency key reused with changed task"
       end
 
       sig { params(actor_id: String, id: String, origin: T.nilable(String)).returns(T.nilable(Dto::TaskView)) }
@@ -49,15 +55,20 @@ module Domains
         row ? view(row) : nil
       end
 
-      sig { params(actor_id: String, origin: T.nilable(String)).returns(T::Array[Dto::TaskView]) }
-      def list(actor_id:, origin: nil)
+      sig { params(actor_id: String, cursor: T.nilable(String), limit: Integer).returns(Dto::TaskPage) }
+      def list(actor_id:, cursor: nil, limit: 50)
+        raise ArgumentError, "Task page limit is invalid" unless limit.between?(1, 100)
+        raise ArgumentError, "Task cursor is invalid" if cursor && cursor.empty?
+
         query = tasks.where(actor_id:)
-        query = query.where(origin:) if origin
-        query.order(:created_at, :id).map { |row| view(row) }
+        query = query.where(Sequel[:future_tasks][:id] > cursor) if cursor
+        rows = query.order(:id).limit(limit + 1).all
+        next_cursor = rows.length > limit ? rows.fetch(limit - 1).fetch(:id) : nil
+        Dto::TaskPage.new(items: rows.first(limit).map { |row| view(row) }, next_cursor:)
       end
 
-      sig { params(actor_id: String, id: String, expected_version: Integer, text: T.nilable(String), due_at: T.nilable(Time), timezone: T.nilable(String), local_time: T.nilable(String), recurrence: T.nilable(String), origin: T.nilable(String), now: Time).returns(Dto::TaskView) }
-      def update(actor_id:, id:, expected_version:, text: nil, due_at: nil, timezone: nil, local_time: nil, recurrence: nil, origin: nil, now: Time.now)
+      sig { params(actor_id: String, id: String, expected_version: Integer, text: T.nilable(String), due_at: T.nilable(Time), timezone: T.nilable(String), local_time: T.nilable(String), origin: T.nilable(String), now: Time).returns(Dto::TaskView) }
+      def update(actor_id:, id:, expected_version:, text: nil, due_at: nil, timezone: nil, local_time: nil, origin: nil, now: Time.now)
         database.transaction do
           task = locked_task(actor_id:, id:, origin:)
           require_scheduled!(task, expected_version:)
@@ -65,13 +76,12 @@ module Domains
           next_due_at = due_at || task.fetch(:due_at)
           next_timezone = timezone || task.fetch(:timezone)
           next_local_time = local_time || task.fetch(:local_time)
-          next_recurrence = recurrence || task[:recurrence]
           validate_timing!(due_at: next_due_at, timezone: next_timezone, local_time: next_local_time, now:)
           stale_current_execution(task.fetch(:id), task.fetch(:version), now)
           version = task.fetch(:version) + 1
           create_generation(task_id: task.fetch(:id), generation: version, due_at: next_due_at, now:)
           tasks.where(id: task.fetch(:id)).update(
-            text: next_text, due_at: next_due_at, timezone: next_timezone, local_time: next_local_time, recurrence: normalized_recurrence(next_recurrence),
+            text: next_text, due_at: next_due_at, timezone: next_timezone, local_time: next_local_time,
             version:, updated_at: now
           )
           T.must(find(actor_id:, id:, origin:))
@@ -126,12 +136,13 @@ module Domains
       def record_disposition(actor_id:, id:, expected_version:, disposition_key:, outcome:, due_at: nil, timezone: nil, local_time: nil, origin: nil, now: Time.now)
         database.transaction do
           task = locked_task(actor_id:, id:, origin:)
+          digest = disposition_digest(outcome:, due_at:, timezone:, local_time:)
+          existing = dispositions.where(task_id: task.fetch(:id), idempotency_key: disposition_key).first
+          return T.must(find(actor_id:, id:, origin:)) if existing && existing.fetch(:idempotency_digest) == digest
+          raise ArgumentError, "Disposition key reused with changed body" if existing
+
           raise ArgumentError, "Task version is stale" unless task.fetch(:version) == expected_version
           raise ArgumentError, "Task is not awaiting a Commander reply" unless task.fetch(:state) == TaskState::AwaitingDisposition.serialize
-
-          existing = dispositions.where(task_id: task.fetch(:id), idempotency_key: disposition_key).first
-          return T.must(find(actor_id:, id:, origin:)) if existing && existing.fetch(:outcome) == outcome
-          raise ArgumentError, "Disposition key reused with changed outcome" if existing
           raise ArgumentError, "Unsupported disposition" unless %w[assessed project_work_requested user_canceled rescheduled].include?(outcome)
 
           next_state = outcome == "user_canceled" ? TaskState::Canceled : TaskState::Completed
@@ -143,17 +154,10 @@ module Domains
             create_generation(task_id: task.fetch(:id), generation: version, due_at:, now:)
             tasks.where(id: task.fetch(:id)).update(state: TaskState::Scheduled.serialize, version:, due_at:, timezone:, local_time:, updated_at: now)
           else
-            if task[:recurrence] && outcome != "user_canceled"
-              due_at, local_time = next_recurrence_time(task)
-              version = expected_version + 1
-              create_generation(task_id: task.fetch(:id), generation: version, due_at:, now:)
-              tasks.where(id: task.fetch(:id)).update(state: TaskState::Scheduled.serialize, version:, due_at:, local_time:, updated_at: now)
-            else
-              tasks.where(id: task.fetch(:id)).update(state: next_state.serialize, updated_at: now)
-            end
+            tasks.where(id: task.fetch(:id)).update(state: next_state.serialize, updated_at: now)
           end
           dispositions.insert(id: SecureRandom.uuid, task_id: task.fetch(:id), execution_id: current_execution(task.fetch(:id), expected_version).fetch(:id),
-                              idempotency_key: disposition_key, outcome:, created_at: now)
+                              idempotency_key: disposition_key, idempotency_digest: digest, outcome:, created_at: now)
           T.must(find(actor_id:, id:, origin:))
         end
       end
@@ -222,13 +226,14 @@ module Domains
       def resolve_uncertain(actor_id:, id:, expected_version:, resolution_key:, outcome:, reason: nil, origin: nil, now: Time.now)
         database.transaction do
           task = locked_task(actor_id:, id:, origin:)
+          digest = resolution_digest(outcome:, reason:)
+          existing = dispositions.where(task_id: task.fetch(:id), idempotency_key: resolution_key).first
+          return T.must(find(actor_id:, id:, origin:)) if existing && existing.fetch(:idempotency_digest) == digest
+          raise ArgumentError, "Resolution key reused with changed body" if existing
+
           raise ArgumentError, "Task version is stale" unless task.fetch(:version) == expected_version
           raise ArgumentError, "Task is not uncertain" unless task.fetch(:state) == TaskState::Uncertain.serialize
           raise ArgumentError, "Resolution must be failed or canceled" unless %w[failed canceled].include?(outcome)
-
-          existing = dispositions.where(task_id: task.fetch(:id), idempotency_key: resolution_key).first
-          return T.must(find(actor_id:, id:)) if existing && existing.fetch(:outcome) == "owner_#{outcome}"
-          raise ArgumentError, "Resolution key reused with changed outcome" if existing
 
           execution = current_execution(task.fetch(:id), expected_version)
           state = outcome == "failed" ? TaskState::Failed : TaskState::Canceled
@@ -238,7 +243,7 @@ module Domains
           attempts.insert(id: SecureRandom.uuid, execution_id: execution.fetch(:id), sequence: next_attempt_sequence(execution.fetch(:id)), state: outcome,
                           detail: Sequel.pg_jsonb({ "reason" => (reason || "owner resolution")[0, 256] }), created_at: now)
           dispositions.insert(id: SecureRandom.uuid, task_id: task.fetch(:id), execution_id: execution.fetch(:id), idempotency_key: resolution_key,
-                              outcome: "owner_#{outcome}", created_at: now)
+                              idempotency_digest: digest, outcome: "owner_#{outcome}", created_at: now)
           T.must(find(actor_id:, id:, origin:))
         end
       end
@@ -325,7 +330,7 @@ module Domains
                            end
         Dto::TaskView.new(
           id: row.fetch(:id), actor_id: row.fetch(:actor_id), origin: row.fetch(:origin), text: row.fetch(:text), references: json_array(row.fetch(:references)), timezone: row.fetch(:timezone),
-          local_time: row.fetch(:local_time), recurrence: row[:recurrence], due_at: row.fetch(:due_at), version: row.fetch(:version), state: TaskState.deserialize(row.fetch(:state)),
+          local_time: row.fetch(:local_time), due_at: row.fetch(:due_at), version: row.fetch(:version), state: TaskState.deserialize(row.fetch(:state)),
           execution_id: execution.fetch(:id), delivery_key: execution.fetch(:delivery_key), receipt: rendered_receipt
         )
       end
@@ -333,8 +338,18 @@ module Domains
       sig { params(value: T.untyped).returns(T::Array[String]) }
       private def json_array(value) = Array(value).map { |item| String(item) }
 
-      sig { params(actor_id: String, origin: String, idempotency_key: String, text: String, due_at: Time, timezone: String, local_time: String, references: T::Array[String], recurrence: T.nilable(String), now: Time).void }
-      private def validate_create!(actor_id:, origin:, idempotency_key:, text:, due_at:, timezone:, local_time:, references:, recurrence:, now:)
+      sig { params(outcome: String, due_at: T.nilable(Time), timezone: T.nilable(String), local_time: T.nilable(String)).returns(String) }
+      private def disposition_digest(outcome:, due_at:, timezone:, local_time:)
+        Digest::SHA256.hexdigest([outcome, due_at&.utc&.iso8601, timezone, local_time].join("\u0000"))
+      end
+
+      sig { params(outcome: String, reason: T.nilable(String)).returns(String) }
+      private def resolution_digest(outcome:, reason:)
+        Digest::SHA256.hexdigest([outcome, reason].join("\u0000"))
+      end
+
+      sig { params(actor_id: String, origin: String, idempotency_key: String, text: String, due_at: Time, timezone: String, local_time: String, references: T::Array[String], now: Time).void }
+      private def validate_create!(actor_id:, origin:, idempotency_key:, text:, due_at:, timezone:, local_time:, references:, now:)
         raise ArgumentError, "Actor is required" if actor_id.empty?
         raise ArgumentError, "Commander conversation origin is required" if origin.empty?
         raise ArgumentError, "Idempotency key is required" if idempotency_key.empty? || idempotency_key.length > 128
@@ -342,7 +357,6 @@ module Domains
         bounded_text(text)
         raise ArgumentError, "Too many references" if references.length > 16 || references.any? { |reference| reference.length > 512 }
 
-        normalized_recurrence(recurrence)
         validate_timing!(due_at:, timezone:, local_time:, now:)
       end
 
@@ -373,29 +387,6 @@ module Domains
         raise ArgumentError, "Local time is invalid" unless local_time.is_a?(String)
 
         raise
-      end
-
-      sig { params(recurrence: T.nilable(String)).returns(T.nilable(String)) }
-      private def normalized_recurrence(recurrence)
-        return nil if recurrence.nil?
-        raise ArgumentError, "Recurrence must be daily or weekly" unless %w[daily weekly].include?(recurrence)
-
-        recurrence
-      end
-
-      sig { params(task: T::Hash[Symbol, T.untyped]).returns([Time, String]) }
-      private def next_recurrence_time(task)
-        recurrence = String(task.fetch(:recurrence))
-        days = recurrence == "daily" ? 1 : 7
-        prior = Time.iso8601(String(task.fetch(:local_time)))
-        wall = Time.utc(prior.year, prior.month, prior.day, prior.hour, prior.min, prior.sec) + (days * 86_400)
-        periods = TZInfo::Timezone.get(String(task.fetch(:timezone))).periods_for_local(wall)
-        raise ArgumentError, "Next recurrence falls in a daylight-saving gap" if periods.empty?
-
-        period = periods.find { |candidate| candidate.utc_total_offset == prior.utc_offset } || periods.first
-        offset = T.must(period).utc_total_offset
-        due_at = Time.at(wall.to_i - offset).utc
-        [due_at, due_at.getlocal(offset).iso8601]
       end
 
       sig { params(execution_id: String, now: Time).void }

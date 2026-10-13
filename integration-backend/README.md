@@ -6,7 +6,7 @@ Git workflow control.
 
 ## What it owns
 
-- one-time and daily/weekly recurring Commander check-ins with actor-scoped idempotency keys;
+- one-time Commander check-ins with actor-scoped idempotency keys;
 - task versions, cancellation, rescheduling, and immutable delivery attempts;
 - a durable due-job generation and exactly one delivery key per generation;
 - explicit `scheduled`, `running`, `awaiting_disposition`, `completed`, `failed`,
@@ -20,12 +20,14 @@ endpoint and identity file; it does not create or ship a credential.
 
 ## Capability and bridge contract
 
-`Services::FutureTasks::CapabilityApi` is the single typed API behind the narrow MCP
-and global OpenCode tool adapters. Each call consumes one short-lived signed
+`Services::FutureTasks::CapabilityApi` is the single typed API behind the MCP and
+global OpenCode tool adapters. It supports create, cursor-paged list, read, update,
+cancel, disposition, and owner resolution. Each call consumes one short-lived signed
 capability containing only an audience, actor, Commander conversation, expiry, and
 nonce. Kirei records the nonce before task mutation, so replayed, expired, or
 cross-actor capabilities fail closed. The body never supplies an actor, origin, or
-target.
+target; conversation is retained only as creation provenance so a valid Commander
+session can manage the actor's Commander-targeted tasks created elsewhere.
 
 Set all of the following only in operator-owned runtime configuration:
 

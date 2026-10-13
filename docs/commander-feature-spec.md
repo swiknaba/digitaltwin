@@ -67,7 +67,7 @@ The bridge must preserve a durable Commander conversation identity. It must supp
 
 Kirei is not the general chat control plane. It is the durable time-and-work service for Commander.
 
-Kirei accepts a future-task request, stores a durable record, and uses its worker queue to execute due work. Its existing job primitive supports `available_at`, idempotency keys, leases, retry handling, and uncertain-effect recovery. A future-task domain is still required; a queue job alone cannot represent recurrence, changes, cancellation, or an execution history.
+Kirei accepts a one-time future-task request, stores a durable record, and uses its worker queue to execute due work. Its existing job primitive supports `available_at`, idempotency keys, leases, retry handling, and uncertain-effect recovery. A future-task domain is still required; a queue job alone cannot represent changes, cancellation, or an execution history.
 
 Each future task records:
 
@@ -75,9 +75,9 @@ Each future task records:
 - the creating actor and originating Commander or project context;
 - a target, which defaults to Commander;
 - task text and relevant project or repository references;
-- one-time timing or recurrence with an explicit timezone;
+- one-time timing with an explicit timezone;
 - state: scheduled, running, completed, failed, canceled, or uncertain;
-- execution attempts, outcomes, and the next occurrence.
+- execution attempts and outcomes.
 
 When due, a future task appends a visible check-in message to the one Commander conversation. It states the stored task and asks the user what to do. It does not start project work automatically. The result appears in Commander only. It does not inject a message into the originating project chat.
 

@@ -32,7 +32,6 @@ Sequel.migration do
       column :references, :jsonb, null: false, default: Sequel.pg_jsonb([])
       String :timezone, null: false
       String :local_time, null: false
-      String :recurrence
       DateTime :due_at, null: false
       Integer :version, null: false, default: 1
       String :state, null: false, default: "scheduled"
@@ -45,6 +44,7 @@ Sequel.migration do
       constraint(:future_task_state, state: %w[scheduled running awaiting_disposition completed failed canceled uncertain])
       constraint(:future_task_version, Sequel.lit("version > 0"))
       index [:actor_id, :created_at, :id]
+      index [:actor_id, :id]
       index [:state, :due_at]
     end
 
@@ -81,6 +81,7 @@ Sequel.migration do
       foreign_key :execution_id, :future_task_executions, type: String, null: false, on_delete: :restrict
       String :idempotency_key, null: false
       String :outcome, null: false
+      String :idempotency_digest, null: false
       DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       unique [:task_id, :idempotency_key]
       constraint(:future_task_disposition_outcome, outcome: %w[assessed project_work_requested user_canceled rescheduled owner_failed owner_canceled])
