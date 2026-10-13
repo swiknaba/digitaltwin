@@ -148,6 +148,13 @@ core now covers persistence, stream/reconnect, and capability semantics, but no
 external conversation or trusted desktop capability exchange is wired yet, so Gate 1
 has not passed.
 
+The source-level main-process seam and bridge core now include a typed user-action
+transport with ephemeral per-action Authorization proofs. It permits only HTTPS or
+loopback destinations and deliberately excludes runtime-event ingestion from the
+public user-action protocol. It remains source/test evidence only until the patched
+OpenCode app compiles and a reviewed operator capability issuer plus separate
+runtime-event channel are integrated.
+
 ### Alternative only if the product specification changes
 
 The smallest reduced-scope product would replace the top-bar/transparent-conversation
