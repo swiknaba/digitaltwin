@@ -5,7 +5,7 @@ export type CommanderTurnId = string & { readonly __brand: "CommanderTurnId" }
 export type CapabilityPayloadDigest = string & { readonly __brand: "CapabilityPayloadDigest" }
 export type StreamCursor = number & { readonly __brand: "StreamCursor" }
 
-export const capabilityActions = ["read", "prompt", "steer", "cancel", "result"] as const
+export const capabilityActions = ["read", "prompt", "steer", "cancel", "continue", "result"] as const
 export type CapabilityAction = (typeof capabilityActions)[number]
 export type CapabilityPresentation = Readonly<{ token: string }>
 export type CapabilityBinding = Readonly<{ requestId: BridgeRequestId; payloadDigest: CapabilityPayloadDigest }>
