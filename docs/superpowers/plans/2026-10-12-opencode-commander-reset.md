@@ -296,7 +296,9 @@ documented local reset procedure; it may not target a user database.
 - Model `CommanderConversationId`, command/cancel/steer request, streaming event,
   bridge capability, and delivery receipt as explicit TypeScript values. The bridge
   persists conversation mapping/delivery idempotency; the extension holds no durable
-  Kirei/runtime credential.
+  Kirei/runtime credential. The authorized isolated core now lives in
+  `commander/bridge/`; it has no runtime/Kirei/OpenCode wiring and does not clear a
+  Gate 1 requirement.
 - Add component tests for session preservation, reconnect, stale capability rejection,
   stream ordering/deduplication, and cancellation races.
 
@@ -388,8 +390,10 @@ pass without chat activation.
 1. **Blocking now:** the tested OpenCode `2.0.27` global plugin is server-only and
    cannot provide the required top-bar, transparent conversation, or trusted bridge
    capability without DOM injection. The maintained UI patch is selected and
-   implemented as a source artifact; compile/live UI verification and the bridge
-   capability contract remain required before implementation can continue.
+   implemented as a source artifact; compile/live UI verification and a reviewed
+   desktop capability exchange remain required before it can connect to the isolated
+   bridge core or any runtime/Kirei boundary. The core's passing local tests do not
+   clear this gate.
 2. Obtain a release-bound OpenCode binary/CLI inspection in the target server
    environment; the local service is protected and its executable is not on PATH.
 3. Select and prove the remote-web/pairing mobile access path and a disposable remote

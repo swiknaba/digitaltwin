@@ -3,8 +3,27 @@
 **Status:** The unmodified OpenCode `v2.0.27` plugin contract failed Gate 1. The
 approved maintained UI patch now supplies a source-level Commander control surface,
 but it has not yet been compiled or live-verified and does not provide the required
-trusted bridge capability. Do not start the Commander bridge, future-task API, or
-learning integration until the patched Gate 1 checks pass.
+trusted bridge capability. The user has authorized an isolated, dependency-free
+Commander bridge core while the patched Gate is investigated; it is not wired into
+OpenCode, a runtime, Kirei, or a future-task API. Do not connect those boundaries or
+claim Gate 1 passes until the patched compile, security, and live checks pass.
+
+## Authorized isolated bridge core (2026-10-13)
+
+`commander/bridge/` now contains the typed bridge core and deterministic tests for
+one persisted Commander conversation, monotonic stream cursor/event replay
+handling, reconnect catch-up, steering/cancellation boundaries, and a consume-once
+user-, conversation-, and action-bound capability interface. `FileConversationStore`
+persists only conversation/replay metadata with mode `0600`; capability
+presentations and runtime credentials are neither stored nor accepted from project
+configuration. The test suite passes with Node 22's type-strip runner.
+
+This is deliberately an adapter seam, not a desktop trust claim: production still
+needs an operator-controlled verifier that atomically validates audience, actor,
+conversation, expiry, and nonce replay, plus a reviewed desktop main-process path
+that obtains the short-lived capability without exposing it to project code. The
+source-level UI patch remains a control shell until that path and the upstream
+TypeScript build complete.
 
 ## Inspected release
 
@@ -96,11 +115,20 @@ for `0002-commander-panel-safety.patch`.
 
 The patch applied cleanly to a fresh checkout of that exact commit on 2026-10-13 and
 the resulting diff passed `git diff --check`. Upstream GUI-extension typecheck has
-not run: `bun install --frozen-lockfile` stalled after dependency extraction both
-with and without lifecycle scripts, leaving `tsgo` unavailable. This is an execution
-blocker, not a passing build result. The panel intentionally reports that no bridge
-is connected; no external conversation, stream/reconnect, or trusted capability is
-implemented yet, so Gate 1 has not passed.
+not run. Bun `1.4.2` on confirmed `darwin/arm64` repeatedly printed `Resolved,
+downloaded and extracted [16]`, but failed to link the lockfile-required optional
+`@typescript/native-preview-darwin-arm64` package into `node_modules`. The direct
+`tsgo` entrypoint then reports that exact package as missing on disk. The same result
+occurred with frozen/script-free install, `--force`, and Bun's `copyfile` backend.
+The diagnostic process had established HTTPS downloads and was later suspended with
+unread tool pipes; it was terminated before retrying. This is a dependency-linking
+execution blocker, not a firewall block or a passing build result. No firewall
+allowlist is currently required.
+
+The panel intentionally reports that no bridge is connected. The isolated bridge
+core now covers persistence, stream/reconnect, and capability semantics, but no
+external conversation or trusted desktop capability exchange is wired yet, so Gate 1
+has not passed.
 
 ### Alternative only if the product specification changes
 
