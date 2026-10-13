@@ -68,6 +68,13 @@ input from the renderer IPC adapter. It deliberately has no configuration-file,
 environment-variable, or project-settings reader, so no renderer or project-supplied
 identity can become trusted by accident.
 
+`installHostOperatorBootstrap` is the matching desktop-host injection point. It
+accepts only a host-created factory, rejects replacement, and defaults to an
+unconfigured panel until installation. The OpenCode patch must call it from trusted
+operator-managed startup code before extensions load; it intentionally provides no
+project-file, renderer-message, environment, or credential-reading configuration
+path. Tests reset this process-local seam only through its explicitly test-only API.
+
 `CommanderMainProcessPanel` is the corresponding renderer-facing main-process
 adapter. It accepts only panel text/actions, generates request IDs in main, and
 delegates to an already bootstrapped transport. Its snapshots contain conversation
