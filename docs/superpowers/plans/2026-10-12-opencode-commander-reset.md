@@ -1,8 +1,9 @@
 # OpenCode-first Commander reset implementation plan
 
-**Status:** Revised after independent review; Gate 1 failed for pinned OpenCode
-`v2.0.27`. This plan
-authorizes no provider login, deployment, credential creation, or firewall change.
+**Status:** The approved maintained UI patch is implemented as a pinned source
+artifact; it is not yet built or live-verified, and Gate 1 remains incomplete. This
+plan authorizes no provider login, deployment, credential creation, or firewall
+change.
 
 **Source of truth:** [Commander product specification](../../commander-feature-spec.md)
 at `9575ff1` (`main` on 2026-10-12). The earlier Phase 0 and Commander/Hermes
@@ -31,7 +32,7 @@ and no Kirei workflow approval/review gate on ordinary OpenCode work.
   `claude-opus-5-5`; its review findings are incorporated below.
 
 **Gate 1 failed and remains a hard stop.** Before building a Commander bridge, a
-future-task API, or learning integration, prove on a future *pinned* OpenCode build that a
+future-task API, or learning integration, prove on the maintained *pinned* OpenCode build that a
 supported extension point can: (a) add an always-visible global Commander control,
 (b) open the same durable Commander conversation without destroying the active
 project session, (c) render streamed external runtime responses, and (d) obtain a
@@ -40,6 +41,13 @@ project configuration. DOM injection is prohibited. If the supported surface can
 do this, stop and choose either an
 upstream contribution or a narrowly maintained OpenCode UI patch; do not build an
 unsupported bridge around it.
+
+The selected path is the maintainable source patch at
+[`commander/opencode-ui-patch`](../../../commander/opencode-ui-patch/), not arbitrary
+extension installation or renderer DOM injection. It adds only the typed global
+control and session side-panel shell. A greenfield bridge must still implement the
+durable Commander conversation, streaming/reconnect, and trusted capability contract
+before this gate can pass.
 
 Only after Gate 1 and the disposable direct-OpenCode slice (project Git work,
 cancellation, restart, and chosen remote-web/pairing access) pass may Mattermost
@@ -379,8 +387,9 @@ pass without chat activation.
 
 1. **Blocking now:** the tested OpenCode `2.0.27` global plugin is server-only and
    cannot provide the required top-bar, transparent conversation, or trusted bridge
-   capability without DOM injection. Choose an upstream contribution, a maintained
-   UI patch, or the explicitly reduced product specification before implementation.
+   capability without DOM injection. The maintained UI patch is selected and
+   implemented as a source artifact; compile/live UI verification and the bridge
+   capability contract remain required before implementation can continue.
 2. Obtain a release-bound OpenCode binary/CLI inspection in the target server
    environment; the local service is protected and its executable is not on PATH.
 3. Select and prove the remote-web/pairing mobile access path and a disposable remote
@@ -427,3 +436,9 @@ pass without chat activation.
   a versioned `resolve_uncertain` path, reschedule-time validation, final failed
   tasks, a CLI checksum, and the hard-stop capability criterion; all are incorporated
   above. It also noted the baseline migration wording, now clarified.
+- **Claude Code patch review:** verified canonical `claude-opus-5-5` at medium
+  effort. It required a default lazy-panel export, non-silent no-session behavior,
+  closable panel tab, patch hashes, and wording that permits the selected maintained
+  patch while preserving the no-DOM rule. Those issues are fixed. It explicitly
+  agrees that Gate 1 must remain incomplete until the patch compiles/runs and the
+  durable bridge/capability contract exists.
