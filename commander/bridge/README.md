@@ -13,6 +13,13 @@ responsibilities are:
 - keep runtime credentials and capability proofs outside the renderer, project
   configuration, records, fixtures, and Git.
 
+The package root is a configuration-free OpenCode bundle entrypoint. The reviewed
+Node bridge core is available through its explicit `@digitaltwin/commander-bridge/core`
+subpath for a future operator-owned main-process bootstrap. `prepare-opencode.sh`
+copies only this package manifest, strict TypeScript configuration, and SHA-256
+allowlisted `src/*.ts` files into OpenCode's `packages/commander-bridge`; it never
+copies this README, user project configuration, credentials, or operator state.
+
 `CommanderBridgeHttpService` is the private bridge's parsed protocol service;
 `createCommanderBridgeNodeListener` supplies the narrow Node adapter used for local
 operator-owned loopback or HTTPS binding. It accepts only five POST routes, requires
@@ -80,6 +87,12 @@ Run the current dependency-free tests with:
 
 ```sh
 npm test
+```
+
+When prepared inside the pinned OpenCode workspace, run strict TypeScript with:
+
+```sh
+bun --filter @digitaltwin/commander-bridge typecheck
 ```
 
 The command uses Node 22 type stripping solely to run the test suite while the pinned

@@ -103,9 +103,10 @@ The product owner selected the maintained UI-patch option on 2026-10-13. The
 repository-owned artifact is
 [`commander/opencode-ui-patch`](../../commander/opencode-ui-patch/). It applies only
 to upstream tag `v2.0.27`, commit `1f4d07a4a519185955ae8ab2ea3607805509e386`.
-The patch adds a bundled typed `commander` GUI extension, a titlebar control, and a
-session-preserving side panel. It does not loosen the packaged extension manager's
-upstream trust restriction and does not use DOM injection.
+The patch adds a bundled typed `commander` GUI extension, a titlebar control, a
+session-preserving side panel, and a bundled `@digitaltwin/commander-bridge`
+workspace package. It does not loosen the packaged extension manager's upstream trust
+restriction and does not use DOM injection.
 
 Patch SHA-256 values are
 `0a94f441293ce1a2e69d0e6b62576ddcb1ca8763fede2c6b0b3610509335ec00`
@@ -114,6 +115,19 @@ for `0001-commander-gui-extension.patch` and
 for `0002-commander-panel-safety.patch`.
 `9ce13b800aefaf9abc45c9ef118047dd2fc820cf32c51f49c6fa6d6184edc3a9`
 is the SHA-256 for `0003-commander-bridge-ipc-seam.patch`.
+`a5ac3d91e863e69eaf51507baff103000c7ea0575d65c37e17df48a68676e860`
+is the SHA-256 for `0004-commander-bridge-workspace.patch`; the reviewed bridge
+input manifest SHA-256 is
+`916bd79c75c39050d4acd52f8fd1ffca05b468214d39ca70868e4b2db04a68b5`.
+
+`prepare-opencode.sh` requires a clean checkout at the exact pin, verifies the
+bridge manifest, copies only `package.json`, `tsconfig.json`, and reviewed
+`src/*.ts` source into the upstream `packages/commander-bridge` workspace, then
+applies the patch sequence and checks the resulting diff. It refuses extra, missing,
+or symlinked bridge inputs. It does not copy README files, user/project
+configuration, credentials, runtime state, or persistent stores. The GUI extension
+imports the package through a pinned `workspace:*` dependency and the lockfile
+records that workspace resolution.
 
 The patch applied cleanly to a fresh checkout of that exact commit on 2026-10-13 and
 the resulting diff passed `git diff --check`. Upstream GUI-extension typecheck has
@@ -156,6 +170,17 @@ passed `177` with `1` skipped and `0` failed. This is Linux build/typecheck/test
 evidence for the exact pinned patch only. It does not prove packaged macOS desktop
 startup, the visible control, main-process bootstrap, or Gate 1's live interaction
 criteria.
+
+The bundled-workspace preparation was then repeated from a fresh checkout at the
+same pin. The manifest verified every copied bridge file, `git diff --check` passed,
+and the official Linux Bun `1.4.2` image completed a frozen, script-free install of
+2,396 packages. `@digitaltwin/commander-bridge` strict TypeScript and
+`@opencode/gui-extensions` typecheck both exited `0`; GUI tests passed `177` with
+`1` skipped and `0` failed. Importing `@digitaltwin/commander-bridge` from the
+dependent GUI workspace returned its configuration-free `not-configured` entrypoint.
+The bridge's Node 22 test command separately passed all `17` tests. This confirms
+the bounded packaging mechanism only; it still does not prove desktop startup or any
+Gate 1 live interaction.
 
 The panel intentionally reports that no bridge is connected. The isolated bridge
 core now covers persistence, stream/reconnect, and capability semantics, but no

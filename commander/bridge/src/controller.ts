@@ -2,7 +2,7 @@ import {
   emptyConversation, bridgeRequestId, decodeStreamEvent, maxCapabilityLifetimeMs, streamCursor, turnIdForRequest,
   type ActionResult, type ApplyResult, type AuthorizeResult, type BridgeActorId, type BridgeRequest, type BridgeRequestId,
   type CapabilityAction, type CapabilityBinding, type CapabilityPresentation, type CapabilityRejection, type CapabilityVerifier,
-  type CommanderConversation, type CommanderConversationId, type CommanderRuntime, type CommanderTurnId, type ConversationStatus,
+  type CommanderConversation, type CommanderConversationId, type CommanderRuntime, type CommanderTurnId,
   type ConversationStore, type RequestedAction, type StreamEvent,
 } from "./contract.ts"
 import { commandCapabilityBinding } from "./capability-binding.ts"
@@ -54,8 +54,8 @@ export class CommanderBridgeController {
       if (conversation.events.some((stored) => stored.deliveryId === event.deliveryId)) return { ok: false, reason: "delivery_conflict" }
       if (event.cursor !== streamCursor(conversation.lastCursor + 1)) return { ok: false, reason: "stream_gap" }
       if (conversation.activeTurn?.id !== event.turnId) return { ok: false, reason: "stale_turn" }
-      const next = event.kind === "final"
-        ? { ...conversation, status: "ready" as const, activeTurn: undefined, lastCursor: event.cursor, events: retainEvents([...conversation.events, event]) }
+      const next: CommanderConversation = event.kind === "final"
+        ? readyConversation(conversation, { lastCursor: event.cursor, events: retainEvents([...conversation.events, event]) })
         : { ...conversation, status: conversation.status === "cancel_requested" ? "cancel_requested" as const : "streaming" as const, lastCursor: event.cursor, events: retainEvents([...conversation.events, event]) }
       return (await this.persist(next)) ? { ok: true, state: "applied" } : { ok: false, reason: "persistence_conflict" }
     })
@@ -110,7 +110,9 @@ export class CommanderBridgeController {
     if (!request || request.turnId !== turnId || request.state === "uncertain") return { ok: false, reason: "uncertain" }
     if (request.state === "dispatched") return { ok: true, state: "already_recorded" }
     const terminal = alreadyTerminal && conversation.activeTurn?.id === turnId
-    const next = { ...conversation, status: terminal ? "ready" as const : conversation.status, ...(terminal ? { activeTurn: undefined } : {}), requests: replaceRequest(conversation.requests, id, "dispatched") }
+    const next: CommanderConversation = terminal
+      ? readyConversation(conversation, { requests: replaceRequest(conversation.requests, id, "dispatched") })
+      : { ...conversation, requests: replaceRequest(conversation.requests, id, "dispatched") }
     return (await this.persist(next)) ? { ok: true, state: "dispatched" } : { ok: false, reason: "uncertain" }
   }
 
@@ -156,3 +158,7 @@ function retainEvents(events: readonly StreamEvent[]): readonly StreamEvent[] { 
 function retainRequests(requests: readonly BridgeRequest[]): readonly BridgeRequest[] { const unresolved = requests.filter((request) => request.state === "pending" || request.state === "uncertain"); const dispatched = requests.filter((request) => request.state === "dispatched").slice(-Math.max(0, retainedRequests - unresolved.length)); return [...unresolved, ...dispatched] }
 function replaceRequest(requests: readonly BridgeRequest[], id: BridgeRequestId, state: BridgeRequest["state"]): readonly BridgeRequest[] { return requests.map((request) => request.id === id ? { ...request, state } : request) }
 function sameEvent(left: StreamEvent, right: StreamEvent): boolean { return left.cursor === right.cursor && left.deliveryId === right.deliveryId && left.turnId === right.turnId && left.kind === right.kind && left.text === right.text && left.outcome === right.outcome }
+function readyConversation(conversation: CommanderConversation, updates: Readonly<Partial<Pick<CommanderConversation, "lastCursor" | "events" | "requests">>>): CommanderConversation {
+  const { activeTurn: _activeTurn, ...withoutActiveTurn } = conversation
+  return { ...withoutActiveTurn, ...updates, status: "ready" }
+}
