@@ -112,6 +112,8 @@ Patch SHA-256 values are
 for `0001-commander-gui-extension.patch` and
 `4b068243461072cf42ecac0f493ff05eaf945e7d0af2dbff5f87d16f9ac49c2f`
 for `0002-commander-panel-safety.patch`.
+`9ce13b800aefaf9abc45c9ef118047dd2fc820cf32c51f49c6fa6d6184edc3a9`
+is the SHA-256 for `0003-commander-bridge-ipc-seam.patch`.
 
 The patch applied cleanly to a fresh checkout of that exact commit on 2026-10-13 and
 the resulting diff passed `git diff --check`. Upstream GUI-extension typecheck has

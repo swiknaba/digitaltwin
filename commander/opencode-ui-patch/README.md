@@ -14,11 +14,13 @@ execute main-process code and no packaged trust model exists.
 - An always-visible `Commander` titlebar control.
 - A typed Commander side-panel contribution that opens on the current project
   session without replacing it.
-- A lazy, localized panel shell with an explicit `Bridge not connected` status.
+- A lazy, localized panel shell backed by a typed main-process bridge-status IPC.
 
-It does not yet provide a bridge, persistent external Commander conversation,
-streaming/reconnect behavior, or user/conversation-bound bridge capabilities. Those
-are still required to pass Gate 1 and must not be claimed from this UI patch alone.
+The IPC seam deliberately reports only `not-configured`; it neither reads project
+configuration nor sends a capability or runtime credential to the renderer. It does
+not yet connect a bridge, persistent external Commander conversation, streaming,
+reconnect behavior, or user/conversation-bound capabilities. Those are still
+required to pass Gate 1 and must not be claimed from this UI patch alone.
 
 ## Apply to the pinned source
 
@@ -28,6 +30,7 @@ cd opencode
 git rev-parse HEAD
 git apply /absolute/path/to/digitaltwin/commander/opencode-ui-patch/0001-commander-gui-extension.patch
 git apply /absolute/path/to/digitaltwin/commander/opencode-ui-patch/0002-commander-panel-safety.patch
+git apply /absolute/path/to/digitaltwin/commander/opencode-ui-patch/0003-commander-bridge-ipc-seam.patch
 ```
 
 The reported commit must equal the pin above. Use the upstream GUI-extension checks

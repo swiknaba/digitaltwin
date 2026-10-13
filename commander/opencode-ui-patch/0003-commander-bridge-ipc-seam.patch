@@ -1,0 +1,129 @@
+From 52245f996c2d8e45397379e66dd966dce469fd92 Mon Sep 17 00:00:00 2001
+From: Lud <lud@reinmiedl.com>
+Date: Tue, 13 Oct 2026 11:56:31 +0200
+Subject: [PATCH] feat(gui): add Commander bridge IPC seam
+
+---
+ .../gui-extensions/src/commander/contract.ts  | 20 ++++++++++++++++++++
+ .../gui-extensions/src/commander/i18n/en.ts   |  2 +-
+ .../gui-extensions/src/commander/index.ts     |  2 ++
+ packages/gui-extensions/src/commander/main.ts | 19 +++++++++++++++++++
+ .../gui-extensions/src/commander/panel.tsx    |  8 +++++++-
+ packages/gui-extensions/src/main.ts           |  2 +-
+ 6 files changed, 50 insertions(+), 3 deletions(-)
+ create mode 100644 packages/gui-extensions/src/commander/contract.ts
+ create mode 100644 packages/gui-extensions/src/commander/main.ts
+
+diff --git a/packages/gui-extensions/src/commander/contract.ts b/packages/gui-extensions/src/commander/contract.ts
+new file mode 100644
+index 0000000..44ed829
+--- /dev/null
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -0,0 +1,20 @@
++import { Schema } from "effect"
++import { Ipc } from "../sdk"
++
++/**
++ * Renderer-visible bridge state. The main process owns the future capability
++ * exchange; neither a capability nor a runtime credential crosses this boundary.
++ */
++export const CommanderBridgeState = Schema.Struct({
++  status: Schema.Literal("not-configured"),
++})
++
++export type CommanderBridgeState = typeof CommanderBridgeState.Type
++
++export const CommanderBridge = Ipc.define({
++  id: "commander.bridge",
++  state: CommanderBridgeState,
++  methods: {
++    status: { output: CommanderBridgeState },
++  },
++})
+diff --git a/packages/gui-extensions/src/commander/i18n/en.ts b/packages/gui-extensions/src/commander/i18n/en.ts
+index 97279ef..16aaedd 100644
+--- a/packages/gui-extensions/src/commander/i18n/en.ts
++++ b/packages/gui-extensions/src/commander/i18n/en.ts
+@@ -7,5 +7,5 @@ export default {
+   "command.category.view": "View",
+   "panel.title": "Commander",
+   "panel.description": "Commander is ready for a trusted bridge connection.",
+-  "panel.status": "Bridge not connected",
++  "panel.status.not-configured": "Bridge not configured",
+ }
+diff --git a/packages/gui-extensions/src/commander/index.ts b/packages/gui-extensions/src/commander/index.ts
+index 44a1ad9..8a93204 100644
+--- a/packages/gui-extensions/src/commander/index.ts
++++ b/packages/gui-extensions/src/commander/index.ts
+@@ -1,7 +1,9 @@
+ import { Extension } from "../sdk"
++import { CommanderBridge } from "./contract"
+ import en from "./i18n/en"
+ 
+ export default Extension.define({
+   id: "commander",
++  provides: { bridge: CommanderBridge },
+   i18n: { en },
+ })
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+new file mode 100644
+index 0000000..2db0878
+--- /dev/null
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -0,0 +1,19 @@
++import type { MainSetup } from "../sdk/main"
++import { CommanderBridge, CommanderBridgeState } from "./contract"
++import type definition from "./index"
++
++/**
++ * This intentionally has no endpoint or credential configuration. A reviewed
++ * operator integration may replace the state provider without exposing a bridge
++ * capability to renderer or project configuration code.
++ */
++const setup: MainSetup<typeof definition> = (ctx) => {
++  const state = { status: "not-configured" } satisfies CommanderBridgeState
++
++  ctx.provide(CommanderBridge, {
++    state: () => state,
++    status: () => state,
++  })
++}
++
++export default setup
+diff --git a/packages/gui-extensions/src/commander/panel.tsx b/packages/gui-extensions/src/commander/panel.tsx
+index e55b71e..3bdeb0f 100644
+--- a/packages/gui-extensions/src/commander/panel.tsx
++++ b/packages/gui-extensions/src/commander/panel.tsx
+@@ -3,12 +3,18 @@ import type definition from "./index"
+ 
+ export default function CommanderPanel() {
+   const extension = useExtension<typeof definition>()
++  const bridge = extension.uses.bridge
++  const status = () => {
++    const live = bridge()
++
++    return live.status === "active" ? live.value.state()?.status ?? "not-configured" : "not-configured"
++  }
+ 
+   return (
+     <div class="flex h-full flex-col gap-2 p-4">
+       <h2 class="text-14-medium text-v2-text-text-base">{extension.t("panel.title")}</h2>
+       <p class="text-13-regular text-v2-text-text-muted">{extension.t("panel.description")}</p>
+-      <p class="text-13-regular text-v2-text-text-muted">{extension.t("panel.status")}</p>
++      <p class="text-13-regular text-v2-text-text-muted">{extension.t(`panel.status.${status()}`)}</p>
+     </div>
+   )
+ }
+diff --git a/packages/gui-extensions/src/main.ts b/packages/gui-extensions/src/main.ts
+index c98ae88..0332d71 100644
+--- a/packages/gui-extensions/src/main.ts
++++ b/packages/gui-extensions/src/main.ts
+@@ -32,5 +32,5 @@ export const builtins = Extension.compose(
+   { ...ssh, main: () => import("./ssh/main") },
+   { ...wsl, main: () => import("./wsl/main") },
+   microsoftOffice,
+-  commander,
++  { ...commander, main: () => import("./commander/main") },
+ )
+-- 
+2.54.0 (Apple Git-157)
