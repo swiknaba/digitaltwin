@@ -123,7 +123,7 @@ input manifest SHA-256 is
 `d9294b084a6d31a45c34067cd96684bed8b529c81ba587ab81a04ecbaad46f29`.
 `b9f30fcbb0a75976c30085d2b6ecc25a5084c7daa3c6ba15dde23ea8542d24ad`
 is the SHA-256 for `0005-commander-panel-actions.patch`.
-`39911245836ef16b0b2ab6066b26ea40401597d7b079d5475e817467fc9611ac`
+`4bbdeb6de21108a798bb102481a4ec10e70212099b531b6a68007ec5fbb77978`
 is the SHA-256 for `0006-commander-desktop-bootstrap-harness.patch`; the reviewed
 bridge input manifest SHA-256 is
 `7ce2bd3ccdea20acbb0b8c5a87e8d1e61937c874269217b4ad15a12b3b10678e`.
@@ -136,6 +136,15 @@ or symlinked bridge inputs. It does not copy README files, user/project
 configuration, credentials, runtime state, or persistent stores. The GUI extension
 imports the package through a pinned `workspace:*` dependency and the lockfile
 records that workspace resolution.
+
+On 2026-10-13, the repaired `0006` patch was prepared again from a fresh detached
+checkout at the pinned commit and passed `git diff --check`. In official
+`oven/bun:1.4.2` Linux with source copied into the container filesystem, frozen
+install completed 2,397 packages; bridge, GUI-extension, and desktop strict
+typechecks all passed; the isolated desktop operator-context tests passed 3/3; and
+the GUI-extension suite passed 177 with 1 skipped and 0 failed. The launcher
+assertion/broker protocol is source and isolated-test evidence only: no live signer,
+broker, or operator credential was provisioned, and this is not Gate 1 acceptance.
 
 The patch applied cleanly to a fresh checkout of that exact commit on 2026-10-13 and
 the resulting diff passed `git diff --check`. Upstream GUI-extension typecheck has
@@ -216,8 +225,14 @@ operator-owned identity/proof issuer remain required Gate 1 evidence.
 `createOperatorHostBootstrap` is the deployment adapter: a trusted desktop host
 supplies only a verified actor/conversation identity, bridge origin, and its
 short-lived-proof exchange; the adapter creates the main-process panel and never
-accepts those values from project or renderer code. Provisioning that real exchange
-and its credentials remains an operator approval step outside this repository.
+accepts those values from project or renderer code. The maintained desktop patch
+loads an optional mode-`0600`, non-symlinked launcher context before a renderer
+exists. It derives labels only from the opaque assertion payload, sends no labels to
+the broker, and binds the assertion to its declared broker audience. The broker must
+verify the signed assertion and derive identity before it issues an action-bound
+proof. Invalid context or rejection leaves Commander unavailable without stopping
+OpenCode startup. Provisioning the real signer, broker, and credentials remains an
+operator approval step outside this repository.
 
 The fresh Linux Bun 1.4.2 workspace check passed bridge, GUI-extension, and desktop
 strict typechecks after this patch. The bridge Node 22 test suite passed locally.

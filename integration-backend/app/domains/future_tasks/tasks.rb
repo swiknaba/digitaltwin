@@ -101,8 +101,8 @@ module Domains
         end
       end
 
-      sig { params(execution_id: String, lease: Platform::Jobs::Lease, gateway: Adapters::CommanderBridge::Gateway, attempt: Integer, now: Time).returns(Platform::Jobs::Dto::Decision) }
-      def deliver(execution_id:, lease:, gateway:, attempt: 1, now: Time.now)
+      sig { params(execution_id: String, lease: Platform::Jobs::Lease, gateway: Adapters::CommanderBridge::Gateway, now: Time).returns(Platform::Jobs::Dto::Decision) }
+      def deliver(execution_id:, lease:, gateway:, now: Time.now)
         execution = database.transaction do
           row = executions.where(id: execution_id).for_update.first
           return Platform::Jobs::Dto::Decision.complete unless row && row.fetch(:state) == ExecutionState::Queued.serialize
@@ -194,8 +194,8 @@ module Domains
 
       # Reconciliation queries/retries only the existing delivery key. A receipt
       # settles it; another unavailable result leaves the record visibly uncertain.
-      sig { params(execution_id: String, lease: Platform::Jobs::Lease, gateway: Adapters::CommanderBridge::Gateway, attempt: Integer, now: Time).returns(Platform::Jobs::Dto::Decision) }
-      def reconcile(execution_id:, lease:, gateway:, attempt: 1, now: Time.now)
+      sig { params(execution_id: String, lease: Platform::Jobs::Lease, gateway: Adapters::CommanderBridge::Gateway, now: Time).returns(Platform::Jobs::Dto::Decision) }
+      def reconcile(execution_id:, lease:, gateway:, now: Time.now)
         execution, task = database.transaction do
           row = executions.where(id: execution_id).for_update.first
           return Platform::Jobs::Dto::Decision.complete unless row && row.fetch(:state) == ExecutionState::Uncertain.serialize

@@ -46,7 +46,7 @@ class UncertainThenReconciledGateway < RecordingCommanderGateway
 end
 
 class UncertainThenRedeliveredGateway < UncertainThenReconciledGateway
-  def reconcile(delivery_key:)
+  def reconcile(**)
     Domains::FutureTasks::Dto::BridgeResolution.new
   end
 end

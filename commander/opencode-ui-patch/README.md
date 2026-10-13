@@ -35,11 +35,16 @@ harness or install a Commander bootstrap and remain closed; `--commander-test-ha
 ephemeral loopback bridge with random in-memory proofs for local desktop acceptance
 only.
 
-Normal desktop startup always evaluates a trusted main-process bootstrap provider
-before creating a renderer. The checked-in build installs no provider and therefore
-remains `not-configured`; an embedding/operator may inject one before app readiness.
-The provider is not read from project configuration, renderer IPC, or an environment
-variable. The harness remains an explicit test-only provider path.
+Normal desktop startup evaluates an optional launcher-written context before creating
+a renderer. It reads only `commander-operator-context.json` from Electron's private
+`userData` directory when the file is regular, non-symlinked, and mode `0600`. The
+context has bridge and broker origins plus an opaque signed launch assertion; it does
+not carry trusted actor or conversation labels. The assertion's decoded audience must
+match the broker origin, and the broker must verify its signature, expiry, audience,
+and identity claims before it issues an action-bound proof. Malformed, unavailable,
+or broker-rejected context leaves Commander `not-configured` without blocking the
+ordinary OpenCode window. The renderer receives none of this context. The harness
+remains an explicit test-only provider path.
 
 ## Apply to the pinned source
 
