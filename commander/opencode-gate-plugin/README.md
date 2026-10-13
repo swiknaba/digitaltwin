@@ -5,6 +5,11 @@ contribution code, no network calls, no custom tool, no model invocation, no
 credential access, and no filesystem writes. It is intentionally insufficient to
 pass Commander Gate 1.
 
+`future-tasks.ts` is the separate native v2.0.27 global-plugin entry. It uses the
+supported `Plugin.define` and `context.tool.transform(editor.add)` API to register
+the `future_tasks` tool. Its one-use capability is supplied on each tool call, so it
+stores no credential. Install it only in the operator-owned global plugin directory.
+
 OpenCode v2.0.27 rejected the current public-doc named-function shape. The probe
 therefore uses the installed release's required default definition with an `id` and
 `setup` function. That difference is recorded as Gate 1 evidence, not treated as a

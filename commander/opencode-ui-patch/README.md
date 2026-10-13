@@ -35,6 +35,12 @@ harness or install a Commander bootstrap and remain closed; `--commander-test-ha
 ephemeral loopback bridge with random in-memory proofs for local desktop acceptance
 only.
 
+Normal desktop startup always evaluates a trusted main-process bootstrap provider
+before creating a renderer. The checked-in build installs no provider and therefore
+remains `not-configured`; an embedding/operator may inject one before app readiness.
+The provider is not read from project configuration, renderer IPC, or an environment
+variable. The harness remains an explicit test-only provider path.
+
 ## Apply to the pinned source
 
 ```sh
