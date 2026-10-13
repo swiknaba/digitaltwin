@@ -7,9 +7,10 @@ test("ephemeral desktop harness drives panel actions and reconnects streamed out
   try {
     assert.equal((await harness.panel.open()).status, "active")
     assert.equal((await harness.panel.prompt("hello")).status, "active")
-    assert.equal((await harness.panel.reconnect(0)).status, "active")
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    assert.equal((await harness.panel.reconnect(0)).events.at(-1)?.text, "stream: hello")
     await harness.publish("working")
-    assert.equal((await harness.panel.reconnect(0)).events.at(-1)?.text, "working")
+    assert.equal((await harness.panel.reconnect(0)).events.some((event) => event.text === "working"), true)
     assert.equal((await harness.panel.steer("short")).status, "active")
     assert.equal((await harness.panel.cancel()).status, "active")
     assert.deepEqual(harness.runtime.prompts, ["hello"])

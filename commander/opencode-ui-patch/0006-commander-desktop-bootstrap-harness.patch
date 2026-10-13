@@ -29,13 +29,15 @@ diff --git a/packages/desktop/src/main/desktop.ts b/packages/desktop/src/main/de
  
  // Everything above has been loaded and evaluated by now; the layers start below.
  marks.bundle = Date.now()
-@@ -20,5 +21,8 @@ const runIpc = Effect.fn("Desktop.runIpc")(function* () {
+@@ -20,5 +21,10 @@ const runIpc = Effect.fn("Desktop.runIpc")(function* () {
    marks.layers = Date.now()
    yield* Effect.logInfo("layers ready", { marks })
-   const ipc = yield* Ipc.registerIpcHandlers
 +  // This runs before built-in main extensions. In ordinary builds it is a no-op,
 +  // leaving Commander fail-closed; the explicit local harness owns its own proofs.
 +  yield* Effect.promise(installCommanderDesktopBootstrap)
++  // Renderer IPC subscriptions can demand a main extension during registration.
++  // Install the trusted bootstrap first so that first lazy Commander load sees it.
+  const ipc = yield* Ipc.registerIpcHandlers
    // Main GUI extensions start with the window: servers they restore feed the first paint's server
    // list, and menu items they contribute are present at startup. Their heavy modules load lazily on
 diff --git a/packages/desktop/tsconfig.json b/packages/desktop/tsconfig.json

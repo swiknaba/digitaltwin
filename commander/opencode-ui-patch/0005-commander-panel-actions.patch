@@ -36,14 +36,17 @@ index 0c1d6ca..acad5ba 100644
 -import { unconfiguredCommanderBridgeStatus } from "@digitaltwin/commander-bridge"
 +import { commanderPanelFromHostBootstrap } from "@digitaltwin/commander-bridge/core"
  import type { MainSetup } from "../sdk/main"
-@@ -11,10 +11,29 @@
+@@ -11,10 +11,32 @@
  const setup: MainSetup<typeof definition> = (ctx) => {
 -  // This package entrypoint accepts no configuration. A future reviewed bootstrap
 -  // may supply a transport from operator-owned state, but project data never does.
 -  const state = { status: unconfiguredCommanderBridgeStatus() } satisfies CommanderBridgeState
-+  const panel = commanderPanelFromHostBootstrap()
++  // A renderer subscription can load this lazy main entry while the desktop is
++  // still wiring IPC. Resolve the trusted host panel at each call so a later
++  // bootstrap is observed without exposing configuration to the renderer.
++  const panel = () => commanderPanelFromHostBootstrap()
 +  const state = (): CommanderBridgeState => {
-+    const snapshot = panel.snapshot()
++    const snapshot = panel().snapshot()
 +    // Deliberately project the panel state instead of sharing its conversation:
 +    // actor, conversation identity, delivery IDs, proofs, and transport details
 +    // remain in the main process.
@@ -64,11 +67,11 @@ index 0c1d6ca..acad5ba 100644
 -    status: () => state,
 +  const provider = ctx.provide(CommanderBridge, {
 +    state,
-+    open: () => call(() => panel.open()),
-+    send: ({ text }) => call(() => panel.prompt(text)),
-+    steer: ({ text }) => call(() => panel.steer(text)),
-+    cancel: () => call(() => panel.cancel()),
-+    reconnect: ({ after }) => call(() => panel.reconnect(after)),
++    open: () => call(() => panel().open()),
++    send: ({ text }) => call(() => panel().prompt(text)),
++    steer: ({ text }) => call(() => panel().steer(text)),
++    cancel: () => call(() => panel().cancel()),
++    reconnect: ({ after }) => call(() => panel().reconnect(after)),
    })
 +  changed = () => provider.changed()
  }
@@ -79,7 +82,7 @@ index 0c1d6ca..acad5ba 100644
  import { useExtension } from "../sdk"
 +import type { CommanderBridgeState } from "./contract"
  import type definition from "./index"
-@@ -6,7 +8,27 @@
+@@ -6,7 +8,29 @@
    const bridge = extension.uses.bridge
 -  const status = () => {
 +  const [draft, setDraft] = createSignal("")
@@ -89,7 +92,9 @@ index 0c1d6ca..acad5ba 100644
      const live = bridge()
 -
 -    return live.status === "active" ? live.value.state()?.status ?? "not-configured" : "not-configured"
-+    if (live.status !== "active") return
++    // `open` is a safe status refresh against an unconfigured provider. It lets
++    // a lazy main extension observe a bootstrap installed during desktop start.
++    if (action !== "open" && live.status !== "active") return
 +    setBusy(true)
 +    try {
 +      const next = action === "open" ? await live.value.open()

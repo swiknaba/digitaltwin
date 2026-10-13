@@ -28,7 +28,15 @@ export async function createEphemeralDesktopHarness(): Promise<EphemeralDesktopH
   const actorId = bridgeActorId("desktop-harness")
   const conversationId = commanderConversationId("commander:desktop-harness")
   const now = () => new Date()
-  const runtime = createRuntime()
+  let activeTurn: string | undefined
+  let nextCursor = 1
+  let publishRuntimeEvent: (text: string) => Promise<void> = async () => {
+    throw new Error("Commander harness runtime started before its event ingress")
+  }
+  const runtime = createRuntime((input) => {
+    activeTurn = input.turnId
+    setTimeout(() => { void publishRuntimeEvent(`stream: ${input.text}`) }, 0)
+  })
   const authority = new EphemeralTestAuthority({ actorId, conversationId, now })
   const controller = new CommanderBridgeController({ actorId, conversationId, runtime, store: new InMemoryConversationStore(), verifier: authority, now })
   const ingress = new RuntimeEventIngress({ controller, conversationId, authenticator: authority, now })
@@ -38,29 +46,31 @@ export async function createEphemeralDesktopHarness(): Promise<EphemeralDesktopH
   if (!address || typeof address === "string") throw new Error("Commander harness did not bind a loopback port")
   const transport = new CommanderMainProcessTransport({ baseUrl: `http://127.0.0.1:${address.port}`, capabilityIssuer: authority, fetch: { fetch } })
   const panel = new CommanderMainProcessPanel(transport)
+  publishRuntimeEvent = async (text) => {
+    if (!activeTurn) throw new Error("Commander harness has no active turn")
+    const cursor = streamCursor(nextCursor)
+    const result = await ingress.deliver(authority.issueRuntimeEventProof(), {
+      conversationId,
+      turnId: activeTurn,
+      cursor,
+      deliveryId: `harness-${nextCursor}`,
+      kind: "delta",
+      text,
+    })
+    if (!result.ok) throw new Error("Commander harness rejected its runtime event")
+    nextCursor++
+  }
 
   return {
     bootstrap: { createPanel: () => panel },
     panel,
     runtime,
-    async publish(text) {
-      const snapshot = panel.snapshot()
-      if (snapshot.status !== "active" || !snapshot.conversation.activeTurn) throw new Error("Commander harness has no active turn")
-      const result = await ingress.deliver(authority.issueRuntimeEventProof(), {
-        conversationId,
-        turnId: snapshot.conversation.activeTurn.id,
-        cursor: streamCursor(snapshot.conversation.lastCursor + 1),
-        deliveryId: `harness-${snapshot.conversation.lastCursor + 1}`,
-        kind: "delta",
-        text,
-      })
-      if (!result.ok) throw new Error("Commander harness rejected its runtime event")
-    },
+    publish: publishRuntimeEvent,
     close: () => new Promise<void>((resolve, reject) => listener.close((error) => error ? reject(error) : resolve())),
   }
 }
 
-function createRuntime(): HarnessRuntime {
+function createRuntime(onPrompt: (input: Parameters<CommanderRuntime["prompt"]>[0]) => void): HarnessRuntime {
   const prompts: string[] = []
   const steers: string[] = []
   let cancels = 0
@@ -68,7 +78,7 @@ function createRuntime(): HarnessRuntime {
     prompts,
     steers,
     get cancels() { return cancels },
-    async prompt(input) { prompts.push(input.text); return { state: "accepted", turnId: input.turnId } },
+    async prompt(input) { prompts.push(input.text); onPrompt(input); return { state: "accepted", turnId: input.turnId } },
     async steer(input) { steers.push(input.text) },
     async cancel() { cancels++; return "acknowledged" },
   }
