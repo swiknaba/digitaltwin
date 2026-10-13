@@ -125,6 +125,15 @@ unread tool pipes; it was terminated before retrying. This is a dependency-linki
 execution blocker, not a firewall block or a passing build result. No firewall
 allowlist is currently required.
 
+The exact official tarball was fetched through `npm pack`, matched the lockfile's
+published SHA-512 integrity, and repaired the missing `tsgo` binary only in the
+disposable source checkout. The checker then exposed the broader graph failure:
+workspace imports such as `effect` also resolve to absent Bun-link targets. A distinct
+frozen `--linker=hoisted` attempt reproduced that failure, so no more identical
+whole-workspace retries are justified. The repaired checker did pass a strict isolated
+typecheck of `commander/bridge/`; it does not validate the patched OpenCode GUI
+extension. Manifests and lockfiles in the upstream checkout remained unchanged.
+
 The panel intentionally reports that no bridge is connected. The isolated bridge
 core now covers persistence, stream/reconnect, and capability semantics, but no
 external conversation or trusted desktop capability exchange is wired yet, so Gate 1

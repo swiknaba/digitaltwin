@@ -78,9 +78,9 @@ function validate(value: unknown): DiskState {
 }
 
 function decodeConversation(value: unknown): CommanderConversation {
-  if (!isRecord(value) || typeof value.id !== "string" || !Number.isSafeInteger(value.version) || value.version < 0)
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.version !== "number" || !Number.isSafeInteger(value.version) || value.version < 0)
     throw new Error("Invalid Commander conversation record")
-  if (!isStatus(value.status) || !Number.isSafeInteger(value.lastCursor) || value.lastCursor < 0)
+  if (!isStatus(value.status) || typeof value.lastCursor !== "number" || !Number.isSafeInteger(value.lastCursor) || value.lastCursor < 0)
     throw new Error("Invalid Commander conversation record")
   if (!Array.isArray(value.events) || !Array.isArray(value.requests))
     throw new Error("Invalid Commander conversation record")
