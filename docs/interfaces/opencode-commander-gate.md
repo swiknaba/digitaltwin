@@ -4,9 +4,11 @@
 approved maintained UI patch now supplies a source-level Commander control surface,
 but it has not yet been compiled or live-verified and does not provide the required
 trusted bridge capability. The user has authorized an isolated, dependency-free
-Commander bridge core while the patched Gate is investigated; it is not wired into
-OpenCode, a runtime, Kirei, or a future-task API. Do not connect those boundaries or
-claim Gate 1 passes until the patched compile, security, and live checks pass.
+Commander bridge core while the patched Gate is investigated. The repository now
+includes source-level Kirei FutureTasks adapters, a native MCP host, and a tested
+private Kirei-to-Commander delivery/disposition contract. Those are bounded source
+and disposable-container checks, not a live operator identity/runtime deployment.
+Do not claim Gate 1 passes until the patched compile, security, and live checks pass.
 
 ## Authorized isolated bridge core (2026-10-13)
 

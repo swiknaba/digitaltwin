@@ -45,6 +45,12 @@ class UncertainThenReconciledGateway < RecordingCommanderGateway
   end
 end
 
+class UncertainThenRedeliveredGateway < UncertainThenReconciledGateway
+  def reconcile(delivery_key:)
+    Domains::FutureTasks::Dto::BridgeResolution.new
+  end
+end
+
 class OutcomeFailsOnceGateway < RecordingCommanderGateway
   def initialize
     super
@@ -260,6 +266,23 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect(settled.receipt.commander_item_id).to eq("commander-item-reconciled")
   end
 
+  it "uses the persisted execution sequence for a reconciled redelivery" do
+    task = create_task(due_at: now + 1)
+    Kirei::App.raw_db_connection[:jobs].update(available_at: Time.now - 1)
+    gateway = UncertainThenRedeliveredGateway.new
+    handlers = {
+      Platform::Jobs::Dto::JobKind::FutureTaskDue => Services::FutureTasks::DeliverDue.new(tasks:, gateway:),
+      Platform::Jobs::Dto::JobKind::FutureTaskReconcile => Services::FutureTasks::ReconcileDue.new(tasks:, gateway:)
+    }
+    worker = Platform::Jobs::Worker.new(handlers:)
+    Async { worker.tick }.wait
+    Kirei::App.raw_db_connection[:jobs].where(kind: "future_task.reconcile").update(available_at: Time.now - 1)
+    Async { worker.tick }.wait
+
+    expect(tasks.find(actor_id: "operator-1", id: task.id).state).to eq(Domains::FutureTasks::Dto::TaskState::AwaitingDisposition)
+    expect(gateway.deliveries.map { |delivery| delivery.fetch(:attempt) }).to eq([2])
+  end
+
   it "requires an owner capability to settle an uncertain task as terminally failed" do
     task = create_task(due_at: now + 1)
     Kirei::App.raw_db_connection[:jobs].update(available_at: Time.now - 1)
@@ -276,6 +299,8 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect(failed.state).to eq(Domains::FutureTasks::Dto::TaskState::Failed)
     retried = api.resolve_uncertain(token: capability(secret:, id: "cap-owner-retry", owner: true), id: task.id, expected_version: 1, resolution_key: "resolve-1", outcome: "failed", reason: "bridge rejected the key")
     expect(retried.state).to eq(Domains::FutureTasks::Dto::TaskState::Failed)
+    outcome_job = Platform::Jobs::Store.new.find_by_key(dispatch_key: "future-task-outcome:#{task.delivery_key}:owner_failed")
+    expect(outcome_job).not_to be_nil
     expect { tasks.update(actor_id: "operator-1", id: task.id, expected_version: 1, text: "retry", now:) }.to raise_error(ArgumentError, /already started/)
   end
 

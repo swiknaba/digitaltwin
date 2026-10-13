@@ -126,7 +126,7 @@ module Domains
         end
         database.transaction { executions.where(id: execution_id).update(state: ExecutionState::Delivering.serialize, updated_at: now) }
         receipt = gateway.deliver(task_id: task.fetch(:id), text: task.fetch(:text), references: json_array(task.fetch(:references)), due_at: task.fetch(:due_at),
-                                  timezone: task.fetch(:timezone), origin: task.fetch(:origin), attempt:, delivery_key: row.fetch(:delivery_key))
+                                  timezone: task.fetch(:timezone), origin: task.fetch(:origin), attempt: next_attempt_sequence(row.fetch(:id)), delivery_key: row.fetch(:delivery_key))
         mark_delivered(execution_id:, receipt:, now:)
         Platform::Jobs::Dto::Decision.complete
       rescue StandardError => error
@@ -214,7 +214,7 @@ module Domains
           mark_failed(execution_id:, reason: T.must(resolution.terminal_failure), now:)
         else
           receipt = gateway.deliver(task_id: task.fetch(:id), text: task.fetch(:text), references: json_array(task.fetch(:references)), due_at: task.fetch(:due_at),
-                                    timezone: task.fetch(:timezone), origin: task.fetch(:origin), attempt:, delivery_key: execution.fetch(:delivery_key))
+                                    timezone: task.fetch(:timezone), origin: task.fetch(:origin), attempt: next_attempt_sequence(execution.fetch(:id)), delivery_key: execution.fetch(:delivery_key))
           mark_delivered(execution_id:, receipt:, now:)
         end
         Platform::Jobs::Dto::Decision.complete
@@ -247,6 +247,7 @@ module Domains
                           detail: Sequel.pg_jsonb({ "reason" => (reason || "owner resolution")[0, 256] }), created_at: now)
           dispositions.insert(id: SecureRandom.uuid, task_id: task.fetch(:id), execution_id: execution.fetch(:id), idempotency_key: resolution_key,
                               idempotency_digest: digest, outcome: "owner_#{outcome}", created_at: now)
+          enqueue_outcome(delivery_key: execution.fetch(:delivery_key), outcome: "owner_#{outcome}", available_at: now)
           T.must(find(actor_id:, id:, origin:))
         end
       end

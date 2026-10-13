@@ -21,10 +21,12 @@ diff --git a/packages/desktop/package.json b/packages/desktop/package.json
 diff --git a/packages/desktop/src/main/index.ts b/packages/desktop/src/main/index.ts
 --- a/packages/desktop/src/main/index.ts
 +++ b/packages/desktop/src/main/index.ts
-@@ -18,5 +18,9 @@ if (acquireApplicationLock()) {
+@@ -18,5 +18,11 @@ if (acquireApplicationLock()) {
    void app.whenReady().then(async () => {
      marks.ready = Date.now()
      registerStorageSnapshotHandler()
++    const { registerConfiguredDesktopCommanderOperatorRuntime } = await import("./commander/operator-config-loader")
++    registerConfiguredDesktopCommanderOperatorRuntime()
 +    // This always evaluates the main-process-only provider. Missing or invalid
 +    // operator configuration remains closed; the harness is an explicit override.
 +    const { installCommanderDesktopBootstrap } = await import("./commander/bootstrap")
@@ -61,6 +63,56 @@ new file mode 100644
 +export function installTrustedCommanderBootstrap(bootstrap: HostOperatorBootstrap): void {
 +  installHostOperatorBootstrap(bootstrap)
 +}
+diff --git a/packages/desktop/src/main/commander/operator-config-loader.ts b/packages/desktop/src/main/commander/operator-config-loader.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/desktop/src/main/commander/operator-config-loader.ts
+@@ -0,0 +1,54 @@
++import { bridgeActorId, commanderConversationId } from "@digitaltwin/commander-bridge/core"
++import { registerDesktopCommanderOperatorRuntime } from "./operator-config"
++
++type OperatorConfig = Readonly<{ bridgeOrigin: string; capabilityBrokerOrigin: string; actorId: string; conversationId: string }>
++
++/**
++ * Reads a launch-only operator context supplied by the signed desktop launcher.
++ * It contains endpoints and verified identity labels only; proof exchange remains
++ * at the operator broker and no credential is written to OpenCode configuration.
++ */
++export function registerConfiguredDesktopCommanderOperatorRuntime(): void {
++  const raw = process.env.OPENCODE_COMMANDER_OPERATOR_CONTEXT
++  if (raw === undefined) return
++  const config = decode(raw)
++  registerDesktopCommanderOperatorRuntime({
++    async loadCommanderOperatorContext() {
++      return {
++        bridgeOrigin: config.bridgeOrigin,
++        identity: { actorId: bridgeActorId(config.actorId), conversationId: commanderConversationId(config.conversationId) },
++        exchange: { issue: async (input) => {
++          const response = await fetch(`${config.capabilityBrokerOrigin}/v1/commander/capability`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) })
++          const value: unknown = await response.json()
++          if (!response.ok || !isRecord(value) || typeof value.token !== "string" || value.token.length === 0) throw new Error("Commander capability broker rejected the operator context")
++          return { token: value.token }
++        } },
++        fetch: { fetch },
++      }
++    },
++  })
++}
++
++function decode(raw: string): OperatorConfig {
++  let value: unknown
++  try { value = JSON.parse(raw) as unknown } catch { throw new Error("Commander operator context is invalid") }
++  if (!isRecord(value) || typeof value.bridgeOrigin !== "string" || typeof value.capabilityBrokerOrigin !== "string" || typeof value.actorId !== "string" || typeof value.conversationId !== "string") throw new Error("Commander operator context is invalid")
++  validateOrigin(value.bridgeOrigin); validateOrigin(value.capabilityBrokerOrigin)
++  return value
++}
++
++function validateOrigin(value: string): void {
++  const url = new URL(value)
++  if (url.pathname !== "/" || url.search || url.hash || (url.protocol !== "https:" && url.hostname !== "127.0.0.1" && url.hostname !== "localhost")) throw new Error("Commander operator context has an unsafe origin")
++}
++
++function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }
 +
 +/**
 + * Every launch evaluates the desktop host's supported operator adapter before a
