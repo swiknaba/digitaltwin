@@ -61,6 +61,13 @@ input from the renderer IPC adapter. It deliberately has no configuration-file,
 environment-variable, or project-settings reader, so no renderer or project-supplied
 identity can become trusted by accident.
 
+`CommanderMainProcessPanel` is the corresponding renderer-facing main-process
+adapter. It accepts only panel text/actions, generates request IDs in main, and
+delegates to an already bootstrapped transport. Its snapshots contain conversation
+events but never capability proofs, endpoint configuration, actor identity, or
+runtime credentials. The maintained OpenCode patch must instantiate it only from an
+operator bootstrap; an absent bootstrap remains visibly `not-configured`.
+
 `FileConversationStore` is the single-operator durable adapter; it atomically writes
 only conversation/replay metadata with mode `0600`. A scaled deployment must replace
 it with a transactional operator-owned store. `InMemoryConversationStore` is only a
