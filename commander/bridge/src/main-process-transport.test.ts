@@ -24,11 +24,11 @@ test("main-process transport fails closed for an unsafe endpoint or a transport 
 })
 
 test("main-process transport opens and reconnects with independently consumed read proofs", async () => {
-  const conversation = { id: commanderConversationId("commander:global"), version: 1, status: "streaming" as const, lastCursor: streamCursor(1), events: [], requests: [] }
+  const conversation = { id: commanderConversationId("commander:global"), version: 1, status: "ready" as const, lastCursor: streamCursor(0), events: [], requests: [] }
   const actions: string[] = []
   const responses = [
     { ok: true, actorId: "owner-1", conversation },
-    { ok: true, conversation, events: [{ conversationId: conversation.id, cursor: streamCursor(1), deliveryId: "one", kind: "delta", text: "hello" }], resyncRequired: false },
+    { ok: true, conversation, events: [{ conversationId: conversation.id, turnId: "turn:request-1", cursor: streamCursor(1), deliveryId: "one", kind: "delta", text: "hello" }], resyncRequired: false },
   ]
   const client = new CommanderMainProcessTransport({
     baseUrl: "http://127.0.0.1:4312",
@@ -36,6 +36,6 @@ test("main-process transport opens and reconnects with independently consumed re
     fetch: { fetch: async (_url, _init) => ({ status: 200, json: async () => responses.shift() ?? {} }) },
   })
   assert.deepEqual(await client.open(), { ok: true, actorId: "owner-1", conversation })
-  assert.deepEqual(await client.reconnect(0), { ok: true, conversation, events: [{ conversationId: conversation.id, cursor: streamCursor(1), deliveryId: "one", kind: "delta", text: "hello" }], resyncRequired: false })
+  assert.deepEqual(await client.reconnect(0), { ok: true, conversation, events: [{ conversationId: conversation.id, turnId: "turn:request-1", cursor: streamCursor(1), deliveryId: "one", kind: "delta", text: "hello" }], resyncRequired: false })
   assert.deepEqual(actions, ["read", "read"])
 })

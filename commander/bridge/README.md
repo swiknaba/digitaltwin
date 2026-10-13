@@ -33,6 +33,20 @@ over a private Unix-socket/OS-ownership boundary or mutually authenticated servi
 channel. Do not reuse panel capabilities, project configuration, or a public HTTP
 route for runtime events.
 
+`createRuntimeEventNodeListener` and `listenRuntimeEventSocket` provide the narrow
+Unix-domain deployment adapter for that channel. It creates no credential: the
+operator supplies the runtime authenticator, and the adapter refuses to replace an
+existing socket before setting its mode to `0600`. It has one runtime-only POST route
+and cannot be mounted on the desktop listener. The deterministic test uses only
+`EphemeralTestAuthority` and a disposable local socket.
+
+Each prompt now creates and persists a bridge-owned `turn:<request-id>` before any
+runtime I/O. Runtime events, steer, and cancel carry that exact turn ID. A final
+event clears the active turn; later events from it are rejected. Runtime calls occur
+between a durable prepare phase and a durable completion/uncertain phase, outside
+the controller mutation queue, so a slow prompt cannot delay cancellation or event
+processing.
+
 `EphemeralTestAuthority` is only a local test adapter: it creates random, one-use
 proofs in process memory and writes no credential or identity state. Production must
 provide an operator bootstrap that derives actor and conversation identity outside

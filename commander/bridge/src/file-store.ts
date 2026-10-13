@@ -2,17 +2,11 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { randomUUID } from "node:crypto"
 import { dirname } from "node:path"
 import {
-  commanderConversationId,
-  bridgeRequestId,
-  capabilityPayloadDigest,
-  streamCursor,
-  type BridgeRequest,
+  decodeCommanderConversation,
   type CommanderConversation,
   type CommanderConversationId,
-  type ConversationStatus,
   type ConversationStore,
   type SaveResult,
-  type StreamEvent,
 } from "./contract.ts"
 
 type DiskState = Readonly<{ schema: 1; conversations: Readonly<Record<string, CommanderConversation>> }>
@@ -79,37 +73,9 @@ function validate(value: unknown): DiskState {
 }
 
 function decodeConversation(value: unknown): CommanderConversation {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.version !== "number" || !Number.isSafeInteger(value.version) || value.version < 0)
-    throw new Error("Invalid Commander conversation record")
-  if (!isStatus(value.status) || typeof value.lastCursor !== "number" || !Number.isSafeInteger(value.lastCursor) || value.lastCursor < 0)
-    throw new Error("Invalid Commander conversation record")
-  if (!Array.isArray(value.events) || !Array.isArray(value.requests))
-    throw new Error("Invalid Commander conversation record")
-  return {
-    id: commanderConversationId(value.id),
-    version: value.version,
-    status: value.status,
-    lastCursor: streamCursor(value.lastCursor),
-    events: value.events.map(decodeEvent),
-    requests: value.requests.map(decodeRequest),
-  }
-}
-
-function isStatus(value: unknown): value is ConversationStatus {
-  return value === "ready" || value === "streaming" || value === "cancel_requested" || value === "completed" || value === "canceled" || value === "failed"
-}
-
-function decodeEvent(value: unknown): StreamEvent {
-  if (!isRecord(value) || typeof value.conversationId !== "string" || typeof value.cursor !== "number" || typeof value.deliveryId !== "string" || typeof value.text !== "string") throw new Error("Invalid Commander stream event")
-  const base = { conversationId: commanderConversationId(value.conversationId), cursor: streamCursor(value.cursor), deliveryId: value.deliveryId, text: value.text }
-  if (value.kind === "delta" || value.kind === "notice") return { ...base, kind: value.kind }
-  if (value.kind === "final" && (value.outcome === "completed" || value.outcome === "canceled" || value.outcome === "failed")) return { ...base, kind: "final", outcome: value.outcome }
-  throw new Error("Invalid Commander stream event")
-}
-
-function decodeRequest(value: unknown): BridgeRequest {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.payloadDigest !== "string" || (value.action !== "prompt" && value.action !== "steer" && value.action !== "cancel") || (value.state !== "pending" && value.state !== "dispatched" && value.state !== "uncertain")) throw new Error("Invalid Commander request")
-  return { id: bridgeRequestId(value.id), action: value.action, payloadDigest: capabilityPayloadDigest(value.payloadDigest), state: value.state }
+  const decoded = decodeCommanderConversation(value)
+  if (!decoded) throw new Error("Invalid Commander conversation record")
+  return decoded
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -474,3 +474,20 @@ pass without chat activation.
   bridge; the source UI still has no renderer-to-transport wiring. The review also
   confirms the runtime ingress and production verifier are interfaces pending their
   deployment adapters, not live-authentication evidence.
+
+### Bridge lifecycle follow-up — 2026-10-13
+
+- The persisted conversation schema now contains an active bridge-generated turn ID
+  and its initiating prompt request. Prompt preparation persists that state before
+  runtime I/O; steering, cancellation, and runtime stream events must present the
+  same turn. Final output clears it, so late events cannot affect a later turn.
+- Runtime calls no longer run inside the controller mutation queue. The durable
+  prepare record is followed by an out-of-queue runtime call and a completion or
+  uncertain update, preserving cancellation and stream processing during a slow
+  prompt. Focused deterministic tests cover that race, duplicate actions, replay/body
+  substitution, restart recovery, and stale old-turn events.
+- The private runtime ingress now has a Unix-domain listener adapter that refuses to
+  replace an existing socket and sets its mode to `0600`. Its local test uses only
+  random in-memory proofs. Production runtime authentication and the patched
+  renderer-to-main transport remain operator/live Gate 1 work; neither is claimed as
+  complete by this source evidence.

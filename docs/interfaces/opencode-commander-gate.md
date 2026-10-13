@@ -173,6 +173,19 @@ credential or persistent identity material. This remains source/test evidence on
 until the patched OpenCode app compiles and a reviewed operator capability issuer plus
 operator-owned runtime channel are wired into that app.
 
+The bridge core now persists a generated active turn ID before calling the runtime.
+Every runtime event, steer, and cancellation is bound to that ID; final output clears
+it, and an event from an earlier turn is rejected rather than attaching to the next
+prompt. Runtime I/O runs outside the controller's durable-mutation queue, with
+prepare/complete-or-uncertain request records around the call. Deterministic tests
+cover a slow prompt with concurrent cancellation, duplicate actions, body
+substitution/replay, restart retention, and late old-turn events. A separate
+runtime-only Unix socket adapter creates a mode-`0600` socket without replacing an
+existing endpoint; its ephemeral local test authority is in-memory and writes no
+identity or credential state. This is adapter/test evidence, not a production
+operator-authentication claim. The patched OpenCode renderer still needs to invoke
+the reviewed main-process transport before Gate 1 can pass.
+
 ### Alternative only if the product specification changes
 
 The smallest reduced-scope product would replace the top-bar/transparent-conversation
