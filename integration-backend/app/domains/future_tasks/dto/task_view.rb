@@ -17,6 +17,7 @@ module Domains
         const :due_at, Time
         const :version, Integer
         const :state, TaskState
+        const :outcome, T.nilable(String), default: nil
         const :execution_id, String
         const :delivery_key, String
         const :receipt, T.nilable(DeliveryReceipt), default: nil

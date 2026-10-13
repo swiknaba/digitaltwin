@@ -139,6 +139,7 @@ RSpec.describe Domains::FutureTasks::Tasks do
     completed = api.record_disposition(token: capability(secret:, id: "disposition-1"), id: task.id, expected_version: 1, disposition_key: "answer-1",
                                        outcome: "project_work_requested")
     expect(completed.state).to eq(Domains::FutureTasks::Dto::TaskState::Completed)
+    expect(completed.outcome).to eq("project_work_requested")
     retried = api.record_disposition(token: capability(secret:, id: "disposition-2"), id: task.id, expected_version: 1, disposition_key: "answer-1",
                                      outcome: "project_work_requested")
     expect(retried.state).to eq(Domains::FutureTasks::Dto::TaskState::Completed)

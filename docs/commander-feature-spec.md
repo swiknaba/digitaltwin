@@ -51,7 +51,7 @@ Commander does not replace normal project coding chats. It is used for work such
 - reviewing a scheduled check-in and deciding whether to delegate work;
 - coordinating a task that crosses project context.
 
-The Commander implementation may run through Herdr so Digitaltwin can retain one runtime adapter for non-OpenCode CLIs. Herdr is not required in the normal OpenCode project-chat path.
+Commander runs through the maintained OpenCode bridge; no Herdr runtime remains in this product path.
 
 The Commander bridge is deliberately thin:
 

@@ -324,13 +324,14 @@ module Domains
       sig { params(row: T::Hash[Symbol, T.untyped]).returns(Dto::TaskView) }
       private def view(row)
         execution = current_execution(row.fetch(:id))
+        disposition = dispositions.where(task_id: row.fetch(:id)).order(Sequel.desc(:created_at)).first
         receipt = execution[:receipt]
         rendered_receipt = if receipt
                              Dto::DeliveryReceipt.new(delivery_key: String(receipt.fetch("delivery_key")), commander_item_id: String(receipt.fetch("commander_item_id")))
                            end
         Dto::TaskView.new(
           id: row.fetch(:id), actor_id: row.fetch(:actor_id), origin: row.fetch(:origin), text: row.fetch(:text), references: json_array(row.fetch(:references)), timezone: row.fetch(:timezone),
-          local_time: row.fetch(:local_time), due_at: row.fetch(:due_at), version: row.fetch(:version), state: TaskState.deserialize(row.fetch(:state)),
+          local_time: row.fetch(:local_time), due_at: row.fetch(:due_at), version: row.fetch(:version), state: TaskState.deserialize(row.fetch(:state)), outcome: disposition&.fetch(:outcome),
           execution_id: execution.fetch(:id), delivery_key: execution.fetch(:delivery_key), receipt: rendered_receipt
         )
       end

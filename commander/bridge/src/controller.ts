@@ -43,6 +43,19 @@ export class CommanderBridgeController {
   async steer(presentation: CapabilityPresentation, requestId: unknown, text: unknown): Promise<ActionResult> { return this.dispatch("steer", presentation, requestId, text) }
   async cancel(presentation: CapabilityPresentation, requestId: unknown): Promise<ActionResult> { return this.dispatch("cancel", presentation, requestId) }
 
+  /** Trusted bridge-internal delivery path; never accepts renderer input or a panel proof. */
+  async appendFutureTask(deliveryKey: string, text: string): Promise<string> {
+    return this.serial(async () => {
+      const conversation = await this.loadOrCreate()
+      const deliveryId = `future-task:${deliveryKey}`
+      const existing = conversation.events.find((event) => event.deliveryId === deliveryId)
+      if (existing) return deliveryId
+      const event: StreamEvent = { conversationId: this.input.conversationId, turnId: turnIdForRequest(bridgeRequestId(`future-${deliveryKey}`)), cursor: streamCursor(conversation.lastCursor + 1), deliveryId, kind: "notice", text }
+      if (!(await this.persist({ ...conversation, lastCursor: event.cursor, events: retainEvents([...conversation.events, event]) }))) throw new Error("Future-task notice persistence conflict")
+      return deliveryId
+    })
+  }
+
   async apply(input: unknown): Promise<ApplyResult> {
     return this.serial(async () => {
       const event = decodeStreamEvent(input)

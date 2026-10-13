@@ -16,7 +16,7 @@ export type BridgeHttpResponse = Readonly<{ status: 200 | 400 | 401; body: unkno
  * main process obtains one short-lived proof per action and sends it as a header.
  */
 export class CommanderBridgeHttpService {
-  private readonly controller: CommanderBridgeController
+  readonly controller: CommanderBridgeController
 
   constructor(controller: CommanderBridgeController) {
     this.controller = controller

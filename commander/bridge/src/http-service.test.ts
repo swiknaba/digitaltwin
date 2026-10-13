@@ -79,6 +79,8 @@ test("private future-task delivery is authenticated, receipt-idempotent, and rec
     assert.deepEqual(await duplicate.json(), receipt)
     const reconciled = await fetch(`${endpoint}/delivery-1`, { headers: { authorization: "Bearer operator-identity" } })
     assert.deepEqual(await reconciled.json(), receipt)
+    const panel = await controller.open((await authority.issue({ action: "read" })))
+    assert.equal(panel.ok && panel.conversation.events.at(-1)?.text, "Check in")
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
 })
 
@@ -101,6 +103,6 @@ test("a Ruby client completes the private future-task delivery and reconciliatio
   ].join(";")
   try {
     const result = await run("ruby", ["-e", program, `http://127.0.0.1:${address.port}/private/future-tasks/deliveries`, "ruby-operator-identity"])
-    assert.deepEqual(JSON.parse(result.stdout), { delivery_key: "ruby-delivery", commander_item_id: "future-task-ruby-delivery" })
+    assert.deepEqual(JSON.parse(result.stdout), { delivery_key: "ruby-delivery", commander_item_id: "future-task:ruby-delivery" })
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
 })

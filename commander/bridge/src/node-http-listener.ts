@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { timingSafeEqual } from "node:crypto"
 import type { BridgeHttpRequest, CommanderBridgeHttpService } from "./http-service.ts"
-import { FutureTaskDeliveryService, type FutureTaskDeliveryStore } from "./future-task-delivery.ts"
+import { FileFutureTaskDeliveryStore, FutureTaskDeliveryService, type FutureTaskDeliveryStore } from "./future-task-delivery.ts"
 
 const maximumBodyBytes = 64 * 1024
 const routes = ["/v1/commander/open", "/v1/commander/reconnect", "/v1/commander/prompt", "/v1/commander/steer", "/v1/commander/cancel"] as const
@@ -16,8 +16,13 @@ export type FutureTaskListenerOptions = Readonly<{ identity: string; store: Futu
  * RuntimeEventIngress instead of this public action surface.
  */
 export function createCommanderBridgeNodeListener(service: CommanderBridgeHttpService, futureTasks?: FutureTaskListenerOptions): Server {
-  const deliveries = futureTasks === undefined ? undefined : new FutureTaskDeliveryService(futureTasks.store)
+  const deliveries = futureTasks === undefined ? undefined : new FutureTaskDeliveryService({ store: futureTasks.store, publish: ({ deliveryKey, text }) => service.controller.appendFutureTask(deliveryKey, text) })
   return createServer((request, response) => { void handle(service, deliveries, futureTasks?.identity, request, response).catch(() => send(response, 500, { ok: false, reason: "internal" })) })
+}
+
+/** Operator bootstrap for the private delivery surface; identity and path stay outside project configuration. */
+export function createOperatorCommanderBridgeNodeListener(service: CommanderBridgeHttpService, input: Readonly<{ futureTaskIdentity: string; futureTaskReceiptPath: string }>): Server {
+  return createCommanderBridgeNodeListener(service, { identity: input.futureTaskIdentity, store: new FileFutureTaskDeliveryStore(input.futureTaskReceiptPath) })
 }
 
 async function handle(service: CommanderBridgeHttpService, deliveries: FutureTaskDeliveryService | undefined, identity: string | undefined, request: IncomingMessage, response: ServerResponse): Promise<void> {

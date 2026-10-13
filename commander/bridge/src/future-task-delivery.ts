@@ -69,16 +69,24 @@ export class FileFutureTaskDeliveryStore implements FutureTaskDeliveryStore {
 
 export class FutureTaskDeliveryService {
   private readonly store: FutureTaskDeliveryStore
+  private readonly publish: (input: Readonly<{ deliveryKey: string; text: string }>) => Promise<string>
+  private tail: Promise<void> = Promise.resolve()
 
-  constructor(store: FutureTaskDeliveryStore) { this.store = store }
+  constructor(input: Readonly<{ store: FutureTaskDeliveryStore; publish: (input: Readonly<{ deliveryKey: string; text: string }>) => Promise<string> }>) { this.store = input.store; this.publish = input.publish }
 
   async deliver(input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): Promise<FutureTaskDelivery> {
+    const result = this.tail.then(() => this.deliverNow(input), () => this.deliverNow(input))
+    this.tail = result.then(() => undefined, () => undefined)
+    return result
+  }
+
+  private async deliverNow(input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): Promise<FutureTaskDelivery> {
     const existing = await this.store.load(input.deliveryKey)
     if (existing) {
       if (!sameDelivery(existing, input)) throw new Error("delivery_key_reused")
       return existing
     }
-    const delivery: FutureTaskDelivery = { ...input, commanderItemId: `future-task-${input.deliveryKey}` }
+    const delivery: FutureTaskDelivery = { ...input, commanderItemId: await this.publish({ deliveryKey: input.deliveryKey, text: input.text }) }
     await this.store.save(delivery)
     return delivery
   }

@@ -22,9 +22,13 @@ copies this README, user project configuration, credentials, or operator state.
 
 `CommanderBridgeHttpService` is the private bridge's parsed protocol service;
 `createCommanderBridgeNodeListener` supplies the narrow Node adapter used for local
-operator-owned loopback or HTTPS binding. It accepts only five POST routes, requires
-JSON, caps a request at 64 KiB, and rejects unknown methods/routes. It deliberately
-has no runtime event route.
+operator-owned loopback or HTTPS binding. Its panel surface accepts only five POST
+JSON routes, caps a request at 64 KiB, and rejects unknown methods/routes. When an
+operator explicitly supplies a private identity and receipt store,
+`createOperatorCommanderBridgeNodeListener` additionally serves authenticated
+FutureTask POST delivery and GET reconciliation under `/private/future-tasks`.
+Those calls append a durable visible Commander notice and persist the receipt. It
+deliberately has no runtime event route.
 
 `CommanderMainProcessTransport` is the desktop-side client. Its main-process-only
 issuer receives the command action plus a SHA-256 binding of the request id and body;
@@ -82,10 +86,10 @@ events but never capability proofs, endpoint configuration, actor identity, or
 runtime credentials. The maintained OpenCode patch must instantiate it only from an
 operator bootstrap; an absent bootstrap remains visibly `not-configured`.
 
-`FileConversationStore` is the single-operator durable adapter; it atomically writes
-only conversation/replay metadata with mode `0600`. A scaled deployment must replace
-it with a transactional operator-owned store. `InMemoryConversationStore` is only a
-deterministic test double. `CapabilityVerifier` is likewise an adapter whose
+`FileConversationStore` and `FileFutureTaskDeliveryStore` are single-operator durable
+adapters; they atomically write replay metadata and delivery receipts with mode
+`0600`. A scaled deployment must replace them with a transactional operator-owned
+store. Their test doubles are deterministic only. `CapabilityVerifier` is likewise an adapter whose
 implementation must validate audience, actor, conversation, action, request binding,
 expiry, and replay atomically. This component refuses to derive any actor or
 conversation identity from panel input.
