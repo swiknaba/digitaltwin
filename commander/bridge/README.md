@@ -39,6 +39,14 @@ provide an operator bootstrap that derives actor and conversation identity outsi
 the renderer/project, issues short-lived command proofs, and separately authenticates
 the runtime identity. No production credential format or provider is assumed here.
 
+`OperatorMainProcessCapabilityIssuer` and
+`createOperatorMainProcessTransport` are the production bootstrap seam. The desktop
+main process receives an already-verified `OperatorDesktopIdentity` and an
+operator-owned proof exchange; it closes over both and accepts only action/binding
+input from the renderer IPC adapter. It deliberately has no configuration-file,
+environment-variable, or project-settings reader, so no renderer or project-supplied
+identity can become trusted by accident.
+
 `FileConversationStore` is the single-operator durable adapter; it atomically writes
 only conversation/replay metadata with mode `0600`. A scaled deployment must replace
 it with a transactional operator-owned store. `InMemoryConversationStore` is only a

@@ -94,7 +94,7 @@ function decodeReadResult(status: number, value: unknown, reconnect: boolean): O
 }
 
 function isFailure(value: string): value is Extract<ActionResult, { ok: false }>["reason"] {
-  return value === "action_mismatch" || value === "actor_mismatch" || value === "audience_mismatch" || value === "conversation_mismatch" || value === "expired" || value === "invalid" || value === "replayed" || value === "invalid_request" || value === "persistence_conflict" || value === "terminal" || value === "uncertain"
+  return value === "action_mismatch" || value === "actor_mismatch" || value === "audience_mismatch" || value === "conversation_mismatch" || value === "expired" || value === "invalid" || value === "replayed" || value === "invalid_request" || value === "request_conflict" || value === "persistence_conflict" || value === "terminal" || value === "uncertain"
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

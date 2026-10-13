@@ -4,6 +4,7 @@ import { dirname } from "node:path"
 import {
   commanderConversationId,
   bridgeRequestId,
+  capabilityPayloadDigest,
   streamCursor,
   type BridgeRequest,
   type CommanderConversation,
@@ -107,8 +108,8 @@ function decodeEvent(value: unknown): StreamEvent {
 }
 
 function decodeRequest(value: unknown): BridgeRequest {
-  if (!isRecord(value) || typeof value.id !== "string" || (value.action !== "prompt" && value.action !== "steer" && value.action !== "cancel") || (value.state !== "pending" && value.state !== "dispatched" && value.state !== "uncertain")) throw new Error("Invalid Commander request")
-  return { id: bridgeRequestId(value.id), action: value.action, state: value.state }
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.payloadDigest !== "string" || (value.action !== "prompt" && value.action !== "steer" && value.action !== "cancel") || (value.state !== "pending" && value.state !== "dispatched" && value.state !== "uncertain")) throw new Error("Invalid Commander request")
+  return { id: bridgeRequestId(value.id), action: value.action, payloadDigest: capabilityPayloadDigest(value.payloadDigest), state: value.state }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

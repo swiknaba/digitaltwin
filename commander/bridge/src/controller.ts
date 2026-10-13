@@ -46,7 +46,7 @@ export class CommanderBridgeController {
       if (!authorization.ok) return authorization
       const conversation = await this.loadOrCreate()
       const first = conversation.events[0]?.cursor ?? streamCursor(conversation.lastCursor + 1)
-      const resyncRequired = after < first - 1
+      const resyncRequired = after < first - 1 || after > conversation.lastCursor
       return { ok: true, conversation, events: resyncRequired ? conversation.events : conversation.events.filter((event) => event.cursor > after), resyncRequired }
     })
   }
@@ -65,7 +65,8 @@ export class CommanderBridgeController {
       if (atCursor) return sameEvent(atCursor, event) ? { ok: true, state: "duplicate" } : { ok: false, reason: "cursor_conflict" }
       if (conversation.events.some((stored) => stored.deliveryId === event.deliveryId)) return { ok: false, reason: "delivery_conflict" }
       if (event.cursor !== streamCursor(conversation.lastCursor + 1)) return { ok: false, reason: "stream_gap" }
-      const status = terminalStatus(event) ?? (conversation.status === "cancel_requested" ? "cancel_requested" : "streaming")
+      if (conversation.status === "ready" || isTerminal(conversation.status)) return { ok: false, reason: "invalid_event" }
+      const status = event.kind === "final" ? "ready" : (conversation.status === "cancel_requested" ? "cancel_requested" : "streaming")
       return (await this.persist({ ...conversation, status, lastCursor: event.cursor, events: [...conversation.events, event].slice(-retainedEvents) })) ? { ok: true, state: "applied" } : { ok: false, reason: "persistence_conflict" }
     })
   }
@@ -82,10 +83,13 @@ export class CommanderBridgeController {
       if (!authorization.ok) return authorization
       const conversation = await this.loadOrCreate()
       const existing = conversation.requests.find((request) => request.id === requestId)
-      if (existing) return existing.state === "uncertain" ? { ok: false, reason: "uncertain" } : { ok: true, state: "already_recorded" }
+      if (existing) {
+        if (existing.action !== action || existing.payloadDigest !== binding.payloadDigest) return { ok: false, reason: "request_conflict" }
+        return existing.state === "uncertain" ? { ok: false, reason: "uncertain" } : { ok: true, state: "already_recorded" }
+      }
       if (isTerminal(conversation.status)) return { ok: false, reason: "terminal" }
-      const pending: BridgeRequest = { id: requestId, action, state: "pending" }
-      if (!(await this.persist({ ...conversation, status: action === "prompt" ? "streaming" : conversation.status, requests: [...conversation.requests, pending].slice(-retainedRequests) }))) return { ok: false, reason: "persistence_conflict" }
+      const pending: BridgeRequest = { id: requestId, action, payloadDigest: binding.payloadDigest, state: "pending" }
+      if (!(await this.persist({ ...conversation, status: action === "prompt" ? "streaming" : conversation.status, requests: retainRequests([...conversation.requests, pending]) }))) return { ok: false, reason: "persistence_conflict" }
       try {
         if (action === "prompt" && text !== undefined) await this.input.runtime.prompt({ conversationId: this.input.conversationId, requestId, text, actorId: authorization.actorId })
         if (action === "steer" && text !== undefined) await this.input.runtime.steer({ conversationId: this.input.conversationId, requestId, text, actorId: authorization.actorId })
@@ -135,11 +139,15 @@ export class CommanderBridgeController {
   private serial<T>(work: () => Promise<T>): Promise<T> { const result = this.tail.then(work, work); this.tail = result.then(() => undefined, () => undefined); return result }
 }
 
-function terminalStatus(event: StreamEvent): ConversationStatus | undefined { return event.kind === "final" ? event.outcome : undefined }
 function isTerminal(status: ConversationStatus): boolean { return status === "completed" || status === "canceled" || status === "failed" }
 function sameBinding(left: CapabilityBinding | undefined, right: CapabilityBinding | undefined): boolean {
   return left === undefined && right === undefined || left !== undefined && right !== undefined && left.requestId === right.requestId && left.payloadDigest === right.payloadDigest
 }
 function isText(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0 && value.length <= 16_000 }
 function validText(value: unknown): string | undefined { return isText(value) ? value : undefined }
+function retainRequests(requests: readonly BridgeRequest[]): readonly BridgeRequest[] {
+  const unresolved = requests.filter((request) => request.state === "pending" || request.state === "uncertain")
+  const dispatched = requests.filter((request) => request.state === "dispatched").slice(-Math.max(0, retainedRequests - unresolved.length))
+  return [...unresolved, ...dispatched]
+}
 function sameEvent(left: StreamEvent, right: StreamEvent): boolean { return left.cursor === right.cursor && left.deliveryId === right.deliveryId && left.kind === right.kind && left.text === right.text && left.outcome === right.outcome }

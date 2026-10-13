@@ -11,19 +11,19 @@ type BridgeRoute = (typeof routes)[number]
  * RuntimeEventIngress instead of this public action surface.
  */
 export function createCommanderBridgeNodeListener(service: CommanderBridgeHttpService): Server {
-  return createServer((request, response) => { void handle(service, request, response) })
+  return createServer((request, response) => { void handle(service, request, response).catch(() => send(response, 500, { ok: false, reason: "internal" })) })
 }
 
 async function handle(service: CommanderBridgeHttpService, request: IncomingMessage, response: ServerResponse): Promise<void> {
-  if (request.method !== "POST") return send(response, 405, { ok: false, reason: "method_not_allowed" })
-  const route = routeFor(request.url)
-  if (!route) return send(response, 404, { ok: false, reason: "not_found" })
-  if (!request.headers["content-type"]?.toLowerCase().startsWith("application/json")) return send(response, 400, { ok: false, reason: "invalid_content_type" })
-  const body = await readJson(request)
-  if (!body.ok) return send(response, body.status, { ok: false, reason: body.reason })
-  const authorization = request.headers.authorization
-  const input: BridgeHttpRequest = authorization === undefined ? { method: "POST", path: route, body: body.value } : { method: "POST", path: route, authorization, body: body.value }
   try {
+    if (request.method !== "POST") return send(response, 405, { ok: false, reason: "method_not_allowed" })
+    const route = routeFor(request.url)
+    if (!route) return send(response, 404, { ok: false, reason: "not_found" })
+    if (!request.headers["content-type"]?.toLowerCase().startsWith("application/json")) return send(response, 400, { ok: false, reason: "invalid_content_type" })
+    const body = await readJson(request)
+    if (!body.ok) return send(response, body.status, { ok: false, reason: body.reason })
+    const authorization = request.headers.authorization
+    const input: BridgeHttpRequest = authorization === undefined ? { method: "POST", path: route, body: body.value } : { method: "POST", path: route, authorization, body: body.value }
     const result = await service.handle(input)
     return send(response, result.status, result.body)
   } catch { return send(response, 500, { ok: false, reason: "internal" }) }

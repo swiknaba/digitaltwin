@@ -33,7 +33,7 @@ test("local desktop transport uses one bound ephemeral proof through the private
     const transport = new CommanderMainProcessTransport({ baseUrl: `http://127.0.0.1:${address.port}`, capabilityIssuer: authority, fetch: { fetch } })
     assert.deepEqual(await transport.prompt("request-1", "hello"), { ok: true, state: "dispatched" })
     assert.deepEqual(runtime.prompts, ["hello"])
-    assert.deepEqual(await transport.prompt("request-1", "altered"), { ok: true, state: "already_recorded" })
+    assert.deepEqual(await transport.prompt("request-1", "altered"), { ok: false, reason: "request_conflict" })
     const proof = await authority.issue({ action: "prompt", binding: commandCapabilityBinding("prompt", "request-2", "original") })
     const substituted = await fetch(`http://127.0.0.1:${address.port}/v1/commander/prompt`, { method: "POST", headers: { authorization: `Bearer ${proof.token}`, "content-type": "application/json" }, body: JSON.stringify({ requestId: "request-2", text: "altered" }) })
     const unknown = await fetch(`http://127.0.0.1:${address.port}/v1/commander/event`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
@@ -49,6 +49,8 @@ test("runtime events require their separate ephemeral runtime proof", async () =
   const authority = new EphemeralTestAuthority({ actorId: actor, conversationId: conversation, now: () => now })
   const controller = new CommanderBridgeController({ actorId: actor, conversationId: conversation, runtime: new Runtime(), store: new InMemoryConversationStore(), verifier: authority, now: () => now })
   const ingress = new RuntimeEventIngress({ controller, conversationId: conversation, authenticator: authority, now: () => now })
+  const binding = commandCapabilityBinding("prompt", "request-start", "hello")
+  await controller.prompt(await authority.issue({ action: "prompt", binding }), "request-start", "hello")
   const event = { conversationId: conversation, cursor: streamCursor(1), deliveryId: "event-1", kind: "delta" as const, text: "working" }
   assert.deepEqual(await ingress.deliver({ token: "not-a-runtime-proof" }, event), { ok: false, reason: "unauthenticated" })
   assert.deepEqual(await ingress.deliver(authority.issueRuntimeEventProof(), event), { ok: true, state: "applied" })

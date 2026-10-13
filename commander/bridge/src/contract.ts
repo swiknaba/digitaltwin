@@ -37,7 +37,7 @@ export type StreamEvent =
 export type ConversationStatus = "ready" | "streaming" | "cancel_requested" | "completed" | "canceled" | "failed"
 export type RequestedAction = "prompt" | "steer" | "cancel"
 export type RequestState = "pending" | "dispatched" | "uncertain"
-export type BridgeRequest = Readonly<{ id: BridgeRequestId; action: RequestedAction; state: RequestState }>
+export type BridgeRequest = Readonly<{ id: BridgeRequestId; action: RequestedAction; payloadDigest: CapabilityPayloadDigest; state: RequestState }>
 
 export type CommanderConversation = Readonly<{
   id: CommanderConversationId
@@ -62,7 +62,7 @@ export interface CommanderRuntime {
 }
 
 export type AuthorizeResult = Readonly<{ ok: true; actorId: BridgeActorId }> | Readonly<{ ok: false; reason: CapabilityRejection }>
-export type ActionResult = Readonly<{ ok: true; state: "dispatched" | "already_recorded" }> | Readonly<{ ok: false; reason: CapabilityRejection | "invalid_request" | "persistence_conflict" | "terminal" | "uncertain" }>
+export type ActionResult = Readonly<{ ok: true; state: "dispatched" | "already_recorded" }> | Readonly<{ ok: false; reason: CapabilityRejection | "invalid_request" | "request_conflict" | "persistence_conflict" | "terminal" | "uncertain" }>
 export type ApplyResult = Readonly<{ ok: true; state: "applied" | "duplicate" }> | Readonly<{ ok: false; reason: "cross_conversation" | "cursor_conflict" | "delivery_conflict" | "invalid_event" | "stream_gap" | "persistence_conflict" }>
 
 export function commanderConversationId(value: string): CommanderConversationId {
@@ -113,8 +113,8 @@ export function decodeCommanderConversation(value: unknown): CommanderConversati
 }
 
 function decodeRequest(value: unknown): BridgeRequest | undefined {
-  if (!isRecord(value) || typeof value.id !== "string" || !isRequestedAction(value.action) || !isRequestState(value.state)) return undefined
-  try { return { id: bridgeRequestId(value.id), action: value.action, state: value.state } } catch { return undefined }
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.payloadDigest !== "string" || !isRequestedAction(value.action) || !isRequestState(value.state)) return undefined
+  try { return { id: bridgeRequestId(value.id), action: value.action, payloadDigest: capabilityPayloadDigest(value.payloadDigest), state: value.state } } catch { return undefined }
 }
 function isStatus(value: unknown): value is ConversationStatus { return value === "ready" || value === "streaming" || value === "cancel_requested" || value === "completed" || value === "canceled" || value === "failed" }
 function isRequestedAction(value: unknown): value is RequestedAction { return value === "prompt" || value === "steer" || value === "cancel" }

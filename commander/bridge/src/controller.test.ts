@@ -23,6 +23,7 @@ function subject() { const store = new InMemoryConversationStore(); const runtim
 
 test("reconnect replays persisted events from the caller cursor", async () => {
   const input = subject()
+  await input.controller.prompt(input.verifier.issue("start", "prompt"), "request-start", "hello")
   await input.controller.apply({ conversationId: conversation, cursor: streamCursor(1), deliveryId: "one", kind: "delta", text: "one" })
   await input.controller.apply({ conversationId: conversation, cursor: streamCursor(2), deliveryId: "two", kind: "final", text: "two", outcome: "completed" })
   const result = await input.controller.reconnect(input.verifier.issue("read", "read"), 0)
@@ -50,6 +51,6 @@ test("marks a failed runtime request uncertain and refuses to resend it", async 
   assert.deepEqual(await input.controller.prompt(input.verifier.issue("retry", "prompt"), "request-1", "hello"), { ok: false, reason: "uncertain" })
   assert.deepEqual(input.runtime.prompts, ["request-1"])
 })
-test("does not overwrite a terminal stream state with cancellation", async () => {
-  const input = subject(); await input.controller.apply({ conversationId: conversation, cursor: streamCursor(1), deliveryId: "done", kind: "final", text: "done", outcome: "completed" }); assert.deepEqual(await input.controller.cancel(input.verifier.issue("cancel", "cancel"), "request-1"), { ok: false, reason: "terminal" }); assert.equal((await input.store.load(conversation))?.status, "completed")
+test("final output returns the persistent conversation to ready for the next prompt", async () => {
+  const input = subject(); await input.controller.prompt(input.verifier.issue("start", "prompt"), "request-start", "hello"); await input.controller.apply({ conversationId: conversation, cursor: streamCursor(1), deliveryId: "done", kind: "final", text: "done", outcome: "completed" }); assert.deepEqual(await input.controller.prompt(input.verifier.issue("next", "prompt"), "request-next", "again"), { ok: true, state: "dispatched" }); assert.equal((await input.store.load(conversation))?.status, "streaming")
 })

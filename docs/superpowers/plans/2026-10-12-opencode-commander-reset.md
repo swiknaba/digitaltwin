@@ -463,3 +463,14 @@ pass without chat activation.
   so this is not represented as an Opus review or review approval. The local bridge
   changes instead have strict isolated TypeScript and deterministic loopback evidence
   recorded in the Gate contract.
+- **Claude Code transport review — 2026-10-13:** the authenticated normal-user CLI
+  completed a read-only review using canonical `claude-opus-5-5` at `medium` effort.
+  It identified six blockers: turn lifecycle after final output, runtime calls under
+  the global controller lock, untargeted steer/cancel, listener rejection safety,
+  uncertain post-dispatch persistence failures, and request-id/digest retention.
+  The local follow-up fixes multi-turn readiness, ahead-cursor resync, body-digest
+  request conflicts, unresolved-request retention, and listener exception handling.
+  The runtime-lock and target-turn design remain open and block a production-ready
+  bridge; the source UI still has no renderer-to-transport wiring. The review also
+  confirms the runtime ingress and production verifier are interfaces pending their
+  deployment adapters, not live-authentication evidence.

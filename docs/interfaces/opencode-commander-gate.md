@@ -143,11 +143,19 @@ toolchain completed and loaded successfully. The remaining failure is therefore
 specific to this OpenCode workspace/dependency graph, not a global Bun version,
 architecture, firewall, or cache problem.
 
-On 2026-10-13 the existing local Docker daemon was available, but no official
-`oven/bun:1.4.2` image was cached locally. No image was pulled and no Docker, network,
-or firewall configuration was changed. Therefore an existing local Linux build
-fallback is not available. Even if separately authorized later, a Linux build would
-only be Linux workspace evidence; it cannot prove the macOS desktop UI gate.
+On 2026-10-13, the existing local Docker daemon pulled the official
+`docker.io/oven/bun:1.4.2` image at
+`oven/bun@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895`.
+No daemon, firewall, or security configuration was changed; the check used a
+read-only disposable source mount and no secrets, privileged container, or host
+networking. Because macOS bind-mount linking reproduces the partial graph, the
+patched source was copied into the container's native Linux filesystem before its
+install. There, Bun `1.4.2` completed the frozen install (2,494 installs across
+2,928 packages), `@opencode/gui-extensions` typecheck exited `0`, and its tests
+passed `177` with `1` skipped and `0` failed. This is Linux build/typecheck/test
+evidence for the exact pinned patch only. It does not prove packaged macOS desktop
+startup, the visible control, main-process bootstrap, or Gate 1's live interaction
+criteria.
 
 The panel intentionally reports that no bridge is connected. The isolated bridge
 core now covers persistence, stream/reconnect, and capability semantics, but no
