@@ -16,7 +16,7 @@ export type FutureTaskListenerOptions = Readonly<{ identity: string; store: Futu
  * RuntimeEventIngress instead of this public action surface.
  */
 export function createCommanderBridgeNodeListener(service: CommanderBridgeHttpService, futureTasks?: FutureTaskListenerOptions): Server {
-  const deliveries = futureTasks === undefined ? undefined : new FutureTaskDeliveryService({ store: futureTasks.store, publish: ({ deliveryKey, text }) => service.controller.appendFutureTask(deliveryKey, text) })
+  const deliveries = futureTasks === undefined ? undefined : new FutureTaskDeliveryService({ store: futureTasks.store, publish: (delivery) => service.controller.appendFutureTask(delivery.deliveryKey, futureTaskNotice(delivery)) })
   return createServer((request, response) => { void handle(service, deliveries, futureTasks?.identity, request, response).catch(() => send(response, 500, { ok: false, reason: "internal" })) })
 }
 
@@ -81,6 +81,11 @@ function deliveryInput(value: unknown): Readonly<{ deliveryKey: string; taskId: 
 
 function responseBody(delivery: FutureTaskResolution): Readonly<{ delivery_key: string; commander_item_id: string }> | Readonly<{ terminal_failure: string }> {
   return "terminalFailure" in delivery ? { terminal_failure: delivery.terminalFailure } : { delivery_key: delivery.deliveryKey, commander_item_id: delivery.commanderItemId }
+}
+
+function futureTaskNotice(input: Readonly<{ taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): string {
+  const references = input.references.length === 0 ? "none" : input.references.join(", ")
+  return `[Future task ${input.taskId}] ${input.text}\nOrigin: Commander\nReferences: ${references}\nScheduled: ${input.dueAt} (${input.timezone})\nAttempt: 1\nOutcome: awaiting user disposition`
 }
 
 async function readJson(request: IncomingMessage): Promise<Readonly<{ ok: true; value: unknown }> | Readonly<{ ok: false; status: 400 | 413; reason: "invalid_json" | "body_too_large" }>> {

@@ -80,7 +80,12 @@ test("private future-task delivery is authenticated, receipt-idempotent, and rec
     const reconciled = await fetch(`${endpoint}/delivery-1`, { headers: { authorization: "Bearer operator-identity" } })
     assert.deepEqual(await reconciled.json(), receipt)
     const panel = await controller.open((await authority.issue({ action: "read" })))
-    assert.equal(panel.ok && panel.conversation.events.at(-1)?.text, "Check in")
+    const visible = panel.ok ? panel.conversation.events.at(-1)?.text : undefined
+    assert.match(visible ?? "", /Future task task-1/)
+    assert.match(visible ?? "", /References: repo:digitaltwin/)
+    assert.match(visible ?? "", /Scheduled: 2026-10-13T12:00:00Z \(UTC\)/)
+    assert.match(visible ?? "", /Attempt: 1/)
+    assert.match(visible ?? "", /Outcome: awaiting user disposition/)
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
 })
 
@@ -151,6 +156,6 @@ test("the configured Ruby gateway delivers a due task to the real Node listener 
     const receipt = JSON.parse(json) as { task_id: string; delivery_key: string; commander_item_id: string }
     assert.equal(receipt.commander_item_id, `future-task:${receipt.delivery_key}`)
     const panel = await controller.open(await authority.issue({ action: "read" }))
-    assert.equal(panel.ok && panel.conversation.events.at(-1)?.text, "Configured gateway delivery")
+    assert.match(panel.ok ? panel.conversation.events.at(-1)?.text ?? "" : "", /Configured gateway delivery/)
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
 })

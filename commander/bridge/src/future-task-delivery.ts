@@ -74,10 +74,10 @@ export class FileFutureTaskDeliveryStore implements FutureTaskDeliveryStore {
 
 export class FutureTaskDeliveryService {
   private readonly store: FutureTaskDeliveryStore
-  private readonly publish: (input: Readonly<{ deliveryKey: string; text: string }>) => Promise<string>
+  private readonly publish: (input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>) => Promise<string>
   private tail: Promise<void> = Promise.resolve()
 
-  constructor(input: Readonly<{ store: FutureTaskDeliveryStore; publish: (input: Readonly<{ deliveryKey: string; text: string }>) => Promise<string> }>) { this.store = input.store; this.publish = input.publish }
+  constructor(input: Readonly<{ store: FutureTaskDeliveryStore; publish: (input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>) => Promise<string> }>) { this.store = input.store; this.publish = input.publish }
 
   async deliver(input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): Promise<FutureTaskResolution> {
     const result = this.tail.then(() => this.deliverNow(input), () => this.deliverNow(input))
@@ -92,7 +92,7 @@ export class FutureTaskDeliveryService {
       return existing
     }
     let delivery: FutureTaskResolution
-    try { delivery = { ...input, commanderItemId: await this.publish({ deliveryKey: input.deliveryKey, text: input.text }) } }
+    try { delivery = { ...input, commanderItemId: await this.publish(input) } }
     catch (error) {
       if (!(error instanceof PermanentFutureTaskDeliveryError)) throw error
       delivery = { deliveryKey: input.deliveryKey, terminalFailure: error.message }
