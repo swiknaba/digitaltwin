@@ -456,3 +456,10 @@ pass without chat activation.
   `claude-opus-5-5` medium setting. It found no code blocker; its final stale
   criterion wording was corrected after the rereview. It again confirms that the
   uncompiled UI shell cannot clear Gate 1.
+- **Claude Code transport review attempt — 2026-10-13:** invoked the installed
+  `claude` CLI `2.1.287` with `--model opus --effort medium` for a read-only review
+  of the bridge transport. The sandboxed attempt reported `Not logged in`; the
+  existing-session attempt produced no review text. No model response is recorded,
+  so this is not represented as an Opus review or review approval. The local bridge
+  changes instead have strict isolated TypeScript and deterministic loopback evidence
+  recorded in the Gate contract.
