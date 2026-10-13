@@ -28,6 +28,7 @@ export class TrustedOpenCodeContinuation {
     const prepared = await this.input.controller.prepareContinuation(input.presentation, input.deliveryId, input.requestId, input.text)
     if (!prepared.ok) return { ok: false, reason: continuationFailure(prepared.reason) }
     if (prepared.state === "already_recorded") return { ok: true, state: "continued" }
+    if (prepared.state === "reconcile") return this.reconcile(prepared.requestId, prepared.provenance, prepared.idempotencyKey)
 
     try {
       const session = await this.input.client.session(prepared.provenance)

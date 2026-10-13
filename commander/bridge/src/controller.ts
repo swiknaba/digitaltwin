@@ -13,7 +13,7 @@ const retainedRequests = 256
 type OpenResult = Readonly<{ ok: true; actorId: BridgeActorId; conversation: CommanderConversation }> | Readonly<{ ok: false; reason: CapabilityRejection }>
 type ReconnectResult = Readonly<{ ok: true; conversation: CommanderConversation; events: readonly StreamEvent[]; resyncRequired: boolean }> | Readonly<{ ok: false; reason: "invalid_request" | CapabilityRejection }>
 type PreparedDispatch = Readonly<{ ok: true; action: RequestedAction; requestId: BridgeRequestId; turnId: CommanderTurnId; text?: string; actorId: BridgeActorId }> | Readonly<{ ok: false; result: ActionResult }>
-export type PreparedContinuation = Readonly<{ ok: true; state: "prepared" | "already_recorded"; requestId: BridgeRequestId; provenance: OpenCodeMessageProvenance; idempotencyKey: string }> | Readonly<{ ok: false; reason: CapabilityRejection | "invalid_request" | "missing" | "inaccessible" | "stale" | "request_conflict" | "persistence_conflict" | "uncertain" }>
+export type PreparedContinuation = Readonly<{ ok: true; state: "prepared" | "already_recorded" | "reconcile"; requestId: BridgeRequestId; provenance: OpenCodeMessageProvenance; idempotencyKey: string }> | Readonly<{ ok: false; reason: CapabilityRejection | "invalid_request" | "missing" | "inaccessible" | "stale" | "request_conflict" | "persistence_conflict" | "uncertain" }>
 
 /** Persists a turn before runtime I/O; only durable mutations use the local queue. */
 export class CommanderBridgeController {
@@ -73,7 +73,7 @@ export class CommanderBridgeController {
         if (existing.deliveryId !== rawDeliveryId || existing.payloadDigest !== binding.payloadDigest || !sameProvenance(existing.provenance, provenance)) return { ok: false, reason: "request_conflict" }
         if (existing.state === "continued") return { ok: true, state: "already_recorded", requestId, provenance: existing.provenance, idempotencyKey: existing.idempotencyKey }
         if (existing.state === "rejected") return { ok: false, reason: existing.failure ?? "uncertain" }
-        return { ok: false, reason: "uncertain" }
+        return { ok: true, state: "reconcile", requestId, provenance: existing.provenance, idempotencyKey: existing.idempotencyKey }
       }
       const continuation: ContinuationRequest = { id: requestId, deliveryId: rawDeliveryId, provenance, payloadDigest: binding.payloadDigest, idempotencyKey: continuationIdempotencyKey(this.input.conversationId, requestId, binding.payloadDigest), state: "pending" }
       if (!(await this.persist({ ...conversation, continuations: [...conversation.continuations, continuation] }))) return { ok: false, reason: "persistence_conflict" }
@@ -88,7 +88,7 @@ export class CommanderBridgeController {
       const current = conversation.continuations.find((candidate) => candidate.id === requestId)
       if (!current) return false
       const state = outcome === "continued" ? "continued" : outcome === "uncertain" ? "uncertain" : "rejected"
-      if (current.state !== "pending") return current.state === state && (state !== "rejected" || current.failure === outcome)
+      if (current.state !== "pending" && !(current.state === "uncertain" && outcome === "continued")) return current.state === state && (state !== "rejected" || current.failure === outcome)
       const next: ContinuationRequest = outcome === "continued" || outcome === "uncertain"
         ? { ...current, state: outcome }
         : { ...current, state: "rejected", failure: outcome }

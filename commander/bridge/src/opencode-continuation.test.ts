@@ -95,7 +95,7 @@ test("never replaces a missing message after a found session", async () => {
   assert.deepEqual(input.client.calls, ["session:runtime-a:project-a:ses_child", "message:msg_reply"])
 })
 
-test("reconciles an unknown post-prompt outcome and remains no-retry after restart", async () => {
+test("reconciles an unknown post-prompt outcome without replaying the prompt after restart", async () => {
   const input = await subject()
   input.client.promptState = "unknown"
   input.client.reconcileState = "unknown"
@@ -104,5 +104,21 @@ test("reconciles an unknown post-prompt outcome and remains no-retry after resta
   const resumed = new TrustedOpenCodeContinuation({ controller: restarted, client: input.client })
   assert.deepEqual(await resumed.continue({ presentation: continuationProof(input.verifier, "fresh"), deliveryId: "delivery-1", requestId: "continue-1", text: "Follow up" }), { ok: false, reason: "uncertain" })
   assert.equal(input.client.calls.filter((call) => call.startsWith("prompt:")).length, 1)
-  assert.equal(input.client.calls.filter((call) => call.startsWith("reconcile:")).length, 1)
+  assert.equal(input.client.calls.filter((call) => call.startsWith("reconcile:")).length, 2)
+})
+
+test("reconciles a persisted pending intent after process death without another prompt", async () => {
+  const input = await subject()
+  assert.deepEqual(await input.controller.prepareContinuation(continuationProof(input.verifier, "prepare"), "delivery-1", "continue-1", "Follow up"), {
+    ok: true,
+    state: "prepared",
+    requestId: bridgeRequestId("continue-1"),
+    provenance,
+    idempotencyKey: "commander-continue:commander:global:continue-1:eabaa3c0d2576962333a593d27bf75bd1a728644234baf94a5840923abfe91ea",
+  })
+  input.client.reconcileState = "accepted"
+  const restarted = new CommanderBridgeController({ actorId: actor, conversationId: conversation, store: input.store, runtime: input.runtime, verifier: input.verifier, now: () => now })
+  const resumed = new TrustedOpenCodeContinuation({ controller: restarted, client: input.client })
+  assert.deepEqual(await resumed.continue({ presentation: continuationProof(input.verifier, "recover"), deliveryId: "delivery-1", requestId: "continue-1", text: "Follow up" }), { ok: true, state: "continued" })
+  assert.deepEqual(input.client.calls, ["reconcile:msg_reply:commander-continue:commander:global:continue-1:eabaa3c0d2576962333a593d27bf75bd1a728644234baf94a5840923abfe91ea"])
 })
