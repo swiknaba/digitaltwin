@@ -1,5 +1,7 @@
 import {
   emptyConversation,
+  bridgeRequestId,
+  decodeStreamEvent,
   maxCapabilityLifetimeMs,
   streamCursor,
   type ActionResult,
@@ -9,6 +11,7 @@ import {
   type BridgeRequest,
   type BridgeRequestId,
   type CapabilityAction,
+  type CapabilityBinding,
   type CapabilityPresentation,
   type CapabilityRejection,
   type CapabilityVerifier,
@@ -20,6 +23,7 @@ import {
   type RequestedAction,
   type StreamEvent,
 } from "./contract.ts"
+import { commandCapabilityBinding } from "./capability-binding.ts"
 
 const retainedEvents = 512
 const retainedRequests = 256
@@ -53,7 +57,7 @@ export class CommanderBridgeController {
 
   async apply(input: unknown): Promise<ApplyResult> {
     return this.serial(async () => {
-      const event = decodeEvent(input)
+      const event = decodeStreamEvent(input)
       if (!event) return { ok: false, reason: "invalid_event" }
       if (event.conversationId !== this.input.conversationId) return { ok: false, reason: "cross_conversation" }
       const conversation = await this.loadOrCreate()
@@ -68,10 +72,14 @@ export class CommanderBridgeController {
 
   private async dispatch(action: RequestedAction, presentation: CapabilityPresentation, rawRequestId: unknown, rawText?: unknown): Promise<ActionResult> {
     return this.serial(async () => {
-      if (typeof rawRequestId !== "string" || !isRequestId(rawRequestId) || (action !== "cancel" && !isText(rawText))) return { ok: false, reason: "invalid_request" }
-      const authorization = await this.authorize(action, presentation)
+      if (typeof rawRequestId !== "string") return { ok: false, reason: "invalid_request" }
+      let requestId: BridgeRequestId
+      try { requestId = bridgeRequestId(rawRequestId) } catch { return { ok: false, reason: "invalid_request" } }
+      const text = action === "cancel" ? undefined : validText(rawText)
+      if (action !== "cancel" && text === undefined) return { ok: false, reason: "invalid_request" }
+      const binding = commandCapabilityBinding(action, rawRequestId, text)
+      const authorization = await this.authorize(action, presentation, binding)
       if (!authorization.ok) return authorization
-      const requestId = rawRequestId as BridgeRequestId
       const conversation = await this.loadOrCreate()
       const existing = conversation.requests.find((request) => request.id === requestId)
       if (existing) return existing.state === "uncertain" ? { ok: false, reason: "uncertain" } : { ok: true, state: "already_recorded" }
@@ -79,8 +87,8 @@ export class CommanderBridgeController {
       const pending: BridgeRequest = { id: requestId, action, state: "pending" }
       if (!(await this.persist({ ...conversation, status: action === "prompt" ? "streaming" : conversation.status, requests: [...conversation.requests, pending].slice(-retainedRequests) }))) return { ok: false, reason: "persistence_conflict" }
       try {
-        if (action === "prompt") await this.input.runtime.prompt({ conversationId: this.input.conversationId, requestId, text: rawText as string, actorId: authorization.actorId })
-        if (action === "steer") await this.input.runtime.steer({ conversationId: this.input.conversationId, requestId, text: rawText as string, actorId: authorization.actorId })
+        if (action === "prompt" && text !== undefined) await this.input.runtime.prompt({ conversationId: this.input.conversationId, requestId, text, actorId: authorization.actorId })
+        if (action === "steer" && text !== undefined) await this.input.runtime.steer({ conversationId: this.input.conversationId, requestId, text, actorId: authorization.actorId })
         if (action === "cancel") {
           const result = await this.input.runtime.cancel({ conversationId: this.input.conversationId, requestId, actorId: authorization.actorId })
           await this.replaceRequest(requestId, "dispatched", result === "acknowledged" ? "cancel_requested" : undefined)
@@ -99,15 +107,16 @@ export class CommanderBridgeController {
     if (!(await this.persist({ ...conversation, status: isTerminal(conversation.status) ? conversation.status : (status ?? conversation.status), requests }))) throw new Error("Durable request state conflict")
   }
 
-  private async authorize(action: CapabilityAction, presentation: CapabilityPresentation): Promise<AuthorizeResult> {
+  private async authorize(action: CapabilityAction, presentation: CapabilityPresentation, expectedBinding?: CapabilityBinding): Promise<AuthorizeResult> {
     const now = this.input.now()
-    const decision = await this.input.verifier.consume({ action, expectedAudience: "commander-bridge", expectedConversationId: this.input.conversationId, presentation, now })
+    const decision = await this.input.verifier.consume({ action, expectedAudience: "commander-bridge", expectedConversationId: this.input.conversationId, ...(expectedBinding === undefined ? {} : { expectedBinding }), presentation, now })
     if (!decision.ok) return decision
     const capability = decision.capability
     if (capability.action !== action) return { ok: false, reason: "action_mismatch" }
     if (capability.audience !== "commander-bridge") return { ok: false, reason: "audience_mismatch" }
     if (capability.actorId !== this.input.actorId) return { ok: false, reason: "actor_mismatch" }
     if (capability.conversationId !== this.input.conversationId) return { ok: false, reason: "conversation_mismatch" }
+    if (!sameBinding(capability.binding, expectedBinding)) return { ok: false, reason: "invalid" }
     const issued = capability.issuedAt.getTime(); const expires = capability.expiresAt.getTime()
     if (!Number.isFinite(issued) || !Number.isFinite(expires) || issued > now.getTime() || expires <= now.getTime() || expires - issued > maxCapabilityLifetimeMs) return { ok: false, reason: "expired" }
     return { ok: true, actorId: capability.actorId }
@@ -128,18 +137,9 @@ export class CommanderBridgeController {
 
 function terminalStatus(event: StreamEvent): ConversationStatus | undefined { return event.kind === "final" ? event.outcome : undefined }
 function isTerminal(status: ConversationStatus): boolean { return status === "completed" || status === "canceled" || status === "failed" }
-function isText(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0 && value.length <= 16_000 }
-function isRequestId(value: string): boolean { return /^[a-z0-9][a-z0-9_-]{0,127}$/i.test(value) }
-function decodeEvent(value: unknown): StreamEvent | undefined {
-  if (!isRecord(value) || typeof value.conversationId !== "string" || typeof value.cursor !== "number" || typeof value.deliveryId !== "string" || typeof value.text !== "string") return undefined
-  if (!Number.isSafeInteger(value.cursor) || value.cursor < 1 || value.deliveryId.length === 0 || value.deliveryId.length > 256 || value.text.length > 64_000) return undefined
-  try {
-    const base = { conversationId: commanderConversation(value.conversationId), cursor: streamCursor(value.cursor), deliveryId: value.deliveryId, text: value.text }
-    if (value.kind === "delta" || value.kind === "notice") return { ...base, kind: value.kind }
-    if (value.kind === "final" && (value.outcome === "completed" || value.outcome === "canceled" || value.outcome === "failed")) return { ...base, kind: "final", outcome: value.outcome }
-  } catch {}
-  return undefined
+function sameBinding(left: CapabilityBinding | undefined, right: CapabilityBinding | undefined): boolean {
+  return left === undefined && right === undefined || left !== undefined && right !== undefined && left.requestId === right.requestId && left.payloadDigest === right.payloadDigest
 }
-function commanderConversation(value: string): CommanderConversationId { if (!/^commander:[a-z0-9][a-z0-9_-]{0,127}$/i.test(value)) throw new Error("Invalid Commander conversation id"); return value as CommanderConversationId }
+function isText(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0 && value.length <= 16_000 }
+function validText(value: unknown): string | undefined { return isText(value) ? value : undefined }
 function sameEvent(left: StreamEvent, right: StreamEvent): boolean { return left.cursor === right.cursor && left.deliveryId === right.deliveryId && left.kind === right.kind && left.text === right.text && left.outcome === right.outcome }
-function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }

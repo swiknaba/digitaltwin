@@ -376,7 +376,13 @@ pass without chat activation.
 - Global OpenCode configuration is operator-managed; project configuration cannot
   override Commander or read its credential material.
 - Bridge capabilities are user/conversation-scoped, short-lived, non-reusable, and
-  checked before stream, steer, cancel, and result actions.
+  checked before stream, steer, cancel, and result actions. Command proofs also bind
+  the request id and canonical command body; the desktop main process obtains them
+  from an operator-owned issuer and never returns them to the renderer.
+- Runtime stream delivery is a distinct authenticated channel. It uses an
+  operator-owned runtime identity over a private OS-owned socket or mutually
+  authenticated service path; it never shares a panel proof or public user-action
+  endpoint. Local tests use in-memory random one-use proofs only.
 - Kirei authenticates the caller and derives actor/origin; tool-supplied actor IDs,
   project scope, due times, and outcomes are not trusted.
 - Scheduling records contain references and task text only. Provider login state,

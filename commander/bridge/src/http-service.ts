@@ -1,4 +1,4 @@
-import type { ActionResult, CapabilityPresentation } from "./contract.ts"
+import type { CapabilityPresentation } from "./contract.ts"
 import type { CommanderBridgeController } from "./controller.ts"
 
 export type BridgeHttpRequest = Readonly<{
@@ -39,11 +39,16 @@ export class CommanderBridgeHttpService {
   private async command(presentation: CapabilityPresentation, body: unknown, action: "prompt" | "steer"): Promise<BridgeHttpResponse> {
     const requestId = field(body, "requestId")
     const text = field(body, "text")
-    return success(action === "prompt" ? await this.controller.prompt(presentation, requestId, text) : await this.controller.steer(presentation, requestId, text))
+    if (typeof requestId !== "string" || typeof text !== "string") return { status: 400, body: { ok: false, reason: "invalid_request" } }
+    try {
+      return success(action === "prompt" ? await this.controller.prompt(presentation, requestId, text) : await this.controller.steer(presentation, requestId, text))
+    } catch { return { status: 400, body: { ok: false, reason: "invalid_request" } } }
   }
 
   private async cancel(presentation: CapabilityPresentation, body: unknown): Promise<BridgeHttpResponse> {
-    return success(await this.controller.cancel(presentation, field(body, "requestId")))
+    const requestId = field(body, "requestId")
+    if (typeof requestId !== "string") return { status: 400, body: { ok: false, reason: "invalid_request" } }
+    try { return success(await this.controller.cancel(presentation, requestId)) } catch { return { status: 400, body: { ok: false, reason: "invalid_request" } } }
   }
 
 }

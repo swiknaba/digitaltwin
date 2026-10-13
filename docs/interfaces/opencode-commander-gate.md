@@ -143,17 +143,27 @@ toolchain completed and loaded successfully. The remaining failure is therefore
 specific to this OpenCode workspace/dependency graph, not a global Bun version,
 architecture, firewall, or cache problem.
 
+On 2026-10-13 the existing local Docker daemon was available, but no official
+`oven/bun:1.4.2` image was cached locally. No image was pulled and no Docker, network,
+or firewall configuration was changed. Therefore an existing local Linux build
+fallback is not available. Even if separately authorized later, a Linux build would
+only be Linux workspace evidence; it cannot prove the macOS desktop UI gate.
+
 The panel intentionally reports that no bridge is connected. The isolated bridge
 core now covers persistence, stream/reconnect, and capability semantics, but no
-external conversation or trusted desktop capability exchange is wired yet, so Gate 1
-has not passed.
+external conversation or trusted desktop capability exchange is wired into the
+patched OpenCode app yet, so Gate 1 has not passed.
 
 The source-level main-process seam and bridge core now include a typed user-action
-transport with ephemeral per-action Authorization proofs. It permits only HTTPS or
-loopback destinations and deliberately excludes runtime-event ingestion from the
-public user-action protocol. It remains source/test evidence only until the patched
-OpenCode app compiles and a reviewed operator capability issuer plus separate
-runtime-event channel are integrated.
+transport with ephemeral per-action Authorization proofs. A proof binds its action,
+the durable conversation, request id, and canonical command body; the bridge consumes
+it once. The Node adapter accepts only capped JSON POST user-action routes and permits
+only HTTPS or loopback destinations. Runtime-event ingestion is a separate typed,
+authenticated channel and has no public user-action route. The local end-to-end test
+uses only in-memory random one-use proofs and a loopback listener; it creates no
+credential or persistent identity material. This remains source/test evidence only
+until the patched OpenCode app compiles and a reviewed operator capability issuer plus
+operator-owned runtime channel are wired into that app.
 
 ### Alternative only if the product specification changes
 

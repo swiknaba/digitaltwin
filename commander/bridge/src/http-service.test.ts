@@ -1,58 +1,55 @@
 import assert from "node:assert/strict"
-import { createServer } from "node:http"
 import test from "node:test"
-import { bridgeActorId, commanderConversationId, type CapabilityDecision, type CapabilityVerifier, type CommanderRuntime } from "./contract.ts"
+import { commandCapabilityBinding } from "./capability-binding.ts"
+import { bridgeActorId, commanderConversationId, streamCursor, type CommanderRuntime } from "./contract.ts"
 import { CommanderBridgeController } from "./controller.ts"
+import { EphemeralTestAuthority } from "./ephemeral-test-authority.ts"
 import { CommanderBridgeHttpService } from "./http-service.ts"
 import { InMemoryConversationStore } from "./in-memory-store.ts"
+import { CommanderMainProcessTransport } from "./main-process-transport.ts"
+import { createCommanderBridgeNodeListener } from "./node-http-listener.ts"
+import { RuntimeEventIngress } from "./runtime-event-ingress.ts"
 
 const actor = bridgeActorId("owner-1")
 const conversation = commanderConversationId("commander:global")
 const now = new Date("2026-10-13T12:00:00.000Z")
 
-class Verifier implements CapabilityVerifier {
-  readonly used = new Set<string>()
-  async consume(input: Parameters<CapabilityVerifier["consume"]>[0]): Promise<CapabilityDecision> {
-    if (input.presentation.token !== "ephemeral-prompt" || this.used.has(input.presentation.token)) return { ok: false, reason: "replayed" }
-    this.used.add(input.presentation.token)
-    return { ok: true, capability: { action: "prompt", actorId: actor, audience: "commander-bridge", conversationId: conversation, issuedAt: new Date("2026-10-13T11:59:00.000Z"), expiresAt: new Date("2026-10-13T12:04:00.000Z"), nonce: input.presentation.token } }
-  }
-}
-
 class Runtime implements CommanderRuntime {
   prompts: string[] = []
-  async prompt(input: Parameters<CommanderRuntime["prompt"]>[0]) { this.prompts.push(input.text) }
-  async steer(_input: Parameters<CommanderRuntime["steer"]>[0]) {}
-  async cancel(_input: Parameters<CommanderRuntime["cancel"]>[0]) { return "acknowledged" as const }
+  async prompt(input: Parameters<CommanderRuntime["prompt"]>[0]): Promise<void> { this.prompts.push(input.text) }
+  async steer(_input: Parameters<CommanderRuntime["steer"]>[0]): Promise<void> {}
+  async cancel(_input: Parameters<CommanderRuntime["cancel"]>[0]): Promise<"acknowledged" | "already_terminal"> { return "acknowledged" }
 }
 
-test("loopback transport binds an ephemeral proof in a header and never echoes it", async () => {
+test("local desktop transport uses one bound ephemeral proof through the private listener", async () => {
   const runtime = new Runtime()
-  const controller = new CommanderBridgeController({ actorId: actor, conversationId: conversation, runtime, store: new InMemoryConversationStore(), verifier: new Verifier(), now: () => now })
-  const service = new CommanderBridgeHttpService(controller)
-  const server = createServer(async (request, response) => {
-    const chunks: Buffer[] = []
-    for await (const chunk of request) chunks.push(Buffer.from(chunk))
-    const body: unknown = chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString("utf8"))
-    const authorization = request.headers.authorization
-    const input = authorization === undefined
-      ? { method: "POST" as const, path: request.url as "/v1/commander/prompt", body }
-      : { method: "POST" as const, path: request.url as "/v1/commander/prompt", authorization, body }
-    const result = await service.handle(input)
-    response.writeHead(result.status, { "content-type": "application/json" })
-    response.end(JSON.stringify(result.body))
-  })
+  const authority = new EphemeralTestAuthority({ actorId: actor, conversationId: conversation, now: () => now })
+  const controller = new CommanderBridgeController({ actorId: actor, conversationId: conversation, runtime, store: new InMemoryConversationStore(), verifier: authority, now: () => now })
+  const server = createCommanderBridgeNodeListener(new CommanderBridgeHttpService(controller))
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   const address = server.address()
   if (!address || typeof address === "string") throw new Error("Missing loopback address")
   try {
-    const response = await fetch(`http://127.0.0.1:${address.port}/v1/commander/prompt`, { method: "POST", headers: { authorization: "Bearer ephemeral-prompt", "content-type": "application/json" }, body: JSON.stringify({ requestId: "request-1", text: "hello" }) })
-    const body = await response.text()
-    assert.equal(response.status, 200)
-    assert.equal(body.includes("ephemeral-prompt"), false)
-    assert.deepEqual(JSON.parse(body), { ok: true, state: "dispatched" })
+    const transport = new CommanderMainProcessTransport({ baseUrl: `http://127.0.0.1:${address.port}`, capabilityIssuer: authority, fetch: { fetch } })
+    assert.deepEqual(await transport.prompt("request-1", "hello"), { ok: true, state: "dispatched" })
     assert.deepEqual(runtime.prompts, ["hello"])
-  } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
-  }
+    assert.deepEqual(await transport.prompt("request-1", "altered"), { ok: true, state: "already_recorded" })
+    const proof = await authority.issue({ action: "prompt", binding: commandCapabilityBinding("prompt", "request-2", "original") })
+    const substituted = await fetch(`http://127.0.0.1:${address.port}/v1/commander/prompt`, { method: "POST", headers: { authorization: `Bearer ${proof.token}`, "content-type": "application/json" }, body: JSON.stringify({ requestId: "request-2", text: "altered" }) })
+    const unknown = await fetch(`http://127.0.0.1:${address.port}/v1/commander/event`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+    const wrongMethod = await fetch(`http://127.0.0.1:${address.port}/v1/commander/open`, { method: "GET" })
+    assert.equal(unknown.status, 404)
+    assert.equal(wrongMethod.status, 405)
+    assert.equal(substituted.status, 200)
+    assert.deepEqual(await substituted.json(), { ok: false, reason: "invalid" })
+  } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
+})
+
+test("runtime events require their separate ephemeral runtime proof", async () => {
+  const authority = new EphemeralTestAuthority({ actorId: actor, conversationId: conversation, now: () => now })
+  const controller = new CommanderBridgeController({ actorId: actor, conversationId: conversation, runtime: new Runtime(), store: new InMemoryConversationStore(), verifier: authority, now: () => now })
+  const ingress = new RuntimeEventIngress({ controller, conversationId: conversation, authenticator: authority, now: () => now })
+  const event = { conversationId: conversation, cursor: streamCursor(1), deliveryId: "event-1", kind: "delta" as const, text: "working" }
+  assert.deepEqual(await ingress.deliver({ token: "not-a-runtime-proof" }, event), { ok: false, reason: "unauthenticated" })
+  assert.deepEqual(await ingress.deliver(authority.issueRuntimeEventProof(), event), { ok: true, state: "applied" })
 })

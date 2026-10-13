@@ -10,7 +10,13 @@ const now = new Date("2026-10-13T12:00:00.000Z")
 class Verifier implements CapabilityVerifier {
   readonly used = new Set<string>(); readonly decisions = new Map<string, CapabilityDecision>()
   issue(token: string, action: "read" | "prompt" | "steer" | "cancel", override: Partial<{ action: "read" | "prompt" | "steer" | "cancel"; actorId: typeof actor; expiresAt: Date; issuedAt: Date }> = {}) { this.decisions.set(token, { ok: true, capability: { action: override.action ?? action, actorId: override.actorId ?? actor, audience: "commander-bridge", conversationId: conversation, issuedAt: override.issuedAt ?? new Date("2026-10-13T11:59:00.000Z"), expiresAt: override.expiresAt ?? new Date("2026-10-13T12:04:00.000Z"), nonce: token } }); return { token } }
-  async consume(input: Parameters<CapabilityVerifier["consume"]>[0]): Promise<CapabilityDecision> { if (this.used.has(input.presentation.token)) return { ok: false, reason: "replayed" }; const result = this.decisions.get(input.presentation.token) ?? { ok: false, reason: "invalid" }; if (result.ok) this.used.add(input.presentation.token); return result }
+  async consume(input: Parameters<CapabilityVerifier["consume"]>[0]): Promise<CapabilityDecision> {
+    if (this.used.has(input.presentation.token)) return { ok: false, reason: "replayed" }
+    const result = this.decisions.get(input.presentation.token) ?? { ok: false, reason: "invalid" }
+    if (!result.ok) return result
+    this.used.add(input.presentation.token)
+    return { ok: true, capability: { ...result.capability, ...(result.capability.binding === undefined && input.expectedBinding !== undefined ? { binding: input.expectedBinding } : {}) } }
+  }
 }
 class Runtime implements CommanderRuntime { prompts: string[] = []; failPrompt = false; async prompt(input: Parameters<CommanderRuntime["prompt"]>[0]) { this.prompts.push(input.requestId); if (this.failPrompt) throw new Error("runtime unavailable") }; async steer(_input: Parameters<CommanderRuntime["steer"]>[0]) {}; async cancel(_input: Parameters<CommanderRuntime["cancel"]>[0]) { return "acknowledged" as const } }
 function subject() { const store = new InMemoryConversationStore(); const runtime = new Runtime(); const verifier = new Verifier(); return { store, runtime, verifier, controller: new CommanderBridgeController({ actorId: actor, conversationId: conversation, store, runtime, verifier, now: () => now }) } }
