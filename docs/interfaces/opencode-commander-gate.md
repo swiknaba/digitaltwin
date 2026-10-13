@@ -123,7 +123,7 @@ input manifest SHA-256 is
 `d9294b084a6d31a45c34067cd96684bed8b529c81ba587ab81a04ecbaad46f29`.
 `b9f30fcbb0a75976c30085d2b6ecc25a5084c7daa3c6ba15dde23ea8542d24ad`
 is the SHA-256 for `0005-commander-panel-actions.patch`.
-`4bbdeb6de21108a798bb102481a4ec10e70212099b531b6a68007ec5fbb77978`
+`0885424a53da73c3b1595df4509ebd14bbf8d984d799f0361037d6e3fc57d6f0`
 is the SHA-256 for `0006-commander-desktop-bootstrap-harness.patch`; the reviewed
 bridge input manifest SHA-256 is
 `7ce2bd3ccdea20acbb0b8c5a87e8d1e61937c874269217b4ad15a12b3b10678e`.
