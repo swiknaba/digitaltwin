@@ -8,7 +8,23 @@ pass Commander Gate 1.
 `future-tasks.ts` is the separate native v2.0.27 global-plugin entry. It uses the
 supported `Plugin.define` and `context.tool.transform(editor.add)` API to register
 the `future_tasks` tool. Its one-use capability is supplied on each tool call, so it
-stores no credential. Install it only in the operator-owned global plugin directory.
+stores no credential. The operator must supply the endpoint through the plugin's
+`digitaltwinFutureTasksEndpoint` option; startup rejects a missing, non-loopback
+HTTP, non-HTTPS, path-bearing, query-bearing, or fragment-bearing value. Install it
+only in the operator-owned global plugin directory.
+
+For a managed global plugin directory, the checked-in install helper creates only a
+symlink and never writes a credential or project configuration:
+
+```sh
+OPENCODE_GLOBAL_PLUGIN_DIR=/operator-owned/opencode/plugins \
+  sh commander/opencode-gate-plugin/install-future-tasks-plugin.sh
+```
+
+Configure `digitaltwinFutureTasksEndpoint` in that same operator-owned plugin
+registration, then verify the plugin status using the release's plugin listing/API.
+The tool itself accepts an optional `limit` for `list` whether or not a cursor is
+provided.
 
 OpenCode v2.0.27 rejected the current public-doc named-function shape. The probe
 therefore uses the installed release's required default definition with an `id` and

@@ -68,7 +68,7 @@ test("private future-task delivery is authenticated, receipt-idempotent, and rec
   const address = server.address()
   if (!address || typeof address === "string") throw new Error("Missing loopback address")
   const endpoint = `http://127.0.0.1:${address.port}/private/future-tasks/deliveries`
-  const body = { task_id: "task-1", text: "Check in", references: ["repo:digitaltwin"], due_at: "2026-10-13T12:00:00Z", timezone: "UTC", delivery_key: "delivery-1" }
+  const body = { task_id: "task-1", text: "Check in", references: ["repo:digitaltwin"], due_at: "2026-10-13T12:00:00Z", timezone: "UTC", origin: "commander:main", attempt: 2, delivery_key: "delivery-1" }
   try {
     const rejected = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
     assert.equal(rejected.status, 401)
@@ -83,8 +83,10 @@ test("private future-task delivery is authenticated, receipt-idempotent, and rec
     const visible = panel.ok ? panel.conversation.events.at(-1)?.text : undefined
     assert.match(visible ?? "", /Future task task-1/)
     assert.match(visible ?? "", /References: repo:digitaltwin/)
+    assert.match(visible ?? "", /Origin: commander:main/)
     assert.match(visible ?? "", /Scheduled: 2026-10-13T12:00:00Z \(UTC\)/)
-    assert.match(visible ?? "", /Attempt: 1/)
+    assert.match(visible ?? "", /Attempt: 2/)
+    assert.match(visible ?? "", /Reply with a disposition/)
     assert.match(visible ?? "", /Outcome: awaiting user disposition/)
     const outcome = await fetch(`${endpoint}/delivery-1/outcome`, { method: "POST", headers: { authorization: "Bearer operator-identity", "content-type": "application/json" }, body: JSON.stringify({ outcome: "project_work_requested" }) })
     assert.equal(outcome.status, 200)
@@ -96,7 +98,7 @@ test("private future-task delivery is authenticated, receipt-idempotent, and rec
 test("a known permanent future-task rejection is durably reconcilable while unknown errors remain uncertain", async () => {
   const store = new InMemoryFutureTaskDeliveryStore()
   const service = new FutureTaskDeliveryService({ store, publish: async () => { throw new PermanentFutureTaskDeliveryError("recipient_deleted") } })
-  const input = { deliveryKey: "terminal-1", taskId: "task-1", text: "Check in", references: [], dueAt: "2026-10-13T12:00:00Z", timezone: "UTC" }
+  const input = { deliveryKey: "terminal-1", taskId: "task-1", text: "Check in", references: [], dueAt: "2026-10-13T12:00:00Z", timezone: "UTC", origin: "commander:main", attempt: 1 }
   assert.deepEqual(await service.deliver(input), { deliveryKey: "terminal-1", terminalFailure: "recipient_deleted" })
   assert.deepEqual(await service.reconcile("terminal-1"), { deliveryKey: "terminal-1", terminalFailure: "recipient_deleted" })
   const uncertain = new FutureTaskDeliveryService({ store: new InMemoryFutureTaskDeliveryStore(), publish: async () => { throw new Error("network_lost") } })
@@ -115,7 +117,7 @@ test("a Ruby client completes the private future-task delivery and reconciliatio
     'require "net/http"', 'require "json"',
     'endpoint = URI(ARGV.fetch(0)); identity = ARGV.fetch(1)',
     'request = Net::HTTP::Post.new(endpoint, { "Authorization" => "Bearer #{identity}", "Content-Type" => "application/json" })',
-    'request.body = JSON.generate({ task_id: "ruby-task", text: "Ruby delivery", references: ["repo:digitaltwin"], due_at: "2026-10-13T12:00:00Z", timezone: "UTC", delivery_key: "ruby-delivery" })',
+    'request.body = JSON.generate({ task_id: "ruby-task", text: "Ruby delivery", references: ["repo:digitaltwin"], due_at: "2026-10-13T12:00:00Z", timezone: "UTC", origin: "commander:main", attempt: 1, delivery_key: "ruby-delivery" })',
     'receipt = JSON.parse(Net::HTTP.start(endpoint.host, endpoint.port) { |http| http.request(request) }.body)',
     'reconcile = URI("#{endpoint}/ruby-delivery"); read = Net::HTTP::Get.new(reconcile, { "Authorization" => "Bearer #{identity}" }); resolved = JSON.parse(Net::HTTP.start(reconcile.host, reconcile.port) { |http| http.request(read) }.body)',
     'abort "mismatch" unless receipt == resolved && receipt.fetch("delivery_key") == "ruby-delivery"',
@@ -127,7 +129,7 @@ test("a Ruby client completes the private future-task delivery and reconciliatio
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
 })
 
-test("the configured Ruby gateway delivers a due task to the real Node listener and reconciles its receipt", { skip: process.env.DIGITALTWIN_RUN_DOCKER_E2E !== "1" }, async () => {
+test("the configured Kirei gateway delivers, reconciles, and publishes a disposition to the real Node listener", { skip: process.env.DIGITALTWIN_RUN_DOCKER_E2E !== "1" }, async () => {
   const authority = new EphemeralTestAuthority({ actorId: actor, conversationId: conversation, now: () => now })
   const controller = new CommanderBridgeController({ actorId: actor, conversationId: conversation, runtime: new Runtime(), store: new InMemoryConversationStore(), verifier: authority, now: () => now })
   const server = createCommanderBridgeNodeListener(new CommanderBridgeHttpService(controller), { identity: "configured-gateway-e2e", store: new InMemoryFutureTaskDeliveryStore() })
@@ -139,27 +141,39 @@ test("the configured Ruby gateway delivers a due task to the real Node listener 
     'require "./app"',
     'require "json"',
     'require "securerandom"',
+    'require "openssl"',
     'now = Time.now',
     'run_id = SecureRandom.uuid',
     'actor = "configured-gateway-e2e-#{run_id}"',
     'tasks = Domains::FutureTasks::Tasks.new',
     'task = tasks.create(actor_id: actor, origin: "commander:global", idempotency_key: "gateway-#{run_id}", text: "Configured gateway delivery", due_at: now + 1, timezone: "UTC", local_time: (now + 1).utc.iso8601, references: ["repo:digitaltwin"], now: now)',
-    'Kirei::App.raw_db_connection[:jobs].where(kind: "future_task.due").update(available_at: Time.now - 1)',
+    'jobs = Kirei::App.raw_db_connection[:jobs]; jobs.where(kind: "future_task.due").exclude(dispatch_key: "future-task:#{task.id}:1").update(available_at: Time.now + 600); jobs.where(dispatch_key: "future-task:#{task.id}:1").update(available_at: Time.now - 1)',
     'gateway = Adapters::CommanderBridge::ConfiguredGateway.new(base_url: ENV.fetch("BRIDGE_E2E_URL"), identity: ENV.fetch("BRIDGE_E2E_IDENTITY"))',
     'handler = Services::FutureTasks::DeliverDue.new(tasks: tasks, gateway: gateway)',
     'Async { Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::FutureTaskDue => handler }).tick }.wait',
     'delivered = tasks.find(actor_id: actor, id: task.id)',
     'resolution = gateway.reconcile(delivery_key: task.delivery_key)',
-    'abort "delivery failed" unless delivered.state == Domains::FutureTasks::Dto::TaskState::AwaitingDisposition && delivered.receipt == resolution.receipt',
-    'puts JSON.generate({ task_id: task.id, delivery_key: task.delivery_key, commander_item_id: delivered.receipt.commander_item_id })'
+    'abort "delivery failed state=#{delivered.state.serialize} receipt=#{delivered.receipt.inspect} resolution=#{resolution.inspect}" unless delivered.state == Domains::FutureTasks::Dto::TaskState::AwaitingDisposition && delivered.receipt == resolution.receipt',
+    'secret = "configured-gateway-e2e-capability"',
+    'payload = { "jti" => "disposition-#{run_id}", "actor" => actor, "conversation" => "commander:global", "aud" => "future_tasks", "iat" => now.to_i, "exp" => (now + 120).to_i, "owner" => false }.to_json.unpack1("H*")',
+    'token = "#{payload}.#{OpenSSL::HMAC.hexdigest("SHA256", secret, payload)}"',
+    'api = Services::FutureTasks::CapabilityApi.new(tasks: tasks, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret: secret))',
+    'completed = api.record_disposition(token: token, id: task.id, expected_version: delivered.version, disposition_key: "disposition-#{run_id}", outcome: "project_work_requested")',
+    'Async { Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::FutureTaskOutcome => Services::FutureTasks::PublishOutcome.new(gateway: gateway) }).tick }.wait',
+    'abort "outcome failed" unless completed.state == Domains::FutureTasks::Dto::TaskState::Completed && completed.outcome == "project_work_requested"',
+    'puts JSON.generate({ task_id: task.id, delivery_key: task.delivery_key, commander_item_id: delivered.receipt.commander_item_id, outcome: completed.outcome })'
   ].join(";")
   try {
-    const result = await run("docker", ["compose", "--project-name", "digitaltwin-final", "--env-file", "../../.env.example", "-f", "../../compose.yml", "exec", "-T", "-e", `BRIDGE_E2E_URL=${endpoint}`, "-e", "BRIDGE_E2E_IDENTITY=configured-gateway-e2e", "backend-web", "bundle", "exec", "ruby", "-e", ruby])
+    const project = process.env.DIGITALTWIN_E2E_PROJECT ?? "digitaltwin-final"
+    const result = await run("docker", ["compose", "--project-name", project, "--env-file", "../../.env.example", "-f", "../../compose.yml", "exec", "-T", "-e", `BRIDGE_E2E_URL=${endpoint}`, "-e", "BRIDGE_E2E_IDENTITY=configured-gateway-e2e", "backend-web", "bundle", "exec", "ruby", "-e", ruby])
     const json = result.stdout.trim().split("\n").findLast((line) => line.startsWith("{"))
     if (!json) throw new Error(`Ruby gateway did not emit a receipt: ${result.stdout}`)
-    const receipt = JSON.parse(json) as { task_id: string; delivery_key: string; commander_item_id: string }
+    const receipt = JSON.parse(json) as { task_id: string; delivery_key: string; commander_item_id: string; outcome: string }
     assert.equal(receipt.commander_item_id, `future-task:${receipt.delivery_key}`)
+    assert.equal(receipt.outcome, "project_work_requested")
     const panel = await controller.open(await authority.issue({ action: "read" }))
-    assert.match(panel.ok ? panel.conversation.events.at(-1)?.text ?? "" : "", /Configured gateway delivery/)
+    const visible = panel.ok ? panel.conversation.events.map((event) => event.text).join("\n") : ""
+    assert.match(visible, /Configured gateway delivery/)
+    assert.match(visible, new RegExp(`Future task ${receipt.delivery_key}.*Outcome: project_work_requested`))
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
 })

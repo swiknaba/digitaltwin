@@ -9,6 +9,8 @@ export type FutureTaskDelivery = Readonly<{
   references: readonly string[]
   dueAt: string
   timezone: string
+  origin: string
+  attempt: number
   commanderItemId: string
 }>
 
@@ -74,19 +76,19 @@ export class FileFutureTaskDeliveryStore implements FutureTaskDeliveryStore {
 
 export class FutureTaskDeliveryService {
   private readonly store: FutureTaskDeliveryStore
-  private readonly publish: (input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>) => Promise<string>
+  private readonly publish: (input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string; origin: string; attempt: number }>) => Promise<string>
   private readonly publishOutcome: (input: Readonly<{ deliveryKey: string; outcome: string }>) => Promise<string>
   private tail: Promise<void> = Promise.resolve()
 
-  constructor(input: Readonly<{ store: FutureTaskDeliveryStore; publish: (input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>) => Promise<string>; publishOutcome?: (input: Readonly<{ deliveryKey: string; outcome: string }>) => Promise<string> }>) { this.store = input.store; this.publish = input.publish; this.publishOutcome = input.publishOutcome ?? (async () => "") }
+  constructor(input: Readonly<{ store: FutureTaskDeliveryStore; publish: (input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string; origin: string; attempt: number }>) => Promise<string>; publishOutcome?: (input: Readonly<{ deliveryKey: string; outcome: string }>) => Promise<string> }>) { this.store = input.store; this.publish = input.publish; this.publishOutcome = input.publishOutcome ?? (async () => "") }
 
-  async deliver(input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): Promise<FutureTaskResolution> {
+  async deliver(input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string; origin: string; attempt: number }>): Promise<FutureTaskResolution> {
     const result = this.tail.then(() => this.deliverNow(input), () => this.deliverNow(input))
     this.tail = result.then(() => undefined, () => undefined)
     return result
   }
 
-  private async deliverNow(input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): Promise<FutureTaskResolution> {
+  private async deliverNow(input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string; origin: string; attempt: number }>): Promise<FutureTaskResolution> {
     const existing = await this.store.load(input.deliveryKey)
     if (existing) {
       if (!isTerminal(existing) && !sameDelivery(existing, input)) throw new Error("delivery_key_reused")
@@ -111,16 +113,16 @@ export class FutureTaskDeliveryService {
   }
 }
 
-function sameDelivery(existing: FutureTaskDelivery, input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): boolean {
-  return existing.taskId === input.taskId && existing.text === input.text && existing.dueAt === input.dueAt && existing.timezone === input.timezone && JSON.stringify(existing.references) === JSON.stringify(input.references)
+function sameDelivery(existing: FutureTaskDelivery, input: Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string; origin: string; attempt: number }>): boolean {
+  return existing.taskId === input.taskId && existing.text === input.text && existing.dueAt === input.dueAt && existing.timezone === input.timezone && existing.origin === input.origin && existing.attempt === input.attempt && JSON.stringify(existing.references) === JSON.stringify(input.references)
 }
 
 function decode(value: unknown): FutureTaskResolution | undefined {
   if (!isRecord(value)) return undefined
   if (typeof value.deliveryKey === "string" && typeof value.terminalFailure === "string") return { deliveryKey: value.deliveryKey, terminalFailure: value.terminalFailure }
-  const keys = ["deliveryKey", "taskId", "text", "dueAt", "timezone", "commanderItemId"]
-  if (!keys.every((key) => typeof value[key] === "string") || !Array.isArray(value.references) || !value.references.every((item) => typeof item === "string")) return undefined
-  return { deliveryKey: value.deliveryKey as string, taskId: value.taskId as string, text: value.text as string, references: value.references as string[], dueAt: value.dueAt as string, timezone: value.timezone as string, commanderItemId: value.commanderItemId as string }
+  const keys = ["deliveryKey", "taskId", "text", "dueAt", "timezone", "origin", "commanderItemId"]
+  if (!keys.every((key) => typeof value[key] === "string") || typeof value.attempt !== "number" || !Number.isInteger(value.attempt) || value.attempt < 1 || !Array.isArray(value.references) || !value.references.every((item) => typeof item === "string")) return undefined
+  return { deliveryKey: value.deliveryKey as string, taskId: value.taskId as string, text: value.text as string, references: value.references as string[], dueAt: value.dueAt as string, timezone: value.timezone as string, origin: value.origin as string, attempt: value.attempt, commanderItemId: value.commanderItemId as string }
 }
 
 function isTerminal(value: FutureTaskResolution): value is Readonly<{ deliveryKey: string; terminalFailure: string }> { return "terminalFailure" in value }

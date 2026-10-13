@@ -16,7 +16,7 @@ module Services
       sig { override.params(job: Platform::Jobs::Dto::ClaimedJob).returns(Platform::Jobs::Dto::Decision) }
       def call(job:)
         execution_id = String(job.payload.fetch("execution_id"))
-        @tasks.reconcile(execution_id:, lease: job.lease, gateway: @gateway)
+        @tasks.reconcile(execution_id:, lease: job.lease, gateway: @gateway, attempt: job.attempts)
       end
     end
   end

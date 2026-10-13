@@ -17,7 +17,8 @@ module Services
     def call
       {
         Kind::FutureTaskDue => FutureTasks::DeliverDue.new(tasks: @composition.future_tasks, gateway: @composition.commander_gateway),
-        Kind::FutureTaskReconcile => FutureTasks::ReconcileDue.new(tasks: @composition.future_tasks, gateway: @composition.commander_gateway)
+        Kind::FutureTaskReconcile => FutureTasks::ReconcileDue.new(tasks: @composition.future_tasks, gateway: @composition.commander_gateway),
+        Kind::FutureTaskOutcome => FutureTasks::PublishOutcome.new(gateway: @composition.commander_gateway)
       }
     end
   end

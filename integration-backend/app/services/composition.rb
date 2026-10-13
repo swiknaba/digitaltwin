@@ -41,7 +41,7 @@ module Services
       secret = File.read(secret_file).strip
       raise "Future-task capability secret file is empty" if secret.empty?
 
-      FutureTasks::CapabilityApi.new(tasks: future_tasks, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:), outcome_gateway: configured_outcome_gateway)
+      FutureTasks::CapabilityApi.new(tasks: future_tasks, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:))
     end
 
     sig { returns(Adapters::FutureTasks::McpTool) }
@@ -66,11 +66,5 @@ module Services
       Adapters::CommanderBridge::ConfiguredGateway.new(base_url: url, identity: identity)
     end
 
-    sig { returns(T.nilable(Adapters::CommanderBridge::Gateway)) }
-    private def configured_outcome_gateway
-      return nil unless @configuration.commander_bridge_url && @configuration.commander_bridge_identity_file
-
-      commander_gateway
-    end
   end
 end

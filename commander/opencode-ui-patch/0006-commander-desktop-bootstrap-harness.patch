@@ -45,13 +45,14 @@ diff --git a/packages/desktop/src/main/commander/bootstrap.ts b/packages/desktop
 new file mode 100644
 --- /dev/null
 +++ b/packages/desktop/src/main/commander/bootstrap.ts
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,30 @@
 +import { app } from "electron"
 +import {
 +  createEphemeralDesktopHarness,
 +  installHostOperatorBootstrap,
 +  type HostOperatorBootstrap,
 +} from "@digitaltwin/commander-bridge/core"
++import { desktopCommanderOperatorProvider } from "./operator-config"
 +
 +/**
 + * The desktop main process is the only OpenCode layer allowed to install a
@@ -61,28 +62,66 @@ new file mode 100644
 +  installHostOperatorBootstrap(bootstrap)
 +}
 +
-+export interface CommanderOperatorBootstrapProvider {
-+  load(): Promise<HostOperatorBootstrap | undefined>
-+}
-+
-+let configuredProvider: CommanderOperatorBootstrapProvider | undefined
-+
-+/** Trusted desktop embedding code injects this before app readiness. */
-+export function installCommanderOperatorBootstrapProvider(provider: CommanderOperatorBootstrapProvider): void {
-+  configuredProvider = provider
-+}
-+
 +/**
-+ * Every launch evaluates the injected trusted provider before creating a renderer.
-+ * The checked-in build supplies no provider, so ordinary launches remain closed.
-+ * Tests inject an ephemeral provider through the same main-process-only path.
++ * Every launch evaluates the desktop host's supported operator adapter before a
++ * renderer exists. With no registered host context it returns undefined and the
++ * panel remains closed; the harness is an explicit test-only override.
 + */
 +export async function installCommanderDesktopBootstrap(): Promise<void> {
-+  const configured = await configuredProvider?.load()
++  const configured = await desktopCommanderOperatorProvider.load()
 +  if (configured) installTrustedCommanderBootstrap(configured)
 +  if (process.argv.includes("--commander-test-harness")) {
 +    const harness = await createEphemeralDesktopHarness()
 +    installTrustedCommanderBootstrap(harness.bootstrap)
 +    app.once("will-quit", () => { void harness.close() })
 +  }
++}
+diff --git a/packages/desktop/src/main/commander/operator-config.ts b/packages/desktop/src/main/commander/operator-config.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/desktop/src/main/commander/operator-config.ts
+@@ -0,0 +1,44 @@
++import {
++  createOperatorHostBootstrap,
++  type HostOperatorBootstrap,
++  type MainProcessFetch,
++  type OperatorCapabilityExchange,
++  type OperatorDesktopIdentity,
++} from "@digitaltwin/commander-bridge/core"
++
++/**
++ * The signed/managed desktop embedding owns this registration. It receives no
++ * project config, renderer IPC, or environment data: all identity and proof
++ * exchange material stays behind its main-process closure.
++ */
++export interface DesktopCommanderOperatorContext {
++  readonly bridgeOrigin: string
++  readonly identity: OperatorDesktopIdentity
++  readonly exchange: OperatorCapabilityExchange
++  readonly fetch: MainProcessFetch
++}
++
++export interface DesktopCommanderOperatorRuntime {
++  loadCommanderOperatorContext(): Promise<DesktopCommanderOperatorContext | undefined>
++}
++
++const runtimeKey = Symbol.for("@opencode/desktop/commander-operator-runtime")
++
++/**
++ * Supported compiled-host injection path. The desktop distribution registers its
++ * verified OS-profile/remote-session adapter before `app.whenReady`; ordinary
++ * upstream builds register nothing and therefore fail closed.
++ */
++export function registerDesktopCommanderOperatorRuntime(runtime: DesktopCommanderOperatorRuntime): void {
++  const state = globalThis as Record<symbol, DesktopCommanderOperatorRuntime | undefined>
++  if (state[runtimeKey] !== undefined) throw new Error("Commander operator runtime is already registered")
++  state[runtimeKey] = runtime
++}
++
++export const desktopCommanderOperatorProvider = {
++  async load(): Promise<HostOperatorBootstrap | undefined> {
++    const state = globalThis as Record<symbol, DesktopCommanderOperatorRuntime | undefined>
++    const context = await state[runtimeKey]?.loadCommanderOperatorContext()
++    return context === undefined ? undefined : createOperatorHostBootstrap(context)
++  },
 +}

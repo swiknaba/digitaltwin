@@ -20,11 +20,11 @@ module Adapters
         @identity = identity
       end
 
-      sig { override.params(task_id: String, text: String, references: T::Array[String], due_at: Time, timezone: String, delivery_key: String).returns(Domains::FutureTasks::Dto::DeliveryReceipt) }
-      def deliver(task_id:, text:, references:, due_at:, timezone:, delivery_key:)
+      sig { override.params(task_id: String, text: String, references: T::Array[String], due_at: Time, timezone: String, origin: String, attempt: Integer, delivery_key: String).returns(Domains::FutureTasks::Dto::DeliveryReceipt) }
+      def deliver(task_id:, text:, references:, due_at:, timezone:, origin:, attempt:, delivery_key:)
         response = request(
           "POST", "/private/future-tasks/deliveries",
-          { "task_id" => task_id, "text" => text, "references" => references, "due_at" => due_at.utc.iso8601, "timezone" => timezone, "delivery_key" => delivery_key }
+          { "task_id" => task_id, "text" => text, "references" => references, "due_at" => due_at.utc.iso8601, "timezone" => timezone, "origin" => origin, "attempt" => attempt, "delivery_key" => delivery_key }
         )
         receipt(response, delivery_key)
       end

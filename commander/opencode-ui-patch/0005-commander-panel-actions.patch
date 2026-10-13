@@ -82,7 +82,7 @@ index 0c1d6ca..acad5ba 100644
  import { useExtension } from "../sdk"
 +import type { CommanderBridgeState } from "./contract"
  import type definition from "./index"
-@@ -6,7 +8,29 @@
+@@ -6,7 +8,31 @@
    const bridge = extension.uses.bridge
 -  const status = () => {
 +  const [draft, setDraft] = createSignal("")
@@ -92,16 +92,18 @@ index 0c1d6ca..acad5ba 100644
      const live = bridge()
 -
 -    return live.status === "active" ? live.value.state()?.status ?? "not-configured" : "not-configured"
-+    // `open` is a safe status refresh against an unconfigured provider. It lets
-+    // a lazy main extension observe a bootstrap installed during desktop start.
-+    if (action !== "open" && live.status !== "active") return
++    if (live.status !== "active") {
++      setState((current) => ({ status: "not-configured", events: current.events }))
++      return
++    }
++    const client = live.value
 +    setBusy(true)
 +    try {
-+      const next = action === "open" ? await live.value.open()
-+        : action === "send" ? await live.value.send({ text: draft() })
-+        : action === "steer" ? await live.value.steer({ text: draft() })
-+        : action === "cancel" ? await live.value.cancel()
-+        : await live.value.reconnect({ after: state().events.at(-1)?.cursor ?? 0 })
++      const next = action === "open" ? await client.open()
++        : action === "send" ? await client.send({ text: draft() })
++        : action === "steer" ? await client.steer({ text: draft() })
++        : action === "cancel" ? await client.cancel()
++        : await client.reconnect({ after: state().events.at(-1)?.cursor ?? 0 })
 +      setState(next)
 +      if (action === "send" || action === "steer") setDraft("")
 +    } catch {

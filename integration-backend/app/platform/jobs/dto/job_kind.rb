@@ -9,6 +9,7 @@ module Platform
         enums do
           FutureTaskDue = new("future_task.due")
           FutureTaskReconcile = new("future_task.reconcile")
+          FutureTaskOutcome = new("future_task.outcome")
         end
       end
     end

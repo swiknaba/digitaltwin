@@ -8,9 +8,9 @@ module Adapters
 
       include Gateway
 
-      sig { override.params(task_id: String, text: String, references: T::Array[String], due_at: Time, timezone: String, delivery_key: String).returns(Domains::FutureTasks::Dto::DeliveryReceipt) }
+      sig { override.params(task_id: String, text: String, references: T::Array[String], due_at: Time, timezone: String, origin: String, attempt: Integer, delivery_key: String).returns(Domains::FutureTasks::Dto::DeliveryReceipt) }
       # rubocop:disable Lint/UnusedMethodArgument
-      def deliver(task_id:, text:, references:, due_at:, timezone:, delivery_key:)
+      def deliver(task_id:, text:, references:, due_at:, timezone:, origin:, attempt:, delivery_key:)
         raise "Commander bridge delivery is not configured"
       end
       # rubocop:enable Lint/UnusedMethodArgument

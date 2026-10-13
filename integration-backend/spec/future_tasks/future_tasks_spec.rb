@@ -15,8 +15,8 @@ class RecordingCommanderGateway
     @outcomes = []
   end
 
-  def deliver(task_id:, text:, references:, due_at:, timezone:, delivery_key:)
-    @deliveries << { task_id:, text:, references:, due_at:, timezone:, delivery_key: }
+  def deliver(task_id:, text:, references:, due_at:, timezone:, origin:, attempt:, delivery_key:)
+    @deliveries << { task_id:, text:, references:, due_at:, timezone:, origin:, attempt:, delivery_key: }
     Domains::FutureTasks::Dto::DeliveryReceipt.new(delivery_key:, commander_item_id: "commander-item-#{@deliveries.length}")
   end
 
@@ -35,10 +35,26 @@ class UncertainThenReconciledGateway < RecordingCommanderGateway
     @first_delivery = true
   end
 
-  def deliver(task_id:, text:, references:, due_at:, timezone:, delivery_key:)
+  def deliver(task_id:, text:, references:, due_at:, timezone:, origin:, attempt:, delivery_key:)
     if @first_delivery
       @first_delivery = false
       raise IOError, "bridge result lost"
+    end
+
+    super
+  end
+end
+
+class OutcomeFailsOnceGateway < RecordingCommanderGateway
+  def initialize
+    super
+    @first_outcome = true
+  end
+
+  def record_outcome(delivery_key:, outcome:)
+    if @first_outcome
+      @first_outcome = false
+      raise IOError, "bridge temporarily unavailable"
     end
 
     super
@@ -158,7 +174,7 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect(delivered.receipt).to have_attributes(delivery_key: task.delivery_key, commander_item_id: "commander-item-1")
 
     secret = "test-capability-secret"
-    api = Services::FutureTasks::CapabilityApi.new(tasks:, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:), outcome_gateway: gateway)
+    api = Services::FutureTasks::CapabilityApi.new(tasks:, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:))
     completed = api.record_disposition(token: capability(secret:, id: "disposition-1"), id: task.id, expected_version: 1, disposition_key: "answer-1",
                                        outcome: "project_work_requested")
     expect(completed.state).to eq(Domains::FutureTasks::Dto::TaskState::Completed)
@@ -168,7 +184,28 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect(retried.state).to eq(Domains::FutureTasks::Dto::TaskState::Completed)
     expect { api.record_disposition(token: capability(secret:, id: "disposition-3"), id: task.id, expected_version: 1, disposition_key: "answer-1", outcome: "assessed") }.to raise_error(ArgumentError, /changed body/)
     expect(Kirei::App.raw_db_connection[:future_task_dispositions].first[:outcome]).to eq("project_work_requested")
-    expect(gateway.outcomes).to eq([{ delivery_key: task.delivery_key, outcome: "project_work_requested" }, { delivery_key: task.delivery_key, outcome: "project_work_requested" }])
+    outcome_job = Platform::Jobs::Store.new.find_by_key(dispatch_key: "future-task-outcome:#{task.delivery_key}:project_work_requested")
+    expect(outcome_job).not_to be_nil
+    expect(gateway.outcomes).to be_empty
+  end
+
+  it "persists a disposition outcome in the outbox and retries a bridge outage with the same delivery key" do
+    task = create_task(due_at: now + 1)
+    Kirei::App.raw_db_connection[:jobs].update(available_at: Time.now - 1)
+    delivery_gateway = RecordingCommanderGateway.new
+    Async { Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::FutureTaskDue => Services::FutureTasks::DeliverDue.new(tasks:, gateway: delivery_gateway) }).tick }.wait
+    secret = "test-capability-secret"
+    api = Services::FutureTasks::CapabilityApi.new(tasks:, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:))
+    api.record_disposition(token: capability(secret:, id: "outbox-1"), id: task.id, expected_version: 1, disposition_key: "outbox-answer", outcome: "assessed")
+
+    gateway = OutcomeFailsOnceGateway.new
+    worker = Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::FutureTaskOutcome => Services::FutureTasks::PublishOutcome.new(gateway:) })
+    expect(Async { worker.tick }.wait).to eq(false)
+    row = Kirei::App.raw_db_connection[:jobs].where(dispatch_key: "future-task-outcome:#{task.delivery_key}:assessed").first
+    expect(row.fetch(:status)).to eq("pending")
+    Kirei::App.raw_db_connection[:jobs].where(id: row.fetch(:id)).update(available_at: Time.now - 1)
+    expect(Async { worker.tick }.wait).to eq(true)
+    expect(gateway.outcomes).to eq([{ delivery_key: task.delivery_key, outcome: "assessed" }])
   end
 
   it "marks an unknown bridge effect uncertain instead of silently retrying it" do
@@ -245,7 +282,7 @@ RSpec.describe Domains::FutureTasks::Tasks do
   it "uses the configurable private bridge adapter without exposing an agent credential" do
     url, delivery_thread = bridge_response('{"delivery_key":"delivery-1","commander_item_id":"item-1"}')
     gateway = Adapters::CommanderBridge::ConfiguredGateway.new(base_url: url, identity: "operator-private-identity")
-    receipt = gateway.deliver(task_id: "task-1", text: "Check", references: [], due_at: now, timezone: "UTC", delivery_key: "delivery-1")
+    receipt = gateway.deliver(task_id: "task-1", text: "Check", references: [], due_at: now, timezone: "UTC", origin: "commander:main", attempt: 1, delivery_key: "delivery-1")
     delivery_thread.join
     expect(receipt.commander_item_id).to eq("item-1")
 

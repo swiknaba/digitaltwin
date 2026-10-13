@@ -1,4 +1,4 @@
-import { bridgeActorId, commanderConversationId, streamCursor, type CommanderRuntime } from "./contract.ts"
+import { bridgeActorId, commanderConversationId, streamCursor, type CommanderRuntime, type CommanderTurnId } from "./contract.ts"
 import { CommanderBridgeController } from "./controller.ts"
 import { EphemeralTestAuthority } from "./ephemeral-test-authority.ts"
 import { CommanderMainProcessPanel } from "./main-process-panel.ts"
@@ -28,7 +28,7 @@ export async function createEphemeralDesktopHarness(): Promise<EphemeralDesktopH
   const actorId = bridgeActorId("desktop-harness")
   const conversationId = commanderConversationId("commander:desktop-harness")
   const now = () => new Date()
-  let activeTurn: string | undefined
+  let activeTurn: CommanderTurnId | undefined
   let nextCursor = 1
   let publishRuntimeEvent: (text: string) => Promise<void> = async () => {
     throw new Error("Commander harness runtime started before its event ingress")

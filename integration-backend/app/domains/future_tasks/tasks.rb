@@ -101,8 +101,8 @@ module Domains
         end
       end
 
-      sig { params(execution_id: String, lease: Platform::Jobs::Lease, gateway: Adapters::CommanderBridge::Gateway, now: Time).returns(Platform::Jobs::Dto::Decision) }
-      def deliver(execution_id:, lease:, gateway:, now: Time.now)
+      sig { params(execution_id: String, lease: Platform::Jobs::Lease, gateway: Adapters::CommanderBridge::Gateway, attempt: Integer, now: Time).returns(Platform::Jobs::Dto::Decision) }
+      def deliver(execution_id:, lease:, gateway:, attempt: 1, now: Time.now)
         execution = database.transaction do
           row = executions.where(id: execution_id).for_update.first
           return Platform::Jobs::Dto::Decision.complete unless row && row.fetch(:state) == ExecutionState::Queued.serialize
@@ -126,7 +126,7 @@ module Domains
         end
         database.transaction { executions.where(id: execution_id).update(state: ExecutionState::Delivering.serialize, updated_at: now) }
         receipt = gateway.deliver(task_id: task.fetch(:id), text: task.fetch(:text), references: json_array(task.fetch(:references)), due_at: task.fetch(:due_at),
-                                  timezone: task.fetch(:timezone), delivery_key: row.fetch(:delivery_key))
+                                  timezone: task.fetch(:timezone), origin: task.fetch(:origin), attempt:, delivery_key: row.fetch(:delivery_key))
         mark_delivered(execution_id:, receipt:, now:)
         Platform::Jobs::Dto::Decision.complete
       rescue StandardError => error
@@ -160,6 +160,7 @@ module Domains
           end
           dispositions.insert(id: SecureRandom.uuid, task_id: task.fetch(:id), execution_id: current_execution(task.fetch(:id), expected_version).fetch(:id),
                               idempotency_key: disposition_key, idempotency_digest: digest, outcome:, created_at: now)
+          enqueue_outcome(delivery_key: current_execution(task.fetch(:id), expected_version).fetch(:delivery_key), outcome:, available_at: now)
           T.must(find(actor_id:, id:, origin:))
         end
       end
@@ -193,8 +194,8 @@ module Domains
 
       # Reconciliation queries/retries only the existing delivery key. A receipt
       # settles it; another unavailable result leaves the record visibly uncertain.
-      sig { params(execution_id: String, lease: Platform::Jobs::Lease, gateway: Adapters::CommanderBridge::Gateway, now: Time).returns(Platform::Jobs::Dto::Decision) }
-      def reconcile(execution_id:, lease:, gateway:, now: Time.now)
+      sig { params(execution_id: String, lease: Platform::Jobs::Lease, gateway: Adapters::CommanderBridge::Gateway, attempt: Integer, now: Time).returns(Platform::Jobs::Dto::Decision) }
+      def reconcile(execution_id:, lease:, gateway:, attempt: 1, now: Time.now)
         execution, task = database.transaction do
           row = executions.where(id: execution_id).for_update.first
           return Platform::Jobs::Dto::Decision.complete unless row && row.fetch(:state) == ExecutionState::Uncertain.serialize
@@ -213,7 +214,7 @@ module Domains
           mark_failed(execution_id:, reason: T.must(resolution.terminal_failure), now:)
         else
           receipt = gateway.deliver(task_id: task.fetch(:id), text: task.fetch(:text), references: json_array(task.fetch(:references)), due_at: task.fetch(:due_at),
-                                    timezone: task.fetch(:timezone), delivery_key: execution.fetch(:delivery_key))
+                                    timezone: task.fetch(:timezone), origin: task.fetch(:origin), attempt:, delivery_key: execution.fetch(:delivery_key))
           mark_delivered(execution_id:, receipt:, now:)
         end
         Platform::Jobs::Dto::Decision.complete
@@ -322,6 +323,11 @@ module Domains
 
       sig { params(execution_id: String).returns(Integer) }
       private def next_attempt_sequence(execution_id) = attempts.where(execution_id:).count + 1
+
+      sig { params(delivery_key: String, outcome: String, available_at: Time).void }
+      private def enqueue_outcome(delivery_key:, outcome:, available_at:)
+        @jobs.enqueue(kind: Kind::FutureTaskOutcome, payload: Dto::OutcomeJob.new(delivery_key:, outcome:), dispatch_key: "future-task-outcome:#{delivery_key}:#{outcome}", available_at:)
+      end
 
       sig { params(row: T::Hash[Symbol, T.untyped]).returns(Dto::TaskView) }
       private def view(row)

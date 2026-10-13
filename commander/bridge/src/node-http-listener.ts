@@ -79,20 +79,20 @@ function authorized(header: string | undefined, identity: string): boolean {
   return received.byteLength === expected.byteLength && timingSafeEqual(received, expected)
 }
 
-function deliveryInput(value: unknown): Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }> | undefined {
+function deliveryInput(value: unknown): Readonly<{ deliveryKey: string; taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string; origin: string; attempt: number }> | undefined {
   if (!isRecord(value)) return undefined
-  const deliveryKey = value.delivery_key; const taskId = value.task_id; const text = value.text; const references = value.references; const dueAt = value.due_at; const timezone = value.timezone
-  if (typeof deliveryKey !== "string" || typeof taskId !== "string" || typeof text !== "string" || typeof dueAt !== "string" || typeof timezone !== "string" || !Array.isArray(references) || !references.every((item) => typeof item === "string")) return undefined
-  return { deliveryKey, taskId, text, references, dueAt, timezone }
+  const deliveryKey = value.delivery_key; const taskId = value.task_id; const text = value.text; const references = value.references; const dueAt = value.due_at; const timezone = value.timezone; const origin = value.origin; const attempt = value.attempt
+  if (typeof deliveryKey !== "string" || typeof taskId !== "string" || typeof text !== "string" || typeof dueAt !== "string" || typeof timezone !== "string" || typeof origin !== "string" || typeof attempt !== "number" || !Number.isInteger(attempt) || attempt < 1 || !Array.isArray(references) || !references.every((item) => typeof item === "string")) return undefined
+  return { deliveryKey, taskId, text, references, dueAt, timezone, origin, attempt }
 }
 
 function responseBody(delivery: FutureTaskResolution): Readonly<{ delivery_key: string; commander_item_id: string }> | Readonly<{ terminal_failure: string }> {
   return "terminalFailure" in delivery ? { terminal_failure: delivery.terminalFailure } : { delivery_key: delivery.deliveryKey, commander_item_id: delivery.commanderItemId }
 }
 
-function futureTaskNotice(input: Readonly<{ taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string }>): string {
+function futureTaskNotice(input: Readonly<{ taskId: string; text: string; references: readonly string[]; dueAt: string; timezone: string; origin: string; attempt: number }>): string {
   const references = input.references.length === 0 ? "none" : input.references.join(", ")
-  return `[Future task ${input.taskId}] ${input.text}\nOrigin: Commander\nReferences: ${references}\nScheduled: ${input.dueAt} (${input.timezone})\nAttempt: 1\nOutcome: awaiting user disposition`
+  return `[Future task ${input.taskId}] ${input.text}\nOrigin: ${input.origin}\nReferences: ${references}\nScheduled: ${input.dueAt} (${input.timezone})\nAttempt: ${input.attempt}\nReply with a disposition: assessed, project_work_requested, user_canceled, or rescheduled.\nOutcome: awaiting user disposition`
 }
 
 async function readJson(request: IncomingMessage): Promise<Readonly<{ ok: true; value: unknown }> | Readonly<{ ok: false; status: 400 | 413; reason: "invalid_json" | "body_too_large" }>> {
