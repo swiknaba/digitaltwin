@@ -1,0 +1,202 @@
+diff --git a/packages/app/component-tests/commander-panel.spec.ts b/packages/app/component-tests/commander-panel.spec.ts
+new file mode 100644
+index 0000000..99ba90a
+--- /dev/null
++++ b/packages/app/component-tests/commander-panel.spec.ts
+@@ -0,0 +1,98 @@
++import type { Ipc, IpcClient, IpcSpec } from "@opencode/gui-extensions/sdk"
++import { expect, sourceURL, story } from "../../storybook/playwright/story"
++
++const fixture = sourceURL(new URL("./extension-host.fixture.tsx", import.meta.url))
++
++const modules = {
++  fixture,
++  commander: sourceURL(new URL("../../gui-extensions/src/commander/index.ts", import.meta.url)),
++  renderer: sourceURL(new URL("../../gui-extensions/src/commander/renderer.tsx", import.meta.url)),
++  contract: sourceURL(new URL("../../gui-extensions/src/commander/contract.ts", import.meta.url)),
++}
++
++type CommanderClient = Pick<IpcClient<IpcSpec>, "state" | "on"> & {
++  open(): Promise<CommanderState>
++  send(input: { text: string }): Promise<CommanderState>
++  steer(input: { text: string }): Promise<CommanderState>
++  cancel(): Promise<CommanderState>
++  reconnect(input: { after: number }): Promise<CommanderState>
++}
++
++type CommanderState = {
++  status: "active"
++  events: { cursor: number; kind: "delta" | "notice" | "final"; text: string }[]
++}
++
++story.beforeEach(async ({ mount, page }) => {
++  // The local client is the renderer's typed IPC boundary. It models only sanitized
++  // panel state, never an operator proof, conversation identity, or bridge endpoint.
++  await mount("ui-line-comment--editor")
++  const opened = await page.evaluate(async (modules) => {
++    const [{ mountSessionRegion, until }, commander, contract] = await Promise.all([
++      import(modules.fixture),
++      import(modules.commander),
++      import(modules.contract),
++    ])
++    let events: { cursor: number; kind: "delta" | "notice" | "final"; text: string }[] = [
++      { cursor: 1, kind: "notice", text: "Commander harness opened" },
++    ]
++    const snapshot = () => ({ status: "active" as const, events })
++    const client: CommanderClient = {
++      open: async () => snapshot(),
++      send: async ({ text }) => {
++        events = [...events, { cursor: 2, kind: "delta", text: `stream: ${text}` }]
++        return snapshot()
++      },
++      steer: async ({ text }) => {
++        events = [...events, { cursor: 3, kind: "notice", text: `steer: ${text}` }]
++        return snapshot()
++      },
++      cancel: async () => {
++        events = [...events, { cursor: 5, kind: "final", text: "cancelled" }]
++        return snapshot()
++      },
++      reconnect: async ({ after }) => {
++        events = [...events, { cursor: 4, kind: "notice", text: `reconnected after ${after}` }]
++        return snapshot()
++      },
++      state: () => undefined,
++      on: () => () => undefined,
++    }
++    const region = mountSessionRegion({
++      definitions: [{ ...commander.default, renderer: () => import(modules.renderer) }],
++      active: "commander:main",
++      ipc: (token: Ipc) => (token.id === contract.CommanderBridge.id ? client : undefined),
++    })
++
++    await until(() => region.status("commander") === "active")
++    region.openTitlebar()
++
++    return { current: region.current(), opened: region.opened }
++  }, modules)
++
++  expect(opened).toEqual({ current: "a", opened: [{ key: "commander:main", session: "a" }] })
++})
++
++story(
++  "opens Commander without replacing its project session, streams, reconnects, steers, and cancels",
++  async ({ page }, testInfo) => {
++    const panel = page.getByTestId("session-region-fixture")
++    const message = panel.getByRole("textbox", { name: "Commander message" })
++
++    await expect(panel.getByText("Connected", { exact: true })).toBeVisible()
++    await expect(panel.getByText("Commander harness opened", { exact: true })).toBeVisible()
++
++    await message.fill("Run the acceptance fixture")
++    await panel.getByRole("button", { name: "Send", exact: true }).click()
++    await expect(panel.getByText("stream: Run the acceptance fixture", { exact: true })).toBeVisible()
++
++    await message.fill("Keep the project session selected")
++    await panel.getByRole("button", { name: "Steer", exact: true }).click()
++    await expect(panel.getByText("steer: Keep the project session selected", { exact: true })).toBeVisible()
++
++    await panel.getByRole("button", { name: "Reconnect", exact: true }).click()
++    await expect(panel.getByText("reconnected after 3", { exact: true })).toBeVisible()
++
++    await panel.getByRole("button", { name: "Cancel", exact: true }).click()
++    await expect(panel.getByText("cancelled", { exact: true })).toBeVisible()
++    await panel.screenshot({ path: testInfo.outputPath("commander-panel.png") })
++  },
++)
+diff --git a/packages/app/component-tests/extension-host.fixture.tsx b/packages/app/component-tests/extension-host.fixture.tsx
+index c20d81e..867c615 100644
+--- a/packages/app/component-tests/extension-host.fixture.tsx
++++ b/packages/app/component-tests/extension-host.fixture.tsx
+@@ -1,9 +1,13 @@
+ import { DialogProvider } from "@opencode/ui/context/dialog"
+ import {
+   Panel,
++  TitlebarItem,
+   type Appearance,
+   type Build,
+   type Definition,
++  type Ipc,
++  type IpcClient,
++  type IpcSpec,
+   type Keybinds,
+   type Layout,
+   type Locale,
+@@ -354,7 +358,14 @@ function standIn(overrides: Partial<Interface>): Interface {
+ }
+ 
+ /** The real host over the real HostApis of a web window; `mounted`, when given, attaches as the app interface. */
+-function RealHost(props: ParentProps<{ definitions: readonly Definition[]; captured: Captured; mounted?: Interface }>) {
++function RealHost(
++  props: ParentProps<{
++    definitions: readonly Definition[]
++    captured: Captured
++    mounted?: Interface
++    ipc?: (token: Ipc) => IpcClient<IpcSpec> | undefined
++  }>,
++) {
+   const apis = createHostApis()
+   props.captured.apis = apis
+ 
+@@ -366,6 +377,7 @@ function RealHost(props: ParentProps<{ definitions: readonly Definition[]; captu
+       disabled={() => new Set<string>()}
+       apis={apis.apis}
+       whenMounted={apis.whenMounted}
++      ipc={props.ipc}
+     >
+       {props.children}
+     </ExtensionHostProvider>
+@@ -379,12 +391,20 @@ function RealHost(props: ParentProps<{ definitions: readonly Definition[]; captu
+  * does: a new session object each time, delivered through the same reactive inputs, while the one screen object
+  * `ctx.screen` returns follows the route. Its composer records which session each attachment reached.
+  */
+-export function mountSessionRegion(input: { definitions: readonly Definition[]; active: string }) {
++export function mountSessionRegion(input: {
++  definitions: readonly Definition[]
++  active: string
++  ipc?: (token: Ipc) => IpcClient<IpcSpec> | undefined
++}) {
+   const container = document.createElement("div")
++  container.dataset.testid = "session-region-fixture"
++  container.style.cssText =
++    "position:fixed;inset:0;z-index:1000;background:var(--background-base);color:var(--text-base);padding:24px"
+   document.body.appendChild(container)
+   const hosts: ExtensionHost[] = []
+   const captured: Captured = {}
+   const attached: string[] = []
++  const opened: { key: string; session: string }[] = []
+ 
+   const object = (id: string) => {
+     const value = { key: `fixture\n${id}`, id, tab: id, pending: false, location: { directory: "/repo" }, visit: {} }
+@@ -463,7 +481,15 @@ export function mountSessionRegion(input: { definitions: readonly Definition[];
+             <RealHost
+               definitions={input.definitions}
+               captured={captured}
+-              mounted={standIn({ current: () => (routed() ? view() : undefined), screen: () => screen })}
++              mounted={standIn({
++                current: () => (routed() ? view() : undefined),
++                screen: () => screen,
++                layout: {
++                  ...standIn({}).layout,
++                  open: (key, session) => void opened.push({ key, session: session.id }),
++                },
++              })}
++              ipc={input.ipc}
+             >
+               <Region />
+             </RealHost>
+@@ -482,6 +508,12 @@ export function mountSessionRegion(input: { definitions: readonly Definition[];
+     leave: () => setRouted(false),
+     /** The session each composer attachment reached, in order. */
+     attached,
++    /** Runs the first titlebar contribution the way the app's titlebar button does. */
++    openTitlebar: () => hosts[0]?.items(TitlebarItem)[0]?.value.run?.(),
++    /** Layout open calls from titlebar contributions. */
++    opened,
++    /** The routed project session remains outside the Commander panel. */
++    current: () => view().id,
+     status: (id: string) => hosts[0]?.state.status[id],
+     unmount: () => {
+       dispose()
+       container.remove()
+     },

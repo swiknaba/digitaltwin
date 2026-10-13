@@ -44,7 +44,7 @@ sh /absolute/path/to/digitaltwin/commander/opencode-ui-patch/prepare-opencode.sh
 The reported commit must equal the pin above and the target must be clean. The
 preparation script verifies a SHA-256 manifest before it copies exactly the bridge
 package manifest, strict TypeScript configuration, and reviewed `src/*.ts` files to
-`packages/commander-bridge`; then it applies all five patches, including the
+`packages/commander-bridge`; then it applies all seven patches, including the
 workspace lockfile update. It copies no README, user/project configuration,
 credentials, persistent store, or operator state. Keep the patched source and built
 application outside this repository; this repository owns only the reproducible patch
@@ -77,6 +77,41 @@ TypeScript, GUI-extension checks, and workspace-package import. Run the bridge's
 Node 22 test command (`npm test` in `commander/bridge`) separately; OpenCode's root
 `bunfig.toml` deliberately disables root-level Bun test discovery. These checks are
 not a desktop startup or Gate 1 live-interaction result.
+
+## Commander rendered-panel fixture
+
+The maintained patch also adds one Chromium Playwright component fixture at
+`packages/app/component-tests/commander-panel.spec.ts`. It mounts the production
+Commander renderer through the real OpenCode extension host and side-panel region.
+The fixture supplies an ephemeral typed IPC client that projects only the existing
+renderer contract (`status`, event `cursor`, `kind`, and sanitized `text`): it has no
+conversation identity, user identity, proof, endpoint, credential, or transport
+error. It verifies the titlebar contribution opens `commander:main` for—not instead
+of—the active project session, then renders `open`, `send`/stream, `steer`,
+`reconnect`, and `cancel` interactions. The test writes an actual rendered Chromium
+screenshot named `commander-panel.png` to its Playwright test result directory.
+
+Run it against a freshly prepared source checkout in a disposable Linux container:
+
+```sh
+docker run --rm \
+  -v "$PWD/opencode:/source:ro" \
+  oven/bun:1.4.2 \
+  sh -lc 'set -eu
+    mkdir /work && cp -a /source/. /work/
+    cd /work
+    bun install --frozen-lockfile --ignore-scripts
+    cd packages/app
+    bunx playwright install --with-deps chromium
+    bun run test:components -- \
+      component-tests/commander-panel.spec.ts \
+      --workers=1'
+```
+
+This is rendered component coverage, not an Electron desktop startup test: it does
+not exercise the packaged desktop process, `--commander-test-harness`, a real
+operator bootstrap, or an external Commander runtime. It therefore complements the
+main-process harness tests without changing the Gate 1 evidence boundary.
 
 ## Maintenance
 

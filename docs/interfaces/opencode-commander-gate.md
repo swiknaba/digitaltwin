@@ -261,6 +261,28 @@ identity or credential state. This is adapter/test evidence, not a production
 operator-authentication claim. The patched OpenCode renderer still needs to invoke
 the reviewed main-process transport before Gate 1 can pass.
 
+On 2026-10-13, the maintained patch gained a Commander-specific Chromium
+Playwright component fixture in
+`packages/app/component-tests/commander-panel.spec.ts`.
+`0007-commander-playwright-ui-fixture.patch` has SHA-256
+`c770a50471d0fed99ff6cac7b201deed92b2e97a3e94b441e01a11b888354995`.
+After fresh source preparation at the pinned `1f4d07a4a519185955ae8ab2ea3607805509e386`,
+the official `oven/bun:1.4.2` Linux environment passed
+`bun --filter @opencode/app typecheck`. The fixture then passed with the source
+lockfile's Playwright `1.59.1` Chromium (`chromium v1217`) in 6.5 seconds. It
+mounts the production Commander renderer through the real extension host and side
+panel region, verifies the titlebar opens `commander:main` for the current project
+session without replacing it, and renders open, send/stream, steer, reconnect, and
+cancel behavior. Its typed IPC double exposes only the renderer contract's status,
+event cursor, kind, and sanitized text; it has no conversation/user identity, proof,
+endpoint, credential, or transport-error value. The passing run wrote
+`commander-panel.png`; visual inspection recorded SHA-256
+`755c028ca9099cba79e329fcf54bcfc5128bd98acafa5fa587ff642a34536467`.
+The image is retained only as disposable test evidence, not committed to Git.
+This is rendered component evidence, not a packaged Electron desktop launch,
+`--commander-test-harness` interaction, real operator bootstrap, external runtime,
+or Gate 1 pass.
+
 ### Alternative only if the product specification changes
 
 The smallest reduced-scope product would replace the top-bar/transparent-conversation
