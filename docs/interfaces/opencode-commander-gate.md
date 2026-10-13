@@ -124,7 +124,7 @@ is the SHA-256 for `0005-commander-panel-actions.patch`.
 `78df797a8e5387b4e5d8d016fea71c0ee45a69808856dbb03b23f8d44405cee5`
 is the SHA-256 for `0006-commander-desktop-bootstrap-harness.patch`; the reviewed
 bridge input manifest SHA-256 is
-`3f3c80db898b10276d7f4c82d4bafdca00b520470f314603bfa298cb65e7961d`.
+`9a49b43108f9bf6ba1f1b9163ad9a3b8e23e17bb3c2e903a654130413be84a92`.
 
 `prepare-opencode.sh` requires a clean checkout at the exact pin, verifies the
 bridge manifest, copies only `package.json`, `tsconfig.json`, and reviewed
@@ -210,6 +210,12 @@ It is a local test facility, not a production identity, credential, or operator
 configuration path. The harness test covers panel open, prompt, emitted output,
 reconnect, steer, and cancel. A packaged macOS Electron interaction run and a real
 operator-owned identity/proof issuer remain required Gate 1 evidence.
+
+`createOperatorHostBootstrap` is the deployment adapter: a trusted desktop host
+supplies only a verified actor/conversation identity, bridge origin, and its
+short-lived-proof exchange; the adapter creates the main-process panel and never
+accepts those values from project or renderer code. Provisioning that real exchange
+and its credentials remains an operator approval step outside this repository.
 
 The fresh Linux Bun 1.4.2 workspace check passed bridge, GUI-extension, and desktop
 strict typechecks after this patch. The bridge Node 22 test suite passed locally.

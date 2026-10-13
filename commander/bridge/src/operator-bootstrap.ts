@@ -1,5 +1,7 @@
 import type { BridgeActorId, CapabilityAction, CapabilityBinding, CapabilityPresentation, CommanderConversationId } from "./contract.ts"
 import { CommanderMainProcessTransport, type MainProcessCapabilityIssuer, type MainProcessFetch } from "./main-process-transport.ts"
+import { CommanderMainProcessPanel } from "./main-process-panel.ts"
+import type { HostOperatorBootstrap } from "./host-bootstrap.ts"
 
 /** Values supplied only by the operator-owned desktop bootstrap, never by a panel. */
 export type OperatorDesktopIdentity = Readonly<{ actorId: BridgeActorId; conversationId: CommanderConversationId }>
@@ -27,4 +29,10 @@ export class OperatorMainProcessCapabilityIssuer implements MainProcessCapabilit
 /** Creates the desktop-only transport after operator bootstrap has verified identity. */
 export function createOperatorMainProcessTransport(input: Readonly<{ bridgeOrigin: string; identity: OperatorDesktopIdentity; exchange: OperatorCapabilityExchange; fetch: MainProcessFetch }>): CommanderMainProcessTransport {
   return new CommanderMainProcessTransport({ baseUrl: input.bridgeOrigin, capabilityIssuer: new OperatorMainProcessCapabilityIssuer({ identity: input.identity, exchange: input.exchange }), fetch: input.fetch })
+}
+
+/** Builds the desktop-installed panel from a verified operator identity and exchange. */
+export function createOperatorHostBootstrap(input: Readonly<{ bridgeOrigin: string; identity: OperatorDesktopIdentity; exchange: OperatorCapabilityExchange; fetch: MainProcessFetch }>): HostOperatorBootstrap {
+  const panel = new CommanderMainProcessPanel(createOperatorMainProcessTransport(input))
+  return { createPanel: () => panel }
 }
