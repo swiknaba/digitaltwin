@@ -38,6 +38,11 @@ module Adapters
         Domains::FutureTasks::Dto::BridgeResolution.new(receipt: receipt(response, delivery_key))
       end
 
+      sig { override.params(delivery_key: String, outcome: String).void }
+      def record_outcome(delivery_key:, outcome:)
+        request("POST", "/private/future-tasks/deliveries/#{URI.encode_uri_component(delivery_key)}/outcome", { "outcome" => outcome })
+      end
+
       sig { params(method: String, path: String, body: T.nilable(T::Hash[String, T.untyped])).returns(T::Hash[String, T.untyped]) }
       private def request(method, path, body)
         target = @base_url + path

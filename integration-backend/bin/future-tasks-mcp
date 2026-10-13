@@ -32,16 +32,23 @@ STDIN.each_line do |line|
            when "tools/call"
              arguments = request.fetch("params").fetch("arguments")
              raise ArgumentError, "Unknown FutureTasks tool" unless request.fetch("params").fetch("name") == "future_tasks"
+
              capability = String(arguments.fetch("capability"))
              value = case arguments.fetch("operation")
                      when "create"
-                       tool.create(capability:, idempotency_key: String(arguments.fetch("idempotency_key")), text: String(arguments.fetch("text")), due_at: Time.iso8601(String(arguments.fetch("due_at"))), timezone: String(arguments.fetch("timezone")), local_time: String(arguments.fetch("local_time")), references: Array(arguments.fetch("references", [])).map { |reference| String(reference) })
+                       tool.create(
+                         capability:, idempotency_key: String(arguments.fetch("idempotency_key")), text: String(arguments.fetch("text")), due_at: Time.iso8601(String(arguments.fetch("due_at"))),
+                         timezone: String(arguments.fetch("timezone")), local_time: String(arguments.fetch("local_time")), references: Array(arguments.fetch("references", [])).map { |reference| String(reference) }
+                       )
                      when "list"
                        tool.list(capability:, cursor: arguments["cursor"], limit: Integer(arguments.fetch("limit", 50)))
                      when "read"
                        tool.find(capability:, id: String(arguments.fetch("id")))
                      when "update"
-                       tool.update(capability:, id: String(arguments.fetch("id")), expected_version: Integer(arguments.fetch("expected_version")), text: arguments["text"], due_at: arguments["due_at"] && Time.iso8601(String(arguments.fetch("due_at"))), timezone: arguments["timezone"], local_time: arguments["local_time"])
+                       tool.update(
+                         capability:, id: String(arguments.fetch("id")), expected_version: Integer(arguments.fetch("expected_version")), text: arguments["text"],
+                         due_at: arguments["due_at"] && Time.iso8601(String(arguments.fetch("due_at"))), timezone: arguments["timezone"], local_time: arguments["local_time"]
+                       )
                      when "cancel"
                        tool.cancel(capability:, id: String(arguments.fetch("id")), expected_version: Integer(arguments.fetch("expected_version")))
                      else

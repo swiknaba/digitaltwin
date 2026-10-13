@@ -19,6 +19,11 @@ module Adapters
       def reconcile(delivery_key:)
         raise "Commander bridge delivery is not configured for #{delivery_key[0, 0]}a delivery"
       end
+
+      sig { override.params(delivery_key: String, outcome: String).void }
+      def record_outcome(delivery_key:, outcome:)
+        raise "Commander bridge delivery is not configured for #{delivery_key[0, 0]}a #{outcome[0, 0]}disposition"
+      end
     end
   end
 end

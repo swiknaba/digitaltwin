@@ -16,6 +16,9 @@ module Adapters
 
       sig { abstract.params(delivery_key: String).returns(Domains::FutureTasks::Dto::BridgeResolution) }
       def reconcile(delivery_key:); end
+
+      sig { abstract.params(delivery_key: String, outcome: String).void }
+      def record_outcome(delivery_key:, outcome:); end
     end
   end
 end

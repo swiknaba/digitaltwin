@@ -8,10 +8,11 @@ module Services
     class CapabilityApi
       extend T::Sig
 
-      sig { params(tasks: Domains::FutureTasks::Tasks, verifier: Adapters::FutureTasks::CapabilityVerifier).void }
-      def initialize(tasks:, verifier:)
+      sig { params(tasks: Domains::FutureTasks::Tasks, verifier: Adapters::FutureTasks::CapabilityVerifier, outcome_gateway: T.nilable(Adapters::CommanderBridge::Gateway)).void }
+      def initialize(tasks:, verifier:, outcome_gateway: nil)
         @tasks = tasks
         @verifier = verifier
+        @outcome_gateway = outcome_gateway
       end
 
       sig { params(token: String, idempotency_key: String, text: String, due_at: Time, timezone: String, local_time: String, references: T::Array[String]).returns(Domains::FutureTasks::Dto::TaskView) }
@@ -47,7 +48,9 @@ module Services
       sig { params(token: String, id: String, expected_version: Integer, disposition_key: String, outcome: String, due_at: T.nilable(Time), timezone: T.nilable(String), local_time: T.nilable(String)).returns(Domains::FutureTasks::Dto::TaskView) }
       def record_disposition(token:, id:, expected_version:, disposition_key:, outcome:, due_at: nil, timezone: nil, local_time: nil)
         capability = verify(token)
-        @tasks.record_disposition(actor_id: capability.actor_id, id:, expected_version:, disposition_key:, outcome:, due_at:, timezone:, local_time:)
+        task = @tasks.record_disposition(actor_id: capability.actor_id, id:, expected_version:, disposition_key:, outcome:, due_at:, timezone:, local_time:)
+        @outcome_gateway&.record_outcome(delivery_key: task.delivery_key, outcome: T.must(task.outcome))
+        task
       end
 
       sig { params(token: String, id: String, expected_version: Integer, resolution_key: String, outcome: String, reason: T.nilable(String)).returns(Domains::FutureTasks::Dto::TaskView) }

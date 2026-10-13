@@ -8,10 +8,11 @@ require "socket"
 class RecordingCommanderGateway
   include Adapters::CommanderBridge::Gateway
 
-  attr_reader :deliveries
+  attr_reader :deliveries, :outcomes
 
   def initialize
     @deliveries = []
+    @outcomes = []
   end
 
   def deliver(task_id:, text:, references:, due_at:, timezone:, delivery_key:)
@@ -21,6 +22,10 @@ class RecordingCommanderGateway
 
   def reconcile(delivery_key:)
     Domains::FutureTasks::Dto::BridgeResolution.new(receipt: Domains::FutureTasks::Dto::DeliveryReceipt.new(delivery_key:, commander_item_id: "commander-item-reconciled"))
+  end
+
+  def record_outcome(delivery_key:, outcome:)
+    @outcomes << { delivery_key:, outcome: }
   end
 end
 
@@ -153,7 +158,7 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect(delivered.receipt).to have_attributes(delivery_key: task.delivery_key, commander_item_id: "commander-item-1")
 
     secret = "test-capability-secret"
-    api = Services::FutureTasks::CapabilityApi.new(tasks:, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:))
+    api = Services::FutureTasks::CapabilityApi.new(tasks:, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:), outcome_gateway: gateway)
     completed = api.record_disposition(token: capability(secret:, id: "disposition-1"), id: task.id, expected_version: 1, disposition_key: "answer-1",
                                        outcome: "project_work_requested")
     expect(completed.state).to eq(Domains::FutureTasks::Dto::TaskState::Completed)
@@ -163,6 +168,7 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect(retried.state).to eq(Domains::FutureTasks::Dto::TaskState::Completed)
     expect { api.record_disposition(token: capability(secret:, id: "disposition-3"), id: task.id, expected_version: 1, disposition_key: "answer-1", outcome: "assessed") }.to raise_error(ArgumentError, /changed body/)
     expect(Kirei::App.raw_db_connection[:future_task_dispositions].first[:outcome]).to eq("project_work_requested")
+    expect(gateway.outcomes).to eq([{ delivery_key: task.delivery_key, outcome: "project_work_requested" }, { delivery_key: task.delivery_key, outcome: "project_work_requested" }])
   end
 
   it "marks an unknown bridge effect uncertain instead of silently retrying it" do
