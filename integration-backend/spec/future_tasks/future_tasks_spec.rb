@@ -78,6 +78,9 @@ RSpec.describe Domains::FutureTasks::Tasks do
     second = create_task
 
     expect(second).to eq(first)
+    delayed_retry = tasks.create(actor_id: "operator-1", origin: "commander:main", idempotency_key: "create-1", text: "Review the deployment plan", due_at: now + 60,
+                                 timezone: "UTC", local_time: (now + 60).utc.iso8601, references: ["repo:digitaltwin"], now: now + 120)
+    expect(delayed_retry).to eq(first)
     expect(Kirei::App.raw_db_connection[:future_tasks].count).to eq(1)
     expect { create_task(due_at: now + 120) }.to raise_error(ArgumentError, /Idempotency key reused/)
   end

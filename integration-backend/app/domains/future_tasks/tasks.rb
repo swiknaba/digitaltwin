@@ -22,11 +22,11 @@ module Domains
 
       sig { params(actor_id: String, idempotency_key: String, text: String, due_at: Time, timezone: String, local_time: String, references: T::Array[String], origin: String, now: Time).returns(Dto::TaskView) }
       def create(actor_id:, idempotency_key:, text:, due_at:, timezone:, local_time:, references: [], origin: "commander", now: Time.now)
-        validate_create!(actor_id:, origin:, idempotency_key:, text:, due_at:, timezone:, local_time:, references:, now:)
         digest = Digest::SHA256.hexdigest([origin, text.strip, due_at.utc.iso8601, timezone, local_time, references.sort.join("\u0000")].join("\u0000"))
         existing = tasks.where(actor_id:, idempotency_key:).first
         return view(existing) if existing && existing.fetch(:idempotency_digest) == digest
         raise ArgumentError, "Idempotency key reused with changed task" if existing
+        validate_create!(actor_id:, origin:, idempotency_key:, text:, due_at:, timezone:, local_time:, references:, now:)
 
         task_id = SecureRandom.uuid
         execution_id = SecureRandom.uuid
