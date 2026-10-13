@@ -50,7 +50,7 @@ end
 RSpec.configure do |config|
   config.include JobFixtures
   config.before do
-    tables = %i[future_task_dispositions future_task_delivery_attempts future_task_executions future_tasks jobs]
+    tables = %i[future_task_capability_uses future_task_dispositions future_task_delivery_attempts future_task_executions future_tasks jobs]
     Kirei::App.raw_db_connection.run("TRUNCATE #{tables.join(",")} RESTART IDENTITY CASCADE")
   end
   config.before(:suite) do

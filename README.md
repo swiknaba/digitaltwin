@@ -31,6 +31,7 @@ The reviewed local core now starts PostgreSQL plus Kirei web and worker processe
 | --- | --- |
 | [integration-backend/](integration-backend/README.md) | Kirei future-task persistence and worker boundary. |
 | [commander/](commander/opencode-ui-patch/README.md) | OpenCode Commander patch, bridge contract, and local harness evidence. |
+| [commander/future-work/](commander/future-work/SKILL.md) | Shared future-check-in operating skill for supported agents. |
 | [scripts/](scripts/README.md) and [tests/](tests/README.md) | Local Kirei/PostgreSQL checks and migration evidence. |
 
 ## Run the credential-free local core with Docker

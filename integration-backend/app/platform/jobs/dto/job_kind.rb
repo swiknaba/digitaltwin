@@ -8,6 +8,7 @@ module Platform
       class JobKind < T::Enum
         enums do
           FutureTaskDue = new("future_task.due")
+          FutureTaskReconcile = new("future_task.reconcile")
         end
       end
     end

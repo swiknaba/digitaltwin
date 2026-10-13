@@ -9,10 +9,12 @@ module Domains
 
         const :id, String
         const :actor_id, String
+        const :origin, String
         const :text, String
         const :references, T::Array[String]
         const :timezone, String
         const :local_time, String
+        const :recurrence, T.nilable(String), default: nil
         const :due_at, Time
         const :version, Integer
         const :state, TaskState

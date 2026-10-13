@@ -32,6 +32,7 @@ Sequel.migration do
       column :references, :jsonb, null: false, default: Sequel.pg_jsonb([])
       String :timezone, null: false
       String :local_time, null: false
+      String :recurrence
       DateTime :due_at, null: false
       Integer :version, null: false, default: 1
       String :state, null: false, default: "scheduled"
@@ -71,7 +72,7 @@ Sequel.migration do
       column :detail, :jsonb, null: false
       DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       unique [:execution_id, :sequence]
-      constraint(:future_task_delivery_attempt_state, state: %w[delivered uncertain])
+      constraint(:future_task_delivery_attempt_state, state: %w[delivered uncertain failed canceled])
     end
 
     create_table(:future_task_dispositions) do
@@ -82,7 +83,15 @@ Sequel.migration do
       String :outcome, null: false
       DateTime :created_at, null: false, default: Sequel::SQL::Constants::CURRENT_TIMESTAMP
       unique [:task_id, :idempotency_key]
-      constraint(:future_task_disposition_outcome, outcome: %w[assessed project_work_requested user_canceled rescheduled])
+      constraint(:future_task_disposition_outcome, outcome: %w[assessed project_work_requested user_canceled rescheduled owner_failed owner_canceled])
+    end
+
+    create_table(:future_task_capability_uses) do
+      String :id, primary_key: true
+      String :capability_id, null: false, unique: true
+      String :actor_id, null: false
+      String :conversation_id, null: false
+      DateTime :used_at, null: false
     end
   end
 end

@@ -30,7 +30,30 @@ module Services
 
     sig { returns(Adapters::CommanderBridge::Gateway) }
     def commander_gateway
-      @gateway ||= Adapters::CommanderBridge::UnavailableGateway.new
+      @gateway ||= configured_gateway
+    end
+
+    sig { returns(FutureTasks::CapabilityApi) }
+    def future_task_api
+      secret_file = @configuration.capability_secret_file
+      raise "Future-task capability verifier is not configured" unless secret_file
+
+      secret = File.read(secret_file).strip
+      raise "Future-task capability secret file is empty" if secret.empty?
+
+      FutureTasks::CapabilityApi.new(tasks: future_tasks, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:))
+    end
+
+    sig { returns(Adapters::CommanderBridge::Gateway) }
+    private def configured_gateway
+      url = @configuration.commander_bridge_url
+      identity_file = @configuration.commander_bridge_identity_file
+      return Adapters::CommanderBridge::UnavailableGateway.new unless url && identity_file
+
+      identity = File.read(identity_file).strip
+      raise "Commander bridge identity file is empty" if identity.empty?
+
+      Adapters::CommanderBridge::ConfiguredGateway.new(base_url: url, identity: identity)
     end
   end
 end

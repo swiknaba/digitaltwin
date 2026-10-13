@@ -14,6 +14,11 @@ module Adapters
         raise "Commander bridge delivery is not configured"
       end
       # rubocop:enable Lint/UnusedMethodArgument
+
+      sig { override.params(delivery_key: String).returns(Domains::FutureTasks::Dto::BridgeResolution) }
+      def reconcile(delivery_key:)
+        raise "Commander bridge delivery is not configured for #{delivery_key[0, 0]}a delivery"
+      end
     end
   end
 end

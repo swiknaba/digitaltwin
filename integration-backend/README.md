@@ -6,7 +6,7 @@ Git workflow control.
 
 ## What it owns
 
-- one-time Commander check-ins with actor-scoped idempotency keys;
+- one-time and daily/weekly recurring Commander check-ins with actor-scoped idempotency keys;
 - task versions, cancellation, rescheduling, and immutable delivery attempts;
 - a durable due-job generation and exactly one delivery key per generation;
 - explicit `scheduled`, `running`, `awaiting_disposition`, `completed`, `failed`,
@@ -14,9 +14,29 @@ Git workflow control.
 
 When a task is due, the worker asks the Commander bridge to append a visible check-in.
 It never starts project work. A bridge effect with an unknown result becomes
-`uncertain`, not a blind retry. The in-repository gateway intentionally fails closed
-until an operator-owned Commander runtime is wired; it does not contain credentials
-or claim a production bridge.
+`uncertain`, then one reconciliation attempt uses the same immutable delivery key.
+The in-repository gateway fails closed until an operator wires the private bridge
+endpoint and identity file; it does not create or ship a credential.
+
+## Capability and bridge contract
+
+`Services::FutureTasks::CapabilityApi` is the single typed API behind the narrow MCP
+and global OpenCode tool adapters. Each call consumes one short-lived signed
+capability containing only an audience, actor, Commander conversation, expiry, and
+nonce. Kirei records the nonce before task mutation, so replayed, expired, or
+cross-actor capabilities fail closed. The body never supplies an actor, origin, or
+target.
+
+Set all of the following only in operator-owned runtime configuration:
+
+- `COMMANDER_BRIDGE_URL` — private bridge base URL;
+- `COMMANDER_BRIDGE_IDENTITY_FILE` — mounted private identity for that bridge; and
+- `FUTURE_TASK_CAPABILITY_SECRET_FILE` — mounted verification secret for
+  operator-issued capabilities.
+
+Without the bridge values, delivery is explicitly unavailable. Without the capability
+secret, the agent scheduling API is unavailable. Neither condition affects ordinary
+OpenCode project work.
 
 ## Run and verify
 
@@ -41,6 +61,6 @@ historical chat/workflow schema rather than migrating Mattermost data.
 
 OpenCode owns project sessions, agents, remote workspaces, and Git feedback.
 Commander owns its durable conversation and runtime credentials. Kirei receives only
-validated future-task operations through the future scheduling capability that is
-still being added as MCP/OpenCode tool adapters. No task can trigger a code change,
+validated future-task operations through the shared MCP/OpenCode tool API. The
+production issuer and private bridge deployment remain operator work. No task can trigger a code change,
 merge, deployment, or revive a project session by itself.

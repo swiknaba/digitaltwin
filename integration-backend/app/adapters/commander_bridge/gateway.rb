@@ -13,6 +13,9 @@ module Adapters
 
       sig { abstract.params(task_id: String, text: String, references: T::Array[String], due_at: Time, timezone: String, delivery_key: String).returns(Domains::FutureTasks::Dto::DeliveryReceipt) }
       def deliver(task_id:, text:, references:, due_at:, timezone:, delivery_key:); end
+
+      sig { abstract.params(delivery_key: String).returns(Domains::FutureTasks::Dto::BridgeResolution) }
+      def reconcile(delivery_key:); end
     end
   end
 end
