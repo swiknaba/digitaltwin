@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..99ba90a
 --- /dev/null
 +++ b/packages/app/component-tests/commander-panel.spec.ts
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,110 @@
 +import type { Ipc, IpcClient, IpcSpec } from "@opencode/gui-extensions/sdk"
 +import { expect, sourceURL, story } from "../../storybook/playwright/story"
 +
@@ -33,7 +33,10 @@ index 0000000..99ba90a
 +  // The local client is the renderer's typed IPC boundary. It models only sanitized
 +  // panel state, never an operator proof, conversation identity, or bridge endpoint.
 +  await mount("ui-line-comment--editor")
-+  const opened = await page.evaluate(async (modules) => {
++  let opened: { current: string; opened: { key: string; session: string }[] } | undefined
++  for (let attempt = 0; attempt < 2; attempt++) {
++    try {
++      opened = await page.evaluate(async (modules) => {
 +    const [{ mountSessionRegion, until }, commander, contract] = await Promise.all([
 +      import(modules.fixture),
 +      import(modules.commander),
@@ -74,7 +77,14 @@ index 0000000..99ba90a
 +    region.openTitlebar()
 +
 +    return { current: region.current(), opened: region.opened }
-+  }, modules)
++      }, modules)
++      break
++    } catch (error) {
++      // Vite can replace the Storybook iframe once when it first optimizes the new workspace import.
++      if (attempt || !String(error).includes("Execution context was destroyed")) throw error
++      await page.waitForLoadState("domcontentloaded")
++    }
++  }
 +
 +  expect(opened).toEqual({ current: "a", opened: [{ key: "commander:main", session: "a" }] })
 +})
