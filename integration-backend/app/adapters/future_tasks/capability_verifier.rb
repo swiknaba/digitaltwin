@@ -11,6 +11,8 @@ module Adapters
     class CapabilityVerifier
       extend T::Sig
 
+      MAXIMUM_LIFETIME_SECONDS = 300
+
       sig { params(secret: String).void }
       def initialize(secret:)
         @secret = secret
@@ -27,7 +29,12 @@ module Adapters
         payload = JSON.parse([encoded].pack("H*").force_encoding(Encoding::UTF_8))
         raise ArgumentError, "Malformed future-task capability" unless payload.is_a?(Hash)
         raise ArgumentError, "Capability audience is invalid" unless payload.fetch("aud") == audience
-        raise ArgumentError, "Capability expired" unless Time.at(Integer(payload.fetch("exp"))) > now
+
+        issued_at = Time.at(Integer(payload.fetch("iat")))
+        expires_at = Time.at(Integer(payload.fetch("exp")))
+        raise ArgumentError, "Capability issued in the future" if issued_at > now
+        raise ArgumentError, "Capability expired" unless expires_at > now
+        raise ArgumentError, "Capability lifetime is invalid" if expires_at - issued_at > MAXIMUM_LIFETIME_SECONDS
 
         capability = Capability.new(id: String(payload.fetch("jti")), actor_id: String(payload.fetch("actor")), conversation_id: String(payload.fetch("conversation")), owner: payload.fetch("owner") == true)
         raise ArgumentError, "Capability values are invalid" if capability.id.empty? || capability.actor_id.empty? || capability.conversation_id.empty?

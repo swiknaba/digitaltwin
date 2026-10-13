@@ -63,9 +63,9 @@ module Domains
         raise ArgumentError, "Task cursor is invalid" if cursor && cursor.empty?
 
         query = tasks.where(actor_id:)
-        query = query.where(Sequel[:future_tasks][:id] > cursor) if cursor
-        rows = query.order(:id).limit(limit + 1).all
-        next_cursor = rows.length > limit ? rows.fetch(limit - 1).fetch(:id) : nil
+        query = after_cursor(query, cursor) if cursor
+        rows = query.order(:created_at, :id).limit(limit + 1).all
+        next_cursor = rows.length > limit ? cursor_for(rows.fetch(limit - 1)) : nil
         Dto::TaskPage.new(items: rows.first(limit).map { |row| view(row) }, next_cursor:)
       end
 
@@ -332,7 +332,7 @@ module Domains
                              Dto::DeliveryReceipt.new(delivery_key: String(receipt.fetch("delivery_key")), commander_item_id: String(receipt.fetch("commander_item_id")))
                            end
         Dto::TaskView.new(
-          id: row.fetch(:id), actor_id: row.fetch(:actor_id), origin: row.fetch(:origin), text: row.fetch(:text), references: json_array(row.fetch(:references)), timezone: row.fetch(:timezone),
+          id: row.fetch(:id), created_at: row.fetch(:created_at), actor_id: row.fetch(:actor_id), origin: row.fetch(:origin), text: row.fetch(:text), references: json_array(row.fetch(:references)), timezone: row.fetch(:timezone),
           local_time: row.fetch(:local_time), due_at: row.fetch(:due_at), version: row.fetch(:version), state: TaskState.deserialize(row.fetch(:state)), outcome: disposition&.fetch(:outcome),
           execution_id: execution.fetch(:id), delivery_key: execution.fetch(:delivery_key), receipt: rendered_receipt
         )
@@ -340,6 +340,31 @@ module Domains
 
       sig { params(value: T.untyped).returns(T::Array[String]) }
       private def json_array(value) = Array(value).map { |item| String(item) }
+
+      sig { params(query: Sequel::Dataset, cursor: String).returns(Sequel::Dataset) }
+      private def after_cursor(query, cursor)
+        created_at, id = decode_cursor(cursor)
+        table = Sequel[:future_tasks]
+        query.where((table[:created_at] > created_at) | (Sequel.expr({ table[:created_at] => created_at }) & (table[:id] > id)))
+      end
+
+      sig { params(row: T::Hash[Symbol, T.untyped]).returns(String) }
+      private def cursor_for(row)
+        [row.fetch(:created_at).utc.iso8601(6), row.fetch(:id)].join("\u0000").unpack1("H*")
+      end
+
+      sig { params(cursor: String).returns([Time, String]) }
+      private def decode_cursor(cursor)
+        raise ArgumentError, "Task cursor is invalid" unless cursor.match?(/\A[0-9a-f]+\z/) && cursor.length.even?
+
+        encoded = [cursor].pack("H*")
+        created_at, id = encoded.split("\u0000", 2)
+        raise ArgumentError, "Task cursor is invalid" unless created_at && id && !id.empty?
+
+        [Time.iso8601(created_at), id]
+      rescue ArgumentError
+        raise ArgumentError, "Task cursor is invalid"
+      end
 
       sig { params(outcome: String, due_at: T.nilable(Time), timezone: T.nilable(String), local_time: T.nilable(String)).returns(String) }
       private def disposition_digest(outcome:, due_at:, timezone:, local_time:)

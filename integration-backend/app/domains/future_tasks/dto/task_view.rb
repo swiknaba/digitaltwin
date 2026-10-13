@@ -8,6 +8,7 @@ module Domains
         include Kirei::Domain::ValueObject
 
         const :id, String
+        const :created_at, Time
         const :actor_id, String
         const :origin, String
         const :text, String

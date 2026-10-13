@@ -56,8 +56,8 @@ RSpec.describe Domains::FutureTasks::Tasks do
                  local_time: due_at.utc.iso8601, references: ["repo:digitaltwin"], now:)
   end
 
-  def capability(secret:, id:, actor: "operator-1", conversation: "commander:main", owner: false)
-    payload = { "jti" => id, "actor" => actor, "conversation" => conversation, "aud" => "future_tasks", "exp" => (Time.now + 300).to_i, "owner" => owner }.to_json.unpack1("H*")
+  def capability(secret:, id:, actor: "operator-1", conversation: "commander:main", owner: false, issued_at: Time.now, expires_at: Time.now + 300)
+    payload = { "jti" => id, "actor" => actor, "conversation" => conversation, "aud" => "future_tasks", "iat" => issued_at.to_i, "exp" => expires_at.to_i, "owner" => owner }.to_json.unpack1("H*")
     "#{payload}.#{OpenSSL::HMAC.hexdigest("SHA256", secret, payload)}"
   end
 
@@ -83,6 +83,21 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect(delayed_retry).to eq(first)
     expect(Kirei::App.raw_db_connection[:future_tasks].count).to eq(1)
     expect { create_task(due_at: now + 120) }.to raise_error(ArgumentError, /Idempotency key reused/)
+  end
+
+  it "uses an opaque created-at/id cursor and rejects malformed capability timing" do
+    first = create_task(key: "page-1", due_at: now + 60)
+    second = create_task(key: "page-2", due_at: now + 120)
+    secret = "test-capability-secret"
+    api = Services::FutureTasks::CapabilityApi.new(tasks:, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:))
+    page = api.list(token: capability(secret:, id: "page-token"), limit: 1)
+
+    expected = [first, second].sort_by { |task| [task.created_at, task.id] }
+    expect(page.items).to eq([expected.fetch(0)])
+    expect(page.next_cursor).not_to eq(expected.fetch(0).id)
+    expect(api.list(token: capability(secret:, id: "page-token-2"), cursor: page.next_cursor, limit: 1).items).to eq([expected.fetch(1)])
+    expect { api.list(token: capability(secret:, id: "future", issued_at: Time.now + 60), limit: 1) }.to raise_error(ArgumentError, "Capability issued in the future")
+    expect { api.list(token: capability(secret:, id: "long", issued_at: Time.now - 1, expires_at: Time.now + 301), limit: 1) }.to raise_error(ArgumentError, "Capability lifetime is invalid")
   end
 
   it "rolls back a queued job with its task when persistence fails after enqueue" do
