@@ -134,6 +134,13 @@ whole-workspace retries are justified. The repaired checker did pass a strict is
 typecheck of `commander/bridge/`; it does not validate the patched OpenCode GUI
 extension. Manifests and lockfiles in the upstream checkout remained unchanged.
 
+The diagnosis was then repeated with a fresh official npm-distributed `bun@1.4.2`,
+a fresh detached worktree, and a fresh project-local Bun cache; all reproduced the
+same 16-extraction partial graph. A one-package `effect@4.0.1` install with that same
+toolchain completed and loaded successfully. The remaining failure is therefore
+specific to this OpenCode workspace/dependency graph, not a global Bun version,
+architecture, firewall, or cache problem.
+
 The panel intentionally reports that no bridge is connected. The isolated bridge
 core now covers persistence, stream/reconnect, and capability semantics, but no
 external conversation or trusted desktop capability exchange is wired yet, so Gate 1
