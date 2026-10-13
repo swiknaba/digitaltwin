@@ -28,7 +28,10 @@ only status plus event cursor/kind/text. It never receives the conversation iden
 delivery IDs, identity, proof, origin, endpoint, credential, or transport error.
 The repository does not yet include an OpenCode desktop-host integration that supplies
 the trusted bootstrap, so this remains a tested invocation seam rather than a Gate 1
-pass or a live production bridge claim.
+pass or a live production bridge claim. The patched desktop now invokes its
+main-process-only installer before GUI extensions start. Ordinary launches pass no
+bootstrap and remain closed; `--commander-test-harness` installs an ephemeral
+loopback bridge with random in-memory proofs for local desktop acceptance only.
 
 ## Apply to the pinned source
 
@@ -64,6 +67,7 @@ docker run --rm \
     bun install --frozen-lockfile --ignore-scripts
     bun --filter @digitaltwin/commander-bridge typecheck
     bun --filter @opencode/gui-extensions typecheck
+    bun --filter @opencode/desktop typecheck
     bun --filter @opencode/gui-extensions test
     bun --cwd packages/gui-extensions -e "const bridge = await import(\"@digitaltwin/commander-bridge\"); if (bridge.unconfiguredCommanderBridgeStatus() !== \"not-configured\") throw new Error(\"bridge import failed\")"'
 ```

@@ -121,6 +121,10 @@ input manifest SHA-256 is
 `d9294b084a6d31a45c34067cd96684bed8b529c81ba587ab81a04ecbaad46f29`.
 `34070d4ff12bc6ad6a7b9a5198719d92de4646def36aa4c5a15f0f91fcbd8ed5`
 is the SHA-256 for `0005-commander-panel-actions.patch`.
+`78df797a8e5387b4e5d8d016fea71c0ee45a69808856dbb03b23f8d44405cee5`
+is the SHA-256 for `0006-commander-desktop-bootstrap-harness.patch`; the reviewed
+bridge input manifest SHA-256 is
+`3f3c80db898b10276d7f4c82d4bafdca00b520470f314603bfa298cb65e7961d`.
 
 `prepare-opencode.sh` requires a clean checkout at the exact pin, verifies the
 bridge manifest, copies only `package.json`, `tsconfig.json`, and reviewed
@@ -195,6 +199,25 @@ one-use proof and verifies that no proof enters panel state. No upstream desktop
 currently calls `installHostOperatorBootstrap`, so this is a tested panel-to-bridge
 invocation seam, not a claim that an external conversation or trusted capability
 exchange is wired into OpenCode. Gate 1 has not passed.
+
+The desktop patch now calls a main-process-only installer before built-in GUI
+extensions start. It accepts only a `HostOperatorBootstrap` supplied by desktop
+code; project configuration and renderer IPC have no install path. Normal launches
+provide none and therefore remain closed. The explicit
+`--commander-test-harness` switch starts only a loopback listener backed by random
+in-memory one-use proofs and a synthetic runtime, then closes it on desktop quit.
+It is a local test facility, not a production identity, credential, or operator
+configuration path. The harness test covers panel open, prompt, emitted output,
+reconnect, steer, and cancel. A packaged macOS Electron interaction run and a real
+operator-owned identity/proof issuer remain required Gate 1 evidence.
+
+The fresh Linux Bun 1.4.2 workspace check passed bridge, GUI-extension, and desktop
+strict typechecks after this patch. The bridge Node 22 test suite passed locally.
+Its package test command intentionally uses Node's type-strip runner, so invoking it
+through Bun's workspace-script runner is unsupported and failed before executing the
+suite; that does not replace the recorded Node result. Claude Code review was
+requested for this boundary but its installed CLI was not authenticated (`/login`
+required), so no Claude review is claimed.
 
 On 2026-10-13, `prepare-opencode.sh` was rerun from a fresh detached checkout of
 `1f4d07a4a519185955ae8ab2ea3607805509e386` after the panel-action patch. The

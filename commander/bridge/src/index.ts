@@ -1,6 +1,7 @@
 export * from "./capability-binding.ts"
 export * from "./contract.ts"
 export * from "./controller.ts"
+export * from "./desktop-test-harness.ts"
 export * from "./ephemeral-test-authority.ts"
 export * from "./file-store.ts"
 export * from "./host-bootstrap.ts"

@@ -1,0 +1,81 @@
+diff --git a/bun.lock b/bun.lock
+--- a/bun.lock
++++ b/bun.lock
+@@ -420,5 +420,6 @@
+       "name": "@opencode/desktop",
+       "version": "2.0.27",
+       "dependencies": {
++        "@digitaltwin/commander-bridge": "workspace:*",
+         "@zip.js/zip.js": "2.7.62",
+         "electron-context-menu": "5.0.0",
+diff --git a/packages/desktop/package.json b/packages/desktop/package.json
+--- a/packages/desktop/package.json
++++ b/packages/desktop/package.json
+@@ -25,5 +25,6 @@
+   },
+   "main": "./out/main/index.js",
+   "dependencies": {
++    "@digitaltwin/commander-bridge": "workspace:*",
+     "@zip.js/zip.js": "2.7.62",
+     "electron-context-menu": "5.0.0",
+diff --git a/packages/desktop/src/main/desktop.ts b/packages/desktop/src/main/desktop.ts
+--- a/packages/desktop/src/main/desktop.ts
++++ b/packages/desktop/src/main/desktop.ts
+@@ -10,6 +10,7 @@ import { DesktopLogging } from "./native/logging"
+ import { BackgroundService } from "./service/background-service"
+ import { DesktopCli } from "./service/desktop-cli"
+ import { marks } from "./lifecycle/marks"
++import { installCommanderDesktopBootstrap } from "./commander/bootstrap"
+ 
+ // Everything above has been loaded and evaluated by now; the layers start below.
+ marks.bundle = Date.now()
+@@ -20,5 +21,8 @@ const runIpc = Effect.fn("Desktop.runIpc")(function* () {
+   marks.layers = Date.now()
+   yield* Effect.logInfo("layers ready", { marks })
+   const ipc = yield* Ipc.registerIpcHandlers
++  // This runs before built-in main extensions. In ordinary builds it is a no-op,
++  // leaving Commander fail-closed; the explicit local harness owns its own proofs.
++  yield* Effect.promise(installCommanderDesktopBootstrap)
+   // Main GUI extensions start with the window: servers they restore feed the first paint's server
+   // list, and menu items they contribute are present at startup. Their heavy modules load lazily on
+diff --git a/packages/desktop/tsconfig.json b/packages/desktop/tsconfig.json
+--- a/packages/desktop/tsconfig.json
++++ b/packages/desktop/tsconfig.json
+@@ -5,4 +5,5 @@
+     "skipLibCheck": true,
+     "moduleResolution": "bundler",
++    "allowImportingTsExtensions": true,
+     "allowSyntheticDefaultImports": true,
+     "esModuleInterop": true,
+diff --git a/packages/desktop/src/main/commander/bootstrap.ts b/packages/desktop/src/main/commander/bootstrap.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/desktop/src/main/commander/bootstrap.ts
+@@ -0,0 +1,27 @@
++import { app } from "electron"
++import {
++  createEphemeralDesktopHarness,
++  installHostOperatorBootstrap,
++  type HostOperatorBootstrap,
++} from "@digitaltwin/commander-bridge/core"
++
++/**
++ * The desktop main process is the only OpenCode layer allowed to install a
++ * Commander bootstrap. Project files and renderer IPC cannot call this module.
++ */
++export function installTrustedCommanderBootstrap(bootstrap: HostOperatorBootstrap): void {
++  installHostOperatorBootstrap(bootstrap)
++}
++
++/**
++ * An operator-maintained build can call installTrustedCommanderBootstrap before
++ * this startup function. The checked-in build has no credentials and stays closed.
++ * The explicit harness switch installs only an ephemeral loopback bridge for local
++ * UI acceptance; it is not a production identity or configuration mechanism.
++ */
++export async function installCommanderDesktopBootstrap(): Promise<void> {
++  if (!process.argv.includes("--commander-test-harness")) return
++  const harness = await createEphemeralDesktopHarness()
++  installTrustedCommanderBootstrap(harness.bootstrap)
++  app.once("will-quit", () => { void harness.close() })
++}
