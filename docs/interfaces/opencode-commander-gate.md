@@ -119,12 +119,12 @@ is the SHA-256 for `0003-commander-bridge-ipc-seam.patch`.
 is the SHA-256 for `0004-commander-bridge-workspace.patch`; the reviewed bridge
 input manifest SHA-256 is
 `d9294b084a6d31a45c34067cd96684bed8b529c81ba587ab81a04ecbaad46f29`.
-`34070d4ff12bc6ad6a7b9a5198719d92de4646def36aa4c5a15f0f91fcbd8ed5`
+`b9f30fcbb0a75976c30085d2b6ecc25a5084c7daa3c6ba15dde23ea8542d24ad`
 is the SHA-256 for `0005-commander-panel-actions.patch`.
-`78df797a8e5387b4e5d8d016fea71c0ee45a69808856dbb03b23f8d44405cee5`
+`39911245836ef16b0b2ab6066b26ea40401597d7b079d5475e817467fc9611ac`
 is the SHA-256 for `0006-commander-desktop-bootstrap-harness.patch`; the reviewed
 bridge input manifest SHA-256 is
-`9a49b43108f9bf6ba1f1b9163ad9a3b8e23e17bb3c2e903a654130413be84a92`.
+`7ce2bd3ccdea20acbb0b8c5a87e8d1e61937c874269217b4ad15a12b3b10678e`.
 
 `prepare-opencode.sh` requires a clean checkout at the exact pin, verifies the
 bridge manifest, copies only `package.json`, `tsconfig.json`, and reviewed
@@ -282,6 +282,21 @@ The image is retained only as disposable test evidence, not committed to Git.
 This is rendered component evidence, not a packaged Electron desktop launch,
 `--commander-test-harness` interaction, real operator bootstrap, external runtime,
 or Gate 1 pass.
+
+On 2026-10-13, a disposable Linux/Xvfb Electron acceptance run used the explicit
+`--commander-test-harness` switch against the same pinned, freshly prepared source.
+The desktop startup installs the harness before creating its early renderer window;
+the host-owned bootstrap is shared only within the main process so Vite's lazy
+extension chunk observes it, with no renderer, project, environment, or IPC
+configuration input. A real local project session opened Commander without replacing
+that session. The rendered panel reported `Connected`; the run executed send,
+synthetic stream/reconnect, steer, reconnect, and cancel, and retained the project
+session. The captured Electron screenshot SHA-256 is
+`9e2f3437fddbd982e221ad6894e55d11b083b3953f9093454329ee17a7c18b2a`.
+This is desktop-harness evidence only: it uses random in-memory proofs and a local
+loopback runtime, not an operator identity, production bridge endpoint, or external
+Commander runtime. It therefore narrows the missing Gate 1 work but does not satisfy
+Gate 1 by itself.
 
 ### Alternative only if the product specification changes
 

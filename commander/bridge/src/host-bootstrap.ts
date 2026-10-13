@@ -11,16 +11,15 @@ export interface HostOperatorBootstrap {
 
 type BootstrapState = { bootstrap: HostOperatorBootstrap | undefined }
 
-// Electron's main bundle loads built-in extension entries lazily. Rollup may place
-// this module in both the desktop entry and an extension chunk, so module-local
-// state would make a trusted host bootstrap invisible to the Commander extension.
-// This process-only symbol keeps the singleton shared across those chunks without
-// creating a renderer, project, filesystem, or environment configuration path.
+// Electron/Vite may evaluate this package from both the desktop entry and a
+// lazily loaded extension chunk. Keep the host-owned singleton in main-process
+// memory so those evaluated copies share it. This key is never exposed to the
+// renderer and accepts no project, environment, or IPC input.
 const bootstrapStateKey = Symbol.for("@digitaltwin/commander-bridge/host-bootstrap")
 
 function bootstrapState(): BootstrapState {
-  const state = globalThis as Record<symbol, BootstrapState | undefined>
-  return state[bootstrapStateKey] ??= { bootstrap: undefined }
+  const processState = globalThis as Record<symbol, BootstrapState | undefined>
+  return processState[bootstrapStateKey] ??= { bootstrap: undefined }
 }
 
 /** A second installation is rejected so a later extension cannot replace the host bootstrap. */

@@ -26,12 +26,14 @@ The IPC seam is fail-closed: without an operator-owned desktop host calling
 actions are dispatched through `commanderPanelFromHostBootstrap`; the renderer sees
 only status plus event cursor/kind/text. It never receives the conversation identity,
 delivery IDs, identity, proof, origin, endpoint, credential, or transport error.
-The repository does not yet include an OpenCode desktop-host integration that supplies
-the trusted bootstrap, so this remains a tested invocation seam rather than a Gate 1
-pass or a live production bridge claim. The patched desktop now invokes its
-main-process-only installer before GUI extensions start. Ordinary launches pass no
-bootstrap and remain closed; `--commander-test-harness` installs an ephemeral
-loopback bridge with random in-memory proofs for local desktop acceptance only.
+The repository includes no production OpenCode desktop-host integration that supplies
+an operator bootstrap, so this remains a tested invocation seam rather than a Gate 1
+pass or a live production bridge claim. The patched desktop's harness-only installer
+runs before the early renderer window, and its host-owned process state is shared
+across the lazy main-process extension chunks. Ordinary launches do not import the
+harness or install a Commander bootstrap and remain closed; `--commander-test-harness` installs an
+ephemeral loopback bridge with random in-memory proofs for local desktop acceptance
+only.
 
 ## Apply to the pinned source
 
@@ -112,6 +114,28 @@ This is rendered component coverage, not an Electron desktop startup test: it do
 not exercise the packaged desktop process, `--commander-test-harness`, a real
 operator bootstrap, or an external Commander runtime. It therefore complements the
 main-process harness tests without changing the Gate 1 evidence boundary.
+
+## Electron harness acceptance
+
+The same prepared checkout can be exercised in a disposable Linux/Xvfb container
+with the explicit harness switch. Start the desktop from `packages/desktop` with
+`--commander-test-harness`, open a local project session, click **Open Commander**,
+then use the panel's **Send**, **Steer**, **Reconnect**, and **Cancel** controls.
+The harness streams only synthetic local text and owns random in-memory proofs; it
+does not read configuration or credentials from the renderer or project.
+
+```sh
+cd packages/desktop
+XDG_CONFIG_HOME=/tmp/opencode-commander-config \
+XDG_DATA_HOME=/tmp/opencode-commander-data \
+xvfb-run -a bun run dev -- \
+  --noSandbox --remoteDebuggingPort 9222 -- --commander-test-harness
+```
+
+`--noSandbox` is a Docker/Xvfb-only Chromium requirement for an unprivileged
+container; it is not part of a product launch. A successful harness run proves the
+patched Electron process and its local synthetic bridge path only. It remains
+insufficient for production-operator connectivity or a complete Gate 1 pass.
 
 ## Maintenance
 

@@ -18,28 +18,23 @@ diff --git a/packages/desktop/package.json b/packages/desktop/package.json
 +    "@digitaltwin/commander-bridge": "workspace:*",
      "@zip.js/zip.js": "2.7.62",
      "electron-context-menu": "5.0.0",
-diff --git a/packages/desktop/src/main/desktop.ts b/packages/desktop/src/main/desktop.ts
---- a/packages/desktop/src/main/desktop.ts
-+++ b/packages/desktop/src/main/desktop.ts
-@@ -10,6 +10,7 @@ import { DesktopLogging } from "./native/logging"
- import { BackgroundService } from "./service/background-service"
- import { DesktopCli } from "./service/desktop-cli"
- import { marks } from "./lifecycle/marks"
-+import { installCommanderDesktopBootstrap } from "./commander/bootstrap"
- 
- // Everything above has been loaded and evaluated by now; the layers start below.
- marks.bundle = Date.now()
-@@ -20,5 +21,10 @@ const runIpc = Effect.fn("Desktop.runIpc")(function* () {
-   marks.layers = Date.now()
-   yield* Effect.logInfo("layers ready", { marks })
-+  // This runs before built-in main extensions. In ordinary builds it is a no-op,
-+  // leaving Commander fail-closed; the explicit local harness owns its own proofs.
-+  yield* Effect.promise(installCommanderDesktopBootstrap)
-+  // Renderer IPC subscriptions can demand a main extension during registration.
-+  // Install the trusted bootstrap first so that first lazy Commander load sees it.
-  const ipc = yield* Ipc.registerIpcHandlers
-   // Main GUI extensions start with the window: servers they restore feed the first paint's server
-   // list, and menu items they contribute are present at startup. Their heavy modules load lazily on
+diff --git a/packages/desktop/src/main/index.ts b/packages/desktop/src/main/index.ts
+--- a/packages/desktop/src/main/index.ts
++++ b/packages/desktop/src/main/index.ts
+@@ -18,5 +18,12 @@ if (acquireApplicationLock()) {
+   void app.whenReady().then(async () => {
+     marks.ready = Date.now()
+     registerStorageSnapshotHandler()
++    // The renderer can demand its main extension while the early window loads.
++    // Only the explicit local harness is installed here; ordinary launches never
++    // import Commander and continue to fail closed.
++    if (process.argv.includes("--commander-test-harness")) {
++      const { installCommanderDesktopBootstrap } = await import("./commander/bootstrap")
++      await installCommanderDesktopBootstrap()
++    }
+     createEarlyWindow()
+     marks.window = Date.now()
+     startSidecarProbe()
 diff --git a/packages/desktop/tsconfig.json b/packages/desktop/tsconfig.json
 --- a/packages/desktop/tsconfig.json
 +++ b/packages/desktop/tsconfig.json
