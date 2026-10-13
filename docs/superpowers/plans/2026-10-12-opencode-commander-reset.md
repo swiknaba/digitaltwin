@@ -442,3 +442,7 @@ pass without chat activation.
   patch while preserving the no-DOM rule. Those issues are fixed. It explicitly
   agrees that Gate 1 must remain incomplete until the patch compiles/runs and the
   durable bridge/capability contract exists.
+- **Claude Code patch rereview:** verified the implementation fixes at the same
+  `claude-opus-5-5` medium setting. It found no code blocker; its final stale
+  criterion wording was corrected after the rereview. It again confirms that the
+  uncompiled UI shell cannot clear Gate 1.
