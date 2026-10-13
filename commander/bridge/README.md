@@ -100,6 +100,22 @@ Run the current dependency-free tests with:
 npm test
 ```
 
+The real cross-runtime FutureTasks check is opt-in because it starts a disposable
+Kirei Compose service. It uses `ConfiguredGateway`, a real due-job worker, and an
+ephemeral authenticated Node listener; no credential is written to disk. Start the
+disposable service on a free loopback port, then run:
+
+```sh
+env BACKEND_PORT=59998 docker compose --project-name digitaltwin-final \
+  --env-file .env.example -f compose.yml up -d backend-web
+(cd commander/bridge && DIGITALTWIN_RUN_DOCKER_E2E=1 npm test)
+```
+
+On Docker Desktop the test reaches its temporary listener through
+`host.docker.internal`. On a Linux CI runner, set
+`DIGITALTWIN_BRIDGE_E2E_ORIGIN` to the runner-reachable listener origin. This is
+backend-to-bridge transport coverage, not an Electron or production identity test.
+
 When prepared inside the pinned OpenCode workspace, run strict TypeScript with:
 
 ```sh

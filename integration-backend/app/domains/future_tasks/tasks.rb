@@ -25,7 +25,9 @@ module Domains
         digest = Digest::SHA256.hexdigest([origin, text.strip, due_at.utc.iso8601, timezone, local_time, references.sort.join("\u0000")].join("\u0000"))
         existing = tasks.where(actor_id:, idempotency_key:).first
         return view(existing) if existing && existing.fetch(:idempotency_digest) == digest
+
         raise ArgumentError, "Idempotency key reused with changed task" if existing
+
         validate_create!(actor_id:, origin:, idempotency_key:, text:, due_at:, timezone:, local_time:, references:, now:)
 
         task_id = SecureRandom.uuid

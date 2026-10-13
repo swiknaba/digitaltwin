@@ -29,6 +29,14 @@ cross-actor capabilities fail closed. The body never supplies an actor, origin, 
 target; conversation is retained only as creation provenance so a valid Commander
 session can manage the actor's Commander-targeted tasks created elsewhere.
 
+The bounded OpenCode host transport is mounted at `/v1/future-tasks` and delegates
+only to `Adapters::FutureTasks::OpencodeTool`; it accepts the capability as a Bearer
+credential and exposes create/list/read/update/cancel/disposition/resolution routes.
+`Services::Composition` constructs both the MCP and OpenCode adapters from the same
+capability API, so neither transport can schedule directly or select an actor. This
+is an internal task API, not a generic workflow server or a replacement for the
+operator-owned native MCP server bootstrap.
+
 Set all of the following only in operator-owned runtime configuration:
 
 - `COMMANDER_BRIDGE_URL` — private bridge base URL;

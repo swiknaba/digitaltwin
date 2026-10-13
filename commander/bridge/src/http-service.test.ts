@@ -106,3 +106,40 @@ test("a Ruby client completes the private future-task delivery and reconciliatio
     assert.deepEqual(JSON.parse(result.stdout), { delivery_key: "ruby-delivery", commander_item_id: "future-task:ruby-delivery" })
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
 })
+
+test("the configured Ruby gateway delivers a due task to the real Node listener and reconciles its receipt", { skip: process.env.DIGITALTWIN_RUN_DOCKER_E2E !== "1" }, async () => {
+  const authority = new EphemeralTestAuthority({ actorId: actor, conversationId: conversation, now: () => now })
+  const controller = new CommanderBridgeController({ actorId: actor, conversationId: conversation, runtime: new Runtime(), store: new InMemoryConversationStore(), verifier: authority, now: () => now })
+  const server = createCommanderBridgeNodeListener(new CommanderBridgeHttpService(controller), { identity: "configured-gateway-e2e", store: new InMemoryFutureTaskDeliveryStore() })
+  await new Promise<void>((resolve) => server.listen(0, "0.0.0.0", resolve))
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("Missing bridge listener address")
+  const endpoint = process.env.DIGITALTWIN_BRIDGE_E2E_ORIGIN ?? `http://host.docker.internal:${address.port}`
+  const ruby = [
+    'require "./app"',
+    'require "json"',
+    'require "securerandom"',
+    'now = Time.now',
+    'run_id = SecureRandom.uuid',
+    'actor = "configured-gateway-e2e-#{run_id}"',
+    'tasks = Domains::FutureTasks::Tasks.new',
+    'task = tasks.create(actor_id: actor, origin: "commander:global", idempotency_key: "gateway-#{run_id}", text: "Configured gateway delivery", due_at: now + 1, timezone: "UTC", local_time: (now + 1).utc.iso8601, references: ["repo:digitaltwin"], now: now)',
+    'Kirei::App.raw_db_connection[:jobs].where(kind: "future_task.due").update(available_at: Time.now - 1)',
+    'gateway = Adapters::CommanderBridge::ConfiguredGateway.new(base_url: ENV.fetch("BRIDGE_E2E_URL"), identity: ENV.fetch("BRIDGE_E2E_IDENTITY"))',
+    'handler = Services::FutureTasks::DeliverDue.new(tasks: tasks, gateway: gateway)',
+    'Async { Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::FutureTaskDue => handler }).tick }.wait',
+    'delivered = tasks.find(actor_id: actor, id: task.id)',
+    'resolution = gateway.reconcile(delivery_key: task.delivery_key)',
+    'abort "delivery failed" unless delivered.state == Domains::FutureTasks::Dto::TaskState::AwaitingDisposition && delivered.receipt == resolution.receipt',
+    'puts JSON.generate({ task_id: task.id, delivery_key: task.delivery_key, commander_item_id: delivered.receipt.commander_item_id })'
+  ].join(";")
+  try {
+    const result = await run("docker", ["compose", "--project-name", "digitaltwin-final", "--env-file", "../../.env.example", "-f", "../../compose.yml", "exec", "-T", "-e", `BRIDGE_E2E_URL=${endpoint}`, "-e", "BRIDGE_E2E_IDENTITY=configured-gateway-e2e", "backend-web", "bundle", "exec", "ruby", "-e", ruby])
+    const json = result.stdout.trim().split("\n").findLast((line) => line.startsWith("{"))
+    if (!json) throw new Error(`Ruby gateway did not emit a receipt: ${result.stdout}`)
+    const receipt = JSON.parse(json) as { task_id: string; delivery_key: string; commander_item_id: string }
+    assert.equal(receipt.commander_item_id, `future-task:${receipt.delivery_key}`)
+    const panel = await controller.open(await authority.issue({ action: "read" }))
+    assert.equal(panel.ok && panel.conversation.events.at(-1)?.text, "Configured gateway delivery")
+  } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
+})

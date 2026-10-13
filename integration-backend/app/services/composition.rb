@@ -44,6 +44,16 @@ module Services
       FutureTasks::CapabilityApi.new(tasks: future_tasks, verifier: Adapters::FutureTasks::CapabilityVerifier.new(secret:))
     end
 
+    sig { returns(Adapters::FutureTasks::McpTool) }
+    def mcp_future_tasks
+      Adapters::FutureTasks::McpTool.new(api: future_task_api)
+    end
+
+    sig { returns(Adapters::FutureTasks::OpencodeTool) }
+    def opencode_future_tasks
+      Adapters::FutureTasks::OpencodeTool.new(api: future_task_api)
+    end
+
     sig { returns(Adapters::CommanderBridge::Gateway) }
     private def configured_gateway
       url = @configuration.commander_bridge_url
