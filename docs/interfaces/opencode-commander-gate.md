@@ -118,7 +118,9 @@ is the SHA-256 for `0003-commander-bridge-ipc-seam.patch`.
 `a5ac3d91e863e69eaf51507baff103000c7ea0575d65c37e17df48a68676e860`
 is the SHA-256 for `0004-commander-bridge-workspace.patch`; the reviewed bridge
 input manifest SHA-256 is
-`916bd79c75c39050d4acd52f8fd1ffca05b468214d39ca70868e4b2db04a68b5`.
+`d9294b084a6d31a45c34067cd96684bed8b529c81ba587ab81a04ecbaad46f29`.
+`34070d4ff12bc6ad6a7b9a5198719d92de4646def36aa4c5a15f0f91fcbd8ed5`
+is the SHA-256 for `0005-commander-panel-actions.patch`.
 
 `prepare-opencode.sh` requires a clean checkout at the exact pin, verifies the
 bridge manifest, copies only `package.json`, `tsconfig.json`, and reviewed
@@ -182,10 +184,29 @@ The bridge's Node 22 test command separately passed all `17` tests. This confirm
 the bounded packaging mechanism only; it still does not prove desktop startup or any
 Gate 1 live interaction.
 
-The panel intentionally reports that no bridge is connected. The isolated bridge
-core now covers persistence, stream/reconnect, and capability semantics, but no
-external conversation or trusted desktop capability exchange is wired into the
-patched OpenCode app yet, so Gate 1 has not passed.
+The patched panel invokes typed `open`, `send`, `steer`, `cancel`, and `reconnect`
+main-process actions through `commanderPanelFromHostBootstrap` and displays only
+sanitized event cursor/kind/text. Its IPC projection excludes conversation and
+delivery identifiers, actor identity, proofs, origins, endpoint configuration,
+credentials, and transport errors. In the absence of a desktop-host bootstrap it
+fails closed at `not-configured`; IPC failure transitions to `unavailable` without
+revealing the cause. The bridge's host-bootstrap test drives all five actions with a
+one-use proof and verifies that no proof enters panel state. No upstream desktop host
+currently calls `installHostOperatorBootstrap`, so this is a tested panel-to-bridge
+invocation seam, not a claim that an external conversation or trusted capability
+exchange is wired into OpenCode. Gate 1 has not passed.
+
+On 2026-10-13, `prepare-opencode.sh` was rerun from a fresh detached checkout of
+`1f4d07a4a519185955ae8ab2ea3607805509e386` after the panel-action patch. The
+manifest verified every bridge input and the resulting upstream diff passed
+`git diff --check`. In the official `oven/bun:1.4.2` Linux image (with the
+read-only source copied into the container filesystem), frozen script-free install
+completed 2,396 packages; bridge strict typecheck and GUI-extension typecheck both
+exited `0`; the GUI suite passed 177 tests with one skipped and zero failed; and a
+GUI-workspace import of `@digitaltwin/commander-bridge` returned its unconfigured
+public entrypoint. The bridge's Node 22 test suite separately passed 19 tests,
+including the host-bootstrap action path. This remains compile/test evidence, not
+desktop startup or live Gate 1 evidence.
 
 The source-level main-process seam and bridge core now include a typed user-action
 transport with ephemeral per-action Authorization proofs. A proof binds its action,

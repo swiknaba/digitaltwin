@@ -15,15 +15,20 @@ main-process code and no packaged trust model exists.
 - An always-visible `Commander` titlebar control.
 - A typed Commander side-panel contribution that opens on the current project
   session without replacing it.
-- A lazy, localized panel shell backed by a typed main-process bridge-status IPC.
+- A localized panel that invokes typed main-process `open`, `send`, `steer`,
+  `cancel`, and `reconnect` actions and displays sanitized streamed event text.
 - A source-whitelisted bridge workspace package that the GUI extension imports via
   a `workspace:*` dependency.
 
-The IPC seam deliberately reports only `not-configured`; it neither reads project
-configuration nor sends a capability or runtime credential to the renderer. It does
-not yet connect a bridge, persistent external Commander conversation, streaming,
-reconnect behavior, or user/conversation-bound capabilities. Those are still
-required to pass Gate 1 and must not be claimed from this UI patch alone.
+The IPC seam is fail-closed: without an operator-owned desktop host calling
+`installHostOperatorBootstrap` before the GUI extension starts, it reports only
+`not-configured` and exposes no action capability. With that bootstrap, all panel
+actions are dispatched through `commanderPanelFromHostBootstrap`; the renderer sees
+only status plus event cursor/kind/text. It never receives the conversation identity,
+delivery IDs, identity, proof, origin, endpoint, credential, or transport error.
+The repository does not yet include an OpenCode desktop-host integration that supplies
+the trusted bootstrap, so this remains a tested invocation seam rather than a Gate 1
+pass or a live production bridge claim.
 
 ## Apply to the pinned source
 
@@ -36,7 +41,7 @@ sh /absolute/path/to/digitaltwin/commander/opencode-ui-patch/prepare-opencode.sh
 The reported commit must equal the pin above and the target must be clean. The
 preparation script verifies a SHA-256 manifest before it copies exactly the bridge
 package manifest, strict TypeScript configuration, and reviewed `src/*.ts` files to
-`packages/commander-bridge`; then it applies all four patches, including the
+`packages/commander-bridge`; then it applies all five patches, including the
 workspace lockfile update. It copies no README, user/project configuration,
 credentials, persistent store, or operator state. Keep the patched source and built
 application outside this repository; this repository owns only the reproducible patch

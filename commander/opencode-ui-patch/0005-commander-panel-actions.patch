@@ -1,0 +1,144 @@
+diff --git a/packages/gui-extensions/tsconfig.json b/packages/gui-extensions/tsconfig.json
+index 0c1d6ca..acad5ba 100644
+--- a/packages/gui-extensions/tsconfig.json
++++ b/packages/gui-extensions/tsconfig.json
+@@ -4,2 +4,3 @@
+   "compilerOptions": {
++    "allowImportingTsExtensions": true,
+     "noUnusedLocals": true,
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -7,4 +7,11 @@
+  */
++const CommanderEvent = Schema.Struct({
++  cursor: Schema.Number,
++  kind: Schema.Union([Schema.Literal("delta"), Schema.Literal("notice"), Schema.Literal("final")]),
++  text: Schema.String,
++})
++
+ export const CommanderBridgeState = Schema.Struct({
+-  status: Schema.Literal("not-configured"),
++  status: Schema.Union([Schema.Literal("not-configured"), Schema.Literal("active"), Schema.Literal("unavailable")]),
++  events: Schema.Array(CommanderEvent),
+ })
+@@ -17,3 +24,7 @@
+   methods: {
+-    status: { output: CommanderBridgeState },
++    open: { output: CommanderBridgeState },
++    send: { input: Schema.Struct({ text: Schema.String }), output: CommanderBridgeState },
++    steer: { input: Schema.Struct({ text: Schema.String }), output: CommanderBridgeState },
++    cancel: { output: CommanderBridgeState },
++    reconnect: { input: Schema.Struct({ after: Schema.Number }), output: CommanderBridgeState },
+   },
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -1,2 +1,2 @@
+-import { unconfiguredCommanderBridgeStatus } from "@digitaltwin/commander-bridge"
++import { commanderPanelFromHostBootstrap } from "@digitaltwin/commander-bridge/core"
+ import type { MainSetup } from "../sdk/main"
+@@ -11,10 +11,29 @@
+ const setup: MainSetup<typeof definition> = (ctx) => {
+-  // This package entrypoint accepts no configuration. A future reviewed bootstrap
+-  // may supply a transport from operator-owned state, but project data never does.
+-  const state = { status: unconfiguredCommanderBridgeStatus() } satisfies CommanderBridgeState
++  const panel = commanderPanelFromHostBootstrap()
++  const state = (): CommanderBridgeState => {
++    const snapshot = panel.snapshot()
++    // Deliberately project the panel state instead of sharing its conversation:
++    // actor, conversation identity, delivery IDs, proofs, and transport details
++    // remain in the main process.
++    return {
++      status: snapshot.status,
++      events: snapshot.events.map((event) => ({ cursor: event.cursor, kind: event.kind, text: event.text })),
++    }
++  }
++  let changed = () => {}
++  const call = async (work: () => Promise<unknown>) => {
++    await work()
++    changed()
++    return state()
++  }
+ 
+-  ctx.provide(CommanderBridge, {
+-    state: () => state,
+-    status: () => state,
++  const provider = ctx.provide(CommanderBridge, {
++    state,
++    open: () => call(() => panel.open()),
++    send: ({ text }) => call(() => panel.prompt(text)),
++    steer: ({ text }) => call(() => panel.steer(text)),
++    cancel: () => call(() => panel.cancel()),
++    reconnect: ({ after }) => call(() => panel.reconnect(after)),
+   })
++  changed = () => provider.changed()
+ }
+--- a/packages/gui-extensions/src/commander/panel.tsx
++++ b/packages/gui-extensions/src/commander/panel.tsx
+@@ -1,2 +1,4 @@
++import { createSignal, For, onMount, Show } from "solid-js"
+ import { useExtension } from "../sdk"
++import type { CommanderBridgeState } from "./contract"
+ import type definition from "./index"
+@@ -6,7 +8,27 @@
+   const bridge = extension.uses.bridge
+-  const status = () => {
++  const [draft, setDraft] = createSignal("")
++  const [state, setState] = createSignal<CommanderBridgeState>({ status: "not-configured", events: [] })
++  const [busy, setBusy] = createSignal(false)
++  const invoke = async (action: "open" | "send" | "steer" | "cancel" | "reconnect") => {
+     const live = bridge()
+-
+-    return live.status === "active" ? live.value.state()?.status ?? "not-configured" : "not-configured"
++    if (live.status !== "active") return
++    setBusy(true)
++    try {
++      const next = action === "open" ? await live.value.open()
++        : action === "send" ? await live.value.send({ text: draft() })
++        : action === "steer" ? await live.value.steer({ text: draft() })
++        : action === "cancel" ? await live.value.cancel()
++        : await live.value.reconnect({ after: state().events.at(-1)?.cursor ?? 0 })
++      setState(next)
++      if (action === "send" || action === "steer") setDraft("")
++    } catch {
++      // An IPC failure does not reveal its transport error to the renderer.
++      // Keep any already received text and fail closed.
++      setState((current) => ({ status: "unavailable", events: current.events }))
++    } finally {
++      setBusy(false)
++    }
+   }
++  onMount(() => void invoke("open"))
++  const status = () => state().status
+ 
+@@ -17,2 +39,19 @@
+       <p class="text-13-regular text-v2-text-text-muted">{extension.t(`panel.status.${status()}`)}</p>
++      <Show when={status() === "active"}>
++        <div class="min-h-0 flex-1 overflow-auto" aria-live="polite">
++          <For each={state().events}>{(event) => <p class="text-13-regular text-v2-text-text-base">{event.text}</p>}</For>
++        </div>
++        <textarea
++          class="w-full rounded border border-v2-border-border-base p-2"
++          value={draft()}
++          onInput={(event) => setDraft(event.currentTarget.value)}
++          aria-label={extension.t("panel.message")}
++        />
++        <div class="flex gap-2">
++          <button disabled={busy() || !draft().trim()} onClick={() => void invoke("send")}>{extension.t("panel.send")}</button>
++          <button disabled={busy() || !draft().trim()} onClick={() => void invoke("steer")}>{extension.t("panel.steer")}</button>
++          <button disabled={busy()} onClick={() => void invoke("cancel")}>{extension.t("panel.cancel")}</button>
++          <button disabled={busy()} onClick={() => void invoke("reconnect")}>{extension.t("panel.reconnect")}</button>
++        </div>
++      </Show>
+     </div>
+--- a/packages/gui-extensions/src/commander/i18n/en.ts
++++ b/packages/gui-extensions/src/commander/i18n/en.ts
+@@ -10,2 +10,9 @@
+   "panel.status.not-configured": "Bridge not configured",
++  "panel.status.active": "Connected",
++  "panel.status.unavailable": "Bridge unavailable",
++  "panel.message": "Commander message",
++  "panel.send": "Send",
++  "panel.steer": "Steer",
++  "panel.cancel": "Cancel",
++  "panel.reconnect": "Reconnect",
+ }
