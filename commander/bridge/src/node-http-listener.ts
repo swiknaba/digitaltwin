@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { timingSafeEqual } from "node:crypto"
 import type { BridgeHttpRequest, CommanderBridgeHttpService } from "./http-service.ts"
-import { FileFutureTaskDeliveryStore, FutureTaskDeliveryService, type FutureTaskDeliveryStore } from "./future-task-delivery.ts"
+import { FileFutureTaskDeliveryStore, FutureTaskDeliveryService, type FutureTaskDeliveryStore, type FutureTaskResolution } from "./future-task-delivery.ts"
 
 const maximumBodyBytes = 64 * 1024
 const routes = ["/v1/commander/open", "/v1/commander/reconnect", "/v1/commander/prompt", "/v1/commander/steer", "/v1/commander/cancel"] as const
@@ -79,8 +79,8 @@ function deliveryInput(value: unknown): Readonly<{ deliveryKey: string; taskId: 
   return { deliveryKey, taskId, text, references, dueAt, timezone }
 }
 
-function responseBody(delivery: Readonly<{ deliveryKey: string; commanderItemId: string }>): Readonly<{ delivery_key: string; commander_item_id: string }> {
-  return { delivery_key: delivery.deliveryKey, commander_item_id: delivery.commanderItemId }
+function responseBody(delivery: FutureTaskResolution): Readonly<{ delivery_key: string; commander_item_id: string }> | Readonly<{ terminal_failure: string }> {
+  return "terminalFailure" in delivery ? { terminal_failure: delivery.terminalFailure } : { delivery_key: delivery.deliveryKey, commander_item_id: delivery.commanderItemId }
 }
 
 async function readJson(request: IncomingMessage): Promise<Readonly<{ ok: true; value: unknown }> | Readonly<{ ok: false; status: 400 | 413; reason: "invalid_json" | "body_too_large" }>> {

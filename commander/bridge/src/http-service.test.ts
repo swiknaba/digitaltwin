@@ -6,7 +6,7 @@ import { commandCapabilityBinding } from "./capability-binding.ts"
 import { bridgeActorId, bridgeRequestId, commanderConversationId, streamCursor, turnIdForRequest, type CommanderRuntime } from "./contract.ts"
 import { CommanderBridgeController } from "./controller.ts"
 import { EphemeralTestAuthority } from "./ephemeral-test-authority.ts"
-import { InMemoryFutureTaskDeliveryStore } from "./future-task-delivery.ts"
+import { InMemoryFutureTaskDeliveryStore, FutureTaskDeliveryService, PermanentFutureTaskDeliveryError } from "./future-task-delivery.ts"
 import { CommanderBridgeHttpService } from "./http-service.ts"
 import { InMemoryConversationStore } from "./in-memory-store.ts"
 import { CommanderMainProcessTransport } from "./main-process-transport.ts"
@@ -82,6 +82,17 @@ test("private future-task delivery is authenticated, receipt-idempotent, and rec
     const panel = await controller.open((await authority.issue({ action: "read" })))
     assert.equal(panel.ok && panel.conversation.events.at(-1)?.text, "Check in")
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) }
+})
+
+test("a known permanent future-task rejection is durably reconcilable while unknown errors remain uncertain", async () => {
+  const store = new InMemoryFutureTaskDeliveryStore()
+  const service = new FutureTaskDeliveryService({ store, publish: async () => { throw new PermanentFutureTaskDeliveryError("recipient_deleted") } })
+  const input = { deliveryKey: "terminal-1", taskId: "task-1", text: "Check in", references: [], dueAt: "2026-10-13T12:00:00Z", timezone: "UTC" }
+  assert.deepEqual(await service.deliver(input), { deliveryKey: "terminal-1", terminalFailure: "recipient_deleted" })
+  assert.deepEqual(await service.reconcile("terminal-1"), { deliveryKey: "terminal-1", terminalFailure: "recipient_deleted" })
+  const uncertain = new FutureTaskDeliveryService({ store: new InMemoryFutureTaskDeliveryStore(), publish: async () => { throw new Error("network_lost") } })
+  await assert.rejects(uncertain.deliver({ ...input, deliveryKey: "uncertain-1" }), /network_lost/)
+  assert.equal(await uncertain.reconcile("uncertain-1"), undefined)
 })
 
 test("a Ruby client completes the private future-task delivery and reconciliation protocol", async () => {
