@@ -7,14 +7,13 @@ Accepted specifications, implementation plans, service interfaces, operations co
 The shared specification and interface decisions must survive individual implementation sessions.
 These documents give component owners and reviewers one versioned source for scope, dependencies, and evidence gaps.
 
-## API and Configuration Contract
+## Current product contract
 
-The [Phase 0 specification](agent-fleet-architecture-and-review.md) defines behavior.
-The [implementation plan](superpowers/plans/2026-09-30-digitaltwin-phase-0.md) defines prerequisite order and acceptance evidence.
-The [layout](repository-layout-and-parallel-build.md) defines source paths and component ownership.
-The [foundation checkpoint](interfaces/foundation-validation.md) records exact artifacts, checked commands, open gates, and worker briefs.
-The [service boundaries](interfaces/service-boundaries.md) distinguish agreed requirements from unvalidated upstream details.
-The [local integration contract](interfaces/local-integration.md) records root wiring and the early real roundtrip procedure.
+The [Commander feature specification](commander-feature-spec.md) defines the
+OpenCode, Commander, and Kirei split. The [implementation plan](superpowers/plans/2026-10-12-opencode-commander-reset.md)
+records the remaining tranches. The [layout](repository-layout-and-parallel-build.md)
+defines source paths and ownership, while the [service boundaries](interfaces/service-boundaries.md)
+separate the current local evidence from production gates.
 
-Preserve existing document paths. Record sanitized release-bound evidence in `interfaces/` and final results in `acceptance/`.
-The integrator owns shared contract changes; component owners contribute evidence.
+Historical plans remain under `superpowers/plans/`; they are not current runtime
+instructions. Update the current contract when a source boundary changes.

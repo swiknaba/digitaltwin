@@ -43,9 +43,13 @@ class RootContractTest(unittest.TestCase):
         self.assertNotIn("mattermost", bootstrap)
         self.assertNotIn("mattermost", (ROOT / ".env.example").read_text().lower())
 
-    def test_default_worker_does_not_dispatch_legacy_chat_or_agent_jobs(self):
+    def test_default_worker_dispatches_only_future_tasks(self):
         worker = (ROOT / "integration-backend/bin/worker").read_text().lower()
-        self.assertIn("futuretasks handlers", worker)
+        handlers = (ROOT / "integration-backend/app/services/job_handlers.rb").read_text()
+        kinds = (ROOT / "integration-backend/app/platform/jobs/dto/job_kind.rb").read_text()
+        self.assertIn("services::jobhandlers", worker)
+        self.assertIn("FutureTaskDue", handlers)
+        self.assertEqual(kinds.count(" = new("), 1)
         self.assertNotIn("local_dispatch_preflight", worker)
         self.assertNotIn("mattermostpost", worker)
         self.assertNotIn("sessions::renewals", worker)

@@ -1,0 +1,19 @@
+# typed: strict
+# frozen_string_literal: true
+
+module Adapters
+  module CommanderBridge
+    class UnavailableGateway
+      extend T::Sig
+
+      include Gateway
+
+      sig { override.params(task_id: String, text: String, references: T::Array[String], due_at: Time, timezone: String, delivery_key: String).returns(Domains::FutureTasks::Dto::DeliveryReceipt) }
+      # rubocop:disable Lint/UnusedMethodArgument
+      def deliver(task_id:, text:, references:, due_at:, timezone:, delivery_key:)
+        raise "Commander bridge delivery is not configured"
+      end
+      # rubocop:enable Lint/UnusedMethodArgument
+    end
+  end
+end

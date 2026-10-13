@@ -23,7 +23,7 @@ Commander opens beside an existing OpenCode project session without replacing it
 
 ## What is available today
 
-The reviewed local core now starts PostgreSQL plus Kirei web and worker processes only. The OpenCode Commander patch has passing component and Linux/Xvfb Electron harness evidence, but its synthetic local bridge is not production runtime connectivity. Future-task domain implementation and operator runtime acceptance remain open.
+The reviewed local core now starts PostgreSQL plus Kirei web and worker processes only. It includes versioned one-time FutureTasks, durable due-job executions, disposition records, and a fail-closed Commander delivery boundary. The OpenCode Commander patch has passing component and Linux/Xvfb Electron harness evidence, but its synthetic local bridge is not production runtime connectivity.
 
 ## Components
 
@@ -56,8 +56,4 @@ OpenCode installation, operator runtime credentials, mobile access, production d
 
 - [Repository layout and parallel build](docs/repository-layout-and-parallel-build.md)
 - [Shared service boundaries and validation gates](docs/interfaces/service-boundaries.md)
-- [Local integration wiring and evidence](docs/interfaces/local-integration.md)
-- [Foundation validation checkpoint](docs/interfaces/foundation-validation.md)
-- [Phase 0 fleet specification](docs/agent-fleet-architecture-and-review.md)
-- [Commander routing setup and acceptance](docs/interfaces/commander-routing-setup.md)
-- [Phase 1 group calls and AI voice](docs/phase-1-voice-commander.md)
+- [Commander patch and local harness](commander/opencode-ui-patch/README.md)

@@ -1,9 +1,0 @@
-{
-  "version": "6.6.0",
-  "image": "mattermost/mattermost-push-proxy:6.6.0",
-  "source": "https://github.com/mattermost/mattermost-push-proxy/releases/tag/v6.6.0",
-  "verification": "pinned image startup, process health, version/source hash and exact license/notice checks verified; provider and signed device delivery unverified",
-  "checked_on": "2026-10-01",
-  "source_commit": "20f2a046fef76a7ab1c121cd01bc2b06206979be",
-  "source_tag_object": "1a3b58c47b9956f08af4651b3dbbfe81fefbd245"
-}
