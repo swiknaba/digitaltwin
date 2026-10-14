@@ -11,26 +11,28 @@ The outcome is a small remote team that can preserve context across restarts and
 ```mermaid
 flowchart LR
   project[OpenCode project session] --> git[Git]
-  commander[Commander] <--> bridge[Commander bridge]
-  bridge <--> kirei[Kirei future tasks]
+  commander[Commander] <--> opencode[OpenCode session API]
+  kirei[Kirei future tasks] <--> opencode
 ```
 
 This diagram is the intended product boundary, not a claim of production runtime connectivity.
 
 ## Commander
 
-Commander opens beside an existing OpenCode project session without replacing it. It streams, steers, reconnects, and cancels its own work through a typed main-process boundary.
+Commander opens beside an existing OpenCode project session without replacing it.
+Its normal continuation and Kirei check-ins use the existing authenticated
+OpenCode session API; no private Node bridge or browser credential path exists.
 
 ## What is available today
 
-The reviewed local core now starts PostgreSQL plus Kirei web and worker processes only. It includes versioned one-time FutureTasks, durable due-job executions, disposition records, and a fail-closed Commander delivery boundary. The OpenCode Commander patch has passing component and Linux/Xvfb Electron harness evidence, but its synthetic local bridge is not production runtime connectivity.
+The reviewed local core now starts PostgreSQL plus Kirei web and worker processes only. It includes versioned one-time FutureTasks, durable due-job executions, disposition records, and a fail-closed OpenCode delivery boundary. Operator-provided OpenCode authorization and live desktop interaction remain validation work outside this repository.
 
 ## Components
 
 | Component | Responsibility |
 | --- | --- |
 | [integration-backend/](integration-backend/README.md) | Kirei future-task persistence and worker boundary. |
-| [commander/](commander/opencode-ui-patch/README.md) | OpenCode Commander patch, bridge contract, and local harness evidence. |
+| [commander/](commander/opencode-ui-patch/README.md) | OpenCode Commander patch and normal-session continuation contract. |
 | [commander/future-work/](commander/future-work/SKILL.md) | Shared future-check-in operating skill for supported agents. |
 | [scripts/](scripts/README.md) and [tests/](tests/README.md) | Local Kirei/PostgreSQL checks and migration evidence. |
 
@@ -57,4 +59,4 @@ OpenCode installation, operator runtime credentials, mobile access, production d
 
 - [Repository layout and parallel build](docs/repository-layout-and-parallel-build.md)
 - [Shared service boundaries and validation gates](docs/interfaces/service-boundaries.md)
-- [Commander patch and local harness](commander/opencode-ui-patch/README.md)
+- [Commander OpenCode patch](commander/opencode-ui-patch/README.md)

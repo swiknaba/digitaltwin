@@ -2,9 +2,10 @@
 # frozen_string_literal: true
 
 module Adapters
-  module CommanderBridge
-    # The bridge is the only future-task delivery boundary. Production wiring is
-    # intentionally fail-closed until an operator-owned runtime is configured.
+  module OpenCode
+    # The normal OpenCode session API is the only future-task delivery boundary.
+    # Production wiring stays unavailable until an operator supplies an existing
+    # authenticated OpenCode endpoint and exact session reference.
     module Gateway
       extend T::Sig
       extend T::Helpers

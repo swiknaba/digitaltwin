@@ -16,11 +16,11 @@ module Services
     sig { returns(Configuration) }
     attr_reader :configuration
 
-    sig { params(configuration: Configuration, future_tasks: T.nilable(Domains::FutureTasks::Tasks), gateway: T.nilable(Adapters::CommanderBridge::Gateway)).void }
+    sig { params(configuration: Configuration, future_tasks: T.nilable(Domains::FutureTasks::Tasks), gateway: T.nilable(Adapters::OpenCode::Gateway)).void }
     def initialize(configuration:, future_tasks: nil, gateway: nil)
       @configuration = configuration
       @future_tasks = T.let(future_tasks, T.nilable(Domains::FutureTasks::Tasks))
-      @gateway = T.let(gateway, T.nilable(Adapters::CommanderBridge::Gateway))
+      @gateway = T.let(gateway, T.nilable(Adapters::OpenCode::Gateway))
     end
 
     sig { returns(Domains::FutureTasks::Tasks) }
@@ -28,7 +28,7 @@ module Services
       @future_tasks ||= Domains::FutureTasks::Tasks.new
     end
 
-    sig { returns(Adapters::CommanderBridge::Gateway) }
+    sig { returns(Adapters::OpenCode::Gateway) }
     def commander_gateway
       @gateway ||= configured_gateway
     end
@@ -54,16 +54,17 @@ module Services
       Adapters::FutureTasks::OpencodeTool.new(api: future_task_api)
     end
 
-    sig { returns(Adapters::CommanderBridge::Gateway) }
+    sig { returns(Adapters::OpenCode::Gateway) }
     private def configured_gateway
-      url = @configuration.commander_bridge_url
-      identity_file = @configuration.commander_bridge_identity_file
-      return Adapters::CommanderBridge::UnavailableGateway.new unless url && identity_file
+      url = @configuration.opencode_url
+      session_id = @configuration.opencode_session_id
+      authorization_file = @configuration.opencode_authorization_file
+      return Adapters::OpenCode::UnavailableGateway.new unless url && session_id && authorization_file
 
-      identity = File.read(identity_file).strip
-      raise "Commander bridge identity file is empty" if identity.empty?
+      authorization = File.read(authorization_file).strip
+      raise "OpenCode authorization file is empty" if authorization.empty?
 
-      Adapters::CommanderBridge::ConfiguredGateway.new(base_url: url, identity: identity)
+      Adapters::OpenCode::ConfiguredGateway.new(base_url: url, session_id:, authorization:)
     end
   end
 end

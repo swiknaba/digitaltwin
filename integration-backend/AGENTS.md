@@ -15,7 +15,7 @@
 - `app/` has four Zeitwerk layers.
   - `domains/future_tasks/` owns durable future commitments, their executions, and their disposition records.
   - `services/` holds the due-job handler and the small composition root.
-  - `adapters/commander_bridge/` is the sole delivery boundary. It fails closed until an operator wires a real Commander runtime.
+  - `adapters/opencode/` is the sole delivery boundary. It fails closed until an operator wires an existing authenticated OpenCode session.
   - `platform/` holds shared primitives: jobs, lock, transaction, failures, JSON boundary types, and the process heartbeat.
 - Domains reference only their own code, `Platform`, and other contexts' `Dto`. Domains never reference `Services` or `Adapters`.
 - Nothing outside a context references its `entities/`.

@@ -6,7 +6,7 @@ require "openssl"
 require "socket"
 
 class RecordingCommanderGateway
-  include Adapters::CommanderBridge::Gateway
+  include Adapters::OpenCode::Gateway
 
   attr_reader :deliveries, :outcomes
 
@@ -233,7 +233,7 @@ RSpec.describe Domains::FutureTasks::Tasks do
   it "marks an unknown bridge effect uncertain instead of silently retrying it" do
     task = create_task(due_at: now + 1)
     Kirei::App.raw_db_connection[:jobs].update(available_at: Time.now - 1)
-    handler = Services::FutureTasks::DeliverDue.new(tasks:, gateway: Adapters::CommanderBridge::UnavailableGateway.new)
+    handler = Services::FutureTasks::DeliverDue.new(tasks:, gateway: Adapters::OpenCode::UnavailableGateway.new)
 
     Async { Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::FutureTaskDue => handler }).tick }.wait
 
@@ -302,7 +302,7 @@ RSpec.describe Domains::FutureTasks::Tasks do
   it "requires an owner capability to settle an uncertain task as terminally failed" do
     task = create_task(due_at: now + 1)
     Kirei::App.raw_db_connection[:jobs].update(available_at: Time.now - 1)
-    handler = Services::FutureTasks::DeliverDue.new(tasks:, gateway: Adapters::CommanderBridge::UnavailableGateway.new)
+    handler = Services::FutureTasks::DeliverDue.new(tasks:, gateway: Adapters::OpenCode::UnavailableGateway.new)
     Async { Platform::Jobs::Worker.new(handlers: { Platform::Jobs::Dto::JobKind::FutureTaskDue => handler }).tick }.wait
 
     secret = "test-capability-secret"
@@ -320,15 +320,15 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect { tasks.update(actor_id: "operator-1", id: task.id, expected_version: 1, text: "retry", now:) }.to raise_error(ArgumentError, /already started/)
   end
 
-  it "uses the configurable private bridge adapter without exposing an agent credential" do
-    url, delivery_thread = bridge_response('{"delivery_key":"delivery-1","commander_item_id":"item-1"}')
-    gateway = Adapters::CommanderBridge::ConfiguredGateway.new(base_url: url, identity: "operator-private-identity")
+  it "uses the configured normal OpenCode session without exposing its authorization" do
+    url, delivery_thread = bridge_response("{}")
+    gateway = Adapters::OpenCode::ConfiguredGateway.new(base_url: url, session_id: "ses_operator", authorization: "Bearer operator-private-authorization")
     receipt = gateway.deliver(task_id: "task-1", text: "Check", references: [], due_at: now, timezone: "UTC", origin: "commander:main", attempt: 1, delivery_key: "delivery-1")
     delivery_thread.join
     expect(receipt.commander_item_id).to eq("item-1")
 
-    url, reconcile_thread = bridge_response('{"delivery_key":"delivery-1","commander_item_id":"item-1"}')
-    resolution = Adapters::CommanderBridge::ConfiguredGateway.new(base_url: url, identity: "operator-private-identity").reconcile(delivery_key: "delivery-1")
+    url, reconcile_thread = bridge_response("{}")
+    resolution = Adapters::OpenCode::ConfiguredGateway.new(base_url: url, session_id: "ses_operator", authorization: "Bearer operator-private-authorization").reconcile(delivery_key: "delivery-1")
     reconcile_thread.join
     expect(resolution.receipt).to eq(receipt)
   end

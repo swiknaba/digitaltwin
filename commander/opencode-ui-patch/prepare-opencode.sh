@@ -48,8 +48,8 @@ done < "$manifest"
 
 for patch in $patch_names; do
   test -f "$patch_dir/$patch" || fail "missing patch $patch"
-  git -C "$upstream" apply --check "$patch_dir/$patch"
-  git -C "$upstream" apply "$patch_dir/$patch"
+  git -C "$upstream" apply --allow-empty --check "$patch_dir/$patch"
+  git -C "$upstream" apply --allow-empty "$patch_dir/$patch"
 done
 
 git -C "$upstream" diff --check

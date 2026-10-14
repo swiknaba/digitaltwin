@@ -17,11 +17,11 @@ one-time successor through the same capability API, using a stable successor
 idempotency key; a worker retry therefore returns the existing successor instead
 of creating a duplicate.
 
-When a task is due, the worker asks the Commander bridge to append a visible check-in.
-It never starts project work. A bridge effect with an unknown result becomes
+When a task is due, the worker uses the ordinary authenticated OpenCode session API
+to append a visible check-in. It never starts project work. An unknown effect becomes
 `uncertain`, then one reconciliation attempt uses the same immutable delivery key.
-The in-repository gateway fails closed until an operator wires the private bridge
-endpoint and identity file; it does not create or ship a credential.
+The in-repository gateway fails closed until an operator wires an exact OpenCode
+session and authorization file; it does not create or ship a credential.
 
 ## Capability and bridge contract
 
@@ -44,8 +44,9 @@ operator-owned native MCP server bootstrap.
 
 Set all of the following only in operator-owned runtime configuration:
 
-- `COMMANDER_BRIDGE_URL` — private bridge base URL;
-- `COMMANDER_BRIDGE_IDENTITY_FILE` — mounted private identity for that bridge; and
+- `OPENCODE_URL` — existing authenticated OpenCode server base URL;
+- `OPENCODE_SESSION_ID` — exact operator-selected OpenCode session; and
+- `OPENCODE_AUTHORIZATION_FILE` — mounted authorization value for that OpenCode server; and
 - `FUTURE_TASK_CAPABILITY_SECRET_FILE` — mounted verification secret for
   operator-issued capabilities.
 
@@ -76,6 +77,7 @@ historical chat/workflow schema rather than migrating Mattermost data.
 
 OpenCode owns project sessions, agents, remote workspaces, and Git feedback.
 Commander owns its durable conversation and runtime credentials. Kirei receives only
-validated future-task operations through the shared MCP/OpenCode tool API. The
-production issuer and private bridge deployment remain operator work. No task can trigger a code change,
+validated future-task operations through the shared MCP/OpenCode tool API and
+delivers them through an exact operator-selected normal OpenCode session. The
+production issuer and OpenCode authorization remain operator work. No task can trigger a code change,
 merge, deployment, or revive a project session by itself.

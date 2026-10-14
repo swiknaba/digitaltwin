@@ -12,7 +12,6 @@ export type ContinuationResult =
 export interface OpenCodeSessionClient {
   session(input: OpenCodeMessageProvenance): Promise<"found" | "missing" | "inaccessible">
   message(input: OpenCodeMessageProvenance): Promise<"found" | "missing" | "inaccessible">
-  admitted(input: Readonly<{ provenance: OpenCodeMessageProvenance; inputId: string }>): Promise<"found" | "missing" | "inaccessible">
   prompt(input: Readonly<{ provenance: OpenCodeMessageProvenance; inputId: string; text: string; metadata: Readonly<{ fromCommander: true }> }>): Promise<"accepted" | "stale" | "missing" | "inaccessible" | "unknown">
 }
 
@@ -37,10 +36,6 @@ export class OpenCodeHttpSessionClient implements OpenCodeSessionClient {
     return this.get(input, `/api/session/${encodeURIComponent(input.sessionId)}/message/${encodeURIComponent(input.messageId)}`)
   }
 
-  async admitted(input: Readonly<{ provenance: OpenCodeMessageProvenance; inputId: string }>): Promise<"found" | "missing" | "inaccessible"> {
-    return this.get(input.provenance, `/api/session/${encodeURIComponent(input.provenance.sessionId)}/message/${encodeURIComponent(input.inputId)}`)
-  }
-
   async prompt(input: Readonly<{ provenance: OpenCodeMessageProvenance; inputId: string; text: string; metadata: Readonly<{ fromCommander: true }> }>): Promise<"accepted" | "stale" | "missing" | "inaccessible" | "unknown"> {
     if (input.provenance.runtimeId !== this.input.runtimeId) return "inaccessible"
     const response = await this.input.fetch.fetch(`${this.input.origin}/api/session/${encodeURIComponent(input.provenance.sessionId)}/prompt`, {
@@ -52,11 +47,11 @@ export class OpenCodeHttpSessionClient implements OpenCodeSessionClient {
     if (response.status === 404) return "missing"
     if (response.status === 401 || response.status === 403) return "inaccessible"
     if (response.status === 400) return "stale"
-    if (response.status === 409) {
-      // v2.0.27 normally reconciles a same-session duplicate before replying.
-      // A conflict is still read back because a response can be lost after admission.
-      return await this.admitted({ provenance: input.provenance, inputId: input.inputId }) === "found" ? "accepted" : "stale"
-    }
+    // Never treat a conflict as acceptance: the server response does not prove
+    // that the stored message has the same body. A retry keeps the same input
+    // identity; an operator can resolve an uncertain effect without admitting a
+    // second changed-body input.
+    if (response.status === 409) return "stale"
     return "unknown"
   }
 
@@ -100,6 +95,8 @@ function validRequest(input: Readonly<{ provenance: OpenCodeMessageProvenance; r
 }
 
 function continuationInputId(input: Readonly<{ provenance: OpenCodeMessageProvenance; requestId: string; text: string }>): string {
-  const material = [input.provenance.runtimeId, input.provenance.projectId, input.provenance.sessionId, input.provenance.messageId, input.requestId, input.text].join("\n")
+  // Body is deliberately excluded. Reusing a request id with different text
+  // addresses the same OpenCode input and is rejected on conflict.
+  const material = [input.provenance.runtimeId, input.provenance.projectId, input.provenance.sessionId, input.provenance.messageId, input.requestId].join("\n")
   return `msg_commander_${createHash("sha256").update(material, "utf8").digest("hex")}`
 }

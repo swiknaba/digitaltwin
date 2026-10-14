@@ -7,7 +7,7 @@ module Services
       extend T::Sig
       include Platform::Jobs::Handler
 
-      sig { params(tasks: Domains::FutureTasks::Tasks, gateway: Adapters::CommanderBridge::Gateway).void }
+      sig { params(tasks: Domains::FutureTasks::Tasks, gateway: Adapters::OpenCode::Gateway).void }
       def initialize(tasks:, gateway:)
         @tasks = tasks
         @gateway = gateway

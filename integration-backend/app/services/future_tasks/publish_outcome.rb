@@ -8,7 +8,7 @@ module Services
       extend T::Sig
       include Platform::Jobs::Handler
 
-      sig { params(gateway: Adapters::CommanderBridge::Gateway).void }
+      sig { params(gateway: Adapters::OpenCode::Gateway).void }
       def initialize(gateway:)
         @gateway = gateway
       end
