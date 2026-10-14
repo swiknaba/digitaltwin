@@ -18,6 +18,7 @@ upstream=$(CDPATH= cd -- "$1" && pwd)
 manifest="$patch_dir/bridge-source.sha256"
 bundle="$upstream/packages/commander-bridge"
 operator_example="$patch_dir/operator.env.example"
+operator_launcher="$patch_dir/run-opencode-commander.sh"
 
 test "$(git -C "$upstream" rev-parse --is-inside-work-tree 2>/dev/null || true)" = "true" || fail "target is not an OpenCode Git checkout"
 test "$(git -C "$upstream" rev-parse HEAD)" = "$expected_revision" || fail "target must be OpenCode $expected_revision"
@@ -26,6 +27,7 @@ git -C "$upstream" diff --cached --quiet || fail "target has staged changes"
 test ! -e "$bundle" || fail "target already contains packages/commander-bridge"
 test -f "$manifest" || fail "missing reviewed bridge manifest"
 test -f "$operator_example" || fail "missing operator environment example"
+test -f "$operator_launcher" || fail "missing operator launcher"
 
 # The manifest is an allowlist: no README, project configuration, credentials, or
 # untracked bridge files are copied into the maintained upstream build.
@@ -49,6 +51,8 @@ while read -r digest relative_path; do
 done < "$manifest"
 
 cp "$operator_example" "$upstream/commander.env.example"
+cp "$operator_launcher" "$upstream/run-opencode-commander.sh"
+chmod +x "$upstream/run-opencode-commander.sh"
 
 for patch in $patch_names; do
   test -f "$patch_dir/$patch" || fail "missing patch $patch"
@@ -57,4 +61,4 @@ for patch in $patch_names; do
 done
 
 git -C "$upstream" diff --check
-printf '%s\n' "Prepared OpenCode $expected_revision with the reviewed @digitaltwin/commander-bridge workspace package and commander.env.example."
+printf '%s\n' "Prepared OpenCode $expected_revision with the reviewed @digitaltwin/commander-bridge workspace package, commander.env.example, and run-opencode-commander.sh."

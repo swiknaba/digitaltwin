@@ -24,6 +24,11 @@ relative workspace and never derives either value from the focused project. The
 renderer receives only the validated session location and agent, never the
 environment source or credentials.
 
+The prepared checkout includes `run-opencode-commander.sh`. Copy and edit its
+`commander.env.example` outside source control, then launch OpenCode through the
+wrapper; it loads the operator file, validates the neutral workspace exists and
+is absolute, validates the agent name, and exports only those non-secret values.
+
 Prepare a clean checkout:
 
 \`\`\`sh
