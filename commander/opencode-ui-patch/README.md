@@ -37,10 +37,12 @@ sh /absolute/path/to/digitaltwin/commander/opencode-ui-patch/prepare-opencode.sh
 \`\`\`
 
 The script verifies the pinned revision and an allowlist SHA-256 manifest before
-copying the bridge sources, then applies all patches. The final reserved patch
-slot remains accepted deliberately so the reviewed seven-patch sequence stays
-stable.
+copying the bridge sources, then applies all patches. The reviewed patch
+sequence is currently eight patches.
 It copies no configuration, credentials, persistent store, or operator state.
+
+For a local desktop walkthrough—including optional native-agent continuation and
+FutureTasks validation—follow [the Commander local E2E guide](../LOCAL_E2E.md).
 
 Validate a prepared Linux checkout with official Bun 1.4.2 for frozen install
 and GUI/desktop typechecks. Use Node 22 for the bridge package's `tsgo` check;
