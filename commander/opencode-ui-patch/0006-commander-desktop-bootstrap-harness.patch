@@ -114,11 +114,13 @@ index 5642afe..40a6c78 100644
  }
  
 diff --git a/packages/gui-extensions/src/commander/panel.tsx b/packages/gui-extensions/src/commander/panel.tsx
-index 3bdeb0f..e6d4d98 100644
+index 3bdeb0f..9487a9a 100644
 --- a/packages/gui-extensions/src/commander/panel.tsx
 +++ b/packages/gui-extensions/src/commander/panel.tsx
-@@ -1,20 +1,222 @@
+@@ -1,20 +1,221 @@
 +import { Session } from "@opencode/schema/session"
++import { SessionMessage } from "@opencode/schema/session-message"
++import { isSessionNotFoundError } from "@opencode/client"
 +import { DataProvider } from "@opencode/session-ui/context"
 +import { SessionTimeline } from "@opencode/session-ui/timeline"
 +import { Button } from "@opencode/ui/button"
@@ -189,15 +191,12 @@ index 3bdeb0f..e6d4d98 100644
 +    if (!current || !target) return
 +    try {
 +      await target.data.session.sync(current.sessionID)
-+    } catch {
-+      const anchor = extension.sessions.current()
-+      const source = anchor?.server.data.session.get(anchor.id)
++    } catch (error) {
++      if (!isSessionNotFoundError(error)) throw error
 +      const created = target.data.session.create({
 +        id: current.sessionID,
 +        title: extension.t("title"),
 +        location: { directory: current.directory },
-+        ...(source?.agent ? { agent: source.agent } : {}),
-+        ...(source?.model ? { model: source.model } : {}),
 +      })
 +      await created.request
 +    }
@@ -243,7 +242,7 @@ index 3bdeb0f..e6d4d98 100644
 +    setError(undefined)
 +    try {
 +      await target.data.session.prompt({
-+        id: Session.ID.create(),
++        id: SessionMessage.ID.create(),
 +        sessionID: current.sessionID,
 +        text,
 +        delivery: "steer",
@@ -298,7 +297,7 @@ index 3bdeb0f..e6d4d98 100644
 +      </div>
 +      <div ref={scroll} class="min-h-0 flex-1 overflow-y-auto">
 +        <Show
-+          when={document()}
++          when={info() && document()}
 +          fallback={
 +            <div class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
 +              <Show when={error()} fallback={<TextShimmer text={extension.t("panel.status.connecting")} active />}>

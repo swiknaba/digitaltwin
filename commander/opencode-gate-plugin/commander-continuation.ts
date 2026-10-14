@@ -95,7 +95,11 @@ function decisionIDFor(parent: string, message: string, call: string, child: str
 
 function referenced(result: Tool.Result, decision: string, parentMessage: string): Tool.Result {
   const reference = `Commander follow-up reference: ${decision}`
-  const content = typeof result.content === "string" ? `${result.content}\n\n${reference}` : reference
+  const content = Array.isArray(result.content)
+    ? [...result.content, { type: "text", text: reference }]
+    : typeof result.content === "string"
+      ? `${result.content}\n\n${reference}`
+      : reference
   const metadata = object(result.metadata) ? result.metadata : {}
   return { ...result, content, metadata: { ...metadata, commanderDecisionID: decision, commanderParentMessageID: parentMessage } }
 }

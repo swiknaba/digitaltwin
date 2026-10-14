@@ -21,7 +21,7 @@ function fixture() {
 }
 
 async function bind(f: ReturnType<typeof fixture>, call = "opaque/provider:call", parent = "ses_commander", child = "ses_child", state = "running") {
-  const event: any = { tool: "subagent", status: "completed", id: call, sessionID: parent, messageID: "msg_parent", result: { content: "Native subagent result", metadata: { sessionID: child, status: state } } }
+  const event: any = { tool: "subagent", status: "completed", id: call, sessionID: parent, messageID: "msg_parent", result: { content: [{ type: "text", text: "Native subagent result" }], metadata: { sessionID: child, status: state } } }
   await f.hooks.get("execute.after")(event)
   const decision = event.result.metadata.commanderDecisionID
   f.native.push({ type: "assistant", content: [{ type: "tool", name: "subagent", state: { status: "completed", metadata: event.result.metadata } }] })
@@ -31,7 +31,10 @@ async function bind(f: ReturnType<typeof fixture>, call = "opaque/provider:call"
 test("binds the actual native child launch, exposes its reference, and only its parent may continue", async () => {
   const f = fixture(); await continuation.setup(f.context as never); const { decision, event } = await bind(f)
   assert.match(decision, /^subagent-[a-f0-9]{64}$/)
-  assert.match(event.result.content, new RegExp(`Commander follow-up reference: ${decision}`))
+  assert.deepEqual(event.result.content, [
+    { type: "text", text: "Native subagent result" },
+    { type: "text", text: `Commander follow-up reference: ${decision}` },
+  ])
   const record = f.storage.get(`digitaltwin.commander.decision.${decision}`) as any
   assert.deepEqual(record, { parent: "ses_commander", parentMessage: "msg_parent", child: "ses_child", project: "project-1", requests: {} })
   const tool = f.tools.get("commander_continue_agent")
