@@ -3,9 +3,11 @@
 ## Current boundary
 
 Commander is a bundled OpenCode UI extension that opens beside the current
-project session. It reports whether the existing main-process sidecar endpoint
-is available; it has no custom socket, proof broker, private HTTP API, panel
-control plane, or test-harness flag.
+project session while retaining one global Commander conversation. It uses
+existing sidecar client APIs to load, stream, prompt, interrupt, and reconnect
+that session; it has no custom socket, proof broker, private HTTP API, panel
+control plane, or test-harness flag. First use requires an operator-managed
+neutral workspace and Commander agent, never a focused project's values.
 
 Normal continuation uses a persisted Commander decision lookup for exact recorded
 OpenCode provenance (runtime/project/session/message), then uses the ordinary
@@ -26,9 +28,10 @@ absent.
 - \`prepare-opencode.sh\` verifies the pin and reviewed bridge source manifest,
   then applies the maintained patch sequence to a clean checkout.
 - A fresh preparation and \`git diff --check\` completed on 2026-10-14.
-- Official Bun 1.4.2 frozen install and GUI/desktop typechecks completed on the
-  prepared checkout. Node 22 ran the bridge package \`tsgo\` typecheck against the
-  same frozen workspace.
+- Official Bun 1.4.2 frozen install completed in 83.67 seconds (2,397 packages)
+  in a read-only-source Linux Docker setup; GUI typecheck then exited 0. The
+  extension-host and graph Playwright component suites passed 25/25 with the
+  same pinned source and Playwright Linux dependencies.
 - Bridge continuation tests include a controlled local OpenCode-compatible API:
   they cover persisted provenance across restart, exact route selection,
   restart/retry identity, 409 digest readback, missing source rejection,
