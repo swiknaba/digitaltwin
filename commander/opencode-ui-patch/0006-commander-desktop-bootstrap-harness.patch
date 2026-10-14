@@ -1,1 +1,348 @@
-
+diff --git a/packages/gui-extensions/src/commander/contract.ts b/packages/gui-extensions/src/commander/contract.ts
+index aee417d..768b7ac 100644
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -1,12 +1,23 @@
+ import { Schema } from "effect"
++import { NonNegativeInt } from "@opencode/schema/schema"
++import { Session } from "@opencode/schema/session"
+ import { Ipc } from "../sdk"
+ 
+ /**
+- * Renderer-visible availability only. The trusted main process owns the normal
+- * OpenCode endpoint and its authorization; neither crosses this boundary.
++ * The extension persists only the durable OpenCode session location. Normal
++ * OpenCode client APIs still authorize every session action independently.
+  */
++export const CommanderConversation = Schema.Struct({
++  serverID: Schema.Literal("sidecar"),
++  sessionID: Session.ID,
++  directory: Schema.String,
++})
++
++export type CommanderConversation = typeof CommanderConversation.Type
++
+ export const CommanderBridgeState = Schema.Struct({
+-  status: Schema.Union([Schema.Literal("ready"), Schema.Literal("unavailable")]),
++  revision: NonNegativeInt,
++  conversation: Schema.optional(CommanderConversation),
+ })
+ 
+ export type CommanderBridgeState = typeof CommanderBridgeState.Type
+@@ -15,6 +26,6 @@ export const CommanderBridge = Ipc.define({
+   id: "commander.bridge",
+   state: CommanderBridgeState,
+   methods: {
+-    status: { output: CommanderBridgeState },
++    reserve: { input: CommanderConversation, output: CommanderBridgeState },
+   },
+ })
+diff --git a/packages/gui-extensions/src/commander/i18n/en.ts b/packages/gui-extensions/src/commander/i18n/en.ts
+index 758248b..95ebbac 100644
+--- a/packages/gui-extensions/src/commander/i18n/en.ts
++++ b/packages/gui-extensions/src/commander/i18n/en.ts
+@@ -6,8 +6,13 @@ export default {
+   "command.description": "Open the Commander control surface for this project session.",
+   "command.category.view": "View",
+   "panel.title": "Commander",
+-  "panel.description": "Commander is ready for a trusted bridge connection.",
+-  "panel.status.not-configured": "Bridge not configured",
+-  "panel.status.ready": "OpenCode session available",
+-  "panel.status.unavailable": "OpenCode session unavailable",
++  "panel.description": "One persistent conversation, available from every project.",
++  "panel.status.connecting": "Connecting Commander…",
++  "panel.status.disconnected": "OpenCode is disconnected. Reconnect to continue Commander.",
++  "panel.status.failed": "Commander could not be restored. Try reconnecting.",
++  "panel.reconnect": "Reconnect",
++  "panel.cancel": "Stop",
++  "panel.send": "Send",
++  "panel.placeholder": "Ask Commander anything…",
++  "panel.empty": "Commander is ready when you are.",
+ }
+diff --git a/packages/gui-extensions/src/commander/index.ts b/packages/gui-extensions/src/commander/index.ts
+index 8a93204..4d935ad 100644
+--- a/packages/gui-extensions/src/commander/index.ts
++++ b/packages/gui-extensions/src/commander/index.ts
+@@ -1,9 +1,12 @@
+-import { Extension } from "../sdk"
+-import { CommanderBridge } from "./contract"
++import { Extension, Store } from "../sdk"
++import { CommanderBridge, CommanderBridgeState } from "./contract"
+ import en from "./i18n/en"
+ 
+ export default Extension.define({
+   id: "commander",
+   provides: { bridge: CommanderBridge },
++  stores: {
++    conversation: Store.main(CommanderBridgeState, { revision: 0 }),
++  },
+   i18n: { en },
+ })
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+index 5642afe..40a6c78 100644
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -3,16 +3,21 @@ import { CommanderBridge, CommanderBridgeState } from "./contract"
+ import type definition from "./index"
+ 
+ const setup: MainSetup<typeof definition> = (ctx) => {
+-  // The existing sidecar endpoint and authorization headers remain wholly in
+-  // OpenCode's main process. Commander does not load configuration, credentials,
+-  // or a secondary transport.
+-  const state = (): CommanderBridgeState => ({
+-    status: ctx.serverEndpoints.get("sidecar") ? "ready" : "unavailable",
+-  })
++  const stored = ctx.stores.conversation
++  const provider = ctx.provide(CommanderBridge, {
++    state: () => stored.value,
++    reserve: (input) => {
++      const current = stored.value
++
++      if (current.conversation) return current
++      if (!ctx.serverEndpoints.get(input.serverID)) throw new Error("Commander requires the OpenCode sidecar.")
++
++      const next: CommanderBridgeState = { revision: current.revision + 1, conversation: input }
++      stored.set(next)
++      provider.changed()
+ 
+-  ctx.provide(CommanderBridge, {
+-    state,
+-    status: state,
++      return next
++    },
+   })
+ }
+ 
+diff --git a/packages/gui-extensions/src/commander/panel.tsx b/packages/gui-extensions/src/commander/panel.tsx
+index 3bdeb0f..e6d4d98 100644
+--- a/packages/gui-extensions/src/commander/panel.tsx
++++ b/packages/gui-extensions/src/commander/panel.tsx
+@@ -1,20 +1,222 @@
++import { Session } from "@opencode/schema/session"
++import { DataProvider } from "@opencode/session-ui/context"
++import { SessionTimeline } from "@opencode/session-ui/timeline"
++import { Button } from "@opencode/ui/button"
++import { TextShimmer } from "@opencode/ui/text-shimmer"
++import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
+ import { useExtension } from "../sdk"
+ import type definition from "./index"
+ 
+ export default function CommanderPanel() {
+   const extension = useExtension<typeof definition>()
+   const bridge = extension.uses.bridge
+-  const status = () => {
++  const [attempt, setAttempt] = createSignal(0)
++  const [error, setError] = createSignal<string>()
++  const [draft, setDraft] = createSignal("")
++  const [sending, setSending] = createSignal(false)
++  let loaded = ""
++  let scroll: HTMLDivElement | undefined
++
++  const state = () => {
+     const live = bridge()
+ 
+-    return live.status === "active" ? live.value.state()?.status ?? "not-configured" : "not-configured"
++    return live.status === "active" ? live.value.state() : undefined
++  }
++  const conversation = () => state()?.conversation
++  const server = () => {
++    const current = conversation()
++
++    return current ? extension.servers.get(current.serverID) : undefined
++  }
++  const info = () => {
++    const current = conversation()
++    const target = server()
++
++    return current && target ? target.data.session.get(current.sessionID) : undefined
++  }
++  const messages = () => {
++    const current = conversation()
++    const target = server()
++
++    return current && target ? target.data.session.message.list(current.sessionID) : []
+   }
++  const working = () => {
++    const current = conversation()
++    const target = server()
++
++    return !!current && !!target && target.data.session.status(current.sessionID) === "running"
++  }
++
++  const reserve = async () => {
++    const live = bridge()
++    const anchor = extension.sessions.current()
++
++    if (live.status !== "active" || !anchor || conversation()) return
++    setError(undefined)
++    await live.value.reserve({
++      serverID: "sidecar",
++      sessionID: Session.ID.create(),
++      directory: anchor.directory,
++    })
++  }
++
++  const load = async () => {
++    const current = conversation()
++    const target = server()
++
++    if (!current || !target) return
++    try {
++      await target.data.session.sync(current.sessionID)
++    } catch {
++      const anchor = extension.sessions.current()
++      const source = anchor?.server.data.session.get(anchor.id)
++      const created = target.data.session.create({
++        id: current.sessionID,
++        title: extension.t("title"),
++        location: { directory: current.directory },
++        ...(source?.agent ? { agent: source.agent } : {}),
++        ...(source?.model ? { model: source.model } : {}),
++      })
++      await created.request
++    }
++    await Promise.all([
++      target.data.session.message.sync(current.sessionID),
++      target.data.session.pending.sync(current.sessionID),
++    ])
++    setError(undefined)
++  }
++
++  createEffect(() => {
++    const current = conversation()
++    const key = current ? `${current.sessionID}:${attempt()}` : ""
++
++    if (!current) {
++      void reserve().catch(() => setError(extension.t("panel.status.failed")))
++      return
++    }
++    if (loaded === key) return
++    loaded = key
++    void load().catch(() => setError(extension.t("panel.status.failed")))
++  })
++
++  createEffect(on(messages, () => {
++    queueMicrotask(() => scroll?.scrollTo({ top: scroll.scrollHeight, behavior: "smooth" }))
++  }))
++  onCleanup(() => {
++    scroll = undefined
++  })
++
++  const reconnect = () => {
++    loaded = ""
++    setAttempt((value) => value + 1)
++  }
++
++  const send = async () => {
++    const current = conversation()
++    const target = server()
++    const text = draft().trim()
++
++    if (!current || !target || !text || sending()) return
++    setSending(true)
++    setError(undefined)
++    try {
++      await target.data.session.prompt({
++        id: Session.ID.create(),
++        sessionID: current.sessionID,
++        text,
++        delivery: "steer",
++        metadata: { fromCommander: true },
++      })
++      setDraft("")
++    } catch {
++      setError(extension.t("panel.status.failed"))
++    } finally {
++      setSending(false)
++    }
++  }
++
++  const interrupt = async () => {
++    const current = conversation()
++    const target = server()
++
++    if (!current || !target) return
++    try {
++      await target.client.session.interrupt({ sessionID: current.sessionID, resume: true })
++    } catch {
++      setError(extension.t("panel.status.failed"))
++    }
++  }
++
++  const document = createMemo(() => {
++    const current = conversation()
++
++    if (!current) return
++    return {
++      sessionID: current.sessionID,
++      messages: messages(),
++      status: server()?.data.session.status(current.sessionID) === "running" ? { type: "busy" as const } : { type: "idle" as const },
++      diffs: [],
++    }
++  })
+ 
+   return (
+-    <div class="flex h-full flex-col gap-2 p-4">
+-      <h2 class="text-14-medium text-v2-text-text-base">{extension.t("panel.title")}</h2>
+-      <p class="text-13-regular text-v2-text-text-muted">{extension.t("panel.description")}</p>
+-      <p class="text-13-regular text-v2-text-text-muted">{extension.t(`panel.status.${status()}`)}</p>
++    <div class="flex h-full min-h-0 flex-col bg-v2-background-bg-base" data-slot="commander-panel">
++      <div class="flex shrink-0 items-center justify-between gap-3 border-b border-v2-border-border-base px-5 py-3">
++        <div class="min-w-0">
++          <h2 class="text-14-medium text-v2-text-text-base">{extension.t("panel.title")}</h2>
++          <p class="truncate text-12-regular text-v2-text-text-muted">{extension.t("panel.description")}</p>
++        </div>
++        <Show when={working()}>
++          <Button size="small" variant="outline" onClick={() => void interrupt()}>{extension.t("panel.cancel")}</Button>
++        </Show>
++      </div>
++      <div ref={scroll} class="min-h-0 flex-1 overflow-y-auto">
++        <Show
++          when={document()}
++          fallback={
++            <div class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
++              <Show when={error()} fallback={<TextShimmer text={extension.t("panel.status.connecting")} active />}>
++                <p class="text-13-regular text-v2-text-text-muted">{error()}</p>
++              </Show>
++              <Button size="small" variant="outline" onClick={reconnect}>{extension.t("panel.reconnect")}</Button>
++            </div>
++          }
++        >
++          {(value) => (
++            <DataProvider
++              data={{
++                session: info() ? [info()!] : [],
++                session_status: { [value().sessionID]: value().status },
++                session_diff: { [value().sessionID]: [] },
++              }}
++              directory={conversation()!.directory}
++              sessionID={value().sessionID}
++            >
++              <Show when={value().messages.length > 0} fallback={<p class="p-5 text-13-regular text-v2-text-text-muted">{extension.t("panel.empty")}</p>}>
++                <SessionTimeline document={value()} class="pb-5" />
++              </Show>
++            </DataProvider>
++          )}
++        </Show>
++      </div>
++      <form class="shrink-0 border-t border-v2-border-border-base p-3" onSubmit={(event) => { event.preventDefault(); void send() }}>
++        <textarea
++          class="min-h-20 w-full resize-y rounded-md border border-v2-border-border-base bg-v2-background-bg-base p-3 text-13-regular text-v2-text-text-base outline-none placeholder:text-v2-text-text-muted focus:border-v2-border-border-strong"
++          value={draft()}
++          placeholder={extension.t("panel.placeholder")}
++          disabled={!info() || sending()}
++          onInput={(event) => setDraft(event.currentTarget.value)}
++          onKeyDown={(event) => {
++            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
++              event.preventDefault()
++              void send()
++            }
++          }}
++        />
++        <div class="mt-2 flex justify-end">
++          <Button size="small" variant="submit" type="submit" disabled={!draft().trim() || !info() || sending()}>{extension.t("panel.send")}</Button>
++        </div>
++      </form>
+     </div>
+   )
+ }
