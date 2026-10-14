@@ -1,5 +1,12 @@
 # OpenCode Commander Gate 1 evidence
 
+> **Superseded architecture note (2026-10-14).** The launcher assertion,
+> capability broker, per-action proof, private bridge HTTP API, and runtime Unix
+> socket described below are rejected designs. Commander and FutureTasks use the
+> ordinary authenticated OpenCode session API with deterministic input IDs and
+> `{ fromCommander: true }` provenance. Retain this document only as historical
+> validation evidence; the old bridge-specific requirements no longer define work.
+
 **Status:** The unmodified OpenCode `v2.0.27` plugin contract failed Gate 1. The
 approved maintained UI patch now supplies a source-level Commander control surface,
 but it has not yet been compiled or live-verified and does not provide the required

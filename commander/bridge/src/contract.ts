@@ -54,23 +54,6 @@ export type RequestedAction = "prompt" | "steer" | "cancel"
 export type RequestState = "pending" | "dispatched" | "uncertain"
 export type ActiveTurn = Readonly<{ id: CommanderTurnId; promptRequestId: BridgeRequestId }>
 export type BridgeRequest = Readonly<{ id: BridgeRequestId; action: RequestedAction; payloadDigest: CapabilityPayloadDigest; state: RequestState; turnId: CommanderTurnId }>
-export type ContinuationState = "pending" | "continued" | "rejected" | "uncertain"
-export type ContinuationFailure = "missing" | "inaccessible" | "stale"
-/**
- * A continuation is independently durable because it targets an ordinary
- * OpenCode session input rather than the Commander runtime queue. The exact
- * provenance is routing data only; OpenCode keeps its normal authorization.
- */
-export type ContinuationRequest = Readonly<{
-  id: BridgeRequestId
-  deliveryId: string
-  provenance: OpenCodeMessageProvenance
-  payloadDigest: CapabilityPayloadDigest
-  inputId: string
-  state: ContinuationState
-  failure?: ContinuationFailure
-}>
-
 export type CommanderConversation = Readonly<{
   id: CommanderConversationId
   version: number
@@ -79,7 +62,6 @@ export type CommanderConversation = Readonly<{
   lastCursor: StreamCursor
   events: readonly StreamEvent[]
   requests: readonly BridgeRequest[]
-  continuations: readonly ContinuationRequest[]
 }>
 
 export type SaveResult = Readonly<{ ok: true; conversation: CommanderConversation }> | Readonly<{ ok: false; reason: "version_conflict" }>
@@ -131,7 +113,7 @@ export function streamCursor(value: number): StreamCursor {
   return value as StreamCursor
 }
 export function emptyConversation(id: CommanderConversationId): CommanderConversation {
-  return { id, version: 0, status: "ready", lastCursor: streamCursor(0), events: [], requests: [], continuations: [] }
+  return { id, version: 0, status: "ready", lastCursor: streamCursor(0), events: [], requests: [] }
 }
 
 export function decodeStreamEvent(value: unknown): StreamEvent | undefined {
@@ -156,18 +138,16 @@ export function decodeOpenCodeMessageProvenance(value: unknown): OpenCodeMessage
 }
 
 export function decodeCommanderConversation(value: unknown): CommanderConversation | undefined {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.version !== "number" || !isStatus(value.status) || typeof value.lastCursor !== "number" || !Array.isArray(value.events) || !Array.isArray(value.requests) || value.continuations !== undefined && !Array.isArray(value.continuations)) return undefined
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.version !== "number" || !isStatus(value.status) || typeof value.lastCursor !== "number" || !Array.isArray(value.events) || !Array.isArray(value.requests)) return undefined
   if (!Number.isSafeInteger(value.version) || value.version < 0) return undefined
   try {
     const events = value.events.map(decodeStreamEvent)
     if (!allDefined(events)) return undefined
     const requests = value.requests.map(decodeRequest)
     if (!allDefined(requests)) return undefined
-    const continuations = (value.continuations ?? []).map(decodeContinuation)
-    if (!allDefined(continuations)) return undefined
     const activeTurn = value.activeTurn === undefined ? undefined : decodeActiveTurn(value.activeTurn)
     if (value.activeTurn !== undefined && activeTurn === undefined) return undefined
-    const conversation = { id: commanderConversationId(value.id), version: value.version, status: value.status, ...(activeTurn === undefined ? {} : { activeTurn }), lastCursor: streamCursor(value.lastCursor), events, requests, continuations }
+    const conversation = { id: commanderConversationId(value.id), version: value.version, status: value.status, ...(activeTurn === undefined ? {} : { activeTurn }), lastCursor: streamCursor(value.lastCursor), events, requests }
     return isValidConversationState(conversation) ? conversation : undefined
   } catch { return undefined }
 }
@@ -175,14 +155,6 @@ export function decodeCommanderConversation(value: unknown): CommanderConversati
 function decodeRequest(value: unknown): BridgeRequest | undefined {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.turnId !== "string" || typeof value.payloadDigest !== "string" || !isRequestedAction(value.action) || !isRequestState(value.state)) return undefined
   try { return { id: bridgeRequestId(value.id), turnId: commanderTurnId(value.turnId), action: value.action, payloadDigest: capabilityPayloadDigest(value.payloadDigest), state: value.state } } catch { return undefined }
-}
-function decodeContinuation(value: unknown): ContinuationRequest | undefined {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.deliveryId !== "string" || typeof value.payloadDigest !== "string" || typeof value.inputId !== "string" || !isContinuationState(value.state)) return undefined
-  const provenance = decodeOpenCodeMessageProvenance(value.provenance)
-  if (!provenance || value.deliveryId.length === 0 || value.deliveryId.length > 256 || !/^msg_[a-z0-9_-]{1,240}$/i.test(value.inputId)) return undefined
-  if (value.failure !== undefined && !isContinuationFailure(value.failure)) return undefined
-  if (value.state === "rejected" && value.failure === undefined || value.state !== "rejected" && value.failure !== undefined) return undefined
-  try { return { id: bridgeRequestId(value.id), deliveryId: value.deliveryId, provenance, payloadDigest: capabilityPayloadDigest(value.payloadDigest), inputId: value.inputId, state: value.state, ...(value.failure === undefined ? {} : { failure: value.failure }) } } catch { return undefined }
 }
 function decodeActiveTurn(value: unknown): ActiveTurn | undefined {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.promptRequestId !== "string") return undefined
@@ -193,7 +165,6 @@ export function isValidConversationState(value: CommanderConversation): boolean 
   if (value.events.length === 0 && value.lastCursor !== streamCursor(0)) return false
   if (value.events.length > 0 && value.events[value.events.length - 1]!.cursor !== value.lastCursor) return false
   if (new Set(value.requests.map((request) => request.id)).size !== value.requests.length) return false
-  if (new Set(value.continuations.map((request) => request.id)).size !== value.continuations.length) return false
   if (value.status === "ready") return value.activeTurn === undefined
   if (value.activeTurn === undefined) return false
   const prompt = value.requests.find((request) => request.id === value.activeTurn?.promptRequestId)
@@ -202,8 +173,6 @@ export function isValidConversationState(value: CommanderConversation): boolean 
 function isStatus(value: unknown): value is ConversationStatus { return value === "ready" || value === "starting" || value === "streaming" || value === "cancel_requested" }
 function isRequestedAction(value: unknown): value is RequestedAction { return value === "prompt" || value === "steer" || value === "cancel" }
 function isRequestState(value: unknown): value is RequestState { return value === "pending" || value === "dispatched" || value === "uncertain" }
-function isContinuationState(value: unknown): value is ContinuationState { return value === "pending" || value === "continued" || value === "rejected" || value === "uncertain" }
-function isContinuationFailure(value: unknown): value is ContinuationFailure { return value === "missing" || value === "inaccessible" || value === "stale" }
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> { return typeof value === "object" && value !== null && !Array.isArray(value) }
 function nonEmptyIdentifier(value: string): boolean { return value.length > 0 && value.length <= 256 }
 function allDefined<T>(values: readonly (T | undefined)[]): values is readonly T[] { return values.every((value): value is T => value !== undefined) }

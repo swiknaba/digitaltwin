@@ -24,7 +24,7 @@ test("main-process transport fails closed for an unsafe endpoint or a transport 
 })
 
 test("main-process transport opens and reconnects with independently consumed read proofs", async () => {
-  const conversation = { id: commanderConversationId("commander:global"), version: 1, status: "ready" as const, lastCursor: streamCursor(0), events: [], requests: [], continuations: [] }
+  const conversation = { id: commanderConversationId("commander:global"), version: 1, status: "ready" as const, lastCursor: streamCursor(0), events: [], requests: [] }
   const actions: string[] = []
   const responses = [
     { ok: true, actorId: "owner-1", conversation },

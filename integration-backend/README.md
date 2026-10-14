@@ -12,6 +12,11 @@ Git workflow control.
 - explicit `scheduled`, `running`, `awaiting_disposition`, `completed`, `failed`,
   `canceled`, and `uncertain` task states.
 
+There is deliberately no recurrence engine. A due task may create its own next
+one-time successor through the same capability API, using a stable successor
+idempotency key; a worker retry therefore returns the existing successor instead
+of creating a duplicate.
+
 When a task is due, the worker asks the Commander bridge to append a visible check-in.
 It never starts project work. A bridge effect with an unknown result becomes
 `uncertain`, then one reconciliation attempt uses the same immutable delivery key.

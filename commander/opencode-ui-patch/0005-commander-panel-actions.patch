@@ -21,7 +21,7 @@ index 0c1d6ca..acad5ba 100644
 +  status: Schema.Union([Schema.Literal("not-configured"), Schema.Literal("active"), Schema.Literal("unavailable")]),
 +  events: Schema.Array(CommanderEvent),
  })
-@@ -17,3 +24,7 @@
+@@ -17,3 +24,8 @@
    methods: {
 -    status: { output: CommanderBridgeState },
 +    open: { output: CommanderBridgeState },
@@ -29,14 +29,15 @@ index 0c1d6ca..acad5ba 100644
 +    steer: { input: Schema.Struct({ text: Schema.String }), output: CommanderBridgeState },
 +    cancel: { output: CommanderBridgeState },
 +    reconnect: { input: Schema.Struct({ after: Schema.Number }), output: CommanderBridgeState },
++    continue: { input: Schema.Struct({ sessionId: Schema.String, messageId: Schema.String, requestId: Schema.String, text: Schema.String }), output: CommanderBridgeState },
    },
 --- a/packages/gui-extensions/src/commander/main.ts
 +++ b/packages/gui-extensions/src/commander/main.ts
 @@ -1,2 +1,2 @@
 -import { unconfiguredCommanderBridgeStatus } from "@digitaltwin/commander-bridge"
-+import { commanderPanelFromHostBootstrap } from "@digitaltwin/commander-bridge/core"
++import { commanderPanelFromHostBootstrap, OpenCodeHttpSessionClient, OpenCodeSessionContinuation } from "@digitaltwin/commander-bridge/core"
  import type { MainSetup } from "../sdk/main"
-@@ -11,10 +11,32 @@
+@@ -11,10 +11,46 @@
  const setup: MainSetup<typeof definition> = (ctx) => {
 -  // This package entrypoint accepts no configuration. A future reviewed bootstrap
 -  // may supply a transport from operator-owned state, but project data never does.
@@ -45,6 +46,16 @@ index 0c1d6ca..acad5ba 100644
 +  // still wiring IPC. Resolve the trusted host panel at each call so a later
 +  // bootstrap is observed without exposing configuration to the renderer.
 +  const panel = () => commanderPanelFromHostBootstrap()
++  const continuation = () => {
++    const endpoint = ctx.serverEndpoints.get("sidecar")
++    if (!endpoint) return undefined
++    const client = new OpenCodeHttpSessionClient({
++      origin: endpoint.url,
++      runtimeId: "opencode:sidecar",
++      fetch: { fetch: (url, init) => fetch(url, { ...init, headers: { ...endpoint.headers, ...init?.headers } }) },
++    })
++    return new OpenCodeSessionContinuation({ client })
++  }
 +  const state = (): CommanderBridgeState => {
 +    const snapshot = panel().snapshot()
 +    // Deliberately project the panel state instead of sharing its conversation:
@@ -72,6 +83,10 @@ index 0c1d6ca..acad5ba 100644
 +    steer: ({ text }) => call(() => panel().steer(text)),
 +    cancel: () => call(() => panel().cancel()),
 +    reconnect: ({ after }) => call(() => panel().reconnect(after)),
++    continue: ({ sessionId, messageId, requestId, text }) => call(async () => {
++      const service = continuation()
++      if (service) await service.continue({ provenance: { runtimeId: "opencode:sidecar", projectId: "sidecar", sessionId, messageId }, requestId, text })
++    }),
    })
 +  changed = () => provider.changed()
  }

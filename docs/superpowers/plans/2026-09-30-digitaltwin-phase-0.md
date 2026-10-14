@@ -1,5 +1,9 @@
 # Digitaltwin Phase 0 Implementation Plan
 
+> **Superseded (2026-10-14):** Mattermost, Herdr, Hermes, mobile, and their
+> associated runtime topology are not part of the OpenCode-first product. This is
+> retained only as historical planning context; see the current Commander spec.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A containerized, self-hosted agent fleet delivers code and research results through Mattermost with approval bound to their exact revisions.

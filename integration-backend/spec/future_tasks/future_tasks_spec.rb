@@ -112,6 +112,18 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect { create_task(due_at: now + 120) }.to raise_error(ArgumentError, /Idempotency key reused/)
   end
 
+  it "deduplicates a one-time successor created by a due-task retry" do
+    parent = create_task(key: "weekly-parent")
+    successor_due_at = now + (7 * 24 * 60 * 60)
+    first = tasks.create(actor_id: "operator-1", origin: "commander:main", idempotency_key: "successor:#{parent.id}:1", text: "Review the deployment plan", due_at: successor_due_at,
+                         timezone: "UTC", local_time: successor_due_at.utc.iso8601, references: ["repo:digitaltwin"], now: now + 60)
+    retry = tasks.create(actor_id: "operator-1", origin: "commander:main", idempotency_key: "successor:#{parent.id}:1", text: "Review the deployment plan", due_at: successor_due_at,
+                         timezone: "UTC", local_time: successor_due_at.utc.iso8601, references: ["repo:digitaltwin"], now: now + 120)
+
+    expect(retry).to eq(first)
+    expect(Kirei::App.raw_db_connection[:future_tasks].count).to eq(2)
+  end
+
   it "uses an opaque created-at/id cursor and rejects malformed capability timing" do
     first = create_task(key: "page-1", due_at: now + 60)
     second = create_task(key: "page-2", due_at: now + 120)
