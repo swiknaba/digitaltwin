@@ -3,7 +3,7 @@
 set -eu
 
 readonly expected_revision="1f4d07a4a519185955ae8ab2ea3607805509e386"
-readonly patch_names="0001-commander-gui-extension.patch 0002-commander-panel-safety.patch 0003-commander-bridge-ipc-seam.patch 0004-commander-bridge-workspace.patch 0005-commander-panel-actions.patch 0006-commander-desktop-bootstrap-harness.patch 0007-commander-playwright-ui-fixture.patch"
+readonly patch_names="0001-commander-gui-extension.patch 0002-commander-panel-safety.patch 0003-commander-bridge-ipc-seam.patch 0004-commander-bridge-workspace.patch 0005-commander-panel-actions.patch 0006-commander-desktop-bootstrap-harness.patch 0007-commander-playwright-ui-fixture.patch 0008-commander-runtime-validation.patch"
 
 fail() {
   printf '%s\n' "prepare-opencode: $*" >&2
