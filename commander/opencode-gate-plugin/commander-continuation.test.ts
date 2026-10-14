@@ -2,73 +2,41 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import continuation from "./commander-continuation.ts"
 
-type Tool = Readonly<{
-  name: string
-  execute: (input: Record<string, string>, context?: Record<string, string>) => Promise<Readonly<{ content: string }>>
-}>
-
-function setup() {
-  const storage = new Map<string, unknown>()
-  const tools = new Map<string, Tool>()
-  const prompts: Array<Record<string, unknown>> = []
-  const context = {
-    location: { project: { id: "project-commander" } },
-    storage: {
-      get: async (key: string) => storage.get(key),
-      set: async (key: string, value: unknown) => storage.set(key, value),
-    },
-    tool: {
-      transform: async (callback: (editor: { add: (tool: Tool) => void }) => void) => callback({ add: (tool) => tools.set(tool.name, tool) }),
-    },
-    session: { prompt: async (input: Record<string, unknown>) => prompts.push(input) },
-  }
-  return { context, prompts, storage, tools }
+function fixture() {
+  const storage = new Map<string, unknown>(); const tools = new Map<string, any>(); const hooks = new Map<string, any>(); const prompts: any[] = []
+  const context = { location: { project: { id: "project-1" } }, storage: { get: async (key: string) => storage.get(key), set: async (key: string, value: unknown) => storage.set(key, value) }, tool: { transform: async (callback: any) => callback({ add: (tool: any) => tools.set(tool.name, tool) }), hook: async (name: string, callback: any) => { hooks.set(name, callback); return { dispose() {} } } }, session: { prompt: async (input: any) => { prompts.push(input); return { id: input.id, sessionID: input.sessionID, type: "user", payload: { text: input.text, metadata: input.metadata } } } } }
+  return { context, storage, tools, hooks, prompts }
+}
+async function bind(f: ReturnType<typeof fixture>, call = "call_child", parent = "ses_commander", child = "ses_child") {
+  await f.hooks.get("execute.after")({ tool: "subagent", status: "completed", id: call, sessionID: parent, messageID: "msg_parent", result: { metadata: { sessionID: child } } })
+  return `subagent-${call}`
 }
 
-test("persists trusted provenance and resumes that exact OpenCode session", async () => {
-  const first = setup()
-  await continuation.setup(first.context as never)
-  const start = first.tools.get("commander_record_agent_session")
-  const followUp = first.tools.get("commander_continue_agent")
-  assert.ok(start)
-  assert.ok(followUp)
+test("binds the actual native child result and only its parent may continue", async () => {
+  const f = fixture(); await continuation.setup(f.context as never); const id = await bind(f)
+  const record = f.storage.get(`digitaltwin.commander.decision.${id}`) as any
+  assert.deepEqual(record, { parent: "ses_commander", parentMessage: "msg_parent", child: "ses_child", project: "project-1", requests: {} })
+  const tool = f.tools.get("commander_continue_agent")
+  assert.equal((await tool.execute({ decision_id: id, request_id: "request-1", text: "Continue." }, { sessionID: "ses_other" })).content, "Commander follow-up is not authorized for this session.")
+  assert.equal((await tool.execute({ decision_id: id, request_id: "request-1", text: "Continue." }, { sessionID: "ses_commander" })).content, `Continued Commander decision ${id}.`)
+  assert.equal(f.prompts[0].sessionID, "ses_child")
+})
 
-  const commanderSessionID = "ses_commander"
-  await start.execute(
-    { decision_id: "decision-1", session_id: commanderSessionID },
-    { sessionID: "ses_child_agent", messageID: "msg_child_origin" },
-  )
-  const expectedProvenance = {
-    runtimeId: "opencode:server",
-    projectId: "project-commander",
-    sessionId: "ses_child_agent",
-    messageId: "msg_child_origin",
-    requests: {},
-  }
-  const recorded = first.storage.get("digitaltwin.commander.decision.decision-1")
-  assert.deepEqual(recorded, expectedProvenance)
-  assert.notEqual(expectedProvenance.sessionId, commanderSessionID)
-
-  await followUp.execute({ decision_id: "decision-1", request_id: "request-1", text: "Continue safely." })
-  assert.equal(first.prompts.length, 1)
-  assert.match(String(first.prompts[0].sessionID), /^ses_child_agent$/)
-  assert.match(String(first.prompts[0].id), /^msg_commander_[a-f0-9]{64}$/)
-  assert.equal(first.prompts[0].text, "Continue safely.")
-  assert.deepEqual(first.prompts[0].metadata, {
-    fromCommander: true,
-    commanderRequestDigest: "7628cfc6a2a30ad4f00ceffa33dfc563fe60146b9508b30bf9fec129e1ac9f58",
-  })
-  assert.equal(first.prompts[0].resume, true)
-
-  const second = setup()
-  for (const [key, value] of first.storage) second.storage.set(key, value)
-  await continuation.setup(second.context as never)
-  const retry = second.tools.get("commander_continue_agent")
-  assert.ok(retry)
-  await retry.execute({ decision_id: "decision-1", request_id: "request-1", text: "Continue safely." })
+test("persists binding across setup and serializes changed-body retries", async () => {
+  const first = fixture(); await continuation.setup(first.context as never); const id = await bind(first, "call_restart")
+  const second = fixture(); for (const [key, value] of first.storage) second.storage.set(key, value); await continuation.setup(second.context as never)
+  const tool = second.tools.get("commander_continue_agent")
+  const [one, two] = await Promise.all([
+    tool.execute({ decision_id: id, request_id: "request-2", text: "Body one" }, { sessionID: "ses_commander" }),
+    tool.execute({ decision_id: id, request_id: "request-2", text: "Body two" }, { sessionID: "ses_commander" }),
+  ])
+  assert.deepEqual([one.content, two.content].sort(), [`Commander follow-up conflicts with its original body.`, `Continued Commander decision ${id}.`].sort())
   assert.equal(second.prompts.length, 1)
-  assert.equal(second.prompts[0].id, first.prompts[0].id)
-  const conflict = await retry.execute({ decision_id: "decision-1", request_id: "request-1", text: "Different body." })
-  assert.equal(conflict.content, "Commander follow-up conflicts with its original body.")
-  assert.equal(second.prompts.length, 1)
+})
+
+test("rejects an already-admitted mismatched message", async () => {
+  const f = fixture(); await continuation.setup(f.context as never); const id = await bind(f, "call_mismatch")
+  f.context.session.prompt = async (input: any) => ({ id: input.id, sessionID: input.sessionID, type: "user", payload: { text: "different", metadata: input.metadata } })
+  const tool = f.tools.get("commander_continue_agent")
+  assert.equal((await tool.execute({ decision_id: id, request_id: "request-3", text: "Expected" }, { sessionID: "ses_commander" })).content, "Commander follow-up admission conflicts with the existing message.")
 })

@@ -17,9 +17,9 @@ rejects a missing, non-loopback HTTP, non-HTTPS, path-bearing, query-bearing, or
 fragment-bearing value.
 
 `commander-continuation.ts` is the normal server-plugin composition for
-Commander. Its `commander_record_agent_session` tool must run in the child agent
-session immediately after Commander starts it; it records that executing child
-session/message/project provenance in plugin storage. Its
+Commander. It binds a decision from the trusted completion result of OpenCode's
+native `subagent` tool, recording both the Commander parent and its actual child
+session in plugin storage. Its
 `commander_continue_agent` tool looks up that immutable decision and calls
 `context.session.prompt` for that exact session with a deterministic message id
 and `fromCommander` plus body-digest metadata. Neither tool accepts a session,
