@@ -15,6 +15,9 @@ The [layout](repository-layout-and-parallel-build.md) defines source paths and c
 The [foundation checkpoint](interfaces/foundation-validation.md) records exact artifacts, checked commands, open gates, and worker briefs.
 The [service boundaries](interfaces/service-boundaries.md) distinguish agreed requirements from unvalidated upstream details.
 The [local integration contract](interfaces/local-integration.md) records root wiring and the early real roundtrip procedure.
+The [macOS local app v1 specification](macos-local-app-v1.md) defines the proposed
+native, all-in-one local distribution that follows the OpenCode/Commander reset in
+PR #41.
 
 Preserve existing document paths. Record sanitized release-bound evidence in `interfaces/` and final results in `acceptance/`.
 The integrator owns shared contract changes; component owners contribute evidence.
