@@ -17,8 +17,9 @@ rejects a missing, non-loopback HTTP, non-HTTPS, path-bearing, query-bearing, or
 fragment-bearing value.
 
 `commander-continuation.ts` is the normal server-plugin composition for
-Commander. Its `commander_start_agent_session` tool records the executing
-OpenCode session/message/project provenance in plugin storage. Its
+Commander. Its `commander_record_agent_session` tool must run in the child agent
+session immediately after Commander starts it; it records that executing child
+session/message/project provenance in plugin storage. Its
 `commander_continue_agent` tool looks up that immutable decision and calls
 `context.session.prompt` for that exact session with a deterministic message id
 and `fromCommander` plus body-digest metadata. Neither tool accepts a session,
@@ -26,9 +27,9 @@ message, project, endpoint, or credential from the caller.
 
 The isolated fixture is validation-only: set `XDG_CONFIG_HOME` to
 `commander/opencode-gate-plugin/isolated-config`. Its checked-in
-`opencode/opencode.json` points to only this repository-local continuation plugin,
-without reading or modifying a user's global configuration. Production uses the
-operator-managed global plugin directory above.
+`opencode/plugins/commander-continuation.ts` entry re-exports only this
+repository-local continuation plugin, without reading or modifying a user's global
+configuration. Production uses the operator-managed global plugin directory above.
 
 The pinned-release test records the expected server-only plugin registration and
 exercises the trusted lifecycle: tool context -> persisted provenance -> exact

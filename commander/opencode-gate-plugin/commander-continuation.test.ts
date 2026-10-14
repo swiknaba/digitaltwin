@@ -28,24 +28,30 @@ function setup() {
 test("persists trusted provenance and resumes that exact OpenCode session", async () => {
   const first = setup()
   await continuation.setup(first.context as never)
-  const start = first.tools.get("commander_start_agent_session")
+  const start = first.tools.get("commander_record_agent_session")
   const followUp = first.tools.get("commander_continue_agent")
   assert.ok(start)
   assert.ok(followUp)
 
-  await start.execute({ decision_id: "decision-1" }, { sessionID: "ses_agent", messageID: "msg_origin" })
-  const recorded = first.storage.get("digitaltwin.commander.decision.decision-1")
-  assert.deepEqual(recorded, {
+  const commanderSessionID = "ses_commander"
+  await start.execute(
+    { decision_id: "decision-1", session_id: commanderSessionID },
+    { sessionID: "ses_child_agent", messageID: "msg_child_origin" },
+  )
+  const expectedProvenance = {
     runtimeId: "opencode:server",
     projectId: "project-commander",
-    sessionId: "ses_agent",
-    messageId: "msg_origin",
+    sessionId: "ses_child_agent",
+    messageId: "msg_child_origin",
     requests: {},
-  })
+  }
+  const recorded = first.storage.get("digitaltwin.commander.decision.decision-1")
+  assert.deepEqual(recorded, expectedProvenance)
+  assert.notEqual(expectedProvenance.sessionId, commanderSessionID)
 
   await followUp.execute({ decision_id: "decision-1", request_id: "request-1", text: "Continue safely." })
   assert.equal(first.prompts.length, 1)
-  assert.match(String(first.prompts[0].sessionID), /^ses_agent$/)
+  assert.match(String(first.prompts[0].sessionID), /^ses_child_agent$/)
   assert.match(String(first.prompts[0].id), /^msg_commander_[a-f0-9]{64}$/)
   assert.equal(first.prompts[0].text, "Continue safely.")
   assert.deepEqual(first.prompts[0].metadata, {

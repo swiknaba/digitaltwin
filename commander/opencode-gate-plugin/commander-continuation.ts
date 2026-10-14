@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto"
 import { Plugin } from "@opencode/plugin"
-import { Session } from "@opencode/schema/session"
 import { Schema } from "effect"
 
 const prefix = "digitaltwin.commander.decision."
@@ -23,8 +22,8 @@ export default Plugin.define({
   async setup(context) {
     await context.tool.transform((editor) => {
       editor.add({
-        name: "commander_start_agent_session",
-        description: "Record this Commander-started agent session for later Commander follow-up.",
+        name: "commander_record_agent_session",
+        description: "Record this running Commander-started child agent session for later Commander follow-up.",
         input: Schema.Struct({ decision_id: Schema.String }),
         options: { codemode: false },
         async execute(input, tool) {
@@ -61,7 +60,7 @@ export default Plugin.define({
             await context.storage.set(key, { ...decision, requests: { ...decision.requests, [input.request_id]: digest } })
           }
           await context.session.prompt({
-            sessionID: Schema.decodeUnknownSync(Session.ID)(decision.sessionId),
+            sessionID: decision.sessionId,
             id: inputId,
             text: input.text,
             metadata: { fromCommander: true, commanderRequestDigest: digest },
