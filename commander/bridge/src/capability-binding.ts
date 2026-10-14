@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { bridgeRequestId, capabilityPayloadDigest, type CapabilityBinding, type OpenCodeMessageProvenance, type RequestedAction } from "./contract.ts"
+import { bridgeRequestId, capabilityPayloadDigest, type CapabilityBinding, type RequestedAction } from "./contract.ts"
 
 /**
  * Produces the canonical command binding shared by the desktop issuer and bridge.
@@ -9,16 +9,5 @@ export function commandCapabilityBinding(action: RequestedAction, rawRequestId: 
   const requestId = bridgeRequestId(rawRequestId)
   const normalizedText = action === "cancel" ? "" : text ?? ""
   const material = `${action}\n${requestId}\n${normalizedText}`
-  return { requestId, payloadDigest: capabilityPayloadDigest(createHash("sha256").update(material, "utf8").digest("hex")) }
-}
-
-/** Binds continuation intent to the exact persisted OpenCode target and body. */
-export function continuationCapabilityBinding(deliveryId: string, provenance: OpenCodeMessageProvenance, rawRequestId: string, text: string): CapabilityBinding {
-  const requestId = bridgeRequestId(rawRequestId)
-  const material = [
-    "continue", deliveryId, requestId, text,
-    provenance.runtimeId, provenance.projectId, provenance.sessionId, provenance.messageId,
-    provenance.agentId ?? "", provenance.parentSessionId ?? "",
-  ].join("\n")
   return { requestId, payloadDigest: capabilityPayloadDigest(createHash("sha256").update(material, "utf8").digest("hex")) }
 }

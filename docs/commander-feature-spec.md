@@ -37,6 +37,14 @@ Kirei does not receive, proxy, store, approve, or deliver ordinary project-chat 
 
 OpenCode and Git are the developer feedback loop. OpenCode presents session progress and repository changes. Git remains the durable authority for commits, branches, diffs, and pull requests.
 
+Commander fleet control uses the same authenticated OpenCode session API as an
+ordinary developer input. It retains the exact OpenCode runtime, project, session,
+and source-message references, then submits a new input to that exact session with
+`fromCommander: true` metadata. That marker is provenance for the transcript and
+automation only: it grants no extra permission, changes no model/provider routing,
+and does not bypass OpenCode's existing user, server, or workspace authorization.
+The ordinary OpenCode route continues to select LiteLLM and retain its credentials.
+
 Digitaltwin must install its OpenCode additions globally through operator-managed configuration. Project configuration must not replace Commander behavior or gain access to its runtime credentials.
 
 ## Commander is the Digitaltwin feature

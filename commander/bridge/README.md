@@ -89,10 +89,14 @@ operator bootstrap; an absent bootstrap remains visibly `not-configured`.
 Runtime events may optionally carry `OpenCodeMessageProvenance`: a runtime namespace,
 project ID, exact `ses_` session ID, exact `msg_` message ID, and optional agent and
 parent-session IDs. The bridge persists it with the Commander event and exposes it
-only to trusted runtime code by delivery ID; panel state does not project it. It is a
-lookup reference, never an authorization grant. A missing, deleted, or inaccessible
-reference must fail explicitly at the trusted OpenCode adapter; it must not fall back
-to titles, agent names, or a replacement session.
+only to continuation code by delivery ID; panel state does not project it. It is a
+lookup reference, never an authorization grant. `OpenCodeSessionContinuation` calls
+the normal authenticated OpenCode session endpoint for that exact reference and
+marks the submitted input only with `{ fromCommander: true }` metadata. It adds no
+credential, bypass, or LiteLLM routing rule. A missing, deleted, or inaccessible
+reference fails explicitly; it never falls back to titles, agent names, or a
+replacement session. A deterministic `msg_` input ID makes a restart retry use
+OpenCode's ordinary durable admission/idempotency behavior.
 
 `FileConversationStore` and `FileFutureTaskDeliveryStore` are single-operator durable
 adapters; they atomically write replay metadata and delivery receipts with mode

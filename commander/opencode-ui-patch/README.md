@@ -29,22 +29,16 @@ delivery IDs, identity, proof, origin, endpoint, credential, or transport error.
 The repository includes no production OpenCode desktop-host integration that supplies
 an operator bootstrap, so this remains a tested invocation seam rather than a Gate 1
 pass or a live production bridge claim. The patched desktop's harness-only installer
-runs before the early renderer window, and its host-owned process state is shared
-across the lazy main-process extension chunks. Ordinary launches do not import the
-harness or install a Commander bootstrap and remain closed; `--commander-test-harness` installs an
-ephemeral loopback bridge with random in-memory proofs for local desktop acceptance
-only.
+runs before the early renderer window. Ordinary launches install no bridge context,
+broker assertion, or new credential; `--commander-test-harness` installs an ephemeral
+loopback bridge with random in-memory proofs for local desktop acceptance only.
 
-Normal desktop startup evaluates an optional launcher-written context before creating
-a renderer. It reads only `commander-operator-context.json` from Electron's private
-`userData` directory when the file is regular, non-symlinked, and mode `0600`. The
-context has bridge and broker origins plus an opaque signed launch assertion; it does
-not carry trusted actor or conversation labels. The assertion's decoded audience must
-match the broker origin, and the broker must verify its signature, expiry, audience,
-and identity claims before it issues an action-bound proof. Malformed, unavailable,
-or broker-rejected context leaves Commander `not-configured` without blocking the
-ordinary OpenCode window. The renderer receives none of this context. The harness
-remains an explicit test-only provider path.
+Commander fleet continuation is not a desktop credential path. The Commander runtime
+uses the already-authenticated OpenCode session API for the exact stored session and
+message reference, submitting an ordinary input marked only with
+`{ fromCommander: true }` metadata. OpenCode's existing user/project authorization
+and LiteLLM model routing remain authoritative. The desktop renderer never receives
+the reference or an OpenCode credential.
 
 ## Apply to the pinned source
 

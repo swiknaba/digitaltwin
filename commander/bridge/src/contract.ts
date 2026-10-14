@@ -5,7 +5,7 @@ export type CommanderTurnId = string & { readonly __brand: "CommanderTurnId" }
 export type CapabilityPayloadDigest = string & { readonly __brand: "CapabilityPayloadDigest" }
 export type StreamCursor = number & { readonly __brand: "StreamCursor" }
 
-export const capabilityActions = ["read", "prompt", "steer", "cancel", "continue", "result"] as const
+export const capabilityActions = ["read", "prompt", "steer", "cancel", "result"] as const
 export type CapabilityAction = (typeof capabilityActions)[number]
 export type CapabilityPresentation = Readonly<{ token: string }>
 export type CapabilityBinding = Readonly<{ requestId: BridgeRequestId; payloadDigest: CapabilityPayloadDigest }>
@@ -57,16 +57,16 @@ export type BridgeRequest = Readonly<{ id: BridgeRequestId; action: RequestedAct
 export type ContinuationState = "pending" | "continued" | "rejected" | "uncertain"
 export type ContinuationFailure = "missing" | "inaccessible" | "stale"
 /**
- * A continuation is independently durable because it targets an external
- * OpenCode effect rather than the Commander runtime queue.  The exact
- * provenance is retained solely for reconciliation; it is never authority.
+ * A continuation is independently durable because it targets an ordinary
+ * OpenCode session input rather than the Commander runtime queue. The exact
+ * provenance is routing data only; OpenCode keeps its normal authorization.
  */
 export type ContinuationRequest = Readonly<{
   id: BridgeRequestId
   deliveryId: string
   provenance: OpenCodeMessageProvenance
   payloadDigest: CapabilityPayloadDigest
-  idempotencyKey: string
+  inputId: string
   state: ContinuationState
   failure?: ContinuationFailure
 }>
@@ -177,12 +177,12 @@ function decodeRequest(value: unknown): BridgeRequest | undefined {
   try { return { id: bridgeRequestId(value.id), turnId: commanderTurnId(value.turnId), action: value.action, payloadDigest: capabilityPayloadDigest(value.payloadDigest), state: value.state } } catch { return undefined }
 }
 function decodeContinuation(value: unknown): ContinuationRequest | undefined {
-  if (!isRecord(value) || typeof value.id !== "string" || typeof value.deliveryId !== "string" || typeof value.payloadDigest !== "string" || typeof value.idempotencyKey !== "string" || !isContinuationState(value.state)) return undefined
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.deliveryId !== "string" || typeof value.payloadDigest !== "string" || typeof value.inputId !== "string" || !isContinuationState(value.state)) return undefined
   const provenance = decodeOpenCodeMessageProvenance(value.provenance)
-  if (!provenance || value.deliveryId.length === 0 || value.deliveryId.length > 256 || value.idempotencyKey.length === 0 || value.idempotencyKey.length > 512) return undefined
+  if (!provenance || value.deliveryId.length === 0 || value.deliveryId.length > 256 || !/^msg_[a-z0-9_-]{1,240}$/i.test(value.inputId)) return undefined
   if (value.failure !== undefined && !isContinuationFailure(value.failure)) return undefined
   if (value.state === "rejected" && value.failure === undefined || value.state !== "rejected" && value.failure !== undefined) return undefined
-  try { return { id: bridgeRequestId(value.id), deliveryId: value.deliveryId, provenance, payloadDigest: capabilityPayloadDigest(value.payloadDigest), idempotencyKey: value.idempotencyKey, state: value.state, ...(value.failure === undefined ? {} : { failure: value.failure }) } } catch { return undefined }
+  try { return { id: bridgeRequestId(value.id), deliveryId: value.deliveryId, provenance, payloadDigest: capabilityPayloadDigest(value.payloadDigest), inputId: value.inputId, state: value.state, ...(value.failure === undefined ? {} : { failure: value.failure }) } } catch { return undefined }
 }
 function decodeActiveTurn(value: unknown): ActiveTurn | undefined {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.promptRequestId !== "string") return undefined

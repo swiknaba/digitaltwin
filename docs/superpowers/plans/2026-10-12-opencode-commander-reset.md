@@ -35,9 +35,9 @@ and no Kirei workflow approval/review gate on ordinary OpenCode work.
 future-task API, or learning integration, prove on the maintained *pinned* OpenCode build that a
 supported extension point can: (a) add an always-visible global Commander control,
 (b) open the same durable Commander conversation without destroying the active
-project session, (c) render streamed external runtime responses, and (d) obtain a
-trusted user-and-conversation-bound bridge capability without a static credential in
-project configuration. DOM injection is prohibited. If the supported surface cannot
+project session, (c) render streamed external runtime responses, and (d) route a
+Commander-originated input to an exact existing OpenCode session through the normal
+authenticated OpenCode API. DOM injection is prohibited. If the supported surface cannot
 do this, stop and choose either an
 upstream contribution or a narrowly maintained OpenCode UI patch; do not build an
 unsupported bridge around it.
@@ -97,16 +97,14 @@ credential provisioning.
 6. **Learning visibility.** Bridge events are compact and reveal `memory` or `skill`
    plus a summary, never transcript text. Initial configuration explicitly chooses
    automatic-memory and staged-skill policies before runtime learning is enabled.
-7. **Trust model.** Gate 1 must prove an OpenCode-supported way for the global
-   extension to obtain a short-lived, user-and-conversation-bound bridge capability
-   without putting a static Kirei/runtime credential in project configuration. The
-   bridge exchanges that capability for its private Kirei identity. It issues,
-   rotates, revokes, and records one-time capability identifiers; Kirei verifies
-   audience, actor, Commander conversation, expiry, and replay before every API
-   call. A project or tool never supplies its own actor, origin, target, outcome, or
-   durable service credential. Because project code sharing the same OS user can be
-   hostile, file placement alone is not a security boundary; lack of a supported
-   trusted-extension/session proof fails Gate 1.
+7. **Session-control boundary.** Commander continuation is an ordinary OpenCode
+   session input, not a privileged bridge action. Store the exact runtime, project,
+   session, and source-message references; submit the deterministic next `msg_` id
+   to OpenCode's normal authenticated session route with `fromCommander: true`
+   metadata. The marker is provenance only. OpenCode's existing server/user/project
+   authorization and LiteLLM routing remain authoritative, and no broker, launch
+   assertion, or separate Commander credential is introduced for this operation.
+   Kirei's separate future-task and disposition capabilities remain unchanged.
 
 ## Future-task state and delivery contract
 

@@ -1,21 +1,21 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { commandCapabilityBinding, continuationCapabilityBinding } from "./capability-binding.ts"
+import { commandCapabilityBinding } from "./capability-binding.ts"
 import { bridgeActorId, bridgeRequestId, commanderConversationId, streamCursor, turnIdForRequest, type CapabilityBinding, type CapabilityDecision, type CapabilityVerifier, type CommanderRuntime, type OpenCodeMessageProvenance } from "./contract.ts"
 import { CommanderBridgeController } from "./controller.ts"
 import { InMemoryConversationStore } from "./in-memory-store.ts"
-import { TrustedOpenCodeContinuation, type OpenCodeSessionClient } from "./opencode-continuation.ts"
+import { OpenCodeHttpSessionClient, OpenCodeSessionContinuation, type OpenCodeSessionClient } from "./opencode-continuation.ts"
 
 const conversation = commanderConversationId("commander:global")
 const actor = bridgeActorId("owner")
-const now = new Date("2026-10-13T12:00:00.000Z")
-const provenance: OpenCodeMessageProvenance = { runtimeId: "runtime-a", projectId: "project-a", sessionId: "ses_child", messageId: "msg_reply", parentSessionId: "ses_parent" }
+const now = new Date("2026-10-14T12:00:00.000Z")
+const provenance: OpenCodeMessageProvenance = { runtimeId: "opencode:developer", projectId: "project-a", sessionId: "ses_child", messageId: "msg_reply", parentSessionId: "ses_parent" }
 
 class Verifier implements CapabilityVerifier {
   private readonly decisions = new Map<string, CapabilityDecision>()
 
-  issue(token: string, action: "read" | "prompt" | "steer" | "cancel" | "continue", binding?: CapabilityBinding, overrides: Partial<Readonly<{ action: "read" | "prompt" | "steer" | "cancel" | "continue"; actorId: typeof actor }>> = {}): Readonly<{ token: string }> {
-    this.decisions.set(token, { ok: true, capability: { action: overrides.action ?? action, actorId: overrides.actorId ?? actor, audience: "commander-bridge", conversationId: conversation, issuedAt: new Date("2026-10-13T11:59:00.000Z"), expiresAt: new Date("2026-10-13T12:04:00.000Z"), nonce: token, ...(binding === undefined ? {} : { binding }) } })
+  issue(token: string, action: "read" | "prompt" | "steer" | "cancel", binding?: CapabilityBinding): Readonly<{ token: string }> {
+    this.decisions.set(token, { ok: true, capability: { action, actorId: actor, audience: "commander-bridge", conversationId: conversation, issuedAt: new Date("2026-10-14T11:59:00.000Z"), expiresAt: new Date("2026-10-14T12:04:00.000Z"), nonce: token, ...(binding === undefined ? {} : { binding }) } })
     return { token }
   }
 
@@ -33,16 +33,14 @@ class Runtime implements CommanderRuntime {
 }
 
 class Client implements OpenCodeSessionClient {
-  readonly calls: string[] = []
+  readonly calls: Array<Readonly<{ kind: "session" | "message" | "prompt"; input: OpenCodeMessageProvenance | Readonly<{ provenance: OpenCodeMessageProvenance; inputId: string; text: string; metadata: Readonly<{ fromCommander: true }> }> }>> = []
   sessionState: "found" | "missing" | "inaccessible" = "found"
   messageState: "found" | "missing" | "inaccessible" = "found"
   promptState: "accepted" | "stale" | "missing" | "inaccessible" | "unknown" = "accepted"
-  reconcileState: "accepted" | "unknown" = "unknown"
 
-  async session(input: OpenCodeMessageProvenance) { this.calls.push(`session:${input.runtimeId}:${input.projectId}:${input.sessionId}`); return this.sessionState }
-  async message(input: OpenCodeMessageProvenance) { this.calls.push(`message:${input.messageId}`); return this.messageState }
-  async prompt(input: Readonly<{ provenance: OpenCodeMessageProvenance; text: string; idempotencyKey: string }>) { this.calls.push(`prompt:${input.provenance.sessionId}:${input.text}:${input.idempotencyKey}`); return this.promptState }
-  async reconcile(input: Readonly<{ provenance: OpenCodeMessageProvenance; idempotencyKey: string }>) { this.calls.push(`reconcile:${input.provenance.messageId}:${input.idempotencyKey}`); return this.reconcileState }
+  async session(input: OpenCodeMessageProvenance) { this.calls.push({ kind: "session", input }); return this.sessionState }
+  async message(input: OpenCodeMessageProvenance) { this.calls.push({ kind: "message", input }); return this.messageState }
+  async prompt(input: Readonly<{ provenance: OpenCodeMessageProvenance; inputId: string; text: string; metadata: Readonly<{ fromCommander: true }> }>) { this.calls.push({ kind: "prompt", input }); return this.promptState }
 }
 
 async function subject() {
@@ -54,71 +52,79 @@ async function subject() {
   assert.deepEqual(await controller.prompt(verifier.issue("start", "prompt", startBinding), "request-start", "hello"), { ok: true, state: "dispatched" })
   assert.deepEqual(await controller.apply({ conversationId: conversation, turnId: turnIdForRequest(bridgeRequestId("request-start")), cursor: streamCursor(1), deliveryId: "delivery-1", kind: "delta", text: "working", provenance }), { ok: true, state: "applied" })
   const client = new Client()
-  return { store, verifier, runtime, controller, client, service: new TrustedOpenCodeContinuation({ controller, client }) }
+  return { store, verifier, runtime, controller, client, service: new OpenCodeSessionContinuation({ controller, client }) }
 }
 
-function continuationProof(verifier: Verifier, token: string, requestId = "continue-1", text = "Follow up", overrides: Parameters<Verifier["issue"]>[3] = {}) {
-  return verifier.issue(token, "continue", continuationCapabilityBinding("delivery-1", provenance, requestId, text), overrides)
-}
+const continuation = { deliveryId: "delivery-1", requestId: "continue-1", text: "Follow up" }
 
-test("continues only the exact persisted child session after controller authorization", async () => {
+test("routes Commander provenance to exactly one ordinary OpenCode input", async () => {
   const input = await subject()
-  assert.deepEqual(await input.service.continue({ presentation: continuationProof(input.verifier, "proof"), deliveryId: "delivery-1", requestId: "continue-1", text: "Follow up" }), { ok: true, state: "continued" })
-  assert.deepEqual(input.client.calls, [
-    "session:runtime-a:project-a:ses_child",
-    "message:msg_reply",
-    "prompt:ses_child:Follow up:commander-continue:commander:global:continue-1:eabaa3c0d2576962333a593d27bf75bd1a728644234baf94a5840923abfe91ea",
-  ])
+  assert.deepEqual(await input.service.continue(continuation), { ok: true, state: "continued" })
+  assert.deepEqual(input.client.calls.slice(0, 2), [{ kind: "session", input: provenance }, { kind: "message", input: provenance }])
+  assert.deepEqual(input.client.calls[2], {
+    kind: "prompt",
+    input: {
+      provenance,
+      inputId: "msg_commander_e4910a820e50df03d2a2b3b8a9a78e6d7d9b083f26a56ce512b47c63756121c3",
+      text: "Follow up",
+      metadata: { fromCommander: true },
+    },
+  })
 })
 
-test("rejects wrong actor, action, or action binding before touching OpenCode", async () => {
+test("does not duplicate an admitted input or accept a changed body", async () => {
   const input = await subject()
-  assert.deepEqual(await input.service.continue({ presentation: continuationProof(input.verifier, "wrong-actor", "continue-actor", "Follow up", { actorId: bridgeActorId("other-owner") }), deliveryId: "delivery-1", requestId: "continue-actor", text: "Follow up" }), { ok: false, reason: "unauthorized" })
-  assert.deepEqual(await input.service.continue({ presentation: continuationProof(input.verifier, "wrong-action", "continue-action", "Follow up", { action: "read" }), deliveryId: "delivery-1", requestId: "continue-action", text: "Follow up" }), { ok: false, reason: "unauthorized" })
-  assert.deepEqual(await input.service.continue({ presentation: input.verifier.issue("wrong-binding", "continue", continuationCapabilityBinding("delivery-1", provenance, "different", "Follow up")), deliveryId: "delivery-1", requestId: "continue-binding", text: "Follow up" }), { ok: false, reason: "unauthorized" })
-  assert.deepEqual(input.client.calls, [])
+  assert.deepEqual(await input.service.continue(continuation), { ok: true, state: "continued" })
+  assert.deepEqual(await input.service.continue(continuation), { ok: true, state: "continued" })
+  assert.deepEqual(await input.service.continue({ ...continuation, text: "Altered" }), { ok: false, reason: "request_conflict" })
+  assert.equal(input.client.calls.filter((call) => call.kind === "prompt").length, 1)
 })
 
-test("records a continuation before I/O and never reprompts a fresh-proof duplicate or changed body", async () => {
-  const input = await subject()
-  const first = { presentation: continuationProof(input.verifier, "first"), deliveryId: "delivery-1", requestId: "continue-1", text: "Follow up" }
-  assert.deepEqual(await input.service.continue(first), { ok: true, state: "continued" })
-  assert.deepEqual(await input.service.continue({ ...first, presentation: continuationProof(input.verifier, "fresh") }), { ok: true, state: "continued" })
-  assert.deepEqual(await input.service.continue({ presentation: continuationProof(input.verifier, "changed", "continue-1", "Altered"), deliveryId: "delivery-1", requestId: "continue-1", text: "Altered" }), { ok: false, reason: "request_conflict" })
-  assert.equal(input.client.calls.filter((call) => call.startsWith("prompt:")).length, 1)
-})
-
-test("never replaces a missing message after a found session", async () => {
+test("rejects a missing exact source message without selecting a replacement", async () => {
   const input = await subject()
   input.client.messageState = "missing"
-  assert.deepEqual(await input.service.continue({ presentation: continuationProof(input.verifier, "proof"), deliveryId: "delivery-1", requestId: "continue-1", text: "Follow up" }), { ok: false, reason: "missing" })
-  assert.deepEqual(input.client.calls, ["session:runtime-a:project-a:ses_child", "message:msg_reply"])
+  assert.deepEqual(await input.service.continue(continuation), { ok: false, reason: "missing" })
+  assert.deepEqual(input.client.calls.map((call) => call.kind), ["session", "message"])
 })
 
-test("reconciles an unknown post-prompt outcome without replaying the prompt after restart", async () => {
+test("retries an uncertain standard OpenCode input with the same ID after restart", async () => {
   const input = await subject()
   input.client.promptState = "unknown"
-  input.client.reconcileState = "unknown"
-  assert.deepEqual(await input.service.continue({ presentation: continuationProof(input.verifier, "first"), deliveryId: "delivery-1", requestId: "continue-1", text: "Follow up" }), { ok: false, reason: "uncertain" })
+  assert.deepEqual(await input.service.continue(continuation), { ok: false, reason: "uncertain" })
+  input.client.promptState = "accepted"
   const restarted = new CommanderBridgeController({ actorId: actor, conversationId: conversation, store: input.store, runtime: input.runtime, verifier: input.verifier, now: () => now })
-  const resumed = new TrustedOpenCodeContinuation({ controller: restarted, client: input.client })
-  assert.deepEqual(await resumed.continue({ presentation: continuationProof(input.verifier, "fresh"), deliveryId: "delivery-1", requestId: "continue-1", text: "Follow up" }), { ok: false, reason: "uncertain" })
-  assert.equal(input.client.calls.filter((call) => call.startsWith("prompt:")).length, 1)
-  assert.equal(input.client.calls.filter((call) => call.startsWith("reconcile:")).length, 2)
+  const resumed = new OpenCodeSessionContinuation({ controller: restarted, client: input.client })
+  assert.deepEqual(await resumed.continue(continuation), { ok: true, state: "continued" })
+  const prompts = input.client.calls.filter((call) => call.kind === "prompt")
+  assert.equal(prompts.length, 2)
+  assert.equal((prompts[0]!.input as Readonly<{ inputId: string }>).inputId, (prompts[1]!.input as Readonly<{ inputId: string }>).inputId)
 })
 
-test("reconciles a persisted pending intent after process death without another prompt", async () => {
+test("retries a persisted pre-dispatch input after process death with the same standard ID", async () => {
   const input = await subject()
-  assert.deepEqual(await input.controller.prepareContinuation(continuationProof(input.verifier, "prepare"), "delivery-1", "continue-1", "Follow up"), {
-    ok: true,
-    state: "prepared",
-    requestId: bridgeRequestId("continue-1"),
-    provenance,
-    idempotencyKey: "commander-continue:commander:global:continue-1:eabaa3c0d2576962333a593d27bf75bd1a728644234baf94a5840923abfe91ea",
-  })
-  input.client.reconcileState = "accepted"
+  const prepared = await input.controller.prepareContinuation(continuation.deliveryId, continuation.requestId, continuation.text)
+  assert.equal(prepared.ok, true)
+  if (!prepared.ok) return
   const restarted = new CommanderBridgeController({ actorId: actor, conversationId: conversation, store: input.store, runtime: input.runtime, verifier: input.verifier, now: () => now })
-  const resumed = new TrustedOpenCodeContinuation({ controller: restarted, client: input.client })
-  assert.deepEqual(await resumed.continue({ presentation: continuationProof(input.verifier, "recover"), deliveryId: "delivery-1", requestId: "continue-1", text: "Follow up" }), { ok: true, state: "continued" })
-  assert.deepEqual(input.client.calls, ["reconcile:msg_reply:commander-continue:commander:global:continue-1:eabaa3c0d2576962333a593d27bf75bd1a728644234baf94a5840923abfe91ea"])
+  const resumed = new OpenCodeSessionContinuation({ controller: restarted, client: input.client })
+  assert.deepEqual(await resumed.continue(continuation), { ok: true, state: "continued" })
+  const prompt = input.client.calls.find((call) => call.kind === "prompt")?.input as Readonly<{ inputId: string }>
+  assert.equal(prompt.inputId, prepared.inputId)
+})
+
+test("uses the pinned ordinary OpenCode endpoint and carries only Commander provenance metadata", async () => {
+  const requests: Array<Readonly<{ url: string; method?: string; body?: string }>> = []
+  const client = new OpenCodeHttpSessionClient({
+    origin: "https://opencode.example.test/ignored-path",
+    runtimeId: "opencode:developer",
+    fetch: { async fetch(url, init) { requests.push({ url, ...(init?.method === undefined ? {} : { method: init.method }), ...(init?.body === undefined ? {} : { body: init.body }) }); return { status: 200 } } },
+  })
+  assert.equal(await client.session(provenance), "found")
+  assert.equal(await client.message(provenance), "found")
+  assert.equal(await client.prompt({ provenance, inputId: "msg_commander_test", text: "Follow up", metadata: { fromCommander: true } }), "accepted")
+  assert.deepEqual(requests, [
+    { url: "https://opencode.example.test/api/session/ses_child" },
+    { url: "https://opencode.example.test/api/session/ses_child/message/msg_reply" },
+    { url: "https://opencode.example.test/api/session/ses_child/prompt", method: "POST", body: "{\"id\":\"msg_commander_test\",\"text\":\"Follow up\",\"metadata\":{\"fromCommander\":true},\"resume\":true}" },
+  ])
 })

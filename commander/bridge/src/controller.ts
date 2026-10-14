@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import {
   emptyConversation, bridgeRequestId, decodeStreamEvent, maxCapabilityLifetimeMs, streamCursor, turnIdForRequest,
   type ActionResult, type ApplyResult, type AuthorizeResult, type BridgeActorId, type BridgeRequest, type BridgeRequestId,
@@ -6,14 +7,14 @@ import {
   type ContinuationRequest, type OpenCodeMessageProvenance,
   type ConversationStore, type RequestedAction, type StreamEvent,
 } from "./contract.ts"
-import { commandCapabilityBinding, continuationCapabilityBinding } from "./capability-binding.ts"
+import { commandCapabilityBinding } from "./capability-binding.ts"
 
 const retainedEvents = 512
 const retainedRequests = 256
 type OpenResult = Readonly<{ ok: true; actorId: BridgeActorId; conversation: CommanderConversation }> | Readonly<{ ok: false; reason: CapabilityRejection }>
 type ReconnectResult = Readonly<{ ok: true; conversation: CommanderConversation; events: readonly StreamEvent[]; resyncRequired: boolean }> | Readonly<{ ok: false; reason: "invalid_request" | CapabilityRejection }>
 type PreparedDispatch = Readonly<{ ok: true; action: RequestedAction; requestId: BridgeRequestId; turnId: CommanderTurnId; text?: string; actorId: BridgeActorId }> | Readonly<{ ok: false; result: ActionResult }>
-export type PreparedContinuation = Readonly<{ ok: true; state: "prepared" | "already_recorded" | "reconcile"; requestId: BridgeRequestId; provenance: OpenCodeMessageProvenance; idempotencyKey: string }> | Readonly<{ ok: false; reason: CapabilityRejection | "invalid_request" | "missing" | "inaccessible" | "stale" | "request_conflict" | "persistence_conflict" | "uncertain" }>
+export type PreparedContinuation = Readonly<{ ok: true; state: "prepared" | "already_recorded" | "retry"; requestId: BridgeRequestId; provenance: OpenCodeMessageProvenance; inputId: string }> | Readonly<{ ok: false; reason: "invalid_request" | "missing" | "inaccessible" | "stale" | "request_conflict" | "persistence_conflict" | "uncertain" }>
 
 /** Persists a turn before runtime I/O; only durable mutations use the local queue. */
 export class CommanderBridgeController {
@@ -50,12 +51,8 @@ export class CommanderBridgeController {
     return this.serial(async () => (await this.loadOrCreate()).events.find((event) => event.deliveryId === deliveryId)?.provenance)
   }
 
-  /**
-   * Trusted-only prepare path for a non-runtime external continuation.  It uses
-   * the same capability verification as all panel actions and records intent
-   * before the OpenCode adapter is allowed to perform I/O.
-   */
-  async prepareContinuation(presentation: CapabilityPresentation, rawDeliveryId: unknown, rawRequestId: unknown, rawText: unknown): Promise<PreparedContinuation> {
+  /** Records an ordinary exact-session OpenCode input before the standard API call. */
+  async prepareContinuation(rawDeliveryId: unknown, rawRequestId: unknown, rawText: unknown): Promise<PreparedContinuation> {
     return this.serial(async () => {
       if (typeof rawDeliveryId !== "string" || !validDeliveryId(rawDeliveryId) || typeof rawRequestId !== "string") return { ok: false, reason: "invalid_request" }
       const text = validText(rawText)
@@ -65,19 +62,17 @@ export class CommanderBridgeController {
       const conversation = await this.loadOrCreate()
       const provenance = conversation.events.find((event) => event.deliveryId === rawDeliveryId)?.provenance
       if (!provenance) return { ok: false, reason: "missing" }
-      const binding = continuationCapabilityBinding(rawDeliveryId, provenance, rawRequestId, text)
-      const authorization = await this.authorize("continue", presentation, binding)
-      if (!authorization.ok) return authorization
+      const payloadDigest = commandCapabilityBinding("prompt", rawRequestId, text).payloadDigest
       const existing = conversation.continuations.find((candidate) => candidate.id === requestId)
       if (existing) {
-        if (existing.deliveryId !== rawDeliveryId || existing.payloadDigest !== binding.payloadDigest || !sameProvenance(existing.provenance, provenance)) return { ok: false, reason: "request_conflict" }
-        if (existing.state === "continued") return { ok: true, state: "already_recorded", requestId, provenance: existing.provenance, idempotencyKey: existing.idempotencyKey }
+        if (existing.deliveryId !== rawDeliveryId || existing.payloadDigest !== payloadDigest || !sameProvenance(existing.provenance, provenance)) return { ok: false, reason: "request_conflict" }
+        if (existing.state === "continued") return { ok: true, state: "already_recorded", requestId, provenance: existing.provenance, inputId: existing.inputId }
         if (existing.state === "rejected") return { ok: false, reason: existing.failure ?? "uncertain" }
-        return { ok: true, state: "reconcile", requestId, provenance: existing.provenance, idempotencyKey: existing.idempotencyKey }
+        return { ok: true, state: "retry", requestId, provenance: existing.provenance, inputId: existing.inputId }
       }
-      const continuation: ContinuationRequest = { id: requestId, deliveryId: rawDeliveryId, provenance, payloadDigest: binding.payloadDigest, idempotencyKey: continuationIdempotencyKey(this.input.conversationId, requestId, binding.payloadDigest), state: "pending" }
+      const continuation: ContinuationRequest = { id: requestId, deliveryId: rawDeliveryId, provenance, payloadDigest, inputId: continuationInputId(this.input.conversationId, requestId, payloadDigest), state: "pending" }
       if (!(await this.persist({ ...conversation, continuations: [...conversation.continuations, continuation] }))) return { ok: false, reason: "persistence_conflict" }
-      return { ok: true, state: "prepared", requestId, provenance, idempotencyKey: continuation.idempotencyKey }
+      return { ok: true, state: "prepared", requestId, provenance, inputId: continuation.inputId }
     })
   }
 
@@ -233,7 +228,7 @@ export class CommanderBridgeController {
 function sameBinding(left: CapabilityBinding | undefined, right: CapabilityBinding | undefined): boolean { return left === undefined && right === undefined || left !== undefined && right !== undefined && left.requestId === right.requestId && left.payloadDigest === right.payloadDigest }
 function validText(value: unknown): string | undefined { return typeof value === "string" && value.trim().length > 0 && value.length <= 16_000 ? value : undefined }
 function validDeliveryId(value: string): boolean { return value.length > 0 && value.length <= 256 }
-function continuationIdempotencyKey(conversationId: CommanderConversationId, requestId: BridgeRequestId, payloadDigest: CapabilityBinding["payloadDigest"]): string { return `commander-continue:${conversationId}:${requestId}:${payloadDigest}` }
+function continuationInputId(conversationId: CommanderConversationId, requestId: BridgeRequestId, payloadDigest: CapabilityBinding["payloadDigest"]): string { return `msg_commander_${createHash("sha256").update(`${conversationId}\n${requestId}\n${payloadDigest}`, "utf8").digest("hex")}` }
 function retainEvents(events: readonly StreamEvent[]): readonly StreamEvent[] { return events.slice(-retainedEvents) }
 function retainRequests(requests: readonly BridgeRequest[]): readonly BridgeRequest[] { const unresolved = requests.filter((request) => request.state === "pending" || request.state === "uncertain"); const dispatched = requests.filter((request) => request.state === "dispatched").slice(-Math.max(0, retainedRequests - unresolved.length)); return [...unresolved, ...dispatched] }
 function replaceRequest(requests: readonly BridgeRequest[], id: BridgeRequestId, state: BridgeRequest["state"]): readonly BridgeRequest[] { return requests.map((request) => request.id === id ? { ...request, state } : request) }
