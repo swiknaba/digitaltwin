@@ -88,16 +88,17 @@ RSpec.describe Domains::FutureTasks::Tasks do
     "#{payload}.#{OpenSSL::HMAC.hexdigest("SHA256", secret, payload)}"
   end
 
-  def bridge_response(body)
+  def opencode_response(body: "{}", status: 200)
     server = TCPServer.new("127.0.0.1", 0)
+    received = Queue.new
     thread = Thread.new do
       client = server.accept
-      client.readpartial(4096)
-      client.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}")
+      received << client.readpartial(4096)
+      client.write("HTTP/1.1 #{status} OK\r\nContent-Type: application/json\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}")
       client.close
       server.close
     end
-    ["http://127.0.0.1:#{server.addr[1]}", thread]
+    ["http://127.0.0.1:#{server.addr[1]}", thread, received]
   end
 
   it "creates one current execution for an actor-scoped idempotency key" do
@@ -321,15 +322,20 @@ RSpec.describe Domains::FutureTasks::Tasks do
   end
 
   it "uses the configured normal OpenCode session without exposing its authorization" do
-    url, delivery_thread = bridge_response("{}")
+    url, delivery_thread, delivery_request = opencode_response
     gateway = Adapters::OpenCode::ConfiguredGateway.new(base_url: url, session_id: "ses_operator", authorization: "Bearer operator-private-authorization")
     receipt = gateway.deliver(task_id: "task-1", text: "Check", references: [], due_at: now, timezone: "UTC", origin: "commander:main", attempt: 1, delivery_key: "delivery-1")
     delivery_thread.join
-    expect(receipt.commander_item_id).to eq("item-1")
+    input_id = "msg_future_task_delivery_0b220df1969115139ffebb337981298d243a44f84dad5d20d7e7da5fdb34de43"
+    expect(receipt.commander_item_id).to eq(input_id)
+    headers, body = delivery_request.pop.split("\r\n\r\n", 2)
+    expect(headers).to include("POST /api/session/ses_operator/prompt HTTP/1.1", "Authorization: Bearer operator-private-authorization")
+    expect(JSON.parse(body)).to include("id" => input_id, "metadata" => { "fromCommander" => true }, "resume" => true)
 
-    url, reconcile_thread = bridge_response("{}")
+    url, reconcile_thread, reconcile_request = opencode_response
     resolution = Adapters::OpenCode::ConfiguredGateway.new(base_url: url, session_id: "ses_operator", authorization: "Bearer operator-private-authorization").reconcile(delivery_key: "delivery-1")
     reconcile_thread.join
     expect(resolution.receipt).to eq(receipt)
+    expect(reconcile_request.pop).to include("GET /api/session/ses_operator/message/#{input_id} HTTP/1.1")
   end
 end

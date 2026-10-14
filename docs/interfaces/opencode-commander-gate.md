@@ -7,10 +7,11 @@ project session. It reports whether the existing main-process sidecar endpoint
 is available; it has no custom socket, proof broker, private HTTP API, panel
 control plane, or test-harness flag.
 
-Normal continuation requires an exact recorded OpenCode provenance
-(runtime/project/session/message) and uses the ordinary authenticated session
-API. The main process owns existing endpoint headers. Renderer code, project
-configuration, Kirei rows, and MCP tool inputs never receive those headers.
+Normal continuation uses a persisted Commander decision lookup for exact recorded
+OpenCode provenance (runtime/project/session/message), then uses the ordinary
+authenticated session API. The main process owns existing endpoint headers.
+Renderer code, project configuration, Kirei rows, and MCP tool inputs never
+receive those headers.
 
 Kirei FutureTasks uses the same normal OpenCode prompt/message endpoints with an
 operator-selected session and mounted authorization file. Its deterministic input
@@ -28,9 +29,10 @@ absent.
 - Official Bun 1.4.2 frozen install and GUI/desktop typechecks completed on the
   prepared checkout. Node 22 ran the bridge package \`tsgo\` typecheck against the
   same frozen workspace.
-- Bridge continuation tests: 8 passed, 0 failed. They cover exact provenance,
-  restart/retry identity, missing source rejection, changed-body conflict, and
-  authenticated ordinary endpoint shape.
+- Bridge continuation tests include a controlled local OpenCode-compatible API:
+  they cover persisted provenance across restart, exact route selection,
+  restart/retry identity, 409 digest readback, missing source rejection,
+  changed-body conflict, and transient versus authorization failures.
 - Kirei \`bin/check\`: 19 examples passed, 0 failures; RuboCop inspected 66 files
   with 0 offenses; whole-project Sorbet reported no errors.
 
