@@ -17,6 +17,13 @@ delivery independently uses the same authenticated normal OpenCode session API.
 Neither path uses the removed private Node bridge, proof exchange, panel control
 plane, or synthetic desktop harness.
 
+Before first use, the desktop operator supplies the neutral Commander workspace
+and agent shown in `operator.env.example` through the desktop launch environment.
+Both values are required; the main-process extension rejects a missing or
+relative workspace and never derives either value from the focused project. The
+renderer receives only the validated session location and agent, never the
+environment source or credentials.
+
 Prepare a clean checkout:
 
 \`\`\`sh
