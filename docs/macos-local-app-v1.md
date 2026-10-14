@@ -1,16 +1,21 @@
 # macOS local app v1
 
-**Status:** proposed implementation specification  
-**Scope:** macOS only; direct distribution; local operation  
+**Status:** proposed implementation specification
+**Scope:** macOS only; direct distribution; an additional local deployment option
 **Depends on:** [PR #41](https://github.com/swiknaba/digitaltwin/pull/41), which replaces the legacy Mattermost/Herdr stack with OpenCode, Commander, and Kirei FutureTasks.
 
 ## Decision
 
 Ship `DigitalTwin.app`: a signed and notarized macOS application built from the
-standard OpenCode desktop shell with the maintained Commander patch from PR #41.
+standard Electron-based OpenCode desktop shell with the maintained Commander patch
+from PR #41. This is an installable Electron app, not a replacement Swift/AppKit UI.
 The application starts a small, private local service group for Kirei FutureTasks
 and PostgreSQL. It does not require Docker Desktop, a VM, a separately installed
-database, a LaunchAgent, or a separate server for v1.
+database, a LaunchAgent, or a separate server for this local bundle.
+
+This adds a local deployment choice. It does not remove, replace, or reconfigure
+the existing server deployment; its infrastructure, networking, database, backup,
+and operator ownership remain separate.
 
 The app owns its children while it is open. A due task that becomes due while the
 app is closed remains durable and is reconciled when the app next starts; v1 does
@@ -117,17 +122,19 @@ generated per installation, never committed, never sent to the renderer, and are
 restricted to the app-owned runtime configuration. The design is not a protection
 boundary against another process already running as the same macOS user.
 
-## Local mode and server mode
+## Local bundle and existing server deployment
 
-Local mode is the only supported execution mode in v1. It is selected by the
-installed application, has no host/port form, and is not an operator setting that
-can accidentally point at a remote Kirei or PostgreSQL instance.
+The macOS bundle supports local mode only in v1. It is selected by the installed
+application, has no host/port form, and is not an operator setting that can
+accidentally point at a remote Kirei or PostgreSQL instance.
 
-Remote/server mode is deferred. It requires a separately specified authenticated
-transport, certificate/identity handling, database ownership, backup/retention,
-upgrade compatibility, and a deliberate export/import or migration protocol. The
-v1 app must not offer a misleading "connect to server" field or silently fall back
-to a remote endpoint.
+The existing server deployment remains a separate supported product path and is
+unchanged by this specification. A future *server-connected mode in this macOS
+bundle* is deferred: it requires a separately specified authenticated transport,
+certificate/identity handling, database ownership, backup/retention, upgrade
+compatibility, and a deliberate export/import or migration protocol. The v1 app
+must not offer a misleading "connect to server" field or silently fall back to a
+remote endpoint.
 
 ## Packaging, signing, and updates
 
@@ -181,7 +188,7 @@ do not promise that macOS will never display a prompt.
 | Approach | Decision | Reason |
 | --- | --- | --- |
 | Native supervised sidecars | **Use for v1** | Delivers one application and a controlled local data lifecycle without a separately installed platform. |
-| Docker Desktop/Colima/VM | Do not use for v1 | Easy to reuse the present Linux Compose files, but requires another app/VM, has different volume and networking semantics, consumes more resources, and fails the one-installable-app goal. Keep it only as a developer/integration environment. |
+| Docker Desktop/Colima/VM | Do not use inside the local bundle | Easy to reuse the present Linux Compose files, but requires another app/VM, has different volume and networking semantics, consumes more resources, and fails the one-installable-app goal. Existing server/developer deployments remain separate. |
 | A permanent user LaunchAgent | Defer | Needed only for delivery while the UI is closed. It adds persistence, update, repair, and uninstall obligations that are unnecessary for the first local app. |
 | Replace PostgreSQL with SQLite | Do not use | It changes Kirei's persistence contract and migration behavior. Packaging PostgreSQL is substantial but bounded; a database rewrite is a separate product change. |
 | Bundle the legacy Mattermost/Herdr Runtime | Do not use | It conflicts with PR #41's deliberate simplification and carries Linux/AMD64, provider, license, and socket boundaries that are outside the new product. |
@@ -211,6 +218,8 @@ not substitute for a native macOS release check.
 - A clean `arm64` and a clean `x64` macOS user can drag-install one signed,
   notarized `DigitalTwin.app` and run it without Docker, Homebrew, PostgreSQL, or a
   separate OpenCode install.
+- The local bundle does not modify, stop, or depend on an existing server deployment;
+  server operation remains independently documented and testable.
 - First launch initializes only DigitalTwin-owned paths, starts OpenCode, PostgreSQL,
   Kirei web, and Kirei worker, and reports useful health/error state. It changes no
   global OpenCode/XDG configuration and imports no existing credentials.
