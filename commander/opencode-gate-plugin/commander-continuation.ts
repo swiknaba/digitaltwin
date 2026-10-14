@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import { Plugin } from "@opencode/plugin"
+import type { Tool } from "@opencode/schema/tool"
 import { Schema } from "effect"
 
 const prefix = "digitaltwin.commander.decision."
@@ -9,28 +10,63 @@ export default Plugin.define({
   id: "digitaltwin-commander-continuation",
   async setup(context) {
     const locks = new Map<string, Promise<void>>()
+
+    const validate = async (value: Readonly<{ parent: string; parentMessage: string; child: string }>): Promise<Decision | undefined> => {
+      try {
+        const [parent, child] = await Promise.all([
+          context.session.get({ sessionID: value.parent }),
+          context.session.get({ sessionID: value.child }),
+        ])
+        if (child.parentID !== parent.id || parent.id !== value.parent || child.id !== value.child || child.projectID !== parent.projectID) return
+        return { ...value, project: parent.projectID, requests: {} }
+      } catch {
+        return
+      }
+    }
+
+    const recover = async (decisionID: string, parent: string): Promise<Decision | undefined> => {
+      const key = prefix + decisionID
+      const stored = decode(await context.storage.get(key))
+      if (stored) return stored
+      let messages: unknown
+      try {
+        messages = await context.session.context({ sessionID: parent })
+      } catch {
+        return
+      }
+      const candidate = nativeDecision(messages, decisionID, parent)
+      if (!candidate) return
+      const restored = await validate(candidate)
+      if (!restored) return
+      await context.storage.set(key, restored)
+      return restored
+    }
+
     await context.tool.hook("execute.after", async (event) => {
       if (event.tool !== "subagent" || event.status !== "completed") return
       const child = childSession(event.result)
       if (!child) return
-      const decisionID = `subagent-${event.id}`
+      const decisionID = decisionIDFor(event.sessionID, event.messageID, event.id, child)
+      const next = await validate({ parent: event.sessionID, parentMessage: event.messageID, child })
+      if (!next) return
+      event.result = referenced(event.result, decisionID, event.messageID)
       const key = prefix + decisionID
-      const next: Decision = { parent: event.sessionID, parentMessage: event.messageID, child, project: context.location.project.id, requests: {} }
       await exclusive(locks, key, async () => {
         const previous = decode(await context.storage.get(key))
         if (!previous) await context.storage.set(key, next)
       })
     })
+
     await context.tool.transform((editor) => editor.add({
       name: "commander_continue_agent",
-      description: "Resume the child agent from this Commander session's native subagent call.",
+      description: "Resume the child agent identified by a Commander follow-up reference from this Commander session.",
       input: Schema.Struct({ decision_id: Schema.String, request_id: Schema.String, text: Schema.String }),
       options: { codemode: false },
       async execute(input, tool) {
-        if (!id(input.decision_id) || !id(input.request_id) || !input.text.trim()) return { content: "Invalid Commander follow-up." }
+        if (!decisionID(input.decision_id) || !requestID(input.request_id) || !input.text.trim()) return { content: "Invalid Commander follow-up." }
         const key = prefix + input.decision_id
-        return exclusive(locks, `${key}:${input.request_id}`, async () => {
-          const decision = decode(await context.storage.get(key))
+        return exclusive(locks, key, async () => {
+          const decision = await recover(input.decision_id, tool.sessionID)
           if (!decision) return { content: "Commander decision was not found." }
           if (decision.parent !== tool.sessionID) return { content: "Commander follow-up is not authorized for this session." }
           const digest = hash(input.text); const old = decision.requests[input.request_id]
@@ -47,10 +83,66 @@ export default Plugin.define({
   },
 })
 
-function childSession(result: unknown): string | undefined { if (!object(result) || !object(result.metadata) || typeof result.metadata.sessionID !== "string") return; return result.metadata.sessionID }
-function admission(value: unknown, session: string, id: string, text: string, metadata: Readonly<{ fromCommander: true; commanderRequestDigest: string }>) { return object(value) && value.sessionID === session && value.id === id && value.type === "user" && object(value.payload) && value.payload.text === text && object(value.payload.metadata) && value.payload.metadata.fromCommander === true && value.payload.metadata.commanderRequestDigest === metadata.commanderRequestDigest }
-function decode(value: unknown): Decision | undefined { if (!object(value) || typeof value.parent !== "string" || typeof value.parentMessage !== "string" || typeof value.child !== "string" || typeof value.project !== "string" || !object(value.requests)) return; const requests: Record<string, string> = {}; for (const [key, digest] of Object.entries(value.requests)) { if (!id(key) || typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) return; requests[key] = digest } return { parent: value.parent, parentMessage: value.parentMessage, child: value.child, project: value.project, requests } }
-function id(value: string) { return /^[a-z0-9][a-z0-9_-]{0,255}$/i.test(value) }
+function childSession(result: unknown): string | undefined {
+  if (!object(result) || !object(result.metadata) || typeof result.metadata.sessionID !== "string") return
+  if (result.metadata.status !== undefined && result.metadata.status !== "running" && result.metadata.status !== "completed") return
+  return result.metadata.sessionID
+}
+
+function decisionIDFor(parent: string, message: string, call: string, child: string): string {
+  return "subagent-" + hash([parent, message, call, child].join("\n"))
+}
+
+function referenced(result: Tool.Result, decision: string, parentMessage: string): Tool.Result {
+  const reference = `Commander follow-up reference: ${decision}`
+  const content = typeof result.content === "string" ? `${result.content}\n\n${reference}` : reference
+  const metadata = object(result.metadata) ? result.metadata : {}
+  return { ...result, content, metadata: { ...metadata, commanderDecisionID: decision, commanderParentMessageID: parentMessage } }
+}
+
+function nativeDecision(value: unknown, expected: string, parent: string): Readonly<{ parent: string; parentMessage: string; child: string }> | undefined {
+  if (!Array.isArray(value)) return
+  for (const message of value) {
+    if (!object(message) || message.type !== "assistant" || !Array.isArray(message.content)) continue
+    for (const part of message.content) {
+      if (!object(part) || part.type !== "tool" || part.name !== "subagent" || !object(part.state) || part.state.status !== "completed" || !object(part.state.metadata)) continue
+      const metadata = part.state.metadata
+      if (metadata.commanderDecisionID !== expected || typeof metadata.commanderParentMessageID !== "string" || typeof metadata.sessionID !== "string") continue
+      return { parent, parentMessage: metadata.commanderParentMessageID, child: metadata.sessionID }
+    }
+  }
+}
+
+function admission(value: unknown, session: string, id: string, text: string, metadata: Readonly<{ fromCommander: true; commanderRequestDigest: string }>) {
+  return object(value) && value.sessionID === session && value.id === id && value.type === "user" && object(value.payload) && value.payload.text === text && object(value.payload.metadata) && value.payload.metadata.fromCommander === true && value.payload.metadata.commanderRequestDigest === metadata.commanderRequestDigest
+}
+
+function decode(value: unknown): Decision | undefined {
+  if (!object(value) || typeof value.parent !== "string" || typeof value.parentMessage !== "string" || typeof value.child !== "string" || typeof value.project !== "string" || !object(value.requests)) return
+  const requests: Record<string, string> = {}
+  for (const [key, digest] of Object.entries(value.requests)) {
+    if (!requestID(key) || typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) return
+    requests[key] = digest
+  }
+  return { parent: value.parent, parentMessage: value.parentMessage, child: value.child, project: value.project, requests }
+}
+
+function decisionID(value: string) { return /^subagent-[a-f0-9]{64}$/.test(value) }
+function requestID(value: string) { return /^[a-z0-9][a-z0-9_-]{0,255}$/i.test(value) }
 function hash(value: string) { return createHash("sha256").update(value, "utf8").digest("hex") }
 function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }
-async function exclusive<T>(locks: Map<string, Promise<void>>, key: string, operation: () => Promise<T>): Promise<T> { const previous = locks.get(key) ?? Promise.resolve(); let release = () => {}; const current = new Promise<void>((resolve) => { release = resolve }); locks.set(key, previous.then(() => current)); await previous; try { return await operation() } finally { release(); if (locks.get(key) === current) locks.delete(key) } }
+
+async function exclusive<T>(locks: Map<string, Promise<void>>, key: string, operation: () => Promise<T>): Promise<T> {
+  const previous = locks.get(key) ?? Promise.resolve()
+  let release = () => {}
+  const current = new Promise<void>((resolve) => { release = resolve })
+  const queued = previous.then(() => current)
+  locks.set(key, queued)
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (locks.get(key) === queued) locks.delete(key)
+  }
+}
