@@ -115,10 +115,14 @@ RSpec.describe Domains::FutureTasks::Tasks do
   it "deduplicates a one-time successor created by a due-task retry" do
     parent = create_task(key: "weekly-parent")
     successor_due_at = now + (7 * 24 * 60 * 60)
-    first = tasks.create(actor_id: "operator-1", origin: "commander:main", idempotency_key: "successor:#{parent.id}:1", text: "Review the deployment plan", due_at: successor_due_at,
-                         timezone: "UTC", local_time: successor_due_at.utc.iso8601, references: ["repo:digitaltwin"], now: now + 60)
-    retried = tasks.create(actor_id: "operator-1", origin: "commander:main", idempotency_key: "successor:#{parent.id}:1", text: "Review the deployment plan", due_at: successor_due_at,
-                         timezone: "UTC", local_time: successor_due_at.utc.iso8601, references: ["repo:digitaltwin"], now: now + 120)
+    first = tasks.create(
+      actor_id: "operator-1", origin: "commander:main", idempotency_key: "successor:#{parent.id}:1", text: "Review the deployment plan", due_at: successor_due_at,
+      timezone: "UTC", local_time: successor_due_at.utc.iso8601, references: ["repo:digitaltwin"], now: now + 60
+    )
+    retried = tasks.create(
+      actor_id: "operator-1", origin: "commander:main", idempotency_key: "successor:#{parent.id}:1", text: "Review the deployment plan", due_at: successor_due_at,
+      timezone: "UTC", local_time: successor_due_at.utc.iso8601, references: ["repo:digitaltwin"], now: now + 120
+    )
 
     expect(retried).to eq(first)
     expect(Kirei::App.raw_db_connection[:future_tasks].count).to eq(2)
