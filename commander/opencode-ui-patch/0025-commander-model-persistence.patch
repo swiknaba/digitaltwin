@@ -1,0 +1,80 @@
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+index 62fec14..6c7d284 100644
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -8,6 +8,7 @@ const panelID = "main"
+ 
+ type CommanderOverlayEvent = Readonly<{
+   readonly conversation: Readonly<{ readonly serverID: "sidecar"; readonly sessionID: string; readonly directory: string; readonly agent: string }>
++  readonly model?: CommanderModelEvent
+ }>
+ 
+ type CommanderModelEvent = Readonly<{ readonly providerID: string; readonly modelID: string; readonly variant?: string }>
+@@ -110,7 +111,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+       target.data.session.pending.sync(current.sessionID),
+       target.data.location.model.sync({ directory: current.directory }),
+     ])
+-    window.dispatchEvent(new CustomEvent<CommanderOverlayEvent>("opencode-commander-overlay", { detail: { conversation: current } }))
++    window.dispatchEvent(new CustomEvent<CommanderOverlayEvent>("opencode-commander-overlay", { detail: { conversation: current, model: ipc.state()?.model } }))
+   }
+ 
+   const selectModel = (event: Event) => {
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+index ca7a941..e2fbcba 100644
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -18,13 +18,15 @@ import { FileProvider } from "@/workspaces/files/model"
+ import { LocationProvider } from "@/workspaces/location"
+ import { commanderOverlayContainerClass } from "./commander-overlay-layout"
+ 
+-type CommanderConversation = Readonly<{ readonly serverID: "sidecar"; readonly sessionID: string; readonly directory: string; readonly agent: string }>
++type CommanderModel = Readonly<{ readonly providerID: string; readonly modelID: string; readonly variant?: string }>
++type CommanderConversation = Readonly<{ readonly serverID: "sidecar"; readonly sessionID: string; readonly directory: string; readonly agent: string; readonly model?: CommanderModel }>
+ function conversationFrom(value: unknown): CommanderConversation | undefined {
+   if (!value || typeof value !== "object" || !("conversation" in value)) return
+   const item = value.conversation
+   if (!item || typeof item !== "object" || !("serverID" in item) || !("sessionID" in item) || !("directory" in item) || !("agent" in item)) return
+   if (item.serverID !== "sidecar" || typeof item.sessionID !== "string" || typeof item.directory !== "string" || typeof item.agent !== "string") return
+-  return item as CommanderConversation
++  const model = "model" in value && value.model && typeof value.model === "object" && "providerID" in value.model && "modelID" in value.model && typeof value.model.providerID === "string" && typeof value.model.modelID === "string" ? value.model as CommanderModel : undefined
++  return { serverID: "sidecar", sessionID: item.sessionID, directory: item.directory, agent: item.agent, model }
+ }
+ 
+ /** App-owned Commander surface: it deliberately uses the ordinary Composer and model picker. */
+@@ -64,7 +66,7 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   const server = useServerSDK()
+   const models = useModels()
+   const [failed, setFailed] = createSignal(false)
+-  const prompt = createMemoryComposerState()
++  const prompt = createMemoryComposerState(props.conversation.model ? { model: props.conversation.model } : undefined)
+   const selected = () => prompt.model.current()
+   const currentModel = () => {
+     const key = selected()
+diff --git a/packages/gui-extensions/src/commander/main.test.ts b/packages/gui-extensions/src/commander/main.test.ts
+index f5592f3..aa79800 100644
+--- a/packages/gui-extensions/src/commander/main.test.ts
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -123,3 +123,23 @@ test("Commander rejects missing or changed persisted agent configuration without
+   await expect(runtime(changed).bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_newer") }, caller)).rejects.toThrow("saved state does not match the current operator workspace or agent")
+   expect(changed.store.value.revision).toBe(5)
+ })
++
++test("Commander keeps its selected model in its own persisted bridge state", async () => {
++  agents([configured.agent])
++  const session = Session.ID.make("ses_commander_model")
++  const backing = persistent({
++    revision: 3,
++    conversation: { serverID: "sidecar", sessionID: session, directory: configured.directory, agent: Agent.ID.make(configured.agent) },
++  })
++  const first = runtime(backing)
++
++  await expect(first.bridge.selectModel({ providerID: "openai", modelID: "gpt-5.4", variant: "high" }, caller)).resolves.toMatchObject({
++    revision: 4,
++    model: { providerID: "openai", modelID: "gpt-5.4", variant: "high" },
++  })
++
++  const reopened = runtime(backing)
++  await expect(reopened.bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_ignored") }, caller)).resolves.toMatchObject({
++    model: { providerID: "openai", modelID: "gpt-5.4", variant: "high" },
++  })
++})

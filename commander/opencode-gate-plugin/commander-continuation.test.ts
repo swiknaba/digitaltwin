@@ -46,7 +46,7 @@ test("binds the actual native child launch, exposes its reference, and only its 
   assert.equal(f.prompts[0].sessionID, "ses_child")
 })
 
-test("lists the existing digitaltwin project, creates its exact session, and admits ping with stable references", async () => {
+test("creates a project session with a durable exact-session follow-up reference", async () => {
   const f = fixture(); await continuation.setup(f.context as never)
   const list = f.tools.get("commander_list_projects")
   assert.deepEqual(JSON.parse((await list.execute({}, { sessionID: "ses_commander" })).content), [
@@ -55,17 +55,50 @@ test("lists the existing digitaltwin project, creates its exact session, and adm
   let created: any
   f.context.session.create = async (input: any) => {
     created = input
+    f.sessions.ses_digitaltwin = { id: "ses_digitaltwin", projectID: "project-1" }
     return { id: "ses_digitaltwin" }
   }
   const create = f.tools.get("commander_create_project_session")
-  const result = JSON.parse((await create.execute({ project_id: "project-1", request_id: "ping-1", text: "ping" }, { sessionID: "ses_commander" })).content)
+  const result = JSON.parse((await create.execute({ project_id: "project-1", request_id: "ping-1", text: "ping" }, { sessionID: "ses_commander", messageID: "msg_create", id: "call_create" })).content)
   assert.deepEqual(created, { location: { directory: "/srv/digitaltwin" } })
-  assert.deepEqual(result, { project_id: "project-1", session_id: "ses_digitaltwin", message_id: result.message_id, request_id: "ping-1" })
+  assert.deepEqual(result, { project_id: "project-1", session_id: "ses_digitaltwin", message_id: result.message_id, request_id: "ping-1", decision_id: result.decision_id })
   assert.match(result.message_id, /^msg_commander_project_[a-f0-9]{64}$/)
+  assert.match(result.decision_id, /^project-session-[a-f0-9]{64}$/)
   assert.deepEqual(f.prompts.at(-1), {
     sessionID: "ses_digitaltwin", id: result.message_id, text: "ping", resume: true,
     metadata: { fromCommander: true, commanderProjectID: "project-1", commanderRequestID: "ping-1" },
   })
+  const followUp = f.tools.get("commander_continue_agent")
+  assert.equal((await followUp.execute({ decision_id: result.decision_id, request_id: "follow-up-1", text: "Continue." }, { sessionID: "ses_commander" })).content, `Continued Commander decision ${result.decision_id}.`)
+  assert.deepEqual(f.prompts.at(-1), {
+    sessionID: "ses_digitaltwin", id: f.prompts.at(-1).id, text: "Continue.", resume: true,
+    metadata: { fromCommander: true, commanderRequestDigest: "f3daf2941865055833e9db4c9bab5d1280281952bb1699514a28ee4c67256573" },
+  })
+  assert.equal((await followUp.execute({ decision_id: result.decision_id, request_id: "follow-up-2", text: "Wrong parent." }, { sessionID: "ses_other" })).content, "Commander follow-up is not authorized for this session.")
+  const restarted = fixture(); restarted.sessions.ses_digitaltwin = { id: "ses_digitaltwin", projectID: "project-1" }
+  for (const [key, value] of f.storage) restarted.storage.set(key, value)
+  await continuation.setup(restarted.context as never)
+  const restartedFollowUp = restarted.tools.get("commander_continue_agent")
+  assert.equal((await restartedFollowUp.execute({ decision_id: result.decision_id, request_id: "follow-up-after-restart", text: "Recovered." }, { sessionID: "ses_commander" })).content, `Continued Commander decision ${result.decision_id}.`)
+  assert.equal(restarted.prompts.at(-1).sessionID, "ses_digitaltwin")
+})
+
+test("reuses a direct project-session reference across a repeated create request", async () => {
+  const f = fixture(); await continuation.setup(f.context as never)
+  let created = 0
+  f.context.session.create = async () => {
+    created += 1
+    f.sessions.ses_digitaltwin = { id: "ses_digitaltwin", projectID: "project-1" }
+    return { id: "ses_digitaltwin" }
+  }
+  const create = f.tools.get("commander_create_project_session")
+  const context = { sessionID: "ses_commander", messageID: "msg_create", id: "call_create" }
+  const first = JSON.parse((await create.execute({ project_id: "project-1", request_id: "ping-1", text: "ping" }, context)).content)
+  const retry = JSON.parse((await create.execute({ project_id: "project-1", request_id: "ping-1", text: "ping" }, context)).content)
+  assert.equal(created, 1)
+  assert.deepEqual(retry, first)
+  assert.equal(f.prompts.length, 2)
+  assert.equal((await create.execute({ project_id: "project-1", request_id: "ping-1", text: "different" }, context)).content, "Commander project session request conflicts with its original body.")
 })
 
 test("recovers a referenced decision from the persisted native parent result after restart", async () => {

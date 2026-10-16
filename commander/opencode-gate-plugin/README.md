@@ -52,4 +52,9 @@ The same plugin exposes `commander_list_projects` and
 `commander_create_project_session`. The latter accepts only an ID returned by
 the list tool, creates a normal session at that project's canonical directory,
 and posts the requested text to that exact session with stable Commander
-references. It neither selects a model nor makes a provider call itself.
+references. Its result includes an opaque `decision_id`; Commander must pass
+that value, rather than a raw session or message ID, to
+`commander_continue_agent` for a later exact-session follow-up. The plugin
+persists the binding to the trusted Commander parent session and rejects a
+reused create request with changed text. It neither selects a model nor makes a
+provider call itself.

@@ -4,7 +4,9 @@ import type { Tool } from "@opencode/schema/tool"
 import { Schema } from "effect"
 
 const prefix = "digitaltwin.commander.decision."
+const projectRequestPrefix = "digitaltwin.commander.project-request."
 type Decision = Readonly<{ parent: string; parentMessage: string; child: string; project: string; requests: Readonly<Record<string, string>> }>
+type ProjectRequest = Readonly<{ parent: string; project: string; requestDigest: string; decisionID: string }>
 
 export default Plugin.define({
   id: "digitaltwin-commander-continuation",
@@ -19,6 +21,19 @@ export default Plugin.define({
         ])
         if (child.parentID !== parent.id || parent.id !== value.parent || child.id !== value.child || child.projectID !== parent.projectID) return
         return { ...value, project: parent.projectID, requests: {} }
+      } catch {
+        return
+      }
+    }
+
+    const validateProjectSession = async (value: Readonly<{ parent: string; parentMessage: string; child: string; project: string }>): Promise<Decision | undefined> => {
+      try {
+        const [parent, child] = await Promise.all([
+          context.session.get({ sessionID: value.parent }),
+          context.session.get({ sessionID: value.child }),
+        ])
+        if (parent.id !== value.parent || child.id !== value.child || child.projectID !== value.project) return
+        return { ...value, requests: {} }
       } catch {
         return
       }
@@ -74,25 +89,47 @@ export default Plugin.define({
 
     await context.tool.transform((editor) => editor.add({
       name: "commander_create_project_session",
-      description: "Create a normal session in one listed project and post the supplied prompt to that exact session.",
+      description: "Create a normal project session, post the supplied prompt, and return its opaque Commander follow-up reference.",
       input: Schema.Struct({ project_id: Schema.String, request_id: Schema.String, text: Schema.String }),
       options: { codemode: false },
-      async execute(input) {
+      async execute(input, tool) {
         if (!requestID(input.request_id) || !input.text.trim()) return { content: "Invalid Commander project session request." }
         const project = (await context.project.list()).find((item) => item.id === input.project_id)
         if (!project) return { content: "Commander project was not found." }
-        const session = await context.session.create({ location: { directory: project.canonical } })
-        const message = "msg_commander_project_" + hash([project.id, input.request_id].join("\n"))
-        const metadata = { fromCommander: true as const, commanderProjectID: project.id, commanderRequestID: input.request_id }
-        const admitted = await context.session.prompt({ sessionID: session.id, id: message, text: input.text, metadata, resume: true })
-        if (!admission(admitted, session.id, message, input.text, metadata)) return { content: "Commander project session admission conflicts with the existing message." }
-        return { content: JSON.stringify({ project_id: project.id, session_id: session.id, message_id: message, request_id: input.request_id }) }
+        const key = projectRequestPrefix + projectRequestID(tool.sessionID, project.id, input.request_id)
+        const digest = hash(input.text)
+        return exclusive(locks, key, async () => {
+          const previous = decodeProjectRequest(await context.storage.get(key))
+          if (previous) {
+            if (previous.parent !== tool.sessionID || previous.project !== project.id || previous.requestDigest !== digest) return { content: "Commander project session request conflicts with its original body." }
+            const decision = decode(await context.storage.get(prefix + previous.decisionID))
+            if (!decision || decision.parent !== tool.sessionID || decision.project !== project.id) return { content: "Commander project session reference could not be recovered." }
+            const message = projectMessageIDFor(project.id, input.request_id)
+            const metadata = { fromCommander: true as const, commanderProjectID: project.id, commanderRequestID: input.request_id }
+            const admitted = await context.session.prompt({ sessionID: decision.child, id: message, text: input.text, metadata, resume: true })
+            if (!admission(admitted, decision.child, message, input.text, metadata)) return { content: "Commander project session admission conflicts with the existing message." }
+            return projectSessionResult(project.id, decision.child, input.request_id, previous.decisionID)
+          }
+
+          const session = await context.session.create({ location: { directory: project.canonical } })
+          const decisionID = projectSessionDecisionIDFor(tool.sessionID, tool.messageID, tool.id, session.id)
+          const decision = await validateProjectSession({ parent: tool.sessionID, parentMessage: tool.messageID, child: session.id, project: project.id })
+          if (!decision) return { content: "Commander project session could not be verified." }
+          await context.storage.set(prefix + decisionID, decision)
+          await context.storage.set(key, { parent: tool.sessionID, project: project.id, requestDigest: digest, decisionID })
+
+          const message = projectMessageIDFor(project.id, input.request_id)
+          const metadata = { fromCommander: true as const, commanderProjectID: project.id, commanderRequestID: input.request_id }
+          const admitted = await context.session.prompt({ sessionID: session.id, id: message, text: input.text, metadata, resume: true })
+          if (!admission(admitted, session.id, message, input.text, metadata)) return { content: "Commander project session admission conflicts with the existing message." }
+          return projectSessionResult(project.id, session.id, input.request_id, decisionID)
+        })
       },
     }))
 
     await context.tool.transform((editor) => editor.add({
       name: "commander_continue_agent",
-      description: "Resume the child agent identified by a Commander follow-up reference from this Commander session.",
+      description: "Resume the exact agent or project session identified by a Commander follow-up reference from this Commander session.",
       input: Schema.Struct({ decision_id: Schema.String, request_id: Schema.String, text: Schema.String }),
       options: { codemode: false },
       async execute(input, tool) {
@@ -164,10 +201,32 @@ function decode(value: unknown): Decision | undefined {
   return { parent: value.parent, parentMessage: value.parentMessage, child: value.child, project: value.project, requests }
 }
 
-function decisionID(value: string) { return /^subagent-[a-f0-9]{64}$/.test(value) }
+function decisionID(value: string) { return /^(?:subagent|project-session)-[a-f0-9]{64}$/.test(value) }
 function requestID(value: string) { return /^[a-z0-9][a-z0-9_-]{0,255}$/i.test(value) }
 function hash(value: string) { return createHash("sha256").update(value, "utf8").digest("hex") }
 function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }
+
+function projectRequestID(parent: string, project: string, request: string): string {
+  return hash([parent, project, request].join("\n"))
+}
+
+function projectMessageIDFor(project: string, request: string): string {
+  return "msg_commander_project_" + hash([project, request].join("\n"))
+}
+
+function projectSessionDecisionIDFor(parent: string, message: string, call: string, child: string): string {
+  return "project-session-" + hash([parent, message, call, child].join("\n"))
+}
+
+function projectSessionResult(project: string, session: string, request: string, decision: string) {
+  return { content: JSON.stringify({ project_id: project, session_id: session, message_id: projectMessageIDFor(project, request), request_id: request, decision_id: decision }) }
+}
+
+function decodeProjectRequest(value: unknown): ProjectRequest | undefined {
+  if (!object(value) || typeof value.parent !== "string" || typeof value.project !== "string" || typeof value.requestDigest !== "string" || typeof value.decisionID !== "string") return
+  if (!/^[a-f0-9]{64}$/.test(value.requestDigest) || !decisionID(value.decisionID)) return
+  return { parent: value.parent, project: value.project, requestDigest: value.requestDigest, decisionID: value.decisionID }
+}
 
 async function exclusive<T>(locks: Map<string, Promise<void>>, key: string, operation: () => Promise<T>): Promise<T> {
   const previous = locks.get(key) ?? Promise.resolve()
