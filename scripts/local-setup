@@ -5,6 +5,38 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$repo_root/scripts/local-env"
 
+commander_env="$repo_root/local/commander.env"
+commander_workspace="$repo_root/local/commander-workspace"
+
+if [ ! -e "$commander_env" ]; then
+  mkdir -p "$commander_workspace"
+  printf '%s\n' \
+    "DIGITALTWIN_COMMANDER_WORKSPACE=$commander_workspace" \
+    "DIGITALTWIN_COMMANDER_AGENT=commander" > "$commander_env"
+fi
+
+test -r "$commander_env" || {
+  printf '%s\n' "Commander operator environment is not readable: $commander_env" >&2
+  exit 78
+}
+
+set -a
+. "$commander_env"
+set +a
+
+if [ "${DIGITALTWIN_COMMANDER_WORKSPACE:-}" = "$commander_workspace" ] && [ "${DIGITALTWIN_COMMANDER_AGENT:-}" = "commander" ]; then
+  commander_agent_dir="$commander_workspace/.opencode/agents"
+  commander_agent="$commander_agent_dir/commander.md"
+  mkdir -p "$commander_agent_dir"
+  if [ ! -e "$commander_agent" ]; then
+    printf '%s\n' \
+      '---' \
+      'description: Persistent Commander coordination session.' \
+      '---' \
+      "Coordinate the user's requests in this persistent Commander session." > "$commander_agent"
+  fi
+fi
+
 if [ ! -s "$FUTURE_TASK_CAPABILITY_SECRET_FILE" ]; then
   mkdir -p "$(dirname -- "$FUTURE_TASK_CAPABILITY_SECRET_FILE")"
   umask 077

@@ -7,9 +7,9 @@ does not clone DigitalTwin or use a sibling checkout.
 ## Prerequisites
 
 - macOS, Git, Bun `1.4.2`, and the OpenCode desktop build prerequisites.
-- Your normal OpenCode provider/model configuration, with an agent named
-  `commander`. Keep provider credentials in that existing OpenCode setup, not
-  in this repository or its Commander env file.
+- Your normal OpenCode provider/model configuration. Keep provider credentials
+  in that existing OpenCode setup, not in this repository or its Commander env
+  file.
 
 The Commander workspace below is intentionally separate from the project you
 open in OpenCode. It lives under this repository only to keep generated local
@@ -44,26 +44,12 @@ checkout; inspect it before deliberately replacing it.
 
 ## Configure and launch
 
-Create the non-secret operator environment file once, without overwriting an
-existing one:
-
-```sh
-if [ ! -f "$REPO_ROOT/local/commander.env" ]; then
-  cp "$REPO_ROOT/local/opencode/commander.env.example" "$REPO_ROOT/local/commander.env"
-fi
-${EDITOR:-vi} "$REPO_ROOT/local/commander.env"
-```
-
-Set these values in `local/commander.env`:
-
-```sh
-DIGITALTWIN_COMMANDER_WORKSPACE=/absolute/path/to/digitaltwin/local/commander-workspace
-DIGITALTWIN_COMMANDER_AGENT=commander
-```
-
-Use the absolute path formed by `"$REPO_ROOT/local/commander-workspace"` for
-the first value. The launcher validates that workspace and agent, uses
-`local/tmp` for its subprocesses, and keeps credentials out of this file.
+The first launch creates the ignored, non-secret `local/commander.env` and a
+workspace-scoped `commander` agent under
+`local/commander-workspace/.opencode/agents/`. It uses your ordinary OpenCode
+model selection; it never writes provider credentials. To use a different
+workspace or agent, edit `local/commander.env` before launch. A custom agent
+remains operator-managed.
 
 Start the full local stack from the DigitalTwin repository root:
 
@@ -91,16 +77,17 @@ do not exist.
    Commander should recreate the reserved session using the configured workspace
    and agent.
 
-This tests the patched Commander panel and normal OpenCode session path. It
-does not test a provider account or provision an agent.
+This tests the patched Commander panel and normal OpenCode session path. Panel
+reservation does not send a provider request; the optional **Send** step does.
 
 ## Scheduling status
 
 The basic Commander panel does not start Kirei when launched directly. The
 Overmind command above starts it alongside the panel. The trusted OpenCode plugin
 issues the one-use capability itself, so no capability token is exposed to the
-model. Due-task delivery still needs an operator-selected Commander session and
-the local OpenCode service authorization value; those remain outside Git.
+model. Due-task delivery still needs the local OpenCode service authorization
+value for Kirei. It remains outside Git; the panel reservation supplies the
+selected Commander session identity.
 
 All generated checkout, workspace, env, dependency, and temporary files from
 this guide stay under ignored `local/` paths in this repository.
