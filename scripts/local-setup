@@ -1,0 +1,29 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+
+if [ ! -s "$FUTURE_TASK_CAPABILITY_SECRET_FILE" ]; then
+  mkdir -p "$(dirname -- "$FUTURE_TASK_CAPABILITY_SECRET_FILE")"
+  umask 077
+  openssl rand -hex 32 > "$FUTURE_TASK_CAPABILITY_SECRET_FILE"
+fi
+
+ensure_database() {
+  database=$1
+  existing=$(psql -h "$DIGITALTWIN_PGHOST" -p "$DIGITALTWIN_PGPORT" -U "$DIGITALTWIN_PGUSER" -d postgres -Atqc "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '$database'")
+  if [ -z "$existing" ]; then
+    createdb -h "$DIGITALTWIN_PGHOST" -p "$DIGITALTWIN_PGPORT" -U "$DIGITALTWIN_PGUSER" -O "$DIGITALTWIN_PGUSER" "$database"
+    return
+  fi
+  test "$existing" = "$DIGITALTWIN_PGUSER" || {
+    printf '%s\n' "Refusing database $database: it is owned by $existing, not $DIGITALTWIN_PGUSER" >&2
+    exit 78
+  }
+}
+
+ensure_database "$DIGITALTWIN_LOCAL_DATABASE"
+ensure_database "$DIGITALTWIN_TEST_DATABASE"
+printf '%s\n' "Local PostgreSQL databases are ready: $DIGITALTWIN_LOCAL_DATABASE and $DIGITALTWIN_TEST_DATABASE"

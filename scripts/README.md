@@ -16,6 +16,16 @@ only Kirei plus PostgreSQL.
 starts the Kirei/PostgreSQL stack. It never stages callback clients, starts a chat
 service, or configures agent credentials.
 
+`local-overmind` is the one-command host development entry point:
+
+```sh
+sh scripts/local-overmind
+```
+
+It uses the checked-in non-secret `.env.overmind`, the existing host PostgreSQL,
+one Kirei web process, one Kirei worker, and one prepared OpenCode desktop. Its
+status, logs, and stop commands reuse a project-local Overmind socket.
+
 `init-postgres.sh` runs only on an empty local PostgreSQL volume. It creates the
 single Kirei role and `digitaltwin_development` database; it does not create a
 Mattermost role or database.

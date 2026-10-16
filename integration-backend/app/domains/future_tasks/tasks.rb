@@ -357,7 +357,7 @@ module Domains
 
       sig { params(row: T::Hash[Symbol, T.untyped]).returns(String) }
       private def cursor_for(row)
-        [row.fetch(:created_at).utc.iso8601(6), row.fetch(:id)].join("\u0000").unpack1("H*")
+        [row.fetch(:created_at).iso8601(6), row.fetch(:id)].join("\u0000").unpack1("H*")
       end
 
       sig { params(cursor: String).returns([Time, String]) }

@@ -10,7 +10,7 @@ module Services
     # Keep local worker state beside the checked-out backend, including in the
     # container where `/app` is the working tree. Operators may still override
     # this for a durable runtime location.
-    DEFAULT_HEARTBEAT_DIR = File.expand_path("local/heartbeats", Dir.pwd)
+    DEFAULT_HEARTBEAT_DIR = T.let(File.expand_path("local/heartbeats", Dir.pwd), String)
 
     const :heartbeat_dir, String, default: DEFAULT_HEARTBEAT_DIR
     const :opencode_url, T.nilable(String), default: nil

@@ -36,6 +36,32 @@ The reviewed local core now starts PostgreSQL plus Kirei web and worker processe
 | [commander/future-work/](commander/future-work/SKILL.md) | Shared future-check-in operating skill for supported agents. |
 | [scripts/](scripts/README.md) and [tests/](tests/README.md) | Local Kirei/PostgreSQL checks and migration evidence. |
 
+## Run everything locally
+
+With Postgres.app already running on `127.0.0.1:5432`, start Kirei web, the
+Kirei worker, and the prepared patched OpenCode desktop from the repository root:
+
+```sh
+sh scripts/local-overmind
+```
+
+The checked-in `.env.overmind` contains only ordinary local database, port, and
+path settings. It creates `digitaltwin_local` and `digitaltwin_local_test` only
+when absent, refuses databases owned by another role, and keeps its socket,
+heartbeats, logs, and temporary files under `local/`.
+
+```sh
+sh scripts/local-overmind status
+sh scripts/local-overmind logs
+sh scripts/local-overmind stop
+```
+
+OpenCode is the single desktop process and starts its local sidecar itself; do
+not run a separate OpenCode server. The first start needs the prepared
+`local/opencode` checkout and `local/commander.env` described in
+[`commander/LOCAL_E2E.md`](commander/LOCAL_E2E.md). Provider credentials remain
+in the user's existing OpenCode setup.
+
 ## Run the credential-free local core with Docker
 
 Docker Desktop (or a compatible Docker daemon) must be running. The sample values in `.env.example` are public local-development passwords, never production secrets.

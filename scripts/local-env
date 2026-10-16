@@ -1,0 +1,52 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+config="$repo_root/.env.overmind"
+
+test -r "$config" || {
+  printf '%s\n' "Missing local Overmind configuration: $config" >&2
+  exit 78
+}
+
+set -a
+. "$config"
+set +a
+
+: "${DIGITALTWIN_PGHOST:?DIGITALTWIN_PGHOST is required}"
+: "${DIGITALTWIN_PGPORT:?DIGITALTWIN_PGPORT is required}"
+: "${DIGITALTWIN_PGUSER:?DIGITALTWIN_PGUSER is required}"
+: "${DIGITALTWIN_LOCAL_DATABASE:?DIGITALTWIN_LOCAL_DATABASE is required}"
+: "${DIGITALTWIN_TEST_DATABASE:?DIGITALTWIN_TEST_DATABASE is required}"
+: "${PORT:?PORT is required}"
+
+case "$DIGITALTWIN_PGPORT" in
+  *[!0-9]*|'') printf '%s\n' "DIGITALTWIN_PGPORT must be numeric" >&2; exit 78 ;;
+esac
+case "$DIGITALTWIN_LOCAL_DATABASE" in
+  *[!A-Za-z0-9_]*|'') printf '%s\n' "DIGITALTWIN_LOCAL_DATABASE must use letters, numbers, or underscores" >&2; exit 78 ;;
+esac
+case "$DIGITALTWIN_TEST_DATABASE" in
+  *[!A-Za-z0-9_]*|'') printf '%s\n' "DIGITALTWIN_TEST_DATABASE must use letters, numbers, or underscores" >&2; exit 78 ;;
+esac
+case "${HEARTBEAT_DIR:-}" in
+  /*) heartbeat_dir=$HEARTBEAT_DIR ;;
+  *) heartbeat_dir="$repo_root/${HEARTBEAT_DIR:-local/heartbeats}" ;;
+esac
+case "${DIGITALTWIN_LOCAL_TMPDIR:-}" in
+  /*) local_tmpdir=$DIGITALTWIN_LOCAL_TMPDIR ;;
+  *) local_tmpdir="$repo_root/${DIGITALTWIN_LOCAL_TMPDIR:-local/tmp}" ;;
+esac
+case "${DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE:-}" in
+  /*) future_task_secret_file=$DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE ;;
+  *) future_task_secret_file="$repo_root/${DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE:-local/secrets/future-task-capability-secret}" ;;
+esac
+
+mkdir -p "$heartbeat_dir" "$local_tmpdir" "$repo_root/local/runtime" "$repo_root/local/logs"
+export HEARTBEAT_DIR="$heartbeat_dir"
+export DIGITALTWIN_LOCAL_TMPDIR="$local_tmpdir"
+export TMPDIR="$local_tmpdir"
+export DATABASE_URL="postgres://${DIGITALTWIN_PGUSER}@${DIGITALTWIN_PGHOST}:${DIGITALTWIN_PGPORT}/${DIGITALTWIN_LOCAL_DATABASE}"
+export DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE="$future_task_secret_file"
+export FUTURE_TASK_CAPABILITY_SECRET_FILE="$future_task_secret_file"

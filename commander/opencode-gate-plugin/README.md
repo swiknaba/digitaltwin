@@ -10,11 +10,23 @@ OPENCODE_GLOBAL_PLUGIN_DIR=/operator-owned/opencode/plugins \
   sh commander/opencode-gate-plugin/install-future-tasks-plugin.sh
 ```
 
-`future-tasks.ts` registers `future_tasks`. Its capability is supplied on every
-tool invocation and is never persisted. The operator configures
-`digitaltwinFutureTasksEndpoint` in the same global plugin registration; startup
-rejects a missing, non-loopback HTTP, non-HTTPS, path-bearing, query-bearing, or
-fragment-bearing value.
+`future-tasks.ts` registers `future_tasks`. The plugin mints one short-lived,
+one-use capability inside the trusted OpenCode server process for each tool call;
+the model never receives the token or signing secret. The operator configures all
+three values in the same global plugin registration, or through matching
+`DIGITALTWIN_FUTURE_TASKS_*` environment variables for the local Overmind workflow:
+
+- `digitaltwinFutureTasksEndpoint` — an HTTPS or loopback
+  `/v1/future-tasks` endpoint;
+- `digitaltwinFutureTasksCapabilitySecretFile` — an absolute, operator-owned
+  file containing the HMAC secret shared with Kirei; and
+- `digitaltwinFutureTasksActor` — the stable local actor identifier whose tasks
+  this OpenCode installation may manage.
+
+The capability binds that actor to the trusted calling OpenCode session as
+provenance, is valid for 60 seconds, and is never persisted. Startup rejects a
+missing, non-loopback HTTP, non-HTTPS, path-bearing, query-bearing, or
+fragment-bearing endpoint value.
 
 `commander-continuation.ts` is the normal server-plugin composition for
 Commander. It binds a decision from the trusted completion result of OpenCode's

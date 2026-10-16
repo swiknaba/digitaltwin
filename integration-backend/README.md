@@ -54,6 +54,12 @@ Without the bridge values, delivery is explicitly unavailable. Without the capab
 secret, the agent scheduling API is unavailable. Neither condition affects ordinary
 OpenCode project work.
 
+The local OpenCode plugin receives the same ignored capability-secret file path
+and mints a fresh 60-second capability inside its trusted server process for each
+call; it never asks the model to supply or retain a bearer token. Keep the
+OpenCode service authorization in its own local file, and configure the bridge
+with a Commander session ID only after the panel has reserved that session.
+
 ## Run and verify
 
 ```sh
