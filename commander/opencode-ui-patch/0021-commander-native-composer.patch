@@ -1,13 +1,11 @@
-diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
-new file mode 100644
-index 0000000000..c190ed43d3
---- /dev/null
+--- a/packages/app/src/runtime/commander-overlay.tsx
 +++ b/packages/app/src/runtime/commander-overlay.tsx
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,159 @@
 +import { DataProvider } from "@opencode/session-ui/context"
 +import { SessionTimeline } from "@opencode/session-ui/timeline"
 +import { Button } from "@opencode/ui/button"
 +import { Dialog, DialogBody } from "@opencode/ui/dialog"
++import { useDialog } from "@opencode/ui/context/dialog"
 +import { TextShimmer } from "@opencode/ui/text-shimmer"
 +import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 +import { CommentsProvider } from "@/composer/comments"
@@ -33,32 +31,33 @@ index 0000000000..c190ed43d3
 +
 +/** App-owned Commander surface: it deliberately uses the ordinary Composer and model picker. */
 +export function CommanderOverlayHost() {
-+  const [conversation, setConversation] = createSignal<CommanderConversation>()
++  const dialog = useDialog()
 +
 +  onMount(() => {
 +    const receive = (event: Event) => {
 +      if (!(event instanceof CustomEvent)) return
 +      const next = conversationFrom(event.detail)
-+      if (next) setConversation(next)
++      if (!next) return
++      void dialog.show(() => <CommanderOverlayProviders conversation={next} onClose={() => dialog.close("commander-overlay")} />, undefined, "commander-overlay")
 +    }
 +    window.addEventListener("opencode-commander-overlay", receive)
 +    onCleanup(() => window.removeEventListener("opencode-commander-overlay", receive))
 +  })
 +
++  return null
++}
++
++function CommanderOverlayProviders(props: { conversation: CommanderConversation; onClose(): void }) {
 +  return (
-+    <Show when={conversation()} keyed>
-+      {(current) => (
-+        <ModelsProvider directory={current.directory}>
-+          <LocationProvider directory={current.directory}>
++    <ModelsProvider directory={props.conversation.directory}>
++      <LocationProvider directory={props.conversation.directory}>
 +            <FileProvider>
 +              <CommentsProvider>
-+                <CommanderOverlay conversation={current} onClose={() => setConversation(undefined)} />
++                <CommanderOverlay conversation={props.conversation} onClose={props.onClose} />
 +              </CommentsProvider>
 +            </FileProvider>
-+          </LocationProvider>
-+        </ModelsProvider>
-+      )}
-+    </Show>
++      </LocationProvider>
++    </ModelsProvider>
 +  )
 +}
 +
@@ -162,10 +161,10 @@ index 0000000000..c190ed43d3
 +  )
 +}
 diff --git a/packages/app/src/runtime/extension/root.tsx b/packages/app/src/runtime/extension/root.tsx
-index d07caf1b11..a949434ec2 100644
+index d07caf1b11..ca16bcbae3 100644
 --- a/packages/app/src/runtime/extension/root.tsx
 +++ b/packages/app/src/runtime/extension/root.tsx
-@@ -8,6 +8,7 @@ import { usePlatform } from "@/runtime/platform/platform"
+@@ -8,11 +8,15 @@ import { usePlatform } from "@/runtime/platform/platform"
  import { ExtensionHostProvider, useExtensionHost } from "./host"
  import { createIpcClients } from "./ipc"
  import { createExtensionAttachment, createHostApis, ExtensionAttachmentProvider, type HostApis } from "./host-apis"
@@ -173,14 +172,37 @@ index d07caf1b11..a949434ec2 100644
  import { ExtensionCommands } from "./commands"
  import { ExtensionStyles } from "./render"
  import { ExtensionServersProvider } from "./servers"
-@@ -88,6 +89,7 @@ export function ExtensionAttachment(props: ParentProps) {
+ import { ExtensionServerEndpoints } from "./server-shell"
+ import { createContext, useContext } from "solid-js"
++import { ServerProvider } from "@/runtime/server/current"
++import { ServerConnection } from "@/runtime/server/registry"
++import { useGlobal } from "@/runtime/server/runtime"
+ 
+ const HostApisContext = createContext<HostApis>()
+ 
+@@ -88,6 +92,7 @@ export function ExtensionAttachment(props: ParentProps) {
      <ExtensionAttachmentProvider value={attachment}>
        <ExtensionCommands />
        <ExtensionServerEndpoints />
-+      <CommanderOverlayHost />
++      <CommanderOverlayAttachment />
        <Show when={host.ready()}>
          <MountedInterface attach={attachment.attach} />
          {props.children}
+@@ -96,6 +101,14 @@ export function ExtensionAttachment(props: ParentProps) {
+   )
+ }
+ 
++/** Commander is global, but its native controls must still run under the local sidecar's app providers. */
++function CommanderOverlayAttachment() {
++  const global = useGlobal()
++  const sidecar = createMemo(() => global.servers.list().find(ServerConnection.builtin))
++
++  return <Show when={sidecar()} keyed>{(connection) => <ServerProvider conn={connection}><CommanderOverlayHost /></ServerProvider>}</Show>
++}
++
+ /**
+  * The app interface as the HostApis see it, mounted as the routes first render and not before: writes and dialogs made
+  * while extensions set up wait until then.
 --- a/packages/gui-extensions/src/commander/renderer.tsx
 +++ b/packages/gui-extensions/src/commander/renderer.tsx
 @@ -1,14 +1,28 @@
