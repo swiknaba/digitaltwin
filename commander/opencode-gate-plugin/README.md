@@ -47,3 +47,9 @@ The pinned-release test records the expected server-only plugin registration and
 exercises the trusted lifecycle: tool context -> persisted provenance -> exact
 session follow-up -> idempotent retry/conflict rejection. It uses no provider
 credentials or live user configuration.
+
+The same plugin exposes `commander_list_projects` and
+`commander_create_project_session`. The latter accepts only an ID returned by
+the list tool, creates a normal session at that project's canonical directory,
+and posts the requested text to that exact session with stable Commander
+references. It neither selects a model nor makes a provider call itself.

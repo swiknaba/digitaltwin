@@ -58,6 +58,39 @@ export default Plugin.define({
     })
 
     await context.tool.transform((editor) => editor.add({
+      name: "commander_list_projects",
+      description: "List the existing OpenCode projects Commander may target for a new normal session.",
+      input: Schema.Struct({}),
+      options: { codemode: false },
+      async execute() {
+        const projects = await context.project.list()
+        return {
+          content: JSON.stringify(
+            projects.map((project) => ({ id: project.id, name: project.name ?? project.canonical.split("/").at(-1) ?? project.canonical, directory: project.canonical })),
+          ),
+        }
+      },
+    }))
+
+    await context.tool.transform((editor) => editor.add({
+      name: "commander_create_project_session",
+      description: "Create a normal session in one listed project and post the supplied prompt to that exact session.",
+      input: Schema.Struct({ project_id: Schema.String, request_id: Schema.String, text: Schema.String }),
+      options: { codemode: false },
+      async execute(input) {
+        if (!requestID(input.request_id) || !input.text.trim()) return { content: "Invalid Commander project session request." }
+        const project = (await context.project.list()).find((item) => item.id === input.project_id)
+        if (!project) return { content: "Commander project was not found." }
+        const session = await context.session.create({ location: { directory: project.canonical } })
+        const message = "msg_commander_project_" + hash([project.id, input.request_id].join("\n"))
+        const metadata = { fromCommander: true as const, commanderProjectID: project.id, commanderRequestID: input.request_id }
+        const admitted = await context.session.prompt({ sessionID: session.id, id: message, text: input.text, metadata, resume: true })
+        if (!admission(admitted, session.id, message, input.text, metadata)) return { content: "Commander project session admission conflicts with the existing message." }
+        return { content: JSON.stringify({ project_id: project.id, session_id: session.id, message_id: message, request_id: input.request_id }) }
+      },
+    }))
+
+    await context.tool.transform((editor) => editor.add({
       name: "commander_continue_agent",
       description: "Resume the child agent identified by a Commander follow-up reference from this Commander session.",
       input: Schema.Struct({ decision_id: Schema.String, request_id: Schema.String, text: Schema.String }),
@@ -117,8 +150,8 @@ function nativeDecision(value: unknown, expected: string, parent: string): Reado
   }
 }
 
-function admission(value: unknown, session: string, id: string, text: string, metadata: Readonly<{ fromCommander: true; commanderRequestDigest: string }>) {
-  return object(value) && value.sessionID === session && value.id === id && value.type === "user" && object(value.payload) && value.payload.text === text && object(value.payload.metadata) && value.payload.metadata.fromCommander === true && value.payload.metadata.commanderRequestDigest === metadata.commanderRequestDigest
+function admission(value: unknown, session: string, id: string, text: string, metadata: Readonly<{ fromCommander: true; [key: string]: string }>) {
+  return object(value) && value.sessionID === session && value.id === id && value.type === "user" && object(value.payload) && value.payload.text === text && object(value.payload.metadata) && Object.entries(metadata).every(([key, expected]) => value.payload.metadata[key] === expected)
 }
 
 function decode(value: unknown): Decision | undefined {
