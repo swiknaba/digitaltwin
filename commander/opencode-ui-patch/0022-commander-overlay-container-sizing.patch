@@ -1,0 +1,38 @@
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -16,6 +16,7 @@
+ import { useServerSDK } from "@/runtime/server/client"
+ import { FileProvider } from "@/workspaces/files/model"
+ import { LocationProvider } from "@/workspaces/location"
++import { commanderOverlayContainerClass } from "./commander-overlay-layout"
+ 
+ type CommanderConversation = Readonly<{ readonly serverID: "sidecar"; readonly sessionID: string; readonly directory: string; readonly agent: string }>
+ function conversationFrom(value: unknown): CommanderConversation | undefined {
+@@ -135,7 +136,7 @@
+   })
+ 
+   return (
+-    <Dialog class="flex h-[min(900px,calc(100vh-24px))] w-[min(1240px,calc(100vw-24px))] min-h-[620px] min-w-[720px] max-h-[calc(100vh-24px)] max-w-[calc(100vw-24px)] resize overflow-hidden" containerClass="max-w-none">
++    <Dialog class="flex min-h-0 overflow-hidden" containerClass={commanderOverlayContainerClass}>
+       <DialogBody class="min-h-0 flex-1 p-0">
+         <div class="flex h-full min-h-0 flex-col bg-v2-background-bg-base" data-slot="commander-native-overlay">
+           <div class="flex shrink-0 items-center justify-between border-b border-v2-border-border-base px-5 py-3">
+--- /dev/null
++++ b/packages/app/src/runtime/commander-overlay-layout.ts
+@@ -0,0 +1,2 @@
++export const commanderOverlayContainerClass =
++  "!h-[min(900px,calc(100vh-24px))] !w-[min(1240px,calc(100vw-24px))] !min-h-[620px] !min-w-[720px] !max-h-[calc(100vh-24px)] !max-w-[calc(100vw-24px)] resize"
+--- /dev/null
++++ b/packages/app/src/runtime/commander-overlay-layout.test.ts
+@@ -0,0 +1,11 @@
++import { describe, expect, test } from "bun:test"
++import { commanderOverlayContainerClass } from "./commander-overlay-layout"
++
++describe("Commander overlay layout", () => {
++  test("sizes the native dialog container instead of only its clipped content", () => {
++    expect(commanderOverlayContainerClass).toContain("!w-[min(1240px,calc(100vw-24px))]")
++    expect(commanderOverlayContainerClass).toContain("!h-[min(900px,calc(100vh-24px))]")
++    expect(commanderOverlayContainerClass).toContain("!min-h-[620px]")
++    expect(commanderOverlayContainerClass).toContain("resize")
++  })
++})
