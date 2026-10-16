@@ -1,0 +1,308 @@
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+new file mode 100644
+index 0000000000..c190ed43d3
+--- /dev/null
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -0,0 +1,157 @@
++import { DataProvider } from "@opencode/session-ui/context"
++import { SessionTimeline } from "@opencode/session-ui/timeline"
++import { Button } from "@opencode/ui/button"
++import { Dialog, DialogBody } from "@opencode/ui/dialog"
++import { TextShimmer } from "@opencode/ui/text-shimmer"
++import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
++import { CommentsProvider } from "@/composer/comments"
++import { Composer } from "@/composer/composer"
++import { createComposerModel } from "@/composer/model"
++import { createMemoryComposerState } from "@/composer/state"
++import type { ActiveComposerAdapter, ComposerControls } from "@/composer/adapter"
++import type { ModelKey, ModelSelection } from "@/providers/models/selection"
++import { ModelsProvider, useModels } from "@/providers/models/models"
++import { useData } from "@/runtime/server/current"
++import { useServerSDK } from "@/runtime/server/client"
++import { FileProvider } from "@/workspaces/files/model"
++import { LocationProvider } from "@/workspaces/location"
++
++type CommanderConversation = Readonly<{ readonly serverID: "sidecar"; readonly sessionID: string; readonly directory: string; readonly agent: string }>
++function conversationFrom(value: unknown): CommanderConversation | undefined {
++  if (!value || typeof value !== "object" || !("conversation" in value)) return
++  const item = value.conversation
++  if (!item || typeof item !== "object" || !("serverID" in item) || !("sessionID" in item) || !("directory" in item) || !("agent" in item)) return
++  if (item.serverID !== "sidecar" || typeof item.sessionID !== "string" || typeof item.directory !== "string" || typeof item.agent !== "string") return
++  return item as CommanderConversation
++}
++
++/** App-owned Commander surface: it deliberately uses the ordinary Composer and model picker. */
++export function CommanderOverlayHost() {
++  const [conversation, setConversation] = createSignal<CommanderConversation>()
++
++  onMount(() => {
++    const receive = (event: Event) => {
++      if (!(event instanceof CustomEvent)) return
++      const next = conversationFrom(event.detail)
++      if (next) setConversation(next)
++    }
++    window.addEventListener("opencode-commander-overlay", receive)
++    onCleanup(() => window.removeEventListener("opencode-commander-overlay", receive))
++  })
++
++  return (
++    <Show when={conversation()} keyed>
++      {(current) => (
++        <ModelsProvider directory={current.directory}>
++          <LocationProvider directory={current.directory}>
++            <FileProvider>
++              <CommentsProvider>
++                <CommanderOverlay conversation={current} onClose={() => setConversation(undefined)} />
++              </CommentsProvider>
++            </FileProvider>
++          </LocationProvider>
++        </ModelsProvider>
++      )}
++    </Show>
++  )
++}
++
++function CommanderOverlay(props: { conversation: CommanderConversation; onClose(): void }) {
++  const data = useData()
++  const server = useServerSDK()
++  const models = useModels()
++  const [failed, setFailed] = createSignal(false)
++  const prompt = createMemoryComposerState()
++  const selected = () => prompt.model.current()
++  const currentModel = () => {
++    const key = selected()
++    return key ? models.find(key) : undefined
++  }
++  const selection: ModelSelection = {
++    ready: models.ready,
++    current: currentModel,
++    recent: () => models.recent.list().map(models.find).filter((item): item is NonNullable<typeof item> => !!item),
++    list: () => models.list().filter((item) => models.visible({ providerID: item.provider.id, modelID: item.id })),
++    cycle: () => undefined,
++    set: (key: ModelKey | undefined, options?: { recent?: boolean }) => {
++      if (!key || !models.find(key)) return
++      prompt.model.set({ ...key })
++      models.setVisibility(key, true)
++      if (options?.recent) models.recent.push(key)
++      window.dispatchEvent(new CustomEvent("opencode-commander-model-select", { detail: key }))
++    },
++    visible: models.visible,
++    setVisibility: models.setVisibility,
++    variant: {
++      configured: () => undefined,
++      selected: () => selected()?.variant ?? undefined,
++      current: () => selected()?.variant ?? undefined,
++      list: () => Object.keys(currentModel()?.variants ?? {}),
++      set: (variant) => {
++        const value = selected()
++        if (!value) return
++        prompt.model.set({ ...value, variant })
++        window.dispatchEvent(new CustomEvent("opencode-commander-model-select", { detail: { ...value, variant } }))
++      },
++      cycle: () => undefined,
++    },
++  }
++  const controls = (): ComposerControls => ({
++    agents: { available: [], options: [props.conversation.agent], current: props.conversation.agent, visible: false, select: () => undefined },
++    model: { selection, paid: true, loading: !models.ready() },
++  })
++  const adapter: ActiveComposerAdapter = {
++    kind: "active-session",
++    state: prompt.capture(),
++    ready: prompt.ready,
++    controls,
++    working: () => data.session.status(props.conversation.sessionID) === "running",
++    submitted: () => undefined,
++    setEditor: () => undefined,
++    session: () => ({
++      id: props.conversation.sessionID,
++      directory: props.conversation.directory,
++      api: server.api.session,
++      data,
++      current: () => data.session.get(props.conversation.sessionID),
++      admitted: (id) => data.session.input.has(props.conversation.sessionID, id) || !!data.session.message.get(props.conversation.sessionID, id),
++    }),
++    interrupt: () => server.api.session.interrupt({ sessionID: props.conversation.sessionID, resume: true }).then(() => undefined),
++  }
++  const composer = createComposerModel(adapter)
++  const document = createMemo(() => ({
++    sessionID: props.conversation.sessionID,
++    messages: data.session.message.list(props.conversation.sessionID),
++    status: data.session.status(props.conversation.sessionID) === "running" ? { type: "busy" as const } : { type: "idle" as const },
++    diffs: [],
++  }))
++
++  createEffect(() => {
++    void Promise.all([
++      data.session.message.sync(props.conversation.sessionID),
++      data.session.pending.sync(props.conversation.sessionID),
++      data.location.model.sync({ directory: props.conversation.directory }),
++    ]).catch(() => setFailed(true))
++  })
++
++  return (
++    <Dialog class="flex h-[min(900px,calc(100vh-24px))] w-[min(1240px,calc(100vw-24px))] min-h-[620px] min-w-[720px] max-h-[calc(100vh-24px)] max-w-[calc(100vw-24px)] resize overflow-hidden" containerClass="max-w-none">
++      <DialogBody class="min-h-0 flex-1 p-0">
++        <div class="flex h-full min-h-0 flex-col bg-v2-background-bg-base" data-slot="commander-native-overlay">
++          <div class="flex shrink-0 items-center justify-between border-b border-v2-border-border-base px-5 py-3">
++            <div><h2 class="text-14-medium text-v2-text-text-base">Commander</h2><p class="text-12-regular text-v2-text-text-muted">One persistent conversation, available from every project.</p></div>
++            <Button size="small" variant="ghost" onClick={props.onClose}>Close</Button>
++          </div>
++          <div class="min-h-0 flex-1 overflow-y-auto">
++            <Show when={!failed()} fallback={<div class="flex h-full items-center justify-center"><TextShimmer text="Commander could not be restored." active={false} /></div>}>
++              <DataProvider data={{ session: data.session.get(props.conversation.sessionID) ? [data.session.get(props.conversation.sessionID)!] : [], session_status: { [props.conversation.sessionID]: document().status }, session_diff: { [props.conversation.sessionID]: [] } }} directory={props.conversation.directory} sessionID={props.conversation.sessionID} copy={(text) => navigator.clipboard.writeText(text)}>
++                <Show when={document().messages.length > 0} fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}><SessionTimeline document={document()} class="pb-5" /></Show>
++              </DataProvider>
++            </Show>
++          </div>
++          <div class="shrink-0 border-t border-v2-border-border-base p-4"><Composer model={composer} /></div>
++        </div>
++      </DialogBody>
++    </Dialog>
++  )
++}
+diff --git a/packages/app/src/runtime/extension/root.tsx b/packages/app/src/runtime/extension/root.tsx
+index d07caf1b11..a949434ec2 100644
+--- a/packages/app/src/runtime/extension/root.tsx
++++ b/packages/app/src/runtime/extension/root.tsx
+@@ -8,6 +8,7 @@ import { usePlatform } from "@/runtime/platform/platform"
+ import { ExtensionHostProvider, useExtensionHost } from "./host"
+ import { createIpcClients } from "./ipc"
+ import { createExtensionAttachment, createHostApis, ExtensionAttachmentProvider, type HostApis } from "./host-apis"
++import { CommanderOverlayHost } from "@/runtime/commander-overlay"
+ import { ExtensionCommands } from "./commands"
+ import { ExtensionStyles } from "./render"
+ import { ExtensionServersProvider } from "./servers"
+@@ -88,6 +89,7 @@ export function ExtensionAttachment(props: ParentProps) {
+     <ExtensionAttachmentProvider value={attachment}>
+       <ExtensionCommands />
+       <ExtensionServerEndpoints />
++      <CommanderOverlayHost />
+       <Show when={host.ready()}>
+         <MountedInterface attach={attachment.attach} />
+         {props.children}
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -1,14 +1,28 @@
+-import { createEffect, createMemo, createSignal, lazy, onCleanup, Suspense } from "solid-js"
+-import { Command, onIdle, Panel, TitlebarItem, type PanelTab, type Setup } from "../sdk"
+-import CommanderDialog from "./dialog"
++import { isSessionNotFoundError } from "@opencode/client"
++import { Session } from "@opencode/schema/session"
++import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
++import { Command, Panel, TitlebarItem, type PanelTab, type Setup } from "../sdk"
+ import type definition from "./index"
+ 
+ const panelID = "main"
+ 
++type CommanderOverlayEvent = Readonly<{
++  readonly conversation: Readonly<{ readonly serverID: "sidecar"; readonly sessionID: string; readonly directory: string; readonly agent: string }>
++}>
++
++type CommanderModelEvent = Readonly<{ readonly providerID: string; readonly modelID: string; readonly variant?: string }>
++
++function isCommanderModel(value: unknown): value is CommanderModelEvent {
++  if (!value || typeof value !== "object") return false
++  if (!("providerID" in value) || !("modelID" in value)) return false
++
++  return typeof value.providerID === "string" && typeof value.modelID === "string" &&
++    (!("variant" in value) || value.variant === undefined || typeof value.variant === "string")
++}
++
+ const setup: Setup<typeof definition> = (ctx) => {
+-  const CommanderPanel = lazy(() => import("./panel"))
+   const bridge = ctx.uses.bridge
+-  const [dialogOpen, setDialogOpen] = createSignal(false)
++  const [dialogOpen] = createSignal(false)
+   const [lastRead, setLastRead] = createSignal<string>()
+ 
+   const conversation = () => {
+@@ -60,11 +74,53 @@
+     closable: "hover",
+     dom: { tab: "session-side-panel-commander-tab", panel: "session-side-panel-commander-tabpanel" },
+   }
+-  const openGlobal = () => {
+-    ctx.dialogs.open(() => <CommanderDialog onOpen={() => setDialogOpen(true)} onClose={() => setDialogOpen(false)} />)
++  const openGlobal = async () => {
++    const live = bridge()
++    if (live.status !== "active") return
++    const ipc = live.value
++    if (!ipc) return
++
++    const initial = ipc.state()?.conversation
++    let current = initial
++    if (!current) {
++      await ipc.reserve({ serverID: "sidecar", sessionID: Session.ID.create() })
++      const reserved = ipc.state()?.conversation
++      if (!reserved) return
++      current = reserved
++    }
++    if (!current) return
++
++    const target = ctx.servers.get(current.serverID)
++    if (!target) return
++
++    try {
++      await target.data.session.sync(current.sessionID)
++    } catch (error) {
++      if (!isSessionNotFoundError(error)) throw error
++      await target.data.session.create({
++        id: current.sessionID,
++        title: ctx.t("title"),
++        location: { directory: current.directory },
++        agent: current.agent,
++      }).request
++    }
++
++    await Promise.all([
++      target.data.session.message.sync(current.sessionID),
++      target.data.session.pending.sync(current.sessionID),
++      target.data.location.model.sync({ directory: current.directory }),
++    ])
++    window.dispatchEvent(new CustomEvent<CommanderOverlayEvent>("opencode-commander-overlay", { detail: { conversation: current } }))
+   }
+ 
+-  onCleanup(onIdle(() => void CommanderPanel.preload()))
++  const selectModel = (event: Event) => {
++    if (!(event instanceof CustomEvent) || !isCommanderModel(event.detail)) return
++    const live = bridge()
++    if (live.status !== "active") return
++    void live.value.selectModel(event.detail)
++  }
++  window.addEventListener("opencode-commander-model-select", selectModel)
++  onCleanup(() => window.removeEventListener("opencode-commander-model-select", selectModel))
+ 
+   ctx.add(TitlebarItem, () => {
+     const current = status()
+@@ -84,7 +140,7 @@
+       expanded: true,
+       tone: "success" as const,
+       mark,
+-      run: openGlobal,
++      run: () => void openGlobal(),
+     }
+   })
+ 
+@@ -102,20 +158,11 @@
+         return ctx.t("command.category.view")
+       },
+       enabled: true,
+-      run: openGlobal,
++      run: () => void openGlobal(),
+     }),
+   )
+ 
+-  ctx.add(Panel, {
+-    id: panelID,
+-    region: "side",
+-    list: (input) => (input.open.includes(panelID) ? [tab] : []),
+-    render: () => (
+-      <Suspense>
+-        <CommanderPanel />
+-      </Suspense>
+-    ),
+-  })
++  ctx.add(Panel, { id: panelID, region: "side", list: (input) => (input.open.includes(panelID) ? [tab] : []), render: () => <button type="button" onClick={() => void openGlobal()}>{ctx.t("action.open")}</button> })
+ }
+ 
+ export default setup
