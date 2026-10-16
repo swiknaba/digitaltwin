@@ -18,28 +18,38 @@ session.
 | Concern | Implemented storage | Relevant fields | Assessment |
 | --- | --- | --- | --- |
 | OpenCode session and transcript | OpenCode's SQLite session store | `session_v2.id`, `project_id`, `directory`, `agent`, `model`, metadata; `session_message.session_id` and JSON `data`; inbox/pending rows reference `session_id` | Correct owner. `ses_…` is an OpenCode identifier, not a Kirei row. |
-| Global Commander identity and selected Commander model | OpenCode desktop extension store | `CommanderBridgeState.conversation = { serverID, sessionID, directory, agent }`, optional `model` | Correct narrow identity store. The model is separate from normal OpenCode model preferences. The overlay did not restore it yet; correction is pending. |
+| Global Commander identity and selected Commander model | OpenCode desktop extension store | `CommanderBridgeState.conversation = { serverID, sessionID, directory, agent }`, optional `model` | Correct narrow identity store. The model is separate from normal OpenCode model preferences. Patch 0025 restores it into the native composer on reopen. |
 | Native subagent continuation binding | OpenCode plugin storage | `digitaltwin.commander.decision.<decision-id>` → `{ parent, parentMessage, child, project, requests }` | Correct for a native `subagent` result. It protects exact parent/child continuation and tracks request digest idempotency. |
 | Direct Commander-created project session | OpenCode's normal session store plus plugin storage | normal OpenCode session; plugin stores a parent-bound opaque `decision_id` and direct-create request digest | Corrected in this change. Existing sessions created before the correction have no direct-session reference to recover. |
 | Future commitment | Kirei PostgreSQL | `future_tasks`, `future_task_executions`, `future_task_delivery_attempts`, `future_task_dispositions`, `jobs`, `future_task_capability_uses` | Correctly separate from OpenCode session storage. |
 | Future-task source context | `future_tasks.origin` | capability-derived `conversation_id`, currently `opencode:<session-id>` | The originating conversation is retained as a string origin; there is no `session_id` column and no transcript/session mirror. |
 
 The single migration, `integration-backend/db/migrate/001_future_tasks.rb`,
-creates only the five FutureTasks tables above plus `jobs`. None contains an
-OpenCode session column. `jobs` holds due/reconcile/outcome work only and stays
-empty until a future task is created. It is not a session registry.
+creates `jobs`, `future_tasks`, `future_task_executions`,
+`future_task_delivery_attempts`, `future_task_dispositions`, and
+`future_task_capability_uses`. None contains an OpenCode session column. `jobs`
+holds due/reconcile/outcome work only and stays empty until a future task is
+created. It is not a session registry.
+
+The active continuation plugin stores its records in the OpenCode SQLite `kv`
+table, not in a standalone file or Postgres. OpenCode namespaces plugin keys;
+the logical keys are `digitaltwin.commander.decision.<decision-id>` and
+`digitaltwin.commander.project-request.<digest>`. Their exact physical database
+path is operator-configurable (`OPENCODE_DB`); the normal CLI default is beneath
+OpenCode's XDG data directory. Records have no explicit expiry or pruning path,
+so they survive a normal server restart as long as that database remains.
 
 ## Flow matrix
 
 | Requirement | Implemented path | Persisted data | Gap / simplest correction |
 | --- | --- | --- | --- |
 | One global Commander conversation; keep current project visible | titlebar command → extension `reserve` → native sidecar `session.create/sync` → app-hosted native composer/timeline | extension `conversation` identity, full Commander session in OpenCode | Implemented. Live desktop behavior remains an operator validation gate. |
-| Explicit Commander model, independent of normal model preferences | native `ModelSelectorPopover` uses visible native models; bridge `selectModel` saves a Commander-scoped selection | optional extension-store `model` | The renderer now sends the saved model, but the pending patch must cover hydration/reopen with a focused test. No global preference write is required. |
+| Explicit Commander model, independent of normal model preferences | native `ModelSelectorPopover` uses visible native models; bridge `selectModel` saves a Commander-scoped selection | optional extension-store `model` | Implemented by patch 0025, with a focused bridge-state persistence test. No global preference write is required. |
 | Human prompt to Commander is a normal human prompt | native composer → Commander session API | OpenCode user message | Implemented. It must **not** receive `fromCommander`; that marker describes Commander-to-agent inputs. |
 | Start project work from Commander | `commander_list_projects` → `commander_create_project_session` → `context.session.create` + `context.session.prompt` | normal child/project session and first message in OpenCode; first message carries `fromCommander: true`; a parent-bound `decision_id` in plugin storage | Corrected in this change. A repeat request with the same parent/project/request ID reuses the existing reference; changed text is rejected. |
 | Follow up with the exact session Commander started | native subagent or direct project session: persisted decision ID → `commander_continue_agent` → exact `context.session.prompt` | plugin decision mapping and request digest | Corrected for future direct-created sessions. The old create result was not a native-subagent decision, so passing its `message_id` was rejected even when its `session_id` was correct. |
-| Deterministic, restart-safe references | native subagent decision ID and direct project-session decision ID are derived from trusted tool context; future delivery input IDs are deterministic | plugin storage; Kirei delivery keys / receipts | Corrected for direct creates. The tool does not accept arbitrary model-supplied session IDs. |
-| Every Commander-originated agent input is attributed | direct-create and native-decision continuation call `context.session.prompt` with `fromCommander: true`; Kirei gateway does likewise | OpenCode input/message metadata | Implemented on existing agent-input paths. Keep it out of the Commander overlay submission. |
+| Deterministic, restart-safe references | native subagent decision ID and direct project-session decision ID are derived from trusted tool context; future delivery input IDs are deterministic | plugin storage; Kirei delivery keys / receipts | Corrected for direct creates. The opaque `decision_id` is an implementation choice: the specification requires exact references, not this particular token format. It prevents arbitrary model-supplied session routing. |
+| Commander-originated agent-input attribution | direct-create and native-decision continuation call `context.session.prompt` with `fromCommander: true`; Kirei gateway does likewise | OpenCode input/message metadata | Verified as durable metadata. OpenCode carries that metadata from session prompt to inbox/message and into its internal LLM-message metadata, but no provider-specific evidence proves it becomes agent-readable tokens or visible transcript text. Keep it out of the human-to-Commander overlay submission. |
 | Read/result tracking | native OpenCode session/message APIs and timelines are authoritative | OpenCode session/message rows | Commander can inspect its own transcript. There is no explicit result-link/read API for a direct project session in the plugin; add it only if Commander needs to retrieve target status/transcript through a constrained reference, rather than mirroring content into Kirei. |
 | One-time scheduling; retry/recovery; successor tasks instead of a recurrence engine | OpenCode global tool → signed capability → Kirei `CapabilityApi` → FutureTasks domain/worker → exact Commander session prompt | task, execution, attempt, receipt, disposition, queue job, nonce-use rows | Backend implements one-time states, delivery keys, reconciliation, and disposition. The shipped plugin currently exposes create/list/read/update/cancel only; it omits `disposition` and uncertain-resolution despite the backend routes supporting both. |
 | Scheduled work stays a check-in, not automatic project work | Kirei gateway appends a visible Commander input | receipt records deterministic Commander input ID | Implemented in backend. Live authorization/sidecar delivery remains an operator check. |
@@ -63,7 +73,26 @@ empty until a future task is created. It is not a session registry.
    proving a path that the running plugin does not use.
 4. The specification is not incomplete about storage ownership. Its intended
    "exact runtime/project/session/source-message references" requirement is
-   incompletely implemented for direct project-session creation.
+   incompletely implemented for direct project-session creation. It does not
+   mandate an opaque `decision_id`; that is the selected implementation for a
+   trusted, opaque continuation handle.
+
+## Acceptance cases still required
+
+1. **Create → follow-up → read result:** create a project session, retain the
+   returned reference, send a follow-up using that reference, then read the
+   target session/result through an approved normal OpenCode session view. The
+   first two operations have fixture coverage; there is currently no constrained
+   plugin result-read tool.
+2. **Restart recovery:** restart the OpenCode server, reuse the direct-session
+   reference, and verify that the target session receives exactly one
+   deterministic follow-up. Fixture coverage exists; no live operator session
+   was restarted.
+3. **Future task due → completion/recovery:** create a one-time task, confirm
+   the due job appends exactly one Commander check-in, record a disposition, and
+   exercise an interrupted delivery/reconciliation against an authenticated
+   sidecar. Backend logic is tested, but the deployed global tool omits
+   disposition/resolution and no authenticated end-to-end delivery was run.
 
 ## Recommended minimal sequence
 
@@ -74,8 +103,9 @@ empty until a future task is created. It is not a session registry.
 2. **Completed:** direct-create retry/conflict, wrong-parent, restart recovery,
    and direct-reference follow-up regression tests cover the new path.
 3. Remove or clearly demote the unused bridge-package continuation duplicate.
-4. Complete the independent Commander-model hydration patch and test it. Extend
-   the FutureTasks plugin to expose disposition/resolution only after confirming
-   the desired operator workflow; this is a real API-surface deviation, not a
-   reason to add a recurrence engine or session mirror.
+4. **Completed:** patch 0025 hydrates the independent Commander model and has a
+   focused persistence test. Extend the FutureTasks plugin to expose
+   disposition/resolution only after confirming the desired operator workflow;
+   this is a real API-surface deviation, not a reason to add a recurrence engine
+   or session mirror.
 
