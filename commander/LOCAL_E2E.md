@@ -23,7 +23,7 @@ OpenCode checkout.
 
 ```sh
 DIGITALTWIN_ROOT="$PWD"
-git clone --branch v2.0.27 https://github.com/anomalyco/opencode.git ../opencode-commander
+git clone --branch v2.0.30 https://github.com/anomalyco/opencode.git ../opencode-commander
 cd ../opencode-commander
 sh "$DIGITALTWIN_ROOT/commander/opencode-ui-patch/prepare-opencode.sh" "$PWD"
 bun install --frozen-lockfile
