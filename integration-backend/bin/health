@@ -11,7 +11,8 @@ if role == "web"
   response = Net::HTTP.get_response(URI("http://127.0.0.1:#{ENV.fetch("PORT", "3000")}/readyz"))
   exit(response.code == "200" ? 0 : 1)
 elsif role == "worker"
-  path = File.join(ENV.fetch("HEARTBEAT_DIR", "/tmp"), "digitaltwin-#{role}.heartbeat")
+  heartbeat_dir = ENV.fetch("HEARTBEAT_DIR", File.expand_path("local/heartbeats", Dir.pwd))
+  path = File.join(heartbeat_dir, "digitaltwin-#{role}.heartbeat")
   exit(File.exist?(path) && Time.now - File.mtime(path) < MAX_AGE ? 0 : 1)
 else
   abort "Unknown process role"
