@@ -2,8 +2,7 @@
 
 This maintained patch targets OpenCode v2.0.27 at
 `1f4d07a4a519185955ae8ab2ea3607805509e386`. It adds a persistent global
-Commander dialog and the reviewed `@digitaltwin/commander-bridge` workspace
-package.
+Commander dialog, native composer, and model picker.
 
 Normal desktop startup needs no harness flag. The extension stores one Commander
 OpenCode session identity in desktop extension storage. It creates, loads,
@@ -13,10 +12,10 @@ switches, close/reopen, and desktop restart. It does not load user
 configuration, make a second socket, or pass endpoint credentials through a
 new renderer bridge.
 
-The bridge package is an exact-session continuation helper. Scheduled Kirei
-delivery independently uses the same authenticated normal OpenCode session API.
-Neither path uses the removed private Node bridge, proof exchange, panel control
-plane, or synthetic desktop harness.
+The active OpenCode continuation plugin owns exact-session follow-up bindings.
+Scheduled Kirei delivery independently uses the authenticated normal OpenCode
+session API. Neither path uses a private Node bridge, proof exchange, panel
+control plane, or synthetic desktop harness.
 
 Before first use, the desktop operator supplies the neutral Commander workspace
 and agent shown in `operator.env.example` through the desktop launch environment.
@@ -38,16 +37,15 @@ sh commander/opencode-ui-patch/prepare-opencode.sh
 \`\`\`
 
 The default target is `local/opencode`; pass an absolute checkout path only when
-an operator deliberately needs a different location. The script verifies the pinned revision and an allowlist SHA-256 manifest before
-copying the bridge sources, then applies all patches. The reviewed patch
-sequence is currently twenty-five patches.
+an operator deliberately needs a different location. The script verifies the
+pinned revision, then applies all patches. The reviewed patch sequence is
+currently twenty-six patches.
 It copies no configuration, credentials, persistent store, or operator state.
 
 For a local desktop walkthrough—including optional native-agent continuation and
 FutureTasks validation—follow [the Commander local E2E guide](../LOCAL_E2E.md).
 
 Validate a prepared Linux checkout with official Bun 1.4.2 for frozen install
-and GUI/desktop typechecks. Use Node 22 for the bridge package's `tsgo` check;
-the Bun image does not provide that launcher. These checks prove patch
+and GUI/desktop typechecks. These checks prove patch
 preparation and compilation, not a live operator authorization, provider run,
 or desktop interaction.

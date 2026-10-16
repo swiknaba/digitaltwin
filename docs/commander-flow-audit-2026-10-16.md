@@ -66,11 +66,11 @@ so they survive a normal server restart as long as that database remains.
 2. The current direct-create path bypasses Kirei by design. That is correct for
    ordinary agent work, but it means Postgres cannot be used to find or repair
    `ses_eba1c99e0ffeNc5y6GCpivdEGp`.
-3. The repository has two continuation implementations: the active global
-   OpenCode plugin and an `@digitaltwin/commander-bridge` workspace package.
-   The workspace package has tests but no production importer outside itself;
-   the active behavior is the plugin. This duplication risks documentation/tests
-   proving a path that the running plugin does not use.
+3. The unused `@digitaltwin/commander-bridge` workspace continuation duplicate
+   was removed. The active global OpenCode plugin is now the sole continuation
+   implementation; its regression suite covers parent ownership, exact child
+   routing, retry/restart recovery, duplicate direct-create requests, and result
+   readback.
 4. The specification is not incomplete about storage ownership. Its intended
    "exact runtime/project/session/source-message references" requirement is
    incompletely implemented for direct project-session creation. It does not
@@ -101,10 +101,27 @@ so they survive a normal server restart as long as that database remains.
    to that exact child with `fromCommander: true`.
 2. **Completed:** direct-create retry/conflict, wrong-parent, restart recovery,
    and direct-reference follow-up regression tests cover the new path.
-3. Remove or clearly demote the unused bridge-package continuation duplicate.
+3. **Completed:** removed the unused bridge-package continuation duplicate and
+   its workspace dependency/import path. Patch 0026 also removes the obsolete
+   extension-owned dialog; the app-owned native overlay remains the sole UI.
 4. **Completed:** patch 0025 hydrates the independent Commander model and has a
    focused persistence test. Extend the FutureTasks plugin to expose
    disposition/resolution only after confirming the desired operator workflow;
    this is a real API-surface deviation, not a reason to add a recurrence engine
    or session mirror.
+
+## Validation update
+
+The active plugin's focused suite passes seven tests, including a request-level
+contract test for `create`, `disposition`, and `resolve_uncertain`. It verifies
+the exact Kirei paths and JSON bodies and decodes each generated capability to
+confirm the `opencode:<Commander session>` conversation scope. The full
+OpenCode workspace typecheck passes after removal of the stale workspace.
+
+The project-local Playwright Chromium cache is installed, but the pinned
+Storybook 10.4.4 server aborts before serving with `Invariant failed: expected
+options to have a port` under both Bun and Node even with `--port 6006`.
+Therefore no browser click/type pixel assertion is claimed from this run; that
+runner failure must be corrected before the native overlay visual regression can
+execute.
 
