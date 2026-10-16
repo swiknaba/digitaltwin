@@ -1,129 +1,99 @@
-# Commander local end-to-end guide
+# Commander local guide
 
-This guide validates the patched OpenCode desktop app on one developer machine.
-It is deliberately local: it neither deploys Commander nor changes a user-global
-configuration unless the optional plugin steps are chosen explicitly.
+Run this from the root of your existing DigitalTwin checkout. It prepares the
+patched OpenCode source under this checkout's ignored `local/` directory; it
+does not clone DigitalTwin or use a sibling checkout.
 
 ## Prerequisites
 
-- macOS, Bun `1.4.2`, Git, and the OpenCode desktop build prerequisites.
-- An existing OpenCode provider/model configuration that can serve the named
-  `commander` agent. Do not copy a provider key into this repository, the
-  Commander env file, or a shell history.
-- A local, absolute workspace that is distinct from the project opened in the
-  desktop UI. It can be empty; this guide creates it at
-  `local/commander-workspace` but it must not be opened as the focused project.
+- macOS, Git, Bun `1.4.2`, and the OpenCode desktop build prerequisites.
+- Your normal OpenCode provider/model configuration, with an agent named
+  `commander`. Keep provider credentials in that existing OpenCode setup, not
+  in this repository or its Commander env file.
 
-## Prepare and launch
+The Commander workspace below is intentionally separate from the project you
+open in OpenCode. It lives under this repository only to keep generated local
+state together; do not open `local/commander-workspace` as a project.
 
-Run these commands from the root of this repository. They use your existing
-project checkout and leave it unchanged. The patch applies only to a separate,
-fresh OpenCode checkout in the ignored `local/opencode` directory.
+## Prepare OpenCode
 
-### 1. Patch a fresh OpenCode checkout
+In a terminal at the DigitalTwin repository root:
 
 ```sh
-DIGITALTWIN_ROOT="$PWD"
-mkdir -p "$DIGITALTWIN_ROOT/local/tmp"
-export TMPDIR="$DIGITALTWIN_ROOT/local/tmp"
+REPO_ROOT="$PWD"
+mkdir -p "$REPO_ROOT/local/tmp" "$REPO_ROOT/local/commander-workspace"
+export TMPDIR="$REPO_ROOT/local/tmp"
 export DIGITALTWIN_LOCAL_TMPDIR="$TMPDIR"
-git clone --branch v2.0.27 https://github.com/anomalyco/opencode.git local/opencode
-sh "$DIGITALTWIN_ROOT/commander/opencode-ui-patch/prepare-opencode.sh"
-cd local/opencode
+
+if [ ! -d "$REPO_ROOT/local/opencode/.git" ]; then
+  git clone --branch v2.0.27 https://github.com/anomalyco/opencode.git "$REPO_ROOT/local/opencode"
+fi
+
+if [ ! -x "$REPO_ROOT/local/opencode/run-opencode-commander.sh" ]; then
+  sh "$REPO_ROOT/commander/opencode-ui-patch/prepare-opencode.sh"
+fi
+
+cd "$REPO_ROOT/local/opencode"
 bun install --frozen-lockfile
 ```
 
-`prepare-opencode.sh` refuses an OpenCode checkout that is dirty, is at another
-revision, or is already patched. To re-run it, remove only the
-`local/opencode` checkout if you created it for this test, then start again.
+`local/opencode` is reused when it has already been prepared. The preparation
+script only modifies a fresh OpenCode v2.0.27 checkout and stops on a dirty,
+wrong-version, or partially prepared checkout. It never resets or deletes that
+checkout; inspect it before deliberately replacing it.
 
-### 2. Configure the environment
+## Configure and launch
 
-```sh
-mkdir -p "$DIGITALTWIN_ROOT/local/commander-workspace" "$DIGITALTWIN_ROOT/local/tmp"
-cp commander.env.example "$DIGITALTWIN_ROOT/local/commander.env"
-${EDITOR:-vi} "$DIGITALTWIN_ROOT/local/commander.env"
-```
-
-### 3. Launch
-
-Run this from `local/opencode`:
+Create the non-secret operator environment file once, without overwriting an
+existing one:
 
 ```sh
-export DIGITALTWIN_LOCAL_TMPDIR="$DIGITALTWIN_ROOT/local/tmp"
-sh ./run-opencode-commander.sh "$DIGITALTWIN_ROOT/local/commander.env" bun run dev:desktop
+if [ ! -f "$REPO_ROOT/local/commander.env" ]; then
+  cp "$REPO_ROOT/local/opencode/commander.env.example" "$REPO_ROOT/local/commander.env"
+fi
+${EDITOR:-vi} "$REPO_ROOT/local/commander.env"
 ```
 
-In the env file, set `DIGITALTWIN_COMMANDER_WORKSPACE` in
-`local/commander.env` to `$DIGITALTWIN_ROOT/local/commander-workspace` and set
-`DIGITALTWIN_COMMANDER_AGENT` to the identifier of an agent already declared in
-your normal OpenCode configuration. The wrapper validates only the absolute
-workspace and non-empty agent name. At reservation time the Commander main
-process calls the authenticated sidecar's normal `/api/agent` endpoint for that
-workspace and refuses to create or reuse state unless that agent is available.
-
-The env file contains no credentials. Provider credentials, models, and the
-agent declaration remain in the operator's existing OpenCode setup. If they are
-not configured, the expected result is an unavailable/failed Commander panel,
-not an attempt by this patch to provision a provider.
-
-## Desktop acceptance path
-
-1. Open any ordinary project session in the desktop app.
-2. Open **Commander** from the title-bar contribution. It should create one
-   neutral session in the configured workspace, not in the focused project.
-3. Send a prompt. The normal timeline should stream the assistant response;
-   **Stop** should interrupt that same session.
-4. Switch projects, close and reopen Commander, then quit and relaunch through
-   the same wrapper. Commander should retain the same neutral conversation
-   identity and remain independent of the focused project.
-5. To exercise recovery, stop the sidecar or make the stored session unavailable,
-   then use **Reconnect**. The app recreates that exact reserved session ID with
-   the configured workspace and agent.
-
-The panel is not a provider test. A real response requires the already-configured
-provider above; panel/session identity, reconnect, and visible streamed content
-are covered in the checked-in component test.
-
-## Optional native follow-up validation
-
-This is an explicit operator-owned global plugin change. To enable the normal
-OpenCode continuation plugin, choose a dedicated plugin directory and install
-only symlinks there:
-
-Run this from the root of this repository:
+Set these values in `local/commander.env`:
 
 ```sh
-OPENCODE_GLOBAL_PLUGIN_DIR=/absolute/operator-owned/opencode/plugins \
-  sh commander/opencode-gate-plugin/install-future-tasks-plugin.sh
+DIGITALTWIN_COMMANDER_WORKSPACE=/absolute/path/to/digitaltwin/local/commander-workspace
+DIGITALTWIN_COMMANDER_AGENT=commander
 ```
 
-Restart OpenCode, then ask the Commander session to start a native OpenCode
-`subagent`. When it completes, the plugin appends a `Commander follow-up
-reference` containing its decision ID. Invoke `commander_continue_agent` from
-that Commander session with that `decision_id`, a new `request_id`, and the
-follow-up text. The plugin resolves the recorded child session and sends the
-ordinary OpenCode prompt to that exact prior session; it does not accept a
-session ID from the caller.
+Use the absolute path formed by `"$REPO_ROOT/local/commander-workspace"` for
+the first value. The launcher validates that workspace and agent, uses
+`local/tmp` for its subprocesses, and keeps credentials out of this file.
 
-## Optional FutureTasks validation
+Start the desktop app from the prepared OpenCode checkout:
 
-FutureTasks additionally needs an operator-configured
-`digitaltwinFutureTasksEndpoint` and the operator-issued capability exchange.
-Neither belongs in this checkout. With both already available, ask Commander to
-call `future_tasks` with operation `create`, its supplied capability, a one-time
-local timestamp with an explicit UTC offset and IANA timezone, and a short
-check-in instruction. Record the returned task ID and version. When due, verify
-that it appears as a check-in only; it must not start code, merge, or deploy.
-Use that same ID/version for update or cancellation.
+```sh
+cd "$REPO_ROOT/local/opencode"
+sh ./run-opencode-commander.sh "$REPO_ROOT/local/commander.env" bun run dev:desktop
+```
 
-## Cleanup
+## Test the Commander panel
 
-Quit the development desktop app. Remove `local/commander.env`,
-`local/commander-workspace`, `local/tmp`, and `local/opencode` only if they were
-created for this test.
-If the optional plugin step was used, remove only the two
-`digitaltwin-future-tasks.ts` and `digitaltwin-commander-continuation.ts`
-symlinks from the operator-owned plugin directory. Do not delete or modify an
-existing user's global OpenCode configuration, providers, credentials, or
-desktop storage as part of this guide.
+1. Open an ordinary project session in OpenCode.
+2. Open **Commander** from the title bar. It should reserve one neutral session
+   in `local/commander-workspace`, not the focused project.
+3. Send a prompt and confirm streamed content appears. **Stop** must interrupt
+   that same session.
+4. Switch projects, close and reopen Commander, then relaunch through the same
+   command. The Commander conversation identity should remain unchanged.
+5. Make the stored Commander session unavailable, then choose **Reconnect**.
+   Commander should recreate the reserved session using the configured workspace
+   and agent.
+
+This tests the patched Commander panel and normal OpenCode session path. It
+does not test a provider account or provision an agent.
+
+## Scheduling status
+
+Do not use this guide to validate FutureTasks scheduling yet. The current Kirei
+backend has a known Zeitwerk boot failure in `Adapters::OpenCode::ConfiguredGateway`;
+that fix has not been approved or applied. Basic Commander desktop testing above
+does not start Kirei and remains available.
+
+All generated checkout, workspace, env, dependency, and temporary files from
+this guide stay under ignored `local/` paths in this repository.
