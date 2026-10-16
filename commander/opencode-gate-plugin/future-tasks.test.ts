@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import test from "node:test"
 import futureTasks from "./future-tasks.ts"
@@ -8,7 +8,9 @@ type Request = Readonly<{ readonly url: string; readonly method: string; readonl
 type RegisteredTool = Readonly<{ readonly execute: (input: Record<string, unknown>, tool: Readonly<{ readonly sessionID: string }>) => Promise<Readonly<{ readonly content: string }>> }>
 
 test("sends Kirei-compatible create, disposition, and uncertainty-resolution requests", async () => {
-  const directory = await mkdtemp(join(process.cwd(), "local", "future-tasks-contract-"))
+  const temporaryRoot = join(process.cwd(), "local")
+  await mkdir(temporaryRoot, { recursive: true })
+  const directory = await mkdtemp(join(temporaryRoot, "future-tasks-contract-"))
   const secretFile = join(directory, "capability-secret")
   await writeFile(secretFile, "fixture-secret\n", "utf8")
 
@@ -29,6 +31,7 @@ test("sends Kirei-compatible create, disposition, and uncertainty-resolution req
         digitaltwinFutureTasksEndpoint: "https://future.example.test/v1/future-tasks",
         digitaltwinFutureTasksCapabilitySecretFile: secretFile,
         digitaltwinFutureTasksActor: "commander",
+        digitaltwinFutureTasksOwner: true,
       },
       tool: {
         transform: async (callback: (editor: Readonly<{ readonly add: (tool: RegisteredTool) => void }>) => void) => callback({ add: (tool) => { registered = tool } }),
@@ -47,7 +50,9 @@ test("sends Kirei-compatible create, disposition, and uncertainty-resolution req
     ])
     for (const request of requests) {
       const [payload] = request.authorization.slice("Bearer ".length).split(".")
-      assert.equal(JSON.parse(Buffer.from(payload, "hex").toString("utf8")).conversation, "opencode:ses_commander")
+      const capability = JSON.parse(Buffer.from(payload, "hex").toString("utf8"))
+      assert.equal(capability.conversation, "opencode:ses_commander")
+      assert.equal(capability.owner, true)
     }
   } finally {
     globalThis.fetch = originalFetch

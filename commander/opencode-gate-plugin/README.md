@@ -21,7 +21,10 @@ three values in the same global plugin registration, or through matching
 - `digitaltwinFutureTasksCapabilitySecretFile` — an absolute, operator-owned
   file containing the HMAC secret shared with Kirei; and
 - `digitaltwinFutureTasksActor` — the stable local actor identifier whose tasks
-  this OpenCode installation may manage.
+  this OpenCode installation may manage; and
+- `digitaltwinFutureTasksOwner` — an optional boolean, defaulting to `false`.
+  Only an explicitly operator-owned installation may set it to `true`, which
+  permits the terminal `resolve_uncertain` operation.
 
 The capability binds that actor to the trusted calling OpenCode session as
 provenance, is valid for 60 seconds, and is never persisted. Startup rejects a

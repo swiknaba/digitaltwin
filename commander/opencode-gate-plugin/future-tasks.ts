@@ -6,15 +6,18 @@ import { Schema } from "effect"
 const optionName = "digitaltwinFutureTasksEndpoint"
 const secretFileOptionName = "digitaltwinFutureTasksCapabilitySecretFile"
 const actorOptionName = "digitaltwinFutureTasksActor"
+const ownerOptionName = "digitaltwinFutureTasksOwner"
 const endpointEnvironment = "DIGITALTWIN_FUTURE_TASKS_ENDPOINT"
 const secretFileEnvironment = "DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE"
 const actorEnvironment = "DIGITALTWIN_FUTURE_TASKS_ACTOR"
+const ownerEnvironment = "DIGITALTWIN_FUTURE_TASKS_OWNER"
 const capabilityLifetimeSeconds = 60
 
 type Settings = Readonly<{
   endpoint: string
   secretFile: string
   actor: string
+  owner: boolean
 }>
 
 function configured(options: Readonly<Record<string, unknown>>): Settings {
@@ -29,7 +32,10 @@ function configured(options: Readonly<Record<string, unknown>>): Settings {
     throw new Error(`${secretFileOptionName} must be an absolute operator-owned file path`)
   const actor = options[actorOptionName] ?? process.env[actorEnvironment]
   if (typeof actor !== "string" || !actor.trim()) throw new Error(`${actorOptionName} must be configured by the operator`)
-  return { endpoint: endpoint.toString().replace(/\/$/, ""), secretFile, actor }
+  const rawOwner = options[ownerOptionName] ?? process.env[ownerEnvironment]
+  const owner = rawOwner === true || rawOwner === "true" ? true : rawOwner === undefined || rawOwner === false || rawOwner === "false" ? false : undefined
+  if (owner === undefined) throw new Error(`${ownerOptionName} must be a boolean when configured`)
+  return { endpoint: endpoint.toString().replace(/\/$/, ""), secretFile, actor, owner }
 }
 
 async function issueCapability(settings: Settings, sessionID: string): Promise<string> {
@@ -40,7 +46,7 @@ async function issueCapability(settings: Settings, sessionID: string): Promise<s
     aud: "future_tasks",
     actor: settings.actor,
     conversation: `opencode:${sessionID}`,
-    owner: false,
+    owner: settings.owner,
     iat: issuedAt,
     exp: issuedAt + capabilityLifetimeSeconds,
     jti: randomUUID(),
