@@ -54,7 +54,7 @@ module Adapters
       sig { params(task_id: String, text: String, references: T::Array[String], due_at: Time, timezone: String, origin: String, attempt: Integer, delivery_key: String).returns(String) }
       private def delivery_text(task_id:, text:, references:, due_at:, timezone:, origin:, attempt:, delivery_key:)
         reference_text = references.empty? ? "none" : references.join(", ")
-        "Scheduled Commander check-in:\n#{text}\n\nTask: #{task_id}\nDue: #{due_at.utc.iso8601} (#{timezone})\nOrigin: #{origin}\nAttempt: #{attempt}\nReferences: #{reference_text}\nDelivery key: #{delivery_key}"
+        "Commander-directed scheduled check-in:\n#{text}\n\nTask: #{task_id}\nDue: #{due_at.utc.iso8601} (#{timezone})\nOrigin: #{origin}\nAttempt: #{attempt}\nReferences: #{reference_text}\nDelivery key: #{delivery_key}"
       end
 
       sig { params(kind: String, value: String).returns(String) }

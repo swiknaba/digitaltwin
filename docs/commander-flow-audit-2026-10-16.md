@@ -49,9 +49,9 @@ so they survive a normal server restart as long as that database remains.
 | Start project work from Commander | `commander_list_projects` → `commander_create_project_session` → `context.session.create` + `context.session.prompt` | normal child/project session and first message in OpenCode; first message carries `fromCommander: true`; a parent-bound `decision_id` in plugin storage | Corrected in this change. A repeat request with the same parent/project/request ID reuses the existing reference; changed text is rejected. |
 | Follow up with the exact session Commander started | native subagent or direct project session: persisted decision ID → `commander_continue_agent` → exact `context.session.prompt` | plugin decision mapping and request digest | Corrected for future direct-created sessions. The old create result was not a native-subagent decision, so passing its `message_id` was rejected even when its `session_id` was correct. |
 | Deterministic, restart-safe references | native subagent decision ID and direct project-session decision ID are derived from trusted tool context; future delivery input IDs are deterministic | plugin storage; Kirei delivery keys / receipts | Corrected for direct creates. The opaque `decision_id` is an implementation choice: the specification requires exact references, not this particular token format. It prevents arbitrary model-supplied session routing. |
-| Commander-originated agent-input attribution | direct-create and native-decision continuation call `context.session.prompt` with `fromCommander: true`; Kirei gateway does likewise | OpenCode input/message metadata | Verified as durable metadata. OpenCode carries that metadata from session prompt to inbox/message and into its internal LLM-message metadata, but no provider-specific evidence proves it becomes agent-readable tokens or visible transcript text. Keep it out of the human-to-Commander overlay submission. |
-| Read/result tracking | native OpenCode session/message APIs and timelines are authoritative | OpenCode session/message rows | Commander can inspect its own transcript. There is no explicit result-link/read API for a direct project session in the plugin; add it only if Commander needs to retrieve target status/transcript through a constrained reference, rather than mirroring content into Kirei. |
-| One-time scheduling; retry/recovery; successor tasks instead of a recurrence engine | OpenCode global tool → signed capability → Kirei `CapabilityApi` → FutureTasks domain/worker → exact Commander session prompt | task, execution, attempt, receipt, disposition, queue job, nonce-use rows | Backend implements one-time states, delivery keys, reconciliation, and disposition. The shipped plugin currently exposes create/list/read/update/cancel only; it omits `disposition` and uncertain-resolution despite the backend routes supporting both. |
+| Commander-originated agent-input attribution | direct-create and native-decision continuation call `context.session.prompt` with `fromCommander: true` and a `Commander-directed work:` text prefix; Kirei gateway does likewise with a `Commander-directed scheduled check-in:` prefix | OpenCode input/message metadata and user-message text | The text prefix is agent-readable and transcript-visible; metadata remains durable provenance. The human-to-Commander overlay submission remains unmodified. |
+| Read/result tracking | `commander_read_agent` resolves the same exact continuation reference, then reads the target session and latest assistant result through native OpenCode session APIs | OpenCode session/message rows | Implemented with constrained parent-bound reference lookup. Fixture coverage exists; no live target session was read. |
+| One-time scheduling; retry/recovery; successor tasks instead of a recurrence engine | OpenCode global tool → signed capability → Kirei `CapabilityApi` → FutureTasks domain/worker → exact Commander session prompt | task, execution, attempt, receipt, disposition, queue job, nonce-use rows | Backend implements one-time states, delivery keys, reconciliation, and disposition. The global plugin now exposes disposition and uncertain-resolution routes; no authenticated end-to-end delivery was run. |
 | Scheduled work stays a check-in, not automatic project work | Kirei gateway appends a visible Commander input | receipt records deterministic Commander input ID | Implemented in backend. Live authorization/sidecar delivery remains an operator check. |
 
 ## Findings
@@ -82,8 +82,7 @@ so they survive a normal server restart as long as that database remains.
 1. **Create → follow-up → read result:** create a project session, retain the
    returned reference, send a follow-up using that reference, then read the
    target session/result through an approved normal OpenCode session view. The
-   first two operations have fixture coverage; there is currently no constrained
-   plugin result-read tool.
+   first three operations have fixture coverage; no live target session was read.
 2. **Restart recovery:** restart the OpenCode server, reuse the direct-session
    reference, and verify that the target session receives exactly one
    deterministic follow-up. Fixture coverage exists; no live operator session
@@ -91,8 +90,8 @@ so they survive a normal server restart as long as that database remains.
 3. **Future task due → completion/recovery:** create a one-time task, confirm
    the due job appends exactly one Commander check-in, record a disposition, and
    exercise an interrupted delivery/reconciliation against an authenticated
-   sidecar. Backend logic is tested, but the deployed global tool omits
-   disposition/resolution and no authenticated end-to-end delivery was run.
+   sidecar. The global tool exposes disposition/resolution, but no authenticated
+   end-to-end delivery was run.
 
 ## Recommended minimal sequence
 
