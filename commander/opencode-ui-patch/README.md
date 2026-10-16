@@ -29,14 +29,15 @@ The prepared checkout includes `run-opencode-commander.sh`. Copy and edit its
 wrapper; it loads the operator file, validates the neutral workspace exists and
 is absolute, validates the agent name, and exports only those non-secret values.
 
-Prepare a clean checkout:
+From the DigitalTwin repository root, prepare a clean, ignored local checkout:
 
 \`\`\`sh
-git clone --branch v2.0.27 https://github.com/anomalyco/opencode.git opencode
-sh /absolute/path/to/digitaltwin/commander/opencode-ui-patch/prepare-opencode.sh "$PWD/opencode"
+git clone --branch v2.0.27 https://github.com/anomalyco/opencode.git local/opencode
+sh commander/opencode-ui-patch/prepare-opencode.sh
 \`\`\`
 
-The script verifies the pinned revision and an allowlist SHA-256 manifest before
+The default target is `local/opencode`; pass an absolute checkout path only when
+an operator deliberately needs a different location. The script verifies the pinned revision and an allowlist SHA-256 manifest before
 copying the bridge sources, then applies all patches. The reviewed patch
 sequence is currently eight patches.
 It copies no configuration, credentials, persistent store, or operator state.

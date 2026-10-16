@@ -10,11 +10,12 @@ fail() {
   exit 1
 }
 
-test "$#" -eq 1 || fail "usage: $0 /absolute/path/to/fresh-opencode-checkout"
+test "$#" -le 1 || fail "usage: $0 [/absolute/path/to/fresh-opencode-checkout]"
 
 patch_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source_root=$(CDPATH= cd -- "$patch_dir/.." && pwd)
-upstream=$(CDPATH= cd -- "$1" && pwd)
+repo_root=$(CDPATH= cd -- "$source_root/.." && pwd)
+upstream=$(CDPATH= cd -- "${1:-$repo_root/local/opencode}" && pwd)
 manifest="$patch_dir/bridge-source.sha256"
 bundle="$upstream/packages/commander-bridge"
 operator_example="$patch_dir/operator.env.example"

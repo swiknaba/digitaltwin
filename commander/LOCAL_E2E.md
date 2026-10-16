@@ -16,22 +16,22 @@ configuration unless the optional plugin steps are chosen explicitly.
 ## Prepare and launch
 
 Run these commands from the root of this repository. They use your existing
-checkout and leave it unchanged. The patch applies only to a separate, fresh
-OpenCode checkout.
+project checkout and leave it unchanged. The patch applies only to a separate,
+fresh OpenCode checkout in the ignored `local/opencode` directory.
 
 ### 1. Patch a fresh OpenCode checkout
 
 ```sh
 DIGITALTWIN_ROOT="$PWD"
-git clone --branch v2.0.30 https://github.com/anomalyco/opencode.git ../opencode-commander
-cd ../opencode-commander
-sh "$DIGITALTWIN_ROOT/commander/opencode-ui-patch/prepare-opencode.sh" "$PWD"
+git clone --branch v2.0.27 https://github.com/anomalyco/opencode.git local/opencode
+sh "$DIGITALTWIN_ROOT/commander/opencode-ui-patch/prepare-opencode.sh"
+cd local/opencode
 bun install --frozen-lockfile
 ```
 
 `prepare-opencode.sh` refuses an OpenCode checkout that is dirty, is at another
-revision, or is already patched. To re-run it, delete `../opencode-commander`
-and start again.
+revision, or is already patched. To re-run it, remove only the
+`local/opencode` checkout if you created it for this test, then start again.
 
 ### 2. Configure the environment
 
@@ -43,7 +43,7 @@ ${EDITOR:-vi} /tmp/digitaltwin-commander.env
 
 ### 3. Launch
 
-Run this from `../opencode-commander`:
+Run this from `local/opencode`:
 
 ```sh
 sh ./run-opencode-commander.sh /tmp/digitaltwin-commander.env bun run dev:desktop
@@ -115,8 +115,8 @@ Use that same ID/version for update or cancellation.
 ## Cleanup
 
 Quit the development desktop app. Remove `/tmp/digitaltwin-commander.env`,
-`/tmp/digitaltwin-commander-workspace`, and the sibling `opencode-commander`
-checkout only if they were created for this test.
+`/tmp/digitaltwin-commander-workspace`, and `local/opencode` only if they were
+created for this test.
 If the optional plugin step was used, remove only the two
 `digitaltwin-future-tasks.ts` and `digitaltwin-commander-continuation.ts`
 symlinks from the operator-owned plugin directory. Do not delete or modify an
