@@ -3,7 +3,7 @@
 set -eu
 
 readonly expected_revision="1f4d07a4a519185955ae8ab2ea3607805509e386"
-readonly patch_names="0001-commander-gui-extension.patch 0002-commander-panel-safety.patch 0003-commander-bridge-ipc-seam.patch 0004-commander-bridge-workspace.patch 0005-commander-panel-actions.patch 0006-commander-desktop-bootstrap-harness.patch 0007-commander-playwright-ui-fixture.patch 0008-commander-runtime-validation.patch 0009-commander-discoverable-entry.patch 0010-commander-global-titlebar.patch 0011-commander-global-command.patch 0012-commander-global-dialog.patch 0013-commander-dialog-command-void.patch 0014-commander-component-fixture-types.patch 0015-commander-isolated-sidecar-port.patch 0016-commander-global-overlay.patch 0017-commander-native-request-docks.patch 0018-commander-project-session-tools.patch 0019-commander-closed-overlay-status.patch"
+readonly patch_names="0001-commander-gui-extension.patch 0002-commander-panel-safety.patch 0003-commander-bridge-ipc-seam.patch 0004-commander-bridge-workspace.patch 0005-commander-panel-actions.patch 0006-commander-desktop-bootstrap-harness.patch 0007-commander-playwright-ui-fixture.patch 0008-commander-runtime-validation.patch 0009-commander-discoverable-entry.patch 0010-commander-global-titlebar.patch 0011-commander-global-command.patch 0012-commander-global-dialog.patch 0013-commander-dialog-command-void.patch 0014-commander-component-fixture-types.patch 0015-commander-isolated-sidecar-port.patch 0016-commander-global-overlay.patch 0017-commander-native-request-docks.patch 0018-commander-project-session-tools.patch 0019-commander-closed-overlay-status.patch 0020-commander-internal-navigation.patch"
 
 fail() {
   printf '%s\n' "prepare-opencode: $*" >&2
