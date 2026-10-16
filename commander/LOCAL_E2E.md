@@ -15,20 +15,41 @@ configuration unless the optional plugin steps are chosen explicitly.
 
 ## Prepare and launch
 
-```sh
-git clone --branch feature/commander-opencode-reset https://github.com/swiknaba/digitaltwin.git digitaltwin
-git clone --branch v2.0.27 https://github.com/anomalyco/opencode.git opencode
-cd opencode
-sh ../digitaltwin/commander/opencode-ui-patch/prepare-opencode.sh "$PWD"
-bun install --frozen-lockfile
+Run these commands from the root of this repository. They use your existing
+checkout and leave it unchanged. The patch applies only to a separate, fresh
+OpenCode checkout.
 
+### 1. Patch a fresh OpenCode checkout
+
+```sh
+DIGITALTWIN_ROOT="$PWD"
+git clone --branch v2.0.27 https://github.com/anomalyco/opencode.git ../opencode-commander
+cd ../opencode-commander
+sh "$DIGITALTWIN_ROOT/commander/opencode-ui-patch/prepare-opencode.sh" "$PWD"
+bun install --frozen-lockfile
+```
+
+`prepare-opencode.sh` refuses an OpenCode checkout that is dirty, is at another
+revision, or is already patched. To re-run it, delete `../opencode-commander`
+and start again.
+
+### 2. Configure the environment
+
+```sh
 mkdir -p /tmp/digitaltwin-commander-workspace
 cp commander.env.example /tmp/digitaltwin-commander.env
 ${EDITOR:-vi} /tmp/digitaltwin-commander.env
+```
+
+### 3. Launch
+
+Run this from `../opencode-commander`:
+
+```sh
 sh ./run-opencode-commander.sh /tmp/digitaltwin-commander.env bun run dev:desktop
 ```
 
-Set `DIGITALTWIN_COMMANDER_WORKSPACE` in `/tmp/digitaltwin-commander.env` to
+In the env file, set `DIGITALTWIN_COMMANDER_WORKSPACE` in `/tmp/digitaltwin-commander.env` to
 `/tmp/digitaltwin-commander-workspace` and set
 `DIGITALTWIN_COMMANDER_AGENT` to the identifier of an agent already declared in
 your normal OpenCode configuration. The wrapper validates only the absolute
@@ -65,9 +86,11 @@ This is an explicit operator-owned global plugin change. To enable the normal
 OpenCode continuation plugin, choose a dedicated plugin directory and install
 only symlinks there:
 
+Run this from the root of this repository:
+
 ```sh
 OPENCODE_GLOBAL_PLUGIN_DIR=/absolute/operator-owned/opencode/plugins \
-  sh ../digitaltwin/commander/opencode-gate-plugin/install-future-tasks-plugin.sh
+  sh commander/opencode-gate-plugin/install-future-tasks-plugin.sh
 ```
 
 Restart OpenCode, then ask the Commander session to start a native OpenCode
@@ -91,8 +114,9 @@ Use that same ID/version for update or cancellation.
 
 ## Cleanup
 
-Quit the development desktop app. Remove `/tmp/digitaltwin-commander.env` and
-`/tmp/digitaltwin-commander-workspace` only if they were created for this test.
+Quit the development desktop app. Remove `/tmp/digitaltwin-commander.env`,
+`/tmp/digitaltwin-commander-workspace`, and the sibling `opencode-commander`
+checkout only if they were created for this test.
 If the optional plugin step was used, remove only the two
 `digitaltwin-future-tasks.ts` and `digitaltwin-commander-continuation.ts`
 symlinks from the operator-owned plugin directory. Do not delete or modify an

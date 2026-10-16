@@ -301,3 +301,4 @@
 - Require each due future task to append a Commander check-in and await the user's reply before starting project work.
 - Require compact Commander-visible memory and skill learning notices; defer Obsidian and the learning-history visualizer.
 - Make the supported OpenCode global Commander-control proof the first implementation validation gate.
+- 2026-10-16: Rewrite the Commander local E2E guide to start from an existing checkout and patch a separate OpenCode clone.
