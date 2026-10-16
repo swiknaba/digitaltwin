@@ -63,6 +63,17 @@ and the existing host PostgreSQL on `127.0.0.1:5432`; it creates only the
 dedicated `digitaltwin_local` and `digitaltwin_local_test` databases when they
 do not exist.
 
+The local launcher also creates one ignored, stack-local OpenCode plugin entry
+under `local/opencode/.opencode/plugins/digitaltwin-commander-continuation/`. It is supplied as an
+explicit additive OpenCode config, so normal user-global OpenCode configuration
+remains available. It installs only `commander_continue_agent`; it does not read
+or configure the pending sidecar service-registration credential.
+
+The development launcher runs its own isolated sidecar on `127.0.0.1:3086`.
+That avoids adopting or replacing an installed OpenCode service on its default
+port; the app retains its own desktop session storage and still layers its
+plugin configuration over normal user-global OpenCode configuration.
+
 ## Test the Commander panel
 
 1. Confirm the compact, permanently green **commander** pill is visible in the

@@ -31,6 +31,7 @@ fi
 : "${PORT:?PORT is required}"
 : "${DIGITALTWIN_COMMANDER_WORKSPACE:?DIGITALTWIN_COMMANDER_WORKSPACE is required}"
 : "${DIGITALTWIN_COMMANDER_AGENT:?DIGITALTWIN_COMMANDER_AGENT is required}"
+: "${DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR:?DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR is required}"
 
 case "$DIGITALTWIN_PGPORT" in
   *[!0-9]*|'') printf '%s\n' "DIGITALTWIN_PGPORT must be numeric" >&2; exit 78 ;;
@@ -57,6 +58,10 @@ case "$DIGITALTWIN_COMMANDER_WORKSPACE" in
   /*) commander_workspace=$DIGITALTWIN_COMMANDER_WORKSPACE ;;
   *) commander_workspace="$repo_root/$DIGITALTWIN_COMMANDER_WORKSPACE" ;;
 esac
+case "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" in
+  /*) commander_continuation_plugin_dir=$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR ;;
+  *) commander_continuation_plugin_dir="$repo_root/$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" ;;
+esac
 
 mkdir -p "$heartbeat_dir" "$local_tmpdir" "$repo_root/local/runtime" "$repo_root/local/logs"
 export HEARTBEAT_DIR="$heartbeat_dir"
@@ -66,3 +71,4 @@ export DATABASE_URL="postgres://${DIGITALTWIN_PGUSER}@${DIGITALTWIN_PGHOST}:${DI
 export DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE="$future_task_secret_file"
 export FUTURE_TASK_CAPABILITY_SECRET_FILE="$future_task_secret_file"
 export DIGITALTWIN_COMMANDER_WORKSPACE="$commander_workspace"
+export DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR="$commander_continuation_plugin_dir"

@@ -27,6 +27,19 @@ if [ "$DIGITALTWIN_COMMANDER_WORKSPACE" = "$default_commander_workspace" ] && [ 
   fi
 fi
 
+commander_plugin_source="$repo_root/commander/opencode-gate-plugin/commander-continuation.ts"
+commander_plugin_entry="$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR/index.ts"
+test -f "$commander_plugin_source" || {
+  printf '%s\n' "Commander continuation source is missing: $commander_plugin_source" >&2
+  exit 78
+}
+mkdir -p "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR"
+if [ -e "$commander_plugin_entry" ] && [ ! -L "$commander_plugin_entry" ]; then
+  printf '%s\n' "Refusing to replace non-symlink Commander plugin entry: $commander_plugin_entry" >&2
+  exit 78
+fi
+ln -sfn "$commander_plugin_source" "$commander_plugin_entry"
+
 if [ ! -s "$FUTURE_TASK_CAPABILITY_SECRET_FILE" ]; then
   mkdir -p "$(dirname -- "$FUTURE_TASK_CAPABILITY_SECRET_FILE")"
   umask 077
