@@ -44,12 +44,12 @@ checkout; inspect it before deliberately replacing it.
 
 ## Configure and launch
 
-The first launch creates the ignored, non-secret `local/commander.env` and a
-workspace-scoped `commander` agent under
+The checked-in `.env.overmind` supplies the normal local Commander workspace
+and agent. The first launch creates its workspace-scoped `commander` agent under
 `local/commander-workspace/.opencode/agents/`. It uses your ordinary OpenCode
-model selection; it never writes provider credentials. To use a different
-workspace or agent, edit `local/commander.env` before launch. A custom agent
-remains operator-managed.
+model selection; it never writes provider credentials. An existing
+`local/commander.env` remains an optional, ignored override for a deliberately
+different workspace or agent.
 
 Start the full local stack from the DigitalTwin repository root:
 

@@ -4,5 +4,11 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$repo_root/scripts/local-env"
+
+test -d "$DIGITALTWIN_COMMANDER_WORKSPACE" || {
+  printf '%s\n' "Commander workspace does not exist: $DIGITALTWIN_COMMANDER_WORKSPACE" >&2
+  exit 78
+}
+
 cd "$repo_root/local/opencode"
-exec ./run-opencode-commander.sh "$repo_root/local/commander.env" bun run dev:desktop
+exec bun run dev:desktop

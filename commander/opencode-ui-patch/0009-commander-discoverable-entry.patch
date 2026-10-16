@@ -1,5 +1,5 @@
-diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
-index 4e74b2d..5e92de0 100644
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx  b/packages/gui-extensions/src/commander/renderer.tsx
+index 4e74b2d..a5cfd07 100644
 --- a/packages/gui-extensions/src/commander/renderer.tsx
 +++ b/packages/gui-extensions/src/commander/renderer.tsx
 @@ -1,6 +1,6 @@
@@ -7,17 +7,22 @@ index 4e74b2d..5e92de0 100644
 +import { lazy, onCleanup, Show, Suspense } from "solid-js"
  import { showToast } from "@opencode/ui/toast"
 -import { Command, onIdle, Panel, TitlebarItem, type PanelTab, type Setup } from "../sdk"
-+import { Command, onIdle, Panel, Slot, TitlebarItem, type PanelTab, type Setup } from "../sdk"
++import { Command, onIdle, Panel, Slot, type PanelTab, type Setup } from "../sdk"
  import type definition from "./index"
  
  const panelID = "main"
-@@ -39,6 +39,26 @@ const setup: Setup<typeof definition> = (ctx) => {
-     run: open,
-   })
+@@ -31,12 +31,24 @@ const setup: Setup<typeof definition> = (ctx) => {
  
-+  // The titlebar control intentionally stays compact. Put an explicit labelled
-+  // entry in every active project session so Commander is discoverable without
-+  // mistaking OpenCode's separate "Local" development badge for it.
+   onCleanup(onIdle(() => void CommanderPanel.preload()))
+ 
+-  ctx.add(TitlebarItem, {
+-    id: "open",
+-    label: ctx.t("title"),
+-    title: ctx.t("action.open"),
+-    icon: "cube",
+-    run: open,
++  // Keep one persistent, full-width entry in active project sessions. It is
++  // intentionally distinct from nearby update actions and never hover-expands.
 +  ctx.add(Slot, {
 +    at: "session.header",
 +    order: 30,
@@ -25,16 +30,15 @@ index 4e74b2d..5e92de0 100644
 +      <Show when={input.active}>
 +        <button
 +          type="button"
-+          class="rounded-md border border-v2-border-border-base bg-v2-background-bg-base px-2 py-1 text-12-medium text-v2-text-text-base transition-colors hover:bg-v2-background-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-v2-icon-icon-accent"
++          class="ml-3 inline-flex min-w-28 items-center justify-center gap-1.5 rounded-full border border-v2-green-800 bg-surface-success-strong px-3 py-1.5 text-12-medium text-text-on-brand-base shadow-sm transition-colors hover:bg-surface-success-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-v2-icon-icon-accent"
 +          data-testid="commander-open"
 +          onClick={open}
 +        >
-+          {ctx.t("title")}
++          <span aria-hidden="true" class="flex size-4 items-center justify-center rounded-full bg-v2-green-1200 text-[10px] font-bold leading-none text-white">C</span>
++          <span>{ctx.t("title")}</span>
 +        </button>
 +      </Show>
 +    ),
-+  })
-+
+   })
+ 
    ctx.add(
-     Command,
-     () => ({

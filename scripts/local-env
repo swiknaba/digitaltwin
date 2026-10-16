@@ -14,12 +14,23 @@ set -a
 . "$config"
 set +a
 
+# Older local installs may still carry non-secret Commander overrides here.
+# The checked-in defaults above are sufficient for the normal local stack.
+commander_override="$repo_root/local/commander.env"
+if [ -r "$commander_override" ]; then
+  set -a
+  . "$commander_override"
+  set +a
+fi
+
 : "${DIGITALTWIN_PGHOST:?DIGITALTWIN_PGHOST is required}"
 : "${DIGITALTWIN_PGPORT:?DIGITALTWIN_PGPORT is required}"
 : "${DIGITALTWIN_PGUSER:?DIGITALTWIN_PGUSER is required}"
 : "${DIGITALTWIN_LOCAL_DATABASE:?DIGITALTWIN_LOCAL_DATABASE is required}"
 : "${DIGITALTWIN_TEST_DATABASE:?DIGITALTWIN_TEST_DATABASE is required}"
 : "${PORT:?PORT is required}"
+: "${DIGITALTWIN_COMMANDER_WORKSPACE:?DIGITALTWIN_COMMANDER_WORKSPACE is required}"
+: "${DIGITALTWIN_COMMANDER_AGENT:?DIGITALTWIN_COMMANDER_AGENT is required}"
 
 case "$DIGITALTWIN_PGPORT" in
   *[!0-9]*|'') printf '%s\n' "DIGITALTWIN_PGPORT must be numeric" >&2; exit 78 ;;
@@ -42,6 +53,10 @@ case "${DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE:-}" in
   /*) future_task_secret_file=$DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE ;;
   *) future_task_secret_file="$repo_root/${DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE:-local/secrets/future-task-capability-secret}" ;;
 esac
+case "$DIGITALTWIN_COMMANDER_WORKSPACE" in
+  /*) commander_workspace=$DIGITALTWIN_COMMANDER_WORKSPACE ;;
+  *) commander_workspace="$repo_root/$DIGITALTWIN_COMMANDER_WORKSPACE" ;;
+esac
 
 mkdir -p "$heartbeat_dir" "$local_tmpdir" "$repo_root/local/runtime" "$repo_root/local/logs"
 export HEARTBEAT_DIR="$heartbeat_dir"
@@ -50,3 +65,4 @@ export TMPDIR="$local_tmpdir"
 export DATABASE_URL="postgres://${DIGITALTWIN_PGUSER}@${DIGITALTWIN_PGHOST}:${DIGITALTWIN_PGPORT}/${DIGITALTWIN_LOCAL_DATABASE}"
 export DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE="$future_task_secret_file"
 export FUTURE_TASK_CAPABILITY_SECRET_FILE="$future_task_secret_file"
+export DIGITALTWIN_COMMANDER_WORKSPACE="$commander_workspace"

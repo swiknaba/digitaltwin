@@ -58,8 +58,8 @@ sh scripts/local-overmind stop
 
 OpenCode is the single desktop process and starts its local sidecar itself; do
 not run a separate OpenCode server. The first start needs the prepared
-`local/opencode` checkout and `local/commander.env` described in
-[`commander/LOCAL_E2E.md`](commander/LOCAL_E2E.md). Provider credentials remain
+`local/opencode` checkout described in [`commander/LOCAL_E2E.md`](commander/LOCAL_E2E.md).
+Commander defaults are checked into `.env.overmind`; provider credentials remain
 in the user's existing OpenCode setup.
 
 ## Run the credential-free local core with Docker

@@ -5,27 +5,17 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$repo_root/scripts/local-env"
 
-commander_env="$repo_root/local/commander.env"
-commander_workspace="$repo_root/local/commander-workspace"
+default_commander_workspace="$repo_root/local/commander-workspace"
 
-if [ ! -e "$commander_env" ]; then
-  mkdir -p "$commander_workspace"
-  printf '%s\n' \
-    "DIGITALTWIN_COMMANDER_WORKSPACE=$commander_workspace" \
-    "DIGITALTWIN_COMMANDER_AGENT=commander" > "$commander_env"
+if [ "$DIGITALTWIN_COMMANDER_WORKSPACE" = "$default_commander_workspace" ]; then
+  mkdir -p "$DIGITALTWIN_COMMANDER_WORKSPACE"
+elif [ ! -d "$DIGITALTWIN_COMMANDER_WORKSPACE" ]; then
+  printf '%s\n' "Commander workspace does not exist: $DIGITALTWIN_COMMANDER_WORKSPACE" >&2
+  exit 78
 fi
 
-test -r "$commander_env" || {
-  printf '%s\n' "Commander operator environment is not readable: $commander_env" >&2
-  exit 78
-}
-
-set -a
-. "$commander_env"
-set +a
-
-if [ "${DIGITALTWIN_COMMANDER_WORKSPACE:-}" = "$commander_workspace" ] && [ "${DIGITALTWIN_COMMANDER_AGENT:-}" = "commander" ]; then
-  commander_agent_dir="$commander_workspace/.opencode/agents"
+if [ "$DIGITALTWIN_COMMANDER_WORKSPACE" = "$default_commander_workspace" ] && [ "$DIGITALTWIN_COMMANDER_AGENT" = "commander" ]; then
+  commander_agent_dir="$DIGITALTWIN_COMMANDER_WORKSPACE/.opencode/agents"
   commander_agent="$commander_agent_dir/commander.md"
   mkdir -p "$commander_agent_dir"
   if [ ! -e "$commander_agent" ]; then
