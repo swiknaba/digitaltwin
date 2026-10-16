@@ -8,10 +8,20 @@ config=$1
 shift
 
 test -r "$config" || { printf '%s\n' "Commander operator environment is not readable: $config" >&2; exit 66; }
+config_dir=$(CDPATH= cd -- "$(dirname -- "$config")" && pwd)
 
 set -a
 . "$config"
 set +a
+
+local_tmpdir=${DIGITALTWIN_LOCAL_TMPDIR:-"$config_dir/tmp"}
+case "$local_tmpdir" in
+  /*) ;;
+  *) printf '%s\n' "DIGITALTWIN_LOCAL_TMPDIR must be an absolute path" >&2; exit 78 ;;
+esac
+mkdir -p "$local_tmpdir"
+export TMPDIR="$local_tmpdir"
+export DIGITALTWIN_LOCAL_TMPDIR="$local_tmpdir"
 
 case ${DIGITALTWIN_COMMANDER_WORKSPACE:-} in
   /*) ;;

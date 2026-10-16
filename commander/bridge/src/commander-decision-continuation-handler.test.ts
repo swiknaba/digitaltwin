@@ -1,8 +1,7 @@
 import assert from "node:assert/strict"
 import { once } from "node:events"
 import { createServer } from "node:http"
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import test from "node:test"
 import { CommanderDecisionContinuationHandler } from "./commander-decision-continuation-handler.ts"
@@ -28,7 +27,9 @@ test("continues an agent session through persisted recorded provenance after res
   const address = server.address()
   assert.notEqual(typeof address, "string")
   const origin = `http://127.0.0.1:${address.port}`
-  const directory = await mkdtemp(join(tmpdir(), "commander-decision-"))
+  const temporaryRoot = process.env.DIGITALTWIN_LOCAL_TMPDIR ?? join(process.cwd(), "local", "tmp")
+  await mkdir(temporaryRoot, { recursive: true })
+  const directory = await mkdtemp(join(temporaryRoot, "commander-decision-"))
   const store = new FileCommanderAgentDecisionStore({ directory })
   const first = handler(store, origin)
   assert.equal(await first.recordAgentSession({

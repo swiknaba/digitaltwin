@@ -10,9 +10,11 @@ import tempfile
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
+LOCAL_TMP = ROOT / "local" / "tmp"
 COMPOSE = ["docker", "compose", "--env-file", str(ROOT / ".env.example")]
 ENV = {key: value for key, value in os.environ.items()
        if not key.startswith("COMPOSE_") and key not in {"POSTGRES_PASSWORD", "KIREI_DB_PASSWORD", "BACKEND_PORT"}}
+ENV["TMPDIR"] = str(LOCAL_TMP)
 
 
 def run(args, timeout=120, check=True):
@@ -29,7 +31,7 @@ def config():
 
 def dependencies():
     project = "digitaltwin-check-" + uuid.uuid4().hex[:12]
-    with tempfile.TemporaryDirectory(prefix="digitaltwin-check-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="digitaltwin-check-", dir=LOCAL_TMP) as temporary:
         override = Path(temporary) / "compose.check.yml"
         override.write_text("services:\n  postgres:\n    ports: !override\n      - '127.0.0.1::5432'\n")
         args = COMPOSE + ["-p", project, "-f", str(ROOT / "compose.yml"), "-f", str(override)]
@@ -60,6 +62,7 @@ No Mattermost, chat listener, push, or mobile application path remains in the de
 
 
 def main():
+    LOCAL_TMP.mkdir(parents=True, exist_ok=True)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=["config", "dependencies", "operator"])
     options = parser.parse_args()

@@ -11,7 +11,8 @@ configuration unless the optional plugin steps are chosen explicitly.
   `commander` agent. Do not copy a provider key into this repository, the
   Commander env file, or a shell history.
 - A local, absolute workspace that is distinct from the project opened in the
-  desktop UI. It can be empty.
+  desktop UI. It can be empty; this guide creates it at
+  `local/commander-workspace` but it must not be opened as the focused project.
 
 ## Prepare and launch
 
@@ -23,6 +24,9 @@ fresh OpenCode checkout in the ignored `local/opencode` directory.
 
 ```sh
 DIGITALTWIN_ROOT="$PWD"
+mkdir -p "$DIGITALTWIN_ROOT/local/tmp"
+export TMPDIR="$DIGITALTWIN_ROOT/local/tmp"
+export DIGITALTWIN_LOCAL_TMPDIR="$TMPDIR"
 git clone --branch v2.0.27 https://github.com/anomalyco/opencode.git local/opencode
 sh "$DIGITALTWIN_ROOT/commander/opencode-ui-patch/prepare-opencode.sh"
 cd local/opencode
@@ -36,9 +40,9 @@ revision, or is already patched. To re-run it, remove only the
 ### 2. Configure the environment
 
 ```sh
-mkdir -p /tmp/digitaltwin-commander-workspace
-cp commander.env.example /tmp/digitaltwin-commander.env
-${EDITOR:-vi} /tmp/digitaltwin-commander.env
+mkdir -p "$DIGITALTWIN_ROOT/local/commander-workspace" "$DIGITALTWIN_ROOT/local/tmp"
+cp commander.env.example "$DIGITALTWIN_ROOT/local/commander.env"
+${EDITOR:-vi} "$DIGITALTWIN_ROOT/local/commander.env"
 ```
 
 ### 3. Launch
@@ -46,11 +50,12 @@ ${EDITOR:-vi} /tmp/digitaltwin-commander.env
 Run this from `local/opencode`:
 
 ```sh
-sh ./run-opencode-commander.sh /tmp/digitaltwin-commander.env bun run dev:desktop
+export DIGITALTWIN_LOCAL_TMPDIR="$DIGITALTWIN_ROOT/local/tmp"
+sh ./run-opencode-commander.sh "$DIGITALTWIN_ROOT/local/commander.env" bun run dev:desktop
 ```
 
-In the env file, set `DIGITALTWIN_COMMANDER_WORKSPACE` in `/tmp/digitaltwin-commander.env` to
-`/tmp/digitaltwin-commander-workspace` and set
+In the env file, set `DIGITALTWIN_COMMANDER_WORKSPACE` in
+`local/commander.env` to `$DIGITALTWIN_ROOT/local/commander-workspace` and set
 `DIGITALTWIN_COMMANDER_AGENT` to the identifier of an agent already declared in
 your normal OpenCode configuration. The wrapper validates only the absolute
 workspace and non-empty agent name. At reservation time the Commander main
@@ -114,8 +119,8 @@ Use that same ID/version for update or cancellation.
 
 ## Cleanup
 
-Quit the development desktop app. Remove `/tmp/digitaltwin-commander.env`,
-`/tmp/digitaltwin-commander-workspace`, and `local/opencode` only if they were
+Quit the development desktop app. Remove `local/commander.env`,
+`local/commander-workspace`, `local/tmp`, and `local/opencode` only if they were
 created for this test.
 If the optional plugin step was used, remove only the two
 `digitaltwin-future-tasks.ts` and `digitaltwin-commander-continuation.ts`
