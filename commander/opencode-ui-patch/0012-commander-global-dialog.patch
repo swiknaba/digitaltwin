@@ -1,0 +1,108 @@
+--- a/packages/app/src/runtime/extension/titlebar-items.tsx
++++ b/packages/app/src/runtime/extension/titlebar-items.tsx
+@@ -42,8 +42,8 @@
+       class="shrink-0 text-[11px] leading-4 text-v2-text-text-accent [font-weight:530] opacity-0 motion-safe:transition-all duration-150 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0 motion-reduce:translate-x-0"
+       classList={{
+         "text-text-on-brand-base opacity-100 motion-safe:transition-none": expanded(),
+-        "ms-px me-4 -translate-x-2 rtl:translate-x-2": props.vertical,
+-        "ms-2 me-px translate-x-2 rtl:-translate-x-2": !props.vertical,
++        "ms-px me-4 -translate-x-2 rtl:translate-x-2": props.vertical && !expanded(),
++        "ms-2 me-px translate-x-2 rtl:-translate-x-2": !props.vertical && !expanded(),
+         "translate-x-0": expanded(),
+       }}
+     >
+@@ -58,17 +58,19 @@
+       classList={{
+         "h-7 w-7 self-start hover:w-[84px] focus-within:w-[84px]": props.vertical && !expanded(),
+         "me-3 h-5 w-5 hover:w-[68px] focus-within:w-[68px]": !props.vertical && !expanded(),
+-        "mb-2 h-7 w-full self-start": props.vertical && expanded(),
+-        "me-6 h-7 w-[124px]": !props.vertical && expanded(),
++        "mb-2 h-7 self-start": props.vertical && expanded(),
++        "me-6 h-7": !props.vertical && expanded(),
+       }}
+     >
+       <button
+         type="button"
+-        class="absolute top-0 z-10 flex h-full w-full items-center overflow-hidden rounded-full bg-v2-icon-icon-accent/20 text-v2-icon-icon-accent transition-[background-color] duration-150 ease-out group-hover:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] group-focus-within:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] focus-visible:outline-none disabled:opacity-60 motion-reduce:transition-none [app-region:no-drag]"
++        class="z-10 flex h-full items-center overflow-hidden rounded-full bg-v2-icon-icon-accent/20 text-v2-icon-icon-accent transition-[background-color] duration-150 ease-out group-hover:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] group-focus-within:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] focus-visible:outline-none disabled:opacity-60 motion-reduce:transition-none [app-region:no-drag]"
+         classList={{
++          "absolute top-0 w-full": !expanded(),
++          "static w-auto px-3": expanded(),
+           "start-0 justify-start": props.vertical,
+           "end-0 justify-end": !props.vertical,
+-          "bg-surface-success-strong text-text-on-brand-base hover:bg-surface-success-base group-hover:bg-surface-success-base group-focus-within:bg-surface-success-base": success(),
++          "!bg-surface-success-strong text-text-on-brand-base hover:!bg-surface-success-base group-hover:!bg-surface-success-base group-focus-within:!bg-surface-success-base": success(),
+         }}
+         onClick={() => props.item.run?.()}
+         disabled={!!props.item.busy}
+--- a/packages/gui-extensions/src/commander/panel.tsx
++++ b/packages/gui-extensions/src/commander/panel.tsx
+@@ -51,9 +51,8 @@
+ 
+   const reserve = async () => {
+     const live = bridge()
+-    const anchor = extension.sessions.current()
+ 
+-    if (live.status !== "active" || !anchor || conversation()) return
++    if (live.status !== "active" || conversation()) return
+     setError(undefined)
+     await live.value.reserve({
+       serverID: "sidecar",
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -1,6 +1,7 @@
+ import { lazy, onCleanup, Suspense } from "solid-js"
+ import { showToast } from "@opencode/ui/toast"
+ import { Command, onIdle, Panel, TitlebarItem, type PanelTab, type Setup } from "../sdk"
++import CommanderDialog from "./dialog"
+ import type definition from "./index"
+ 
+ const panelID = "main"
+@@ -28,17 +29,17 @@
+ 
+     ctx.layout.open(panelKey, session, { tab: "select" })
+   }
++  const openGlobal = () => ctx.dialogs.open(() => <CommanderDialog />)
+ 
+   onCleanup(onIdle(() => void CommanderPanel.preload()))
+ 
+   ctx.add(TitlebarItem, {
+     id: "open",
+-    label: ctx.t("title"),
++    label: "commander",
+     title: ctx.t("action.open"),
+     expanded: true,
+     tone: "success",
+-    mark: "C",
+-    run: open,
++    run: openGlobal,
+   })
+
+   ctx.add(
+@@ -55,7 +55,7 @@
+         return ctx.t("command.category.view")
+       },
+       enabled: true,
+-      run: open,
++      run: openGlobal,
+     }),
+   )
+ 
+--- /dev/null
++++ b/packages/gui-extensions/src/commander/dialog.tsx
+@@ -0,0 +1,15 @@
++import { Dialog, DialogBody } from "@opencode/ui/dialog"
++import CommanderPanel from "./panel"
++
++export default function CommanderDialog() {
++  return (
++    <Dialog
++      class="flex h-[min(720px,calc(100vh-64px))] w-[min(860px,calc(100vw-32px))] flex-col overflow-hidden"
++      containerClass="max-w-none"
++    >
++      <DialogBody class="min-h-0 flex-1 p-0">
++        <CommanderPanel />
++      </DialogBody>
++    </Dialog>
++  )
++}

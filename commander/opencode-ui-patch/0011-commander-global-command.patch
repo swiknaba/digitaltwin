@@ -1,0 +1,11 @@
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -54,7 +54,7 @@
+       get group() {
+         return ctx.t("command.category.view")
+       },
+-      enabled: !!ctx.sessions.current(),
++      enabled: true,
+       run: open,
+     }),
+   )

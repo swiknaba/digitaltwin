@@ -1,8 +1,9 @@
 # Commander OpenCode patch
 
 This maintained patch targets OpenCode v2.0.27 at
-`1f4d07a4a519185955ae8ab2ea3607805509e386`. It adds a small persistent Commander panel
-and the reviewed `@digitaltwin/commander-bridge` workspace package.
+`1f4d07a4a519185955ae8ab2ea3607805509e386`. It adds a persistent global
+Commander dialog and the reviewed `@digitaltwin/commander-bridge` workspace
+package.
 
 Normal desktop startup needs no harness flag. The extension stores one Commander
 OpenCode session identity in desktop extension storage. It creates, loads,
@@ -39,7 +40,7 @@ sh commander/opencode-ui-patch/prepare-opencode.sh
 The default target is `local/opencode`; pass an absolute checkout path only when
 an operator deliberately needs a different location. The script verifies the pinned revision and an allowlist SHA-256 manifest before
 copying the bridge sources, then applies all patches. The reviewed patch
-sequence is currently nine patches.
+sequence is currently thirteen patches.
 It copies no configuration, credentials, persistent store, or operator state.
 
 For a local desktop walkthrough—including optional native-agent continuation and

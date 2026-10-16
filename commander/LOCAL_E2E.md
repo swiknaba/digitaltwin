@@ -65,10 +65,12 @@ do not exist.
 
 ## Test the Commander panel
 
-1. Open an ordinary project session in OpenCode.
-2. Select the clearly labelled **Commander** button in the active session header.
-   It should reserve one neutral session
-   in `local/commander-workspace`, not the focused project.
+1. Confirm the compact, permanently green **commander** pill is visible in the
+   global title bar, including on Home with no project session open.
+2. Select the global **commander** pill from Home, an empty draft, and an
+   ordinary project. It opens the same independent Commander dialog without
+   changing the selected project or requiring a project session. It reserves one
+   neutral session in `local/commander-workspace`, not the focused project.
 3. Send a prompt and confirm streamed content appears. **Stop** must interrupt
    that same session.
 4. Switch projects, close and reopen Commander, then relaunch through the same
