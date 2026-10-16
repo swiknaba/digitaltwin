@@ -106,8 +106,9 @@ export default Plugin.define({
             if (!decision || decision.parent !== tool.sessionID || decision.project !== project.id) return { content: "Commander project session reference could not be recovered." }
             const message = projectMessageIDFor(project.id, input.request_id)
             const metadata = { fromCommander: true as const, commanderProjectID: project.id, commanderRequestID: input.request_id }
-            const admitted = await context.session.prompt({ sessionID: decision.child, id: message, text: input.text, metadata, resume: true })
-            if (!admission(admitted, decision.child, message, input.text, metadata)) return { content: "Commander project session admission conflicts with the existing message." }
+            const text = commanderAgentText(input.text)
+            const admitted = await context.session.prompt({ sessionID: decision.child, id: message, text, metadata, resume: true })
+            if (!admission(admitted, decision.child, message, text, metadata)) return { content: "Commander project session admission conflicts with the existing message." }
             return projectSessionResult(project.id, decision.child, input.request_id, previous.decisionID)
           }
 
@@ -120,8 +121,9 @@ export default Plugin.define({
 
           const message = projectMessageIDFor(project.id, input.request_id)
           const metadata = { fromCommander: true as const, commanderProjectID: project.id, commanderRequestID: input.request_id }
-          const admitted = await context.session.prompt({ sessionID: session.id, id: message, text: input.text, metadata, resume: true })
-          if (!admission(admitted, session.id, message, input.text, metadata)) return { content: "Commander project session admission conflicts with the existing message." }
+          const text = commanderAgentText(input.text)
+          const admitted = await context.session.prompt({ sessionID: session.id, id: message, text, metadata, resume: true })
+          if (!admission(admitted, session.id, message, text, metadata)) return { content: "Commander project session admission conflicts with the existing message." }
           return projectSessionResult(project.id, session.id, input.request_id, decisionID)
         })
       },
@@ -143,11 +145,34 @@ export default Plugin.define({
           if (old && old !== digest) return { content: "Commander follow-up conflicts with its original body." }
           const message = "msg_commander_" + hash([decision.project, decision.child, input.request_id].join("\n"))
           const metadata = { fromCommander: true as const, commanderRequestDigest: digest }
-          const admitted = await context.session.prompt({ sessionID: decision.child, id: message, text: input.text, metadata, resume: true })
-          if (!admission(admitted, decision.child, message, input.text, metadata)) return { content: "Commander follow-up admission conflicts with the existing message." }
+          const text = commanderAgentText(input.text)
+          const admitted = await context.session.prompt({ sessionID: decision.child, id: message, text, metadata, resume: true })
+          if (!admission(admitted, decision.child, message, text, metadata)) return { content: "Commander follow-up admission conflicts with the existing message." }
           if (!old) await context.storage.set(key, { ...decision, requests: { ...decision.requests, [input.request_id]: digest } })
           return { content: `Continued Commander decision ${input.decision_id}.` }
         })
+      },
+    }))
+
+    await context.tool.transform((editor) => editor.add({
+      name: "commander_read_agent",
+      description: "Read the current session and latest result for an exact Commander follow-up reference.",
+      input: Schema.Struct({ decision_id: Schema.String }),
+      options: { codemode: false },
+      async execute(input, tool) {
+        if (!decisionID(input.decision_id)) return { content: "Invalid Commander follow-up reference." }
+        const decision = await recover(input.decision_id, tool.sessionID)
+        if (!decision) return { content: "Commander decision was not found." }
+        if (decision.parent !== tool.sessionID) return { content: "Commander follow-up is not authorized for this session." }
+        try {
+          const [session, messages] = await Promise.all([
+            context.session.get({ sessionID: decision.child }),
+            context.session.context({ sessionID: decision.child }),
+          ])
+          return { content: JSON.stringify({ session_id: session.id, project_id: session.projectID, latest_result: latestAssistant(messages) }) }
+        } catch {
+          return { content: "Commander target session is unavailable." }
+        }
       },
     }))
   },
@@ -220,6 +245,15 @@ function projectSessionDecisionIDFor(parent: string, message: string, call: stri
 
 function projectSessionResult(project: string, session: string, request: string, decision: string) {
   return { content: JSON.stringify({ project_id: project, session_id: session, message_id: projectMessageIDFor(project, request), request_id: request, decision_id: decision }) }
+}
+
+function commanderAgentText(text: string): string {
+  return `Commander-directed work:\n\n${text}`
+}
+
+function latestAssistant(messages: unknown): unknown {
+  if (!Array.isArray(messages)) return undefined
+  return messages.findLast((message) => object(message) && message.type === "assistant")
 }
 
 function decodeProjectRequest(value: unknown): ProjectRequest | undefined {

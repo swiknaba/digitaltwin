@@ -57,15 +57,23 @@ export default Plugin.define({
       name: "future_tasks",
       description: "Create, list, read, update, or cancel a one-time Commander check-in.",
       input: Schema.Struct({
-        operation: Schema.Literal("create", "list", "read", "update", "cancel"),
+        operation: Schema.Literal("create", "list", "read", "update", "cancel", "disposition", "resolve_uncertain"),
         idempotency_key: Schema.optional(Schema.String), id: Schema.optional(Schema.String), expected_version: Schema.optional(Schema.Number),
         text: Schema.optional(Schema.String), due_at: Schema.optional(Schema.String), timezone: Schema.optional(Schema.String), local_time: Schema.optional(Schema.String),
         references: Schema.optional(Schema.Array(Schema.String)), cursor: Schema.optional(Schema.String), limit: Schema.optional(Schema.Number),
+        disposition_key: Schema.optional(Schema.String), resolution_key: Schema.optional(Schema.String), outcome: Schema.optional(Schema.String), reason: Schema.optional(Schema.String),
       }),
       options: { codemode: false },
       async execute(input, tool) {
-        const target = input.operation === "create" || input.operation === "list" ? settings.endpoint : `${settings.endpoint}/${encodeURIComponent(input.id ?? "")}`
-        const method = input.operation === "create" ? "POST" : input.operation === "list" || input.operation === "read" ? "GET" : input.operation === "cancel" ? "DELETE" : "PATCH"
+        const task = `${settings.endpoint}/${encodeURIComponent(input.id ?? "")}`
+        const target = input.operation === "create" || input.operation === "list"
+          ? settings.endpoint
+          : input.operation === "disposition"
+            ? `${task}/dispositions`
+            : input.operation === "resolve_uncertain"
+              ? `${task}/resolution`
+              : task
+        const method = input.operation === "create" || input.operation === "disposition" || input.operation === "resolve_uncertain" ? "POST" : input.operation === "list" || input.operation === "read" ? "GET" : input.operation === "cancel" ? "DELETE" : "PATCH"
         const query = new URLSearchParams()
         if (input.operation === "list" && input.cursor) query.set("cursor", input.cursor)
         if (input.operation === "list" && input.limit !== undefined) query.set("limit", String(input.limit))

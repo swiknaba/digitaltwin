@@ -65,13 +65,13 @@ test("creates a project session with a durable exact-session follow-up reference
   assert.match(result.message_id, /^msg_commander_project_[a-f0-9]{64}$/)
   assert.match(result.decision_id, /^project-session-[a-f0-9]{64}$/)
   assert.deepEqual(f.prompts.at(-1), {
-    sessionID: "ses_digitaltwin", id: result.message_id, text: "ping", resume: true,
+    sessionID: "ses_digitaltwin", id: result.message_id, text: "Commander-directed work:\n\nping", resume: true,
     metadata: { fromCommander: true, commanderProjectID: "project-1", commanderRequestID: "ping-1" },
   })
   const followUp = f.tools.get("commander_continue_agent")
   assert.equal((await followUp.execute({ decision_id: result.decision_id, request_id: "follow-up-1", text: "Continue." }, { sessionID: "ses_commander" })).content, `Continued Commander decision ${result.decision_id}.`)
   assert.deepEqual(f.prompts.at(-1), {
-    sessionID: "ses_digitaltwin", id: f.prompts.at(-1).id, text: "Continue.", resume: true,
+    sessionID: "ses_digitaltwin", id: f.prompts.at(-1).id, text: "Commander-directed work:\n\nContinue.", resume: true,
     metadata: { fromCommander: true, commanderRequestDigest: "f3daf2941865055833e9db4c9bab5d1280281952bb1699514a28ee4c67256573" },
   })
   assert.equal((await followUp.execute({ decision_id: result.decision_id, request_id: "follow-up-2", text: "Wrong parent." }, { sessionID: "ses_other" })).content, "Commander follow-up is not authorized for this session.")
@@ -81,6 +81,12 @@ test("creates a project session with a durable exact-session follow-up reference
   const restartedFollowUp = restarted.tools.get("commander_continue_agent")
   assert.equal((await restartedFollowUp.execute({ decision_id: result.decision_id, request_id: "follow-up-after-restart", text: "Recovered." }, { sessionID: "ses_commander" })).content, `Continued Commander decision ${result.decision_id}.`)
   assert.equal(restarted.prompts.at(-1).sessionID, "ses_digitaltwin")
+  f.native.push({ type: "assistant", text: "Completed the requested work." })
+  const read = f.tools.get("commander_read_agent")
+  assert.deepEqual(JSON.parse((await read.execute({ decision_id: result.decision_id }, { sessionID: "ses_commander" })).content), {
+    session_id: "ses_digitaltwin", project_id: "project-1", latest_result: { type: "assistant", text: "Completed the requested work." },
+  })
+  assert.equal((await read.execute({ decision_id: result.decision_id }, { sessionID: "ses_other" })).content, "Commander follow-up is not authorized for this session.")
 })
 
 test("reuses a direct project-session reference across a repeated create request", async () => {
