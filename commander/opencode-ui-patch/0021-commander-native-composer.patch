@@ -1,6 +1,6 @@
 --- a/packages/app/src/runtime/commander-overlay.tsx
 +++ b/packages/app/src/runtime/commander-overlay.tsx
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,157 @@
 +import { DataProvider } from "@opencode/session-ui/context"
 +import { SessionTimeline } from "@opencode/session-ui/timeline"
 +import { Button } from "@opencode/ui/button"
@@ -78,11 +78,9 @@
 +    recent: () => models.recent.list().map(models.find).filter((item): item is NonNullable<typeof item> => !!item),
 +    list: () => models.list().filter((item) => models.visible({ providerID: item.provider.id, modelID: item.id })),
 +    cycle: () => undefined,
-+    set: (key: ModelKey | undefined, options?: { recent?: boolean }) => {
++    set: (key: ModelKey | undefined, _options?: { recent?: boolean }) => {
 +      if (!key || !models.find(key)) return
 +      prompt.model.set({ ...key })
-+      models.setVisibility(key, true)
-+      if (options?.recent) models.recent.push(key)
 +      window.dispatchEvent(new CustomEvent("opencode-commander-model-select", { detail: key }))
 +    },
 +    visible: models.visible,
