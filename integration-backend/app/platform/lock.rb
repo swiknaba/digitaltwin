@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 module Platform
-  # Session-level PostgreSQL advisory lock keyed by `hashtextextended(key, 0)`.
+  # PostgreSQL advisory lock keyed by `hashtextextended(key, 0)`.
   # Kirei has no advisory-lock API, so this uses the raw connection. The
   # connection stays checked out for the block, and the lock is released in
   # `ensure`.
@@ -18,7 +18,7 @@ module Platform
       db = Kirei::App.raw_db_connection
       db.synchronize do
         lock_key = Sequel.function(:hashtextextended, key, 0)
-        raise Busy, "Workflow busy" unless db.get(Sequel.function(:pg_try_advisory_lock, lock_key))
+        raise Busy, "Resource busy" unless db.get(Sequel.function(:pg_try_advisory_lock, lock_key))
 
         begin
           yield

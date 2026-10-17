@@ -1,0 +1,64 @@
+#!/usr/bin/env ruby
+# typed: strict
+# frozen_string_literal: true
+
+# Native stdio MCP host for the bounded FutureTasks capability. The caller supplies
+# one short-lived capability per tool call; this process never accepts an actor.
+require "json"
+require_relative "../app"
+
+tool = Services::Composition.instance.mcp_future_tasks
+schema = {
+  "type" => "object",
+  "properties" => {
+    "operation" => { "type" => "string", "enum" => %w[create list read update cancel] },
+    "capability" => { "type" => "string" },
+    "idempotency_key" => { "type" => "string" }, "id" => { "type" => "string" }, "expected_version" => { "type" => "integer" },
+    "text" => { "type" => "string" }, "due_at" => { "type" => "string", "format" => "date-time" },
+    "timezone" => { "type" => "string" }, "local_time" => { "type" => "string" }, "references" => { "type" => "array", "items" => { "type" => "string" } },
+    "cursor" => { "type" => "string" }, "limit" => { "type" => "integer" }
+  },
+  "required" => %w[operation capability], "additionalProperties" => false
+}.freeze
+
+STDIN.each_line do |line|
+  request = JSON.parse(line)
+  id = request["id"]
+  result = case request["method"]
+           when "initialize"
+             { "protocolVersion" => "2025-03-26", "capabilities" => { "tools" => {} }, "serverInfo" => { "name" => "digitaltwin-future-tasks", "version" => "1" } }
+           when "tools/list"
+             { "tools" => [{ "name" => "future_tasks", "description" => "Create, list, read, update, or cancel a one-time Commander check-in.", "inputSchema" => schema }] }
+           when "tools/call"
+             arguments = request.fetch("params").fetch("arguments")
+             raise ArgumentError, "Unknown FutureTasks tool" unless request.fetch("params").fetch("name") == "future_tasks"
+
+             capability = String(arguments.fetch("capability"))
+             value = case arguments.fetch("operation")
+                     when "create"
+                       tool.create(
+                         capability:, idempotency_key: String(arguments.fetch("idempotency_key")), text: String(arguments.fetch("text")), due_at: Time.iso8601(String(arguments.fetch("due_at"))),
+                         timezone: String(arguments.fetch("timezone")), local_time: String(arguments.fetch("local_time")), references: Array(arguments.fetch("references", [])).map { |reference| String(reference) }
+                       )
+                     when "list"
+                       tool.list(capability:, cursor: arguments["cursor"], limit: Integer(arguments.fetch("limit", 50)))
+                     when "read"
+                       tool.find(capability:, id: String(arguments.fetch("id")))
+                     when "update"
+                       tool.update(
+                         capability:, id: String(arguments.fetch("id")), expected_version: Integer(arguments.fetch("expected_version")), text: arguments["text"],
+                         due_at: arguments["due_at"] && Time.iso8601(String(arguments.fetch("due_at"))), timezone: arguments["timezone"], local_time: arguments["local_time"]
+                       )
+                     when "cancel"
+                       tool.cancel(capability:, id: String(arguments.fetch("id")), expected_version: Integer(arguments.fetch("expected_version")))
+                     else
+                       raise ArgumentError, "Unknown FutureTasks operation"
+                     end
+             { "content" => [{ "type" => "text", "text" => JSON.generate(value&.serialize) }] }
+           else
+             raise ArgumentError, "Unknown MCP method"
+           end
+  puts JSON.generate({ "jsonrpc" => "2.0", "id" => id, "result" => result })
+rescue KeyError, ArgumentError, JSON::ParserError => error
+  puts JSON.generate({ "jsonrpc" => "2.0", "id" => id, "error" => { "code" => -32602, "message" => error.message } })
+end

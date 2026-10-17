@@ -1,0 +1,214 @@
+diff --git a/packages/app/src/home/projects/region.tsx b/packages/app/src/home/projects/region.tsx
+index 367557f64a..1544fe236b 100644
+--- a/packages/app/src/home/projects/region.tsx
++++ b/packages/app/src/home/projects/region.tsx
+@@ -1,23 +1,31 @@
+ import type { HomeProjectsController } from "./controller"
+ import { HomeProjectsView } from "./view"
+ import type { HomeScrollController } from "../scroll"
++import { isCommanderInternalDirectory } from "@/runtime/commander-internal"
+ 
+ export function HomeProjects(props: {
+   projects: HomeProjectsController
+   scroll: HomeScrollController
+   dropdown?: boolean
+ }) {
++  const visible = () =>
++    props.projects.project.list().filter((project) => !isCommanderInternalDirectory(project.worktree))
++
+   return (
+     <HomeProjectsView
+       dropdown={props.dropdown}
+       language={props.projects.copy.language}
+       servers={props.projects.server.list()}
+-      projects={props.projects.project.list()}
+-      recentlyClosed={props.projects.project.recentlyClosed()}
++      projects={visible()}
++      recentlyClosed={props.projects.project
++        .recentlyClosed()
++        .filter((project) => !isCommanderInternalDirectory(project.worktree))}
+       selection={props.projects.selection.value()}
+       homedir={props.projects.project.homedir()}
+       serverHealth={props.projects.server.health}
+-      projectsForServer={props.projects.server.projects}
++      projectsForServer={(server) =>
++        props.projects.server.projects(server).filter((project) => !isCommanderInternalDirectory(project.worktree))
++      }
+       collapsed={props.projects.server.collapsed}
+       canRevealProject={props.projects.project.canReveal}
+       unseenCount={props.projects.project.unseenCount}
+diff --git a/packages/app/src/home/sessions/region.tsx b/packages/app/src/home/sessions/region.tsx
+index 979fb7fdf9..1e9747d651 100644
+--- a/packages/app/src/home/sessions/region.tsx
++++ b/packages/app/src/home/sessions/region.tsx
+@@ -3,6 +3,7 @@ import type { HomeSessionSearchController } from "./search"
+ import type { HomeSessionsController } from "./controller"
+ import { HomeSessionsView } from "./view"
+ import { Show } from "solid-js"
++import { isCommanderInternalSession } from "@/runtime/commander-internal"
+ 
+ export function HomeSessions(props: {
+   sessions: HomeSessionsController
+@@ -14,7 +15,13 @@ export function HomeSessions(props: {
+       {(server) => (
+         <HomeSessionsView
+           language={props.sessions.copy.language}
+-          groups={props.sessions.data.groups()}
++          groups={props.sessions.data
++            .groups()
++            .map((group) => ({
++              ...group,
++              sessions: group.sessions.filter((record) => !isCommanderInternalSession(record.session.id)),
++            }))
++            .filter((group) => group.sessions.length > 0)}
+           loading={props.sessions.data.loading()}
+           desktop={props.sessions.platform.desktop}
+           location={props.sessions.location.value}
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+index 2c071f09c4..dffdd44f81 100644
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -40,6 +40,18 @@ const setup: Setup<typeof definition> = (ctx) => {
+     const message = latestAssistant()
+     if (dialogOpen() && message) setLastRead(message.id)
+   })
++
++  createEffect(() => {
++    const current = conversation()
++    if (!current || typeof window === "undefined") return
++    const detail = { directory: current.directory, sessionID: current.sessionID }
++    Reflect.set(window, "__opencodeCommanderInternal", detail)
++    window.dispatchEvent(
++      new CustomEvent("opencode-commander-internal", {
++        detail,
++      }),
++    )
++  })
+   const tab: PanelTab = {
+     id: panelID,
+     get title() {
+diff --git a/packages/app/src/runtime/commander-internal.test.ts b/packages/app/src/runtime/commander-internal.test.ts
+new file mode 100644
+index 0000000000..458bbd062e
+--- /dev/null
++++ b/packages/app/src/runtime/commander-internal.test.ts
+@@ -0,0 +1,26 @@
++import { describe, expect, test } from "bun:test"
++import { isCommanderInternalDirectory, isCommanderInternalSession } from "./commander-internal"
++
++describe("Commander internal navigation identity", () => {
++  test("hides only the exact configured workspace and session", () => {
++    window.dispatchEvent(
++      new CustomEvent("opencode-commander-internal", {
++        detail: {
++          directory: "/work/commander",
++          sessionID: "ses_commander",
++        },
++      }),
++    )
++
++    expect(
++      ["/work/commander", "/work/commander-notes", "/work/other-commander"].filter(
++        (directory) => !isCommanderInternalDirectory(directory),
++      ),
++    ).toEqual(["/work/commander-notes", "/work/other-commander"])
++    expect(
++      ["ses_commander", "ses_commander_notes", "ses_other_commander"].filter(
++        (sessionID) => !isCommanderInternalSession(sessionID),
++      ),
++    ).toEqual(["ses_commander_notes", "ses_other_commander"])
++  })
++})
+diff --git a/packages/app/src/runtime/commander-internal.ts b/packages/app/src/runtime/commander-internal.ts
+new file mode 100644
+index 0000000000..adf15e47ec
+--- /dev/null
++++ b/packages/app/src/runtime/commander-internal.ts
+@@ -0,0 +1,30 @@
++import { createSignal } from "solid-js"
++
++export type CommanderInternal = Readonly<{ directory: string; sessionID: string }>
++
++const [commanderInternal, setCommanderInternal] = createSignal<CommanderInternal>()
++
++function updateCommanderInternal(detail: unknown) {
++  if (!detail || typeof detail !== "object") return
++  if (!("directory" in detail) || !("sessionID" in detail)) return
++  if (typeof detail.directory !== "string" || typeof detail.sessionID !== "string") return
++  setCommanderInternal({ directory: detail.directory, sessionID: detail.sessionID })
++}
++
++if (typeof window !== "undefined") {
++  updateCommanderInternal(Reflect.get(window, "__opencodeCommanderInternal"))
++  window.addEventListener("opencode-commander-internal", (event) => {
++    if (!(event instanceof CustomEvent)) return
++    updateCommanderInternal(event.detail)
++  })
++}
++
++export function isCommanderInternalDirectory(directory: string) {
++  return commanderInternal()?.directory === directory
++}
++
++export function isCommanderInternalSession(sessionID: string) {
++  return commanderInternal()?.sessionID === sessionID
++}
++
++export { commanderInternal }
+diff --git a/packages/gui-extensions/src/commander/panel.tsx b/packages/gui-extensions/src/commander/panel.tsx
+index 91f1083c8b..a79185da0f 100644
+--- a/packages/gui-extensions/src/commander/panel.tsx
++++ b/packages/gui-extensions/src/commander/panel.tsx
+@@ -245,6 +245,7 @@ export default function CommanderPanel() {
+               }}
+               directory={conversation()!.directory}
+               sessionID={value().sessionID}
++              copy={extension.system.copy}
+             >
+               <Show when={value().messages.length > 0} fallback={<p class="p-5 text-13-regular text-v2-text-text-muted">{extension.t("panel.empty")}</p>}>
+                 <SessionTimeline document={value()} class="pb-5" />
+diff --git a/packages/session-ui/src/context/data.tsx b/packages/session-ui/src/context/data.tsx
+index 0a96bf8be0..41ced8a4f9 100644
+--- a/packages/session-ui/src/context/data.tsx
++++ b/packages/session-ui/src/context/data.tsx
+@@ -48,6 +48,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
+     sessionID?: string
+     shellRunning?: (id: string) => boolean
+     shellOutput?: (input: ShellOutputInput) => Promise<ShellOutputOutput>
++    copy?: (text: string) => Promise<void>
+     onNavigateToSession?: NavigateToSessionFn
+     onSessionHref?: SessionHrefFn
+   }) => {
+@@ -65,6 +66,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
+       sessionHref: props.onSessionHref,
+       shellRunning: props.shellRunning,
+       shellOutput: props.shellOutput,
++      copy: props.copy,
+     }
+   },
+ })
+diff --git a/packages/session-ui/src/message/message-content.tsx b/packages/session-ui/src/message/message-content.tsx
+index 696101310b..22dcc2e42a 100644
+--- a/packages/session-ui/src/message/message-content.tsx
++++ b/packages/session-ui/src/message/message-content.tsx
+@@ -281,7 +281,9 @@ export function CurrentUserMessageDisplay(props: {
+   const stamp = createMemo(() => timefmt().format(props.message.time.created))
+ 
+   const copy = async () => {
+-    if (!props.text || !(await writeClipboard(props.text))) return
++    if (!props.text) return
++    if (data.copy) await data.copy(props.text)
++    else if (!(await writeClipboard(props.text))) return
+     setState("copied", true)
+     setTimeout(() => setState("copied", false), 2000)
+   }
+@@ -657,7 +659,8 @@ export function AssistantTextContent(props: {
+   const [copied, setCopied] = createSignal(false)
+ 
+   const copy = async () => {
+-    if (!(await writeClipboard(props.text))) return
++    if (data.copy) await data.copy(props.text)
++    else if (!(await writeClipboard(props.text))) return
+     setCopied(true)
+     setTimeout(() => setCopied(false), 2000)
+   }

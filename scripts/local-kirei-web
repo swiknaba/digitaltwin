@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+sh "$repo_root/scripts/local-setup"
+cd "$repo_root/integration-backend"
+sh "$repo_root/scripts/local-ruby" bundle exec rake db:migrate
+exec sh "$repo_root/scripts/local-ruby" "$repo_root/integration-backend/bin/web"

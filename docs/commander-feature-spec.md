@@ -37,6 +37,14 @@ Kirei does not receive, proxy, store, approve, or deliver ordinary project-chat 
 
 OpenCode and Git are the developer feedback loop. OpenCode presents session progress and repository changes. Git remains the durable authority for commits, branches, diffs, and pull requests.
 
+Commander fleet control uses the same authenticated OpenCode session API as an
+ordinary developer input. It retains the exact OpenCode runtime, project, session,
+and source-message references, then submits a new input to that exact session with
+`fromCommander: true` metadata. That marker is provenance for the transcript and
+automation only: it grants no extra permission, changes no model/provider routing,
+and does not bypass OpenCode's existing user, server, or workspace authorization.
+The ordinary OpenCode route continues to select LiteLLM and retain its credentials.
+
 Digitaltwin must install its OpenCode additions globally through operator-managed configuration. Project configuration must not replace Commander behavior or gain access to its runtime credentials.
 
 ## Commander is the Digitaltwin feature
@@ -51,7 +59,7 @@ Commander does not replace normal project coding chats. It is used for work such
 - reviewing a scheduled check-in and deciding whether to delegate work;
 - coordinating a task that crosses project context.
 
-The Commander implementation may run through Herdr so Digitaltwin can retain one runtime adapter for non-OpenCode CLIs. Herdr is not required in the normal OpenCode project-chat path.
+Commander runs through the maintained OpenCode bridge; no Herdr runtime remains in this product path.
 
 The Commander bridge is deliberately thin:
 
@@ -67,7 +75,7 @@ The bridge must preserve a durable Commander conversation identity. It must supp
 
 Kirei is not the general chat control plane. It is the durable time-and-work service for Commander.
 
-Kirei accepts a future-task request, stores a durable record, and uses its worker queue to execute due work. Its existing job primitive supports `available_at`, idempotency keys, leases, retry handling, and uncertain-effect recovery. A future-task domain is still required; a queue job alone cannot represent recurrence, changes, cancellation, or an execution history.
+Kirei accepts a one-time future-task request, stores a durable record, and uses its worker queue to execute due work. Its existing job primitive supports `available_at`, idempotency keys, leases, retry handling, and uncertain-effect recovery. A future-task domain is still required; a queue job alone cannot represent changes, cancellation, or an execution history.
 
 Each future task records:
 
@@ -75,9 +83,9 @@ Each future task records:
 - the creating actor and originating Commander or project context;
 - a target, which defaults to Commander;
 - task text and relevant project or repository references;
-- one-time timing or recurrence with an explicit timezone;
+- one-time timing with an explicit timezone;
 - state: scheduled, running, completed, failed, canceled, or uncertain;
-- execution attempts, outcomes, and the next occurrence.
+- execution attempts and outcomes.
 
 When due, a future task appends a visible check-in message to the one Commander conversation. It states the stored task and asks the user what to do. It does not start project work automatically. The result appears in Commander only. It does not inject a message into the originating project chat.
 

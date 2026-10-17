@@ -1,0 +1,327 @@
+diff --git a/packages/gui-extensions/src/commander/contract.ts b/packages/gui-extensions/src/commander/contract.ts
+index 94700e7..3ba6f61 100644
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -17,6 +17,14 @@ export const CommanderConversation = Schema.Struct({
+ 
+ export type CommanderConversation = typeof CommanderConversation.Type
+ 
++export const CommanderModel = Schema.Struct({
++  providerID: Schema.String,
++  modelID: Schema.String,
++  variant: Schema.optional(Schema.String),
++})
++
++export type CommanderModel = typeof CommanderModel.Type
++
+ export const CommanderReservation = Schema.Struct({
+   serverID: Schema.Literal("sidecar"),
+   sessionID: Session.ID,
+@@ -25,6 +33,7 @@ export const CommanderReservation = Schema.Struct({
+ export const CommanderBridgeState = Schema.Struct({
+   revision: NonNegativeInt,
+   conversation: Schema.optional(CommanderConversation),
++  model: Schema.optional(CommanderModel),
+ })
+ 
+ export type CommanderBridgeState = typeof CommanderBridgeState.Type
+@@ -34,5 +43,6 @@ export const CommanderBridge = Ipc.define({
+   state: CommanderBridgeState,
+   methods: {
+     reserve: { input: CommanderReservation, output: CommanderBridgeState },
++    selectModel: { input: CommanderModel, output: CommanderBridgeState },
+   },
+ })
+diff --git a/packages/gui-extensions/src/commander/dialog.tsx b/packages/gui-extensions/src/commander/dialog.tsx
+index ea38bb7..f38fbb4 100644
+--- a/packages/gui-extensions/src/commander/dialog.tsx
++++ b/packages/gui-extensions/src/commander/dialog.tsx
+@@ -4,7 +4,7 @@ import CommanderPanel from "./panel"
+ export default function CommanderDialog() {
+   return (
+     <Dialog
+-      class="flex h-[min(720px,calc(100vh-64px))] w-[min(860px,calc(100vw-32px))] flex-col overflow-hidden"
++      class="flex h-[min(820px,calc(100vh-32px))] w-[min(1100px,calc(100vw-24px))] min-h-[420px] min-w-[560px] max-h-[calc(100vh-32px)] max-w-[calc(100vw-24px)] resize overflow-hidden"
+       containerClass="max-w-none"
+     >
+       <DialogBody class="min-h-0 flex-1 p-0">
+diff --git a/packages/gui-extensions/src/commander/i18n/en.ts b/packages/gui-extensions/src/commander/i18n/en.ts
+index 95ebbac..6f80298 100644
+--- a/packages/gui-extensions/src/commander/i18n/en.ts
++++ b/packages/gui-extensions/src/commander/i18n/en.ts
+@@ -15,4 +15,7 @@ export default {
+   "panel.send": "Send",
+   "panel.placeholder": "Ask Commander anything…",
+   "panel.empty": "Commander is ready when you are.",
++  "panel.model.label": "Commander model",
++  "panel.model.placeholder": "Choose a model",
++  "panel.model.required": "Choose an enabled model before sending.",
+ }
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+index 2a9219c..0fea4b3 100644
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -77,6 +77,17 @@ export function createCommanderRuntime(input: CommanderRuntime) {
+       input.store.set(next)
+       provider.changed()
+ 
++      return next
++    },
++    selectModel: async (model) => {
++      const current = input.store.value
++
++      if (!current.conversation) throw new Error("Commander must reserve its conversation before choosing a model.")
++
++      const next: CommanderBridgeState = { ...current, revision: current.revision + 1, model }
++      input.store.set(next)
++      provider.changed()
++
+       return next
+     },
+   })
+diff --git a/packages/gui-extensions/src/commander/panel.tsx b/packages/gui-extensions/src/commander/panel.tsx
+index ac5893f..91f1083 100644
+--- a/packages/gui-extensions/src/commander/panel.tsx
++++ b/packages/gui-extensions/src/commander/panel.tsx
+@@ -4,8 +4,11 @@ import { isSessionNotFoundError } from "@opencode/client"
+ import { DataProvider } from "@opencode/session-ui/context"
+ import { SessionTimeline } from "@opencode/session-ui/timeline"
+ import { Button } from "@opencode/ui/button"
++import { Icon } from "@opencode/ui/icon"
++import { IconButton } from "@opencode/ui/icon-button"
++import { Tooltip } from "@opencode/ui/tooltip"
+ import { TextShimmer } from "@opencode/ui/text-shimmer"
+-import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
++import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
+ import { useExtension } from "../sdk"
+ import type definition from "./index"
+ 
+@@ -25,6 +28,7 @@ export default function CommanderPanel() {
+     return live.status === "active" ? live.value.state() : undefined
+   }
+   const conversation = () => state()?.conversation
++  const model = () => state()?.model
+   const server = () => {
+     const current = conversation()
+ 
+@@ -42,6 +46,13 @@ export default function CommanderPanel() {
+ 
+     return current && target ? target.data.session.message.list(current.sessionID) : []
+   }
++  const models = () => {
++    const current = conversation()
++    const target = server()
++
++    return current && target ? target.data.location.model.list({ directory: current.directory })?.filter((item) => item.enabled) ?? [] : []
++  }
++  const selectedModel = () => models().find((item) => item.providerID === model()?.providerID && item.modelID === model()?.modelID)
+   const working = () => {
+     const current = conversation()
+     const target = server()
+@@ -80,6 +91,7 @@ export default function CommanderPanel() {
+     await Promise.all([
+       target.data.session.message.sync(current.sessionID),
+       target.data.session.pending.sync(current.sessionID),
++      target.data.location.model.sync({ directory: current.directory }),
+     ])
+     setError(undefined)
+   }
+@@ -97,6 +109,13 @@ export default function CommanderPanel() {
+     void load().catch(() => setError(extension.t("panel.status.failed")))
+   })
+ 
++  createEffect(() => {
++    const current = conversation()
++
++    if (!current || typeof window === "undefined") return
++    window.dispatchEvent(new CustomEvent("opencode-commander-session", { detail: current }))
++  })
++
+   createEffect(on(messages, () => {
+     queueMicrotask(() => scroll?.scrollTo({ top: scroll.scrollHeight, behavior: "smooth" }))
+   }))
+@@ -114,10 +133,20 @@ export default function CommanderPanel() {
+     const target = server()
+     const text = draft().trim()
+ 
++    const selected = selectedModel()
++
+     if (!current || !target || !text || sending()) return
++    if (!selected) {
++      setError(extension.t("panel.model.required"))
++      return
++    }
+     setSending(true)
+     setError(undefined)
+     try {
++      await target.client.session.switchModel({
++        sessionID: current.sessionID,
++        model: { id: selected.modelID, providerID: selected.providerID, variant: model()?.variant },
++      })
+       await target.data.session.prompt({
+         id: SessionMessage.ID.create(),
+         sessionID: current.sessionID,
+@@ -133,6 +162,23 @@ export default function CommanderPanel() {
+     }
+   }
+ 
++  const selectModel = async (event: Event) => {
++    const current = conversation()
++    const live = bridge()
++
++    if (!(event.currentTarget instanceof HTMLSelectElement)) return
++    const value = event.currentTarget.value
++    const selected = models().find((item) => `${item.providerID}:${item.modelID}` === value)
++
++    if (!current || live.status !== "active" || !selected) return
++    try {
++      await live.value.selectModel({ providerID: selected.providerID, modelID: selected.modelID })
++      setError(undefined)
++    } catch {
++      setError(extension.t("panel.status.failed"))
++    }
++  }
++
+   const interrupt = async () => {
+     const current = conversation()
+     const target = server()
+@@ -164,6 +210,16 @@ export default function CommanderPanel() {
+           <h2 class="text-14-medium text-v2-text-text-base">{extension.t("panel.title")}</h2>
+           <p class="truncate text-12-regular text-v2-text-text-muted">{extension.t("panel.description")}</p>
+         </div>
++        <select
++          class="max-w-48 rounded-md border border-v2-border-border-base bg-v2-background-bg-base px-2 py-1 text-12-regular text-v2-text-text-base outline-none focus:border-v2-border-border-strong"
++          aria-label={extension.t("panel.model.label")}
++          disabled={!info() || sending()}
++          value={selectedModel() ? `${selectedModel()!.providerID}:${selectedModel()!.modelID}` : ""}
++          onChange={(event) => void selectModel(event)}
++        >
++          <option value="">{extension.t("panel.model.placeholder")}</option>
++          <For each={models()}>{(item) => <option value={`${item.providerID}:${item.modelID}`}>{item.name}</option>}</For>
++        </select>
+         <Show when={working()}>
+           <Button size="small" variant="outline" onClick={() => void interrupt()}>{extension.t("panel.cancel")}</Button>
+         </Show>
+@@ -202,17 +258,33 @@ export default function CommanderPanel() {
+           class="min-h-20 w-full resize-y rounded-md border border-v2-border-border-base bg-v2-background-bg-base p-3 text-13-regular text-v2-text-text-base outline-none placeholder:text-v2-text-text-muted focus:border-v2-border-border-strong"
+           value={draft()}
+           placeholder={extension.t("panel.placeholder")}
+-          disabled={!info() || sending()}
++          disabled={!info() || sending() || !selectedModel()}
+           onInput={(event) => setDraft(event.currentTarget.value)}
+           onKeyDown={(event) => {
+-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
++            // Do not submit an in-progress IME composition. Plain Enter sends;
++            // Shift+Enter stays native textarea newline behavior.
++            if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+               event.preventDefault()
+               void send()
+             }
+           }}
+         />
+         <div class="mt-2 flex justify-end">
+-          <Button size="small" variant="submit" type="submit" disabled={!draft().trim() || !info() || sending()}>{extension.t("panel.send")}</Button>
++          <Tooltip placement="top" inactive={!working() && (!draft().trim() || !info() || sending() || !selectedModel())} value={working() ? extension.t("panel.cancel") : extension.t("panel.send")}>
++            <IconButton
++              type="button"
++              variant="submit"
++              class="size-7 rounded-md p-[6px]"
++              disabled={!working() && (!draft().trim() || !info() || sending() || !selectedModel())}
++              icon={<Icon name={working() ? "stop" : "arrow-up"} />}
++              aria-label={working() ? extension.t("panel.cancel") : extension.t("panel.send")}
++              onClick={(event) => {
++                event.preventDefault()
++                if (working()) void interrupt()
++                else void send()
++              }}
++            />
++          </Tooltip>
+         </div>
+       </form>
+     </div>
+diff --git a/packages/app/src/runtime/extension/titlebar-items.tsx b/packages/app/src/runtime/extension/titlebar-items.tsx
+index 9e620ea..01a01ea 100644
+--- a/packages/app/src/runtime/extension/titlebar-items.tsx
++++ b/packages/app/src/runtime/extension/titlebar-items.tsx
+@@ -39,9 +39,10 @@ function TitlebarItemButton(props: { item: TitlebarItem; vertical?: boolean }) {
+   const success = () => props.item.tone === "success"
+   const label = () => (
+     <span
++      style={success() ? { color: "rgb(255 255 255)" } : undefined}
+       class="shrink-0 text-[11px] leading-4 text-v2-text-text-accent [font-weight:530] opacity-0 motion-safe:transition-all duration-150 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0 motion-reduce:translate-x-0"
+       classList={{
+-        "text-text-on-brand-base opacity-100 motion-safe:transition-none": expanded(),
++        "!text-white opacity-100 motion-safe:transition-none": expanded(),
+         "ms-px me-4 -translate-x-2 rtl:translate-x-2": props.vertical && !expanded(),
+         "ms-2 me-px translate-x-2 rtl:-translate-x-2": !props.vertical && !expanded(),
+         "translate-x-0": expanded(),
+@@ -65,12 +66,13 @@ function TitlebarItemButton(props: { item: TitlebarItem; vertical?: boolean }) {
+       <button
+         type="button"
+         class="z-10 flex h-full items-center overflow-hidden rounded-full bg-v2-icon-icon-accent/20 text-v2-icon-icon-accent transition-[background-color] duration-150 ease-out group-hover:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] group-focus-within:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] focus-visible:outline-none disabled:opacity-60 motion-reduce:transition-none [app-region:no-drag]"
++        style={success() ? { color: "rgb(255 255 255)" } : undefined}
+         classList={{
+           "absolute top-0 w-full": !expanded(),
+           "static w-auto px-3": expanded(),
+           "start-0 justify-start": props.vertical,
+           "end-0 justify-end": !props.vertical,
+-          "!bg-surface-success-strong text-text-on-brand-base hover:!bg-surface-success-base group-hover:!bg-surface-success-base group-focus-within:!bg-surface-success-base": success(),
++          "!bg-surface-success-strong !text-white hover:!bg-surface-success-base hover:!text-white focus-visible:!text-white group-hover:!bg-surface-success-base group-hover:!text-white group-focus-within:!bg-surface-success-base group-focus-within:!text-white disabled:!text-white": success(),
+         }}
+         onClick={() => props.item.run?.()}
+         disabled={!!props.item.busy}
+@@ -78,30 +80,32 @@ function TitlebarItemButton(props: { item: TitlebarItem; vertical?: boolean }) {
+         aria-label={props.item.title ?? props.item.label}
+         aria-pressed={props.item.pressed}
+       >
+-        <span
+-          class="flex shrink-0 items-center justify-center"
+-          classList={{ "size-7": props.vertical, "size-5": !props.vertical, "ms-2": expanded() && props.vertical, "me-2": expanded() && !props.vertical }}
+-        >
+-          <Show when={!props.item.busy} fallback={<span data-slot="titlebar-update-loader" aria-hidden="true" />}>
+-            <Show
+-              when={props.item.mark}
+-              fallback={
+-                <Show
+-                  when={props.item.icon}
+-                  fallback={
+-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+-                      <path d="M7 11V3M3.5 7.63128L7 11L10.5 7.63128" stroke="currentColor" />
+-                    </svg>
+-                  }
++        <Show when={!expanded()}>
++          <span
++            class="flex shrink-0 items-center justify-center"
++            classList={{ "size-7": props.vertical, "size-5": !props.vertical, "ms-2": expanded() && props.vertical, "me-2": expanded() && !props.vertical }}
++          >
++            <Show when={!props.item.busy} fallback={<span data-slot="titlebar-update-loader" aria-hidden="true" />}>
++              <Show
++                when={props.item.mark}
++                fallback={
++                  <Show
++                    when={props.item.icon}
++                    fallback={
++                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
++                        <path d="M7 11V3M3.5 7.63128L7 11L10.5 7.63128" stroke="currentColor" />
++                      </svg>
++                    }
++                  >
++                    {(icon) => <Icon name={icon()} size="small" />}
++                  </Show>
++                }
+               >
+-                  {(icon) => <Icon name={icon()} size="small" />}
+-                </Show>
+-              }
+-            >
+-              {(mark) => <span aria-hidden="true" class="flex size-4 items-center justify-center rounded-full bg-v2-green-1200 text-[10px] font-bold leading-none text-white">{mark()}</span>}
++                {(mark) => <span aria-hidden="true" class="flex size-4 items-center justify-center rounded-full bg-v2-green-1200 text-[10px] font-bold leading-none text-white">{mark()}</span>}
++              </Show>
+             </Show>
+-          </Show>
+-        </span>
++          </span>
++        </Show>
+         <Show when={!props.vertical || expanded()}>{label()}</Show>
+       </button>
+     </div>

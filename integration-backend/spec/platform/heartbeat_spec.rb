@@ -2,10 +2,13 @@
 # frozen_string_literal: true
 
 require_relative "../spec_helper"
+require "fileutils"
 
 RSpec.describe Platform::Heartbeat do
   around do |example|
-    Dir.mktmpdir("heartbeat") do |dir|
+    temporary_root = File.expand_path("../../../local/tmp", __dir__)
+    FileUtils.mkdir_p(temporary_root)
+    Dir.mktmpdir("heartbeat", temporary_root) do |dir|
       previous = ENV.fetch("HEARTBEAT_DIR", nil)
       ENV["HEARTBEAT_DIR"] = dir
       @dir = dir

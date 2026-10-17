@@ -1,0 +1,172 @@
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -57,6 +57,6 @@
+     status: { input: Schema.String, output: Schema.Unknown },
+     steer: { input: CommanderRunControl },
+     stop: { input: Schema.String },
+-    events: { input: CommanderRunControl, output: Schema.Array(CommanderEvent) },
+   },
++  events: { event: CommanderEvent },
+ })
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -1,7 +1,7 @@
+ import { Agent } from "@opencode/schema/agent"
+ import { Option, Schema } from "effect"
+ import type { IpcImpl, IpcProvider, MainSetup, ServerEndpoint, ServerEndpoints } from "../sdk/main"
+-import { CommanderBridge, CommanderBridgeState, CommanderRun, type CommanderConversation } from "./contract"
++import { CommanderBridge, CommanderBridgeState, CommanderEvent, CommanderRun, type CommanderConversation } from "./contract"
+ import type definition from "./index"
+ 
+ type CommanderStore = Readonly<{
+@@ -34,6 +34,29 @@
+   return response.json()
+ }
+ 
++async function relayEvents(runID: string, window: number, provider: IpcProvider<CommanderBridgeSpec>, signal: AbortSignal) {
++  const token = process.env.DIGITALTWIN_HERMES_ADAPTER_TOKEN
++  if (!token) throw new Error("Commander Hermes adapter token is not configured.")
++  const response = await fetch(adapterURL(`/runs/${encodeURIComponent(runID)}/events`), { headers: { authorization: `Bearer ${token}`, accept: "text/event-stream" }, signal })
++  if (!response.ok || !response.body) throw new Error(`Commander Hermes event stream failed (${response.status}).`)
++  const reader = response.body.getReader()
++  const decoder = new TextDecoder()
++  let pending = ""
++  while (!signal.aborted) {
++    const chunk = await reader.read()
++    if (chunk.done) return
++    pending += decoder.decode(chunk.value, { stream: true })
++    const frames = pending.split("\n\n")
++    pending = frames.pop() ?? ""
++    for (const frame of frames) {
++      const line = frame.split("\n").find((item) => item.startsWith("data: "))
++      if (!line) continue
++      const event = Schema.decodeUnknownOption(CommanderEvent)(JSON.parse(line.slice(6)))
++      if (Option.isSome(event)) provider.emit("event", event.value, window)
++    }
++  }
++}
++
+ function configuredCommander() {
+   const directory = process.env.DIGITALTWIN_COMMANDER_WORKSPACE
+   const agent = process.env.DIGITALTWIN_COMMANDER_AGENT
+@@ -106,20 +129,16 @@
+ 
+       return next
+     },
+-    start: async (request) => {
++    start: async (request, caller) => {
+       const value = await adapter("/runs", { method: "POST", body: JSON.stringify({ request_id: request.requestID, text: request.text }) })
+       const decoded = Schema.decodeUnknownOption(CommanderRun)(value)
+       if (Option.isNone(decoded)) throw new Error("Commander Hermes adapter returned an invalid run.")
++      void relayEvents(decoded.value.id, caller.window, provider, caller.signal).catch(() => undefined)
+       return decoded.value
+     },
+     status: async (runID) => adapter(`/runs/${encodeURIComponent(runID)}`),
+     steer: async (control) => { await adapter(`/runs/${encodeURIComponent(control.runID)}/steer`, { method: "POST", body: JSON.stringify({ text: control.text }) }) },
+     stop: async (runID) => { await adapter(`/runs/${encodeURIComponent(runID)}/stop`, { method: "POST" }) },
+-    events: async (control) => {
+-      const value = await adapter(`/runs/${encodeURIComponent(control.runID)}/events?after=${control.text ?? "0"}`)
+-      if (!Array.isArray(value)) throw new Error("Commander Hermes adapter returned invalid events.")
+-      return value
+-    },
+   })
+ 
+   return provider
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -138,6 +138,12 @@
+   window.addEventListener("opencode-commander-hermes-request", hermes)
+   onCleanup(() => window.removeEventListener("opencode-commander-hermes-request", hermes))
+ 
++  createEffect(() => {
++    const live = bridge()
++    if (live.status !== "active") return
++    return live.value.on("event", (event) => window.dispatchEvent(new CustomEvent("opencode-commander-hermes-event", { detail: event })))
++  })
++
+   ctx.add(TitlebarItem, () => {
+     const current = status()
+     const mark = current?.attention ? "!" : current?.unread ? "•" : current?.working ? "…" : undefined
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -1,10 +1,8 @@
+-import { DataProvider } from "@opencode/session-ui/context"
+-import { SessionTimeline } from "@opencode/session-ui/timeline"
+ import { Button } from "@opencode/ui/button"
+ import { Dialog, DialogBody } from "@opencode/ui/dialog"
+ import { useDialog } from "@opencode/ui/context/dialog"
+ import { TextShimmer } from "@opencode/ui/text-shimmer"
+-import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
++import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js"
+ import { CommentsProvider } from "@/composer/comments"
+ import { Composer } from "@/composer/composer"
+ import { createComposerModel } from "@/composer/model"
+@@ -19,6 +17,7 @@
+ import { commanderOverlayContainerClass } from "./commander-overlay-layout"
+ 
+ type CommanderModel = Readonly<{ readonly providerID: string; readonly modelID: string; readonly variant?: string }>
++type HermesTimelineEvent = Readonly<{ readonly seq: number; readonly type: string; readonly runID: string; readonly text?: string; readonly learning?: "memory" | "skill" }>
+ type CommanderConversation = Readonly<{ readonly serverID: "sidecar"; readonly sessionID: string; readonly directory: string; readonly agent: string; readonly model?: CommanderModel }>
+ function conversationFrom(value: unknown): CommanderConversation | undefined {
+   if (!value || typeof value !== "object" || !("conversation" in value)) return
+@@ -67,6 +66,7 @@
+   const models = useModels()
+   const [failed, setFailed] = createSignal(false)
+   const [runID, setRunID] = createSignal<string>()
++  const [timeline, setTimeline] = createSignal<readonly HermesTimelineEvent[]>([])
+   const prompt = createMemoryComposerState(props.conversation.model ? { model: props.conversation.model } : undefined)
+   const selected = () => prompt.model.current()
+   const currentModel = () => {
+@@ -130,12 +130,6 @@
+     },
+   }
+   const composer = createComposerModel(adapter)
+-  const document = createMemo(() => ({
+-    sessionID: props.conversation.sessionID,
+-    messages: data.session.message.list(props.conversation.sessionID),
+-    status: data.session.status(props.conversation.sessionID) === "running" ? { type: "busy" as const } : { type: "idle" as const },
+-    diffs: [],
+-  }))
+ 
+   createEffect(() => {
+     void Promise.all([
+@@ -146,6 +140,15 @@
+     ]).catch(() => setFailed(true))
+   })
+ 
++  onMount(() => {
++    const receive = (event: Event) => {
++      if (!(event instanceof CustomEvent) || !validTimelineEvent(event.detail)) return
++      setTimeline((current) => current.some((item) => item.runID === event.detail.runID && item.seq === event.detail.seq) ? current : [...current, event.detail])
++    }
++    window.addEventListener("opencode-commander-hermes-event", receive)
++    onCleanup(() => window.removeEventListener("opencode-commander-hermes-event", receive))
++  })
++
+   return (
+     <Dialog class="flex min-h-0 overflow-hidden" containerClass={commanderOverlayContainerClass}>
+       <DialogBody class="min-h-0 flex-1 p-0">
+@@ -156,9 +159,9 @@
+           </div>
+           <div class="min-h-0 flex-1 overflow-y-auto">
+             <Show when={!failed()} fallback={<div class="flex h-full items-center justify-center"><TextShimmer text="Commander could not be restored." active={false} /></div>}>
+-              <DataProvider data={{ session: data.session.get(props.conversation.sessionID) ? [data.session.get(props.conversation.sessionID)!] : [], session_status: { [props.conversation.sessionID]: document().status }, session_diff: { [props.conversation.sessionID]: [] } }} directory={props.conversation.directory} sessionID={props.conversation.sessionID} copy={(text) => navigator.clipboard.writeText(text)}>
+-                <Show when={document().messages.length > 0} fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}><SessionTimeline document={document()} class="pb-5" /></Show>
+-              </DataProvider>
++              <Show when={timeline().length > 0} fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}>
++                <div class="space-y-3 p-5" data-slot="commander-hermes-timeline"><For each={timeline()}>{(item) => <div class="rounded-md border border-v2-border-border-base p-3"><p class="text-12-medium text-v2-text-text-muted">{item.type}</p><Show when={item.text}><p class="mt-1 whitespace-pre-wrap text-13-regular text-v2-text-text-base">{item.text}</p></Show><Show when={item.learning}><p class="mt-1 text-12-regular text-v2-text-text-muted">Learning: {item.learning}</p></Show></div>}</For></div>
++              </Show>
+             </Show>
+           </div>
+           <div class="shrink-0 border-t border-v2-border-border-base p-4"><Composer model={composer} /></div>
+@@ -168,6 +171,10 @@
+   )
+ }
+ 
++function validTimelineEvent(value: unknown): value is HermesTimelineEvent {
++  return !!value && typeof value === "object" && "seq" in value && typeof value.seq === "number" && "type" in value && typeof value.type === "string" && "runID" in value && typeof value.runID === "string"
++}
++
+ function hermesRequest<T>(request: Readonly<{ operation: "start" | "stop" | "steer"; requestID?: string; runID?: string; text?: string }>): Promise<T> {
+   const id = crypto.randomUUID()
+   return new Promise<T>((resolve, reject) => {

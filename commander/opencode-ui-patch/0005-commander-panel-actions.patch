@@ -1,0 +1,64 @@
+diff --git a/packages/gui-extensions/src/commander/contract.ts b/packages/gui-extensions/src/commander/contract.ts
+index 44ed829..aee417d 100644
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -2,11 +2,11 @@ import { Schema } from "effect"
+ import { Ipc } from "../sdk"
+ 
+ /**
+- * Renderer-visible bridge state. The main process owns the future capability
+- * exchange; neither a capability nor a runtime credential crosses this boundary.
++ * Renderer-visible availability only. The trusted main process owns the normal
++ * OpenCode endpoint and its authorization; neither crosses this boundary.
+  */
+ export const CommanderBridgeState = Schema.Struct({
+-  status: Schema.Literal("not-configured"),
++  status: Schema.Union([Schema.Literal("ready"), Schema.Literal("unavailable")]),
+ })
+ 
+ export type CommanderBridgeState = typeof CommanderBridgeState.Type
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+index 8f6e22d..5642afe 100644
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -1,21 +1,18 @@
+-import { unconfiguredCommanderBridgeStatus } from "@digitaltwin/commander-bridge"
+ import type { MainSetup } from "../sdk/main"
+ import { CommanderBridge, CommanderBridgeState } from "./contract"
+ import type definition from "./index"
+ 
+-/**
+- * This intentionally has no endpoint or credential configuration. A reviewed
+- * operator integration may replace the state provider without exposing a bridge
+- * capability to renderer or project configuration code.
+- */
+ const setup: MainSetup<typeof definition> = (ctx) => {
+-  // This package entrypoint accepts no configuration. A future reviewed bootstrap
+-  // may supply a transport from operator-owned state, but project data never does.
+-  const state = { status: unconfiguredCommanderBridgeStatus() } satisfies CommanderBridgeState
++  // The existing sidecar endpoint and authorization headers remain wholly in
++  // OpenCode's main process. Commander does not load configuration, credentials,
++  // or a secondary transport.
++  const state = (): CommanderBridgeState => ({
++    status: ctx.serverEndpoints.get("sidecar") ? "ready" : "unavailable",
++  })
+ 
+   ctx.provide(CommanderBridge, {
+-    state: () => state,
+-    status: () => state,
++    state,
++    status: state,
+   })
+ }
+ 
+diff --git a/packages/gui-extensions/src/commander/i18n/en.ts b/packages/gui-extensions/src/commander/i18n/en.ts
+index 16aaedd..758248b 100644
+--- a/packages/gui-extensions/src/commander/i18n/en.ts
++++ b/packages/gui-extensions/src/commander/i18n/en.ts
+@@ -8,4 +8,6 @@ export default {
+   "panel.title": "Commander",
+   "panel.description": "Commander is ready for a trusted bridge connection.",
+   "panel.status.not-configured": "Bridge not configured",
++  "panel.status.ready": "OpenCode session available",
++  "panel.status.unavailable": "OpenCode session unavailable",
+ }

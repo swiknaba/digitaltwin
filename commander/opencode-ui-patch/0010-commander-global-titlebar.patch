@@ -1,0 +1,141 @@
+--- a/packages/gui-extensions/src/sdk/registries.ts
++++ b/packages/gui-extensions/src/sdk/registries.ts
+@@ -538,6 +538,12 @@
+   readonly busy?: boolean
+   /** Shows the pill pressed (`aria-pressed`). */
+   readonly pressed?: boolean
++  /** Keeps the full label visible instead of using the compact hover-expanding pill. */
++  readonly expanded?: boolean
++  /** Applies a semantic success treatment to an expanded item. */
++  readonly tone?: "default" | "success"
++  /** Optional short mark shown before the item's icon. */
++  readonly mark?: string
+   /** Runs when the user clicks the pill, or the channel badge it toggles. Omit it for an item that only shows. */
+   run?(): void
+ }
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -1,6 +1,6 @@
+-import { lazy, onCleanup, Show, Suspense } from "solid-js"
++import { lazy, onCleanup, Suspense } from "solid-js"
+ import { showToast } from "@opencode/ui/toast"
+-import { Command, onIdle, Panel, Slot, type PanelTab, type Setup } from "../sdk"
++import { Command, onIdle, Panel, TitlebarItem, type PanelTab, type Setup } from "../sdk"
+ import type definition from "./index"
+ 
+ const panelID = "main"
+@@ -31,24 +31,14 @@
+ 
+   onCleanup(onIdle(() => void CommanderPanel.preload()))
+ 
+-  // Keep one persistent, full-width entry in active project sessions. It is
+-  // intentionally distinct from nearby update actions and never hover-expands.
+-  ctx.add(Slot, {
+-    at: "session.header",
+-    order: 30,
+-    render: (input) => (
+-      <Show when={input.active}>
+-        <button
+-          type="button"
+-          class="ml-3 inline-flex min-w-28 items-center justify-center gap-1.5 rounded-full border border-v2-green-800 bg-surface-success-strong px-3 py-1.5 text-12-medium text-text-on-brand-base shadow-sm transition-colors hover:bg-surface-success-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-v2-icon-icon-accent"
+-          data-testid="commander-open"
+-          onClick={open}
+-        >
+-          <span aria-hidden="true" class="flex size-4 items-center justify-center rounded-full bg-v2-green-1200 text-[10px] font-bold leading-none text-white">C</span>
+-          <span>{ctx.t("title")}</span>
+-        </button>
+-      </Show>
+-    ),
++  ctx.add(TitlebarItem, {
++    id: "open",
++    label: ctx.t("title"),
++    title: ctx.t("action.open"),
++    expanded: true,
++    tone: "success",
++    mark: "C",
++    run: open,
+   })
+ 
+   ctx.add(
+--- a/packages/app/src/runtime/extension/titlebar-items.tsx
++++ b/packages/app/src/runtime/extension/titlebar-items.tsx
+@@ -35,12 +35,16 @@
+ }
+ 
+ function TitlebarItemButton(props: { item: TitlebarItem; vertical?: boolean }) {
++  const expanded = () => !!props.item.expanded
++  const success = () => props.item.tone === "success"
+   const label = () => (
+     <span
+       class="shrink-0 text-[11px] leading-4 text-v2-text-text-accent [font-weight:530] opacity-0 motion-safe:transition-all duration-150 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0 motion-reduce:translate-x-0"
+       classList={{
++        "text-text-on-brand-base opacity-100 motion-safe:transition-none": expanded(),
+         "ms-px me-4 -translate-x-2 rtl:translate-x-2": props.vertical,
+         "ms-2 me-px translate-x-2 rtl:-translate-x-2": !props.vertical,
++        "translate-x-0": expanded(),
+       }}
+     >
+       {props.item.label}
+@@ -52,39 +56,51 @@
+       data-slot="titlebar-update"
+       class="group relative shrink-0 rounded-full bg-v2-background-bg-deep transition-[width] duration-150 ease-out hover:z-30 focus-within:z-30 motion-reduce:transition-none"
+       classList={{
+-        "h-7 w-7 self-start hover:w-[84px] focus-within:w-[84px]": props.vertical,
+-        "me-3 h-5 w-5 hover:w-[68px] focus-within:w-[68px]": !props.vertical,
++        "h-7 w-7 self-start hover:w-[84px] focus-within:w-[84px]": props.vertical && !expanded(),
++        "me-3 h-5 w-5 hover:w-[68px] focus-within:w-[68px]": !props.vertical && !expanded(),
++        "mb-2 h-7 w-full self-start": props.vertical && expanded(),
++        "me-6 h-7 w-[124px]": !props.vertical && expanded(),
+       }}
+     >
+       <button
+         type="button"
+         class="absolute top-0 z-10 flex h-full w-full items-center overflow-hidden rounded-full bg-v2-icon-icon-accent/20 text-v2-icon-icon-accent transition-[background-color] duration-150 ease-out group-hover:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] group-focus-within:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] focus-visible:outline-none disabled:opacity-60 motion-reduce:transition-none [app-region:no-drag]"
+-        classList={{ "start-0 justify-start": props.vertical, "end-0 justify-end": !props.vertical }}
++        classList={{
++          "start-0 justify-start": props.vertical,
++          "end-0 justify-end": !props.vertical,
++          "bg-surface-success-strong text-text-on-brand-base hover:bg-surface-success-base group-hover:bg-surface-success-base group-focus-within:bg-surface-success-base": success(),
++        }}
+         onClick={() => props.item.run?.()}
+         disabled={!!props.item.busy}
+         aria-busy={!!props.item.busy}
+         aria-label={props.item.title ?? props.item.label}
+         aria-pressed={props.item.pressed}
+       >
+-        <Show when={!props.vertical}>{label()}</Show>
+         <span
+           class="flex shrink-0 items-center justify-center"
+-          classList={{ "size-7": props.vertical, "size-5": !props.vertical }}
++          classList={{ "size-7": props.vertical, "size-5": !props.vertical, "ms-2": expanded() && props.vertical, "me-2": expanded() && !props.vertical }}
+         >
+           <Show when={!props.item.busy} fallback={<span data-slot="titlebar-update-loader" aria-hidden="true" />}>
+             <Show
+-              when={props.item.icon}
++              when={props.item.mark}
+               fallback={
+-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+-                  <path d="M7 11V3M3.5 7.63128L7 11L10.5 7.63128" stroke="currentColor" />
+-                </svg>
++                <Show
++                  when={props.item.icon}
++                  fallback={
++                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
++                      <path d="M7 11V3M3.5 7.63128L7 11L10.5 7.63128" stroke="currentColor" />
++                    </svg>
++                  }
++              >
++                  {(icon) => <Icon name={icon()} size="small" />}
++                </Show>
+               }
+             >
+-              {(icon) => <Icon name={icon()} size="small" />}
++              {(mark) => <span aria-hidden="true" class="flex size-4 items-center justify-center rounded-full bg-v2-green-1200 text-[10px] font-bold leading-none text-white">{mark()}</span>}
+             </Show>
+           </Show>
+         </span>
+-        <Show when={props.vertical}>{label()}</Show>
++        <Show when={!props.vertical || expanded()}>{label()}</Show>
+       </button>
+     </div>
+   )

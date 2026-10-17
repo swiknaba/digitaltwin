@@ -1,0 +1,189 @@
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -25,6 +25,15 @@
+ 
+ export type CommanderModel = typeof CommanderModel.Type
+ 
++export const CommanderRun = Schema.Struct({ id: Schema.String, sessionID: Schema.String })
++export type CommanderRun = typeof CommanderRun.Type
++
++export const CommanderEvent = Schema.Struct({ seq: Schema.Number, type: Schema.String, runID: Schema.String, text: Schema.optional(Schema.String), learning: Schema.optional(Schema.String) })
++export type CommanderEvent = typeof CommanderEvent.Type
++
++export const CommanderRunRequest = Schema.Struct({ requestID: Schema.String, text: Schema.String })
++export const CommanderRunControl = Schema.Struct({ runID: Schema.String, text: Schema.optional(Schema.String) })
++
+ export const CommanderReservation = Schema.Struct({
+   serverID: Schema.Literal("sidecar"),
+   sessionID: Session.ID,
+@@ -44,5 +53,10 @@
+   methods: {
+     reserve: { input: CommanderReservation, output: CommanderBridgeState },
+     selectModel: { input: CommanderModel, output: CommanderBridgeState },
++    start: { input: CommanderRunRequest, output: CommanderRun },
++    status: { input: Schema.String, output: Schema.Unknown },
++    steer: { input: CommanderRunControl },
++    stop: { input: Schema.String },
++    events: { input: CommanderRunControl, output: Schema.Array(CommanderEvent) },
+   },
+ })
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -1,7 +1,7 @@
+ import { Agent } from "@opencode/schema/agent"
+ import { Option, Schema } from "effect"
+ import type { IpcImpl, IpcProvider, MainSetup, ServerEndpoint, ServerEndpoints } from "../sdk/main"
+-import { CommanderBridge, CommanderBridgeState, type CommanderConversation } from "./contract"
++import { CommanderBridge, CommanderBridgeState, CommanderRun, type CommanderConversation } from "./contract"
+ import type definition from "./index"
+ 
+ type CommanderStore = Readonly<{
+@@ -19,6 +19,21 @@
+ 
+ const AgentListResponse = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Agent.ID })) })
+ 
++function adapterURL(path: string) {
++  const raw = process.env.DIGITALTWIN_HERMES_ADAPTER_URL ?? "http://127.0.0.1:3087"
++  const url = new URL(path, raw)
++  if (url.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(url.hostname)) throw new Error("Commander Hermes adapter must use loopback HTTP.")
++  return url
++}
++
++async function adapter(path: string, init: RequestInit = {}) {
++  const token = process.env.DIGITALTWIN_HERMES_ADAPTER_TOKEN
++  if (!token) throw new Error("Commander Hermes adapter token is not configured.")
++  const response = await fetch(adapterURL(path), { ...init, headers: { "content-type": "application/json", "authorization": `Bearer ${token}`, ...init.headers } })
++  if (!response.ok) throw new Error(`Commander Hermes adapter rejected request (${response.status}).`)
++  return response.json()
++}
++
+ function configuredCommander() {
+   const directory = process.env.DIGITALTWIN_COMMANDER_WORKSPACE
+   const agent = process.env.DIGITALTWIN_COMMANDER_AGENT
+@@ -84,12 +97,27 @@
+ 
+       if (!current.conversation) throw new Error("Commander must reserve its conversation before choosing a model.")
+ 
++      await adapter("/model", { method: "POST", body: JSON.stringify({ provider: model.providerID, model: model.modelID }) })
+       const next: CommanderBridgeState = { ...current, revision: current.revision + 1, model }
+       input.store.set(next)
+       provider.changed()
+ 
+       return next
+     },
++    start: async (request) => {
++      const value = await adapter("/runs", { method: "POST", body: JSON.stringify({ request_id: request.requestID, text: request.text }) })
++      const decoded = Schema.decodeUnknownOption(CommanderRun)(value)
++      if (Option.isNone(decoded)) throw new Error("Commander Hermes adapter returned an invalid run.")
++      return decoded.value
++    },
++    status: async (runID) => adapter(`/runs/${encodeURIComponent(runID)}`),
++    steer: async (control) => { await adapter(`/runs/${encodeURIComponent(control.runID)}/steer`, { method: "POST", body: JSON.stringify({ text: control.text }) }) },
++    stop: async (runID) => { await adapter(`/runs/${encodeURIComponent(runID)}/stop`, { method: "POST" }) },
++    events: async (control) => {
++      const value = await adapter(`/runs/${encodeURIComponent(control.runID)}/events?after=${control.text ?? "0"}`)
++      if (!Array.isArray(value)) throw new Error("Commander Hermes adapter returned invalid events.")
++      return value
++    },
+   })
+ 
+   return provider
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -12,6 +12,7 @@
+ }>
+ 
+ type CommanderModelEvent = Readonly<{ readonly providerID: string; readonly modelID: string; readonly variant?: string }>
++type CommanderRequest = Readonly<{ readonly id: string; readonly operation: "start" | "stop" | "steer"; readonly requestID?: string; readonly runID?: string; readonly text?: string }>
+ 
+ function isCommanderModel(value: unknown): value is CommanderModelEvent {
+   if (!value || typeof value !== "object") return false
+@@ -123,6 +124,20 @@
+   window.addEventListener("opencode-commander-model-select", selectModel)
+   onCleanup(() => window.removeEventListener("opencode-commander-model-select", selectModel))
+ 
++  const hermes = (event: Event) => {
++    if (!(event instanceof CustomEvent)) return
++    const request = event.detail as CommanderRequest
++    if (!request || typeof request.id !== "string") return
++    const live = bridge()
++    if (live.status !== "active") return
++    const reply = (result: unknown, error?: string) => window.dispatchEvent(new CustomEvent("opencode-commander-hermes-response", { detail: { id: request.id, result, error } }))
++    if (request.operation === "start" && request.requestID && request.text) void live.value.start({ requestID: request.requestID, text: request.text }).then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander request failed."))
++    if (request.operation === "stop" && request.runID) void live.value.stop(request.runID).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander stop failed."))
++    if (request.operation === "steer" && request.runID && request.text) void live.value.steer({ runID: request.runID, text: request.text }).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander steer failed."))
++  }
++  window.addEventListener("opencode-commander-hermes-request", hermes)
++  onCleanup(() => window.removeEventListener("opencode-commander-hermes-request", hermes))
++
+   ctx.add(TitlebarItem, () => {
+     const current = status()
+     const mark = current?.attention ? "!" : current?.unread ? "•" : current?.working ? "…" : undefined
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -66,6 +66,7 @@
+   const server = useServerSDK()
+   const models = useModels()
+   const [failed, setFailed] = createSignal(false)
++  const [runID, setRunID] = createSignal<string>()
+   const prompt = createMemoryComposerState(props.conversation.model ? { model: props.conversation.model } : undefined)
+   const selected = () => prompt.model.current()
+   const currentModel = () => {
+@@ -118,8 +119,15 @@
+       data,
+       current: () => data.session.get(props.conversation.sessionID),
+       admitted: (id) => data.session.input.has(props.conversation.sessionID, id) || !!data.session.message.get(props.conversation.sessionID, id),
++      commanderPrompt: async (input) => {
++        const result = await hermesRequest<{ id: string }>({ operation: "start", requestID: input.id, text: input.text })
++        setRunID(result.id)
++      },
+     }),
+-    interrupt: () => server.api.session.interrupt({ sessionID: props.conversation.sessionID, resume: true }).then(() => undefined),
++    interrupt: () => {
++      const id = runID()
++      return id ? hermesRequest({ operation: "stop", runID: id }).then(() => undefined) : Promise.resolve()
++    },
+   }
+   const composer = createComposerModel(adapter)
+   const document = createMemo(() => ({
+@@ -159,3 +167,17 @@
+     </Dialog>
+   )
+ }
++
++function hermesRequest<T>(request: Readonly<{ operation: "start" | "stop" | "steer"; requestID?: string; runID?: string; text?: string }>): Promise<T> {
++  const id = crypto.randomUUID()
++  return new Promise<T>((resolve, reject) => {
++    const receive = (event: Event) => {
++      if (!(event instanceof CustomEvent) || !event.detail || event.detail.id !== id) return
++      window.removeEventListener("opencode-commander-hermes-response", receive)
++      if (typeof event.detail.error === "string") reject(new Error(event.detail.error))
++      else resolve(event.detail.result as T)
++    }
++    window.addEventListener("opencode-commander-hermes-response", receive)
++    window.dispatchEvent(new CustomEvent("opencode-commander-hermes-request", { detail: { id, ...request } }))
++  })
++}
+--- a/packages/app/src/composer/adapter.ts
++++ b/packages/app/src/composer/adapter.ts
+@@ -90,6 +90,7 @@
+     | undefined
+   >
+   admitted: (messageID: string) => boolean
++  commanderPrompt?: (input: Readonly<{ id: string; text: string }>) => Promise<void>
+ }
+ 
+ type ComposerAdapterBase = {
+--- a/packages/app/src/composer/submit.ts
++++ b/packages/app/src/composer/submit.ts
+@@ -525,7 +525,9 @@
+     },
+   }
+ 
+-  const sending = session.data.session.prompt(admission).catch(() => session.data.session.prompt(admission))
++  const sending = session.commanderPrompt
++    ? session.commanderPrompt({ id: value.id, text: request.text })
++    : session.data.session.prompt(admission).catch(() => session.data.session.prompt(admission))
+   onAdmit()
+   await sending
+ }

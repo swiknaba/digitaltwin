@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+
+test -d "$DIGITALTWIN_COMMANDER_WORKSPACE" || {
+  printf '%s\n' "Commander workspace does not exist: $DIGITALTWIN_COMMANDER_WORKSPACE" >&2
+  exit 78
+}
+
+test -f "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR/index.ts" || {
+  printf '%s\n' "Commander continuation plugin is not installed; run scripts/local-setup first." >&2
+  exit 78
+}
+
+case "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" in
+  *'"'*|*'\\'*)
+    printf '%s\n' "Commander continuation plugin path cannot be represented safely in OpenCode config." >&2
+    exit 78
+    ;;
+esac
+
+commander_plugin_config="{\"plugins\":[\"$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR\"]}"
+if [ -z "${OPENCODE_CONFIG_CONTENT:-}" ]; then
+  export OPENCODE_CONFIG_CONTENT="$commander_plugin_config"
+elif ! printf '%s' "$OPENCODE_CONFIG_CONTENT" | grep -Fq "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR"; then
+  printf '%s\n' "OPENCODE_CONFIG_CONTENT is already set and does not include the stack-local Commander continuation plugin: $DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" >&2
+  exit 78
+fi
+
+hermes_token_file="$repo_root/local/secrets/hermes-api-server-token"
+if [ -s "$hermes_token_file" ]; then
+  export DIGITALTWIN_HERMES_ADAPTER_URL="${DIGITALTWIN_HERMES_ADAPTER_URL:-http://127.0.0.1:3087}"
+  export DIGITALTWIN_HERMES_ADAPTER_TOKEN="$(cat "$hermes_token_file")"
+fi
+
+cd "$repo_root/local/opencode"
+exec bun run dev:desktop

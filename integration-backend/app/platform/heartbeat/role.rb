@@ -7,7 +7,6 @@ module Platform
     class Role < T::Enum
       enums do
         Worker = new("worker")
-        ChatListener = new("chat-listener")
       end
     end
   end

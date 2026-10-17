@@ -1,0 +1,41 @@
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -57,6 +57,7 @@ export const CommanderBridge = Ipc.define({
+     status: { input: Schema.String, output: Schema.Unknown },
+     steer: { input: CommanderRunControl },
+     stop: { input: Schema.String },
++    history: { output: Schema.Array(CommanderEvent) },
+   },
+   events: { event: CommanderEvent },
+ })
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -31,4 +31,14 @@ async function adapter(path: string, init: RequestInit = {}) {
+   return response.json()
+ }
+ 
++async function history() {
++  const value = await adapter("/history")
++  if (!Array.isArray(value)) throw new Error("Commander Hermes adapter returned invalid history.")
++  return value.flatMap((item, index) => {
++    if (!item || typeof item !== "object" || !("role" in item) || !("content" in item)) return []
++    if ((item.role !== "user" && item.role !== "assistant") || typeof item.content !== "string") return []
++    return [{ seq: index, type: item.role === "assistant" ? "completed" : "output", runID: "history", text: item.content }]
++  })
++}
++
+ async function relayEvents(runID: string, window: number, provider: IpcProvider<CommanderBridgeSpec>, signal: AbortSignal) {
+@@ -132,4 +141,5 @@ export function createCommanderRuntime(input: CommanderRuntime) {
+     status: async (runID) => adapter(`/runs/${encodeURIComponent(runID)}`),
+     steer: async (control) => { await adapter(`/runs/${encodeURIComponent(control.runID)}/steer`, { method: "POST", body: JSON.stringify({ text: control.text }) }) },
+     stop: async (runID) => { await adapter(`/runs/${encodeURIComponent(runID)}/stop`, { method: "POST" }) },
++    history,
+   })
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -133,4 +133,5 @@ const setup: Setup<typeof definition> = (ctx) => {
+     if (request.operation === "start" && request.requestID && request.text) void live.value.start({ requestID: request.requestID, text: request.text }).then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander request failed."))
+     if (request.operation === "stop" && request.runID) void live.value.stop(request.runID).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander stop failed."))
+     if (request.operation === "steer" && request.runID && request.text) void live.value.steer({ runID: request.runID, text: request.text }).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander steer failed."))
++    if (request.operation === "history") void live.value.history().then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander history failed."))
+   }

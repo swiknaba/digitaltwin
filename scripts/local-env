@@ -1,0 +1,83 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+config="$repo_root/.env.overmind"
+
+test -r "$config" || {
+  printf '%s\n' "Missing local Overmind configuration: $config" >&2
+  exit 78
+}
+
+set -a
+. "$config"
+set +a
+
+# Older local installs may still carry non-secret Commander overrides here.
+# The checked-in defaults above are sufficient for the normal local stack.
+commander_override="$repo_root/local/commander.env"
+if [ -r "$commander_override" ]; then
+  set -a
+  . "$commander_override"
+  set +a
+fi
+
+: "${DIGITALTWIN_PGHOST:?DIGITALTWIN_PGHOST is required}"
+: "${DIGITALTWIN_PGPORT:?DIGITALTWIN_PGPORT is required}"
+: "${DIGITALTWIN_PGUSER:?DIGITALTWIN_PGUSER is required}"
+: "${DIGITALTWIN_LOCAL_DATABASE:?DIGITALTWIN_LOCAL_DATABASE is required}"
+: "${DIGITALTWIN_TEST_DATABASE:?DIGITALTWIN_TEST_DATABASE is required}"
+: "${PORT:?PORT is required}"
+: "${DIGITALTWIN_COMMANDER_WORKSPACE:?DIGITALTWIN_COMMANDER_WORKSPACE is required}"
+: "${DIGITALTWIN_COMMANDER_AGENT:?DIGITALTWIN_COMMANDER_AGENT is required}"
+: "${DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR:?DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR is required}"
+: "${DIGITALTWIN_HERMES_ADAPTER_PORT:=3087}"
+: "${DIGITALTWIN_HERMES_STATE_FILE:=local/hermes/commander-adapter-state.json}"
+: "${HERMES_ADAPTER_URL:=http://127.0.0.1:${DIGITALTWIN_HERMES_ADAPTER_PORT}}"
+
+case "$DIGITALTWIN_PGPORT" in
+  *[!0-9]*|'') printf '%s\n' "DIGITALTWIN_PGPORT must be numeric" >&2; exit 78 ;;
+esac
+case "$DIGITALTWIN_LOCAL_DATABASE" in
+  *[!A-Za-z0-9_]*|'') printf '%s\n' "DIGITALTWIN_LOCAL_DATABASE must use letters, numbers, or underscores" >&2; exit 78 ;;
+esac
+case "$DIGITALTWIN_TEST_DATABASE" in
+  *[!A-Za-z0-9_]*|'') printf '%s\n' "DIGITALTWIN_TEST_DATABASE must use letters, numbers, or underscores" >&2; exit 78 ;;
+esac
+case "${HEARTBEAT_DIR:-}" in
+  /*) heartbeat_dir=$HEARTBEAT_DIR ;;
+  *) heartbeat_dir="$repo_root/${HEARTBEAT_DIR:-local/heartbeats}" ;;
+esac
+case "${DIGITALTWIN_LOCAL_TMPDIR:-}" in
+  /*) local_tmpdir=$DIGITALTWIN_LOCAL_TMPDIR ;;
+  *) local_tmpdir="$repo_root/${DIGITALTWIN_LOCAL_TMPDIR:-local/tmp}" ;;
+esac
+case "${DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE:-}" in
+  /*) future_task_secret_file=$DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE ;;
+  *) future_task_secret_file="$repo_root/${DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE:-local/secrets/future-task-capability-secret}" ;;
+esac
+case "$DIGITALTWIN_COMMANDER_WORKSPACE" in
+  /*) commander_workspace=$DIGITALTWIN_COMMANDER_WORKSPACE ;;
+  *) commander_workspace="$repo_root/$DIGITALTWIN_COMMANDER_WORKSPACE" ;;
+esac
+case "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" in
+  /*) commander_continuation_plugin_dir=$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR ;;
+  *) commander_continuation_plugin_dir="$repo_root/$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" ;;
+esac
+case "$DIGITALTWIN_HERMES_STATE_FILE" in
+  /*) hermes_state_file=$DIGITALTWIN_HERMES_STATE_FILE ;;
+  *) hermes_state_file="$repo_root/$DIGITALTWIN_HERMES_STATE_FILE" ;;
+esac
+
+mkdir -p "$heartbeat_dir" "$local_tmpdir" "$repo_root/local/runtime" "$repo_root/local/logs"
+export HEARTBEAT_DIR="$heartbeat_dir"
+export DIGITALTWIN_LOCAL_TMPDIR="$local_tmpdir"
+export TMPDIR="$local_tmpdir"
+export DATABASE_URL="postgres://${DIGITALTWIN_PGUSER}@${DIGITALTWIN_PGHOST}:${DIGITALTWIN_PGPORT}/${DIGITALTWIN_LOCAL_DATABASE}"
+export DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE="$future_task_secret_file"
+export FUTURE_TASK_CAPABILITY_SECRET_FILE="$future_task_secret_file"
+export DIGITALTWIN_COMMANDER_WORKSPACE="$commander_workspace"
+export DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR="$commander_continuation_plugin_dir"
+export DIGITALTWIN_HERMES_STATE_FILE="$hermes_state_file"
+export HERMES_ADAPTER_URL

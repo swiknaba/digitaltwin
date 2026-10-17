@@ -1,0 +1,107 @@
+diff --git a/packages/gui-extensions/src/commander/dialog.tsx b/packages/gui-extensions/src/commander/dialog.tsx
+index f38fbb4..7c9cfc0 100644
+--- a/packages/gui-extensions/src/commander/dialog.tsx
++++ b/packages/gui-extensions/src/commander/dialog.tsx
+@@ -1,7 +1,11 @@
+ import { Dialog, DialogBody } from "@opencode/ui/dialog"
++import { onCleanup, onMount } from "solid-js"
+ import CommanderPanel from "./panel"
+ 
+-export default function CommanderDialog() {
++export default function CommanderDialog(props: { onOpen(): void; onClose(): void }) {
++  onMount(props.onOpen)
++  onCleanup(props.onClose)
++
+   return (
+     <Dialog
+       class="flex h-[min(820px,calc(100vh-32px))] w-[min(1100px,calc(100vw-24px))] min-h-[420px] min-w-[560px] max-h-[calc(100vh-32px)] max-w-[calc(100vw-24px)] resize overflow-hidden"
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+index f41941c..2c071f0 100644
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -1,4 +1,4 @@
+-import { lazy, onCleanup, Suspense } from "solid-js"
++import { createEffect, createMemo, createSignal, lazy, onCleanup, Suspense } from "solid-js"
+ import { Command, onIdle, Panel, TitlebarItem, type PanelTab, type Setup } from "../sdk"
+ import CommanderDialog from "./dialog"
+ import type definition from "./index"
+@@ -7,6 +7,39 @@ const panelID = "main"
+ 
+ const setup: Setup<typeof definition> = (ctx) => {
+   const CommanderPanel = lazy(() => import("./panel"))
++  const bridge = ctx.uses.bridge
++  const [dialogOpen, setDialogOpen] = createSignal(false)
++  const [lastRead, setLastRead] = createSignal<string>()
++
++  const conversation = () => {
++    const live = bridge()
++    const state = live.status === "active" ? live.value.state() : undefined
++    return state?.conversation
++  }
++  const server = () => {
++    const current = conversation()
++    return current ? ctx.servers.get(current.serverID) : undefined
++  }
++  const messages = () => {
++    const current = conversation()
++    const target = server()
++    return current && target ? target.data.session.message.list(current.sessionID) : []
++  }
++  const latestAssistant = createMemo(() => messages().findLast((item) => item.type === "assistant"))
++  const status = createMemo(() => {
++    const current = conversation()
++    const target = server()
++    if (!current || !target) return
++    const attention = (target.data.session.form.list(current.sessionID)?.length ?? 0) > 0 || (target.data.session.permission.list(current.sessionID)?.length ?? 0) > 0
++    const working = target.data.session.status(current.sessionID) === "running"
++    const unread = !dialogOpen() && !!latestAssistant() && latestAssistant()!.id !== lastRead()
++    return { attention, working, unread }
++  })
++
++  createEffect(() => {
++    const message = latestAssistant()
++    if (dialogOpen() && message) setLastRead(message.id)
++  })
+   const tab: PanelTab = {
+     id: panelID,
+     get title() {
+@@ -16,18 +49,31 @@ const setup: Setup<typeof definition> = (ctx) => {
+     dom: { tab: "session-side-panel-commander-tab", panel: "session-side-panel-commander-tabpanel" },
+   }
+   const openGlobal = () => {
+-    ctx.dialogs.open(() => <CommanderDialog />)
++    ctx.dialogs.open(() => <CommanderDialog onOpen={() => setDialogOpen(true)} onClose={() => setDialogOpen(false)} />)
+   }
+ 
+   onCleanup(onIdle(() => void CommanderPanel.preload()))
+ 
+-  ctx.add(TitlebarItem, {
+-    id: "open",
+-    label: "commander",
+-    title: ctx.t("action.open"),
+-    expanded: true,
+-    tone: "success",
+-    run: openGlobal,
++  ctx.add(TitlebarItem, () => {
++    const current = status()
++    const mark = current?.attention ? "!" : current?.unread ? "•" : current?.working ? "…" : undefined
++    const title = current?.attention
++      ? "Commander needs your attention"
++      : current?.unread
++        ? "Commander has an unread reply"
++        : current?.working
++          ? "Commander is working"
++          : ctx.t("action.open")
++
++    return {
++      id: "open",
++      label: "commander",
++      title,
++      expanded: true,
++      tone: "success" as const,
++      mark,
++      run: openGlobal,
++    }
+   })
+ 
+   ctx.add(

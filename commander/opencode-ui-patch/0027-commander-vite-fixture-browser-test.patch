@@ -1,0 +1,173 @@
+diff --git a/packages/app/component-tests/commander-vite-fixture/index.html b/packages/app/component-tests/commander-vite-fixture/index.html
+new file mode 100644
+index 0000000000..64ce842e78
+--- /dev/null
++++ b/packages/app/component-tests/commander-vite-fixture/index.html
+@@ -0,0 +1,2 @@
++<!doctype html>
++<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Commander fixture</title></head><body><div id="root"></div><script type="module" src="./main.tsx"></script></body></html>
+diff --git a/packages/app/component-tests/commander-vite-fixture/main.tsx b/packages/app/component-tests/commander-vite-fixture/main.tsx
+new file mode 100644
+index 0000000000..f9c4a64f56
+--- /dev/null
++++ b/packages/app/component-tests/commander-vite-fixture/main.tsx
+@@ -0,0 +1,39 @@
++import "../../src/index.css"
++import { render } from "solid-js/web"
++import { onMount } from "solid-js"
++import { AppBaseProviders, AppInterface } from "../../src/app"
++import { CommanderOverlayHost } from "../../src/runtime/commander-overlay"
++import { ServerProvider } from "../../src/runtime/server/current"
++import { PlatformProvider } from "../../src/runtime/platform/platform"
++import { ExtensionAttachment } from "../../src/runtime/extension/root"
++import { LayoutProvider } from "../../src/shell/state/layout"
++import { SettingsSurfaceProvider } from "../../src/settings/surface"
++
++const server = { type: "http" as const, authToken: false, http: { url: "http://127.0.0.1:4173" } }
++const conversation = { serverID: "sidecar" as const, sessionID: "ses_commander_fixture", directory: "/fixture/commander", agent: "commander" }
++type Model = { providerID: string; modelID: string }
++
++declare global {
++  interface Window {
++    commanderFixture?: { reopen(): void; setColorScheme(scheme: "light" | "dark"): void }
++  }
++}
++
++function Fixture() {
++  let model: Model = { providerID: "fixture", modelID: "commander-small" }
++  const open = () => window.dispatchEvent(new CustomEvent("opencode-commander-overlay", { detail: { conversation, model } }))
++  onMount(() => {
++    window.addEventListener("opencode-commander-model-select", (event) => {
++      if (!(event instanceof CustomEvent) || !event.detail) return
++      model = event.detail as Model
++    })
++    window.commanderFixture = {
++      reopen: open,
++      setColorScheme: (scheme) => document.documentElement.dataset.colorScheme = scheme,
++    }
++    window.setTimeout(open, 50)
++  })
++  return <ServerProvider conn={server}><CommanderOverlayHost /></ServerProvider>
++}
++
++render(() => <PlatformProvider value={{ platform: "web", openExternal() {}, restart: async () => {}, notify: async () => {} }}><AppBaseProviders locale="en"><AppInterface servers={[server]}><LayoutProvider><SettingsSurfaceProvider><ExtensionAttachment><Fixture /></ExtensionAttachment></SettingsSurfaceProvider></LayoutProvider></AppInterface></AppBaseProviders></PlatformProvider>, document.getElementById("root")!)
+diff --git a/packages/app/component-tests/commander-vite-fixture/vite.config.ts b/packages/app/component-tests/commander-vite-fixture/vite.config.ts
+new file mode 100644
+index 0000000000..f94119389f
+--- /dev/null
++++ b/packages/app/component-tests/commander-vite-fixture/vite.config.ts
+@@ -0,0 +1,46 @@
++import { fileURLToPath } from "node:url"
++import { defineConfig } from "vite"
++import tailwindcss from "@tailwindcss/vite"
++import solid from "vite-plugin-solid"
++
++export default defineConfig({
++  root: fileURLToPath(new URL(".", import.meta.url)),
++  plugins: [solid(), tailwindcss(), {
++    name: "commander-fixture-api",
++    configureServer(server) {
++      server.middlewares.use((request, response, next) => {
++        if (!request.url?.startsWith("/api/")) return next()
++        console.log(request.url)
++        if (request.url.startsWith("/api/event")) {
++          response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" })
++          response.write("data: {\\\"id\\\":\\\"evt_fixture_connected\\\",\\\"type\\\":\\\"server.connected\\\",\\\"data\\\":{}}\\n\\n")
++          return
++        }
++        if (request.method === "POST" && (request.url.includes("/agent") || request.url.includes("/model"))) {
++          response.statusCode = 204
++          response.end()
++          return
++        }
++        response.setHeader("content-type", "application/json")
++        response.end(JSON.stringify(fixture(request.url)))
++      })
++    },
++  }],
++  resolve: { alias: { "@": fileURLToPath(new URL("../../src", import.meta.url)) } },
++  server: { host: "127.0.0.1", port: 4173, strictPort: true },
++})
++
++function fixture(path: string) {
++  if (path.startsWith("/api/info")) return { version: "fixture", pid: 1, urls: ["http://127.0.0.1:4173"], paths: { tmp: "/fixture/tmp" } }
++  if (path.includes("/session/ses_commander_fixture/inbox")) return { data: [] }
++  if (path.startsWith("/api/provider")) return { location: { directory: "/fixture/commander" }, data: [{ id: "fixture", name: "Fixture", activation: "enabled", package: "fixture" }] }
++  if (path.startsWith("/api/model")) return { location: { directory: "/fixture/commander" }, data: [model("commander-small", "Commander Small", "small"), model("commander-large", "Commander Large", "large"), model("hidden", "Hidden Commander", "hidden", "deprecated")] }
++  if (path.includes("/session/ses_commander_fixture/message")) return { data: Array.from({ length: 80 }, (_, index) => ({ id: `msg_${index}`, type: "assistant", agent: "commander", model: { providerID: "fixture", modelID: "commander" }, content: [{ type: "text", text: `Controlled Commander response ${index + 1}` }], time: { created: 1_790_000_000_000 + index } })), cursor: {} }
++  if (path.includes("/session/ses_commander_fixture")) return { data: { id: "ses_commander_fixture", slug: "commander", projectID: "project-fixture", directory: "/fixture/commander", version: "1", agent: "commander", title: "Commander", cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }, time: { created: 1_790_000_000_000, updated: 1_790_000_000_000 } } }
++  if (path.includes("/health")) return { healthy: true }
++  return { data: [] }
++}
++
++function model(id: string, name: string, family: string, status: "active" | "deprecated" = "active") {
++  return { id, modelID: id, providerID: "fixture", name, family, capabilities: { tools: true, input: ["text"], output: ["text"] }, variants: [], time: { released: 1_790_000_000_000 }, cost: [], status, enabled: true, limit: { context: 8192, output: 1024 } }
++}
+diff --git a/packages/app/component-tests/commander-vite-fixture/playwright.config.ts b/packages/app/component-tests/commander-vite-fixture/playwright.config.ts
+new file mode 100644
+index 0000000000..1729dd6d53
+--- /dev/null
++++ b/packages/app/component-tests/commander-vite-fixture/playwright.config.ts
+@@ -0,0 +1,9 @@
++import { defineConfig } from "@playwright/test"
++
++export default defineConfig({
++  testDir: ".",
++  testMatch: "commander-vite-fixture.spec.ts",
++  timeout: 30_000,
++  use: { baseURL: "http://127.0.0.1:4173", viewport: { width: 1280, height: 800 } },
++  webServer: { command: "vite --config vite.config.ts", url: "http://127.0.0.1:4173", reuseExistingServer: true },
++})
+diff --git a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+new file mode 100644
+index 0000000000..e590c50aae
+--- /dev/null
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -0,0 +1,39 @@
++import { expect, test } from "@playwright/test"
++
++test("Commander uses visible models, sends native composer prompts, persists selection, and stays in bounds", async ({ page }) => {
++  await page.goto("/")
++  const overlay = page.locator('[data-slot="commander-native-overlay"]')
++  await expect(overlay).toBeVisible()
++  await expect(overlay.getByText("Controlled Commander response 80")).toBeVisible()
++
++  const picker = overlay.locator('[data-action="composer-model"]')
++  await picker.click()
++  await expect(page.locator('[data-option-key="fixture:commander-small"]')).toBeVisible()
++  await expect(page.locator('[data-option-key="fixture:commander-large"]')).toBeVisible()
++  await expect(page.getByText("Hidden Commander", { exact: true })).toHaveCount(0)
++  await page.locator('[data-option-key="fixture:commander-large"]').click()
++  await expect(picker).toContainText("Commander Large")
++
++  const prompt = overlay.locator('[contenteditable="true"]')
++  await prompt.fill("send this from Commander")
++  await expect(overlay.getByRole("button", { name: "Send" })).toBeEnabled()
++  const sent = page.waitForRequest((request) => request.method() === "POST" && request.url().includes("/api/session/ses_commander_fixture/prompt"))
++  await overlay.getByRole("button", { name: "Send" }).click()
++  const request = await sent
++  expect(request.postDataJSON()).toMatchObject({ text: "send this from Commander" })
++
++  await overlay.getByRole("button", { name: "Close" }).click()
++  await page.evaluate(() => window.commanderFixture?.reopen())
++  await expect(overlay).toBeVisible()
++  await expect(overlay.locator('[data-action="composer-model"]')).toContainText("Commander Large")
++
++  const bounds = await overlay.boundingBox()
++  expect(bounds).not.toBeNull()
++  expect(bounds!.x).toBeGreaterThanOrEqual(0)
++  expect(bounds!.y).toBeGreaterThanOrEqual(36)
++  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(1280)
++  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(800)
++
++  await page.evaluate(() => window.commanderFixture?.setColorScheme("dark"))
++  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "dark")
++})
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+index e2fbcba..f38eec3 100644
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -135,2 +135,3 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+       data.session.pending.sync(props.conversation.sessionID),
++      data.location.provider.sync({ directory: props.conversation.directory }),
+       data.location.model.sync({ directory: props.conversation.directory }),

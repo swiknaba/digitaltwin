@@ -1,0 +1,412 @@
++diff --git a/packages/app/component-tests/extension-host.fixture.tsx b/packages/app/component-tests/extension-host.fixture.tsx
+index c20d81e..3ca1b90 100644
+--- a/packages/app/component-tests/extension-host.fixture.tsx
++++ b/packages/app/component-tests/extension-host.fixture.tsx
+@@ -1,14 +1,19 @@
+ import { DialogProvider } from "@opencode/ui/context/dialog"
+ import {
+   Panel,
++  TitlebarItem,
+   type Appearance,
+   type Build,
+   type Definition,
++  type Ipc,
++  type IpcClient,
++  type IpcSpec,
+   type Keybinds,
+   type Layout,
+   type Locale,
+   type MountedSession,
+   type Router,
++  type ServerRef,
+   type Servers,
+   type SessionScreen,
+   type Setup,
+@@ -354,7 +359,12 @@ function standIn(overrides: Partial<Interface>): Interface {
+ }
+ 
+ /** The real host over the real HostApis of a web window; `mounted`, when given, attaches as the app interface. */
+-function RealHost(props: ParentProps<{ definitions: readonly Definition[]; captured: Captured; mounted?: Interface }>) {
++function RealHost(props: ParentProps<{
++  definitions: readonly Definition[]
++  captured: Captured
++  mounted?: Interface
++  ipc?: (token: Ipc) => IpcClient<IpcSpec> | undefined
++}>) {
+   const apis = createHostApis()
+   props.captured.apis = apis
+ 
+@@ -366,6 +376,7 @@ function RealHost(props: ParentProps<{ definitions: readonly Definition[]; captu
+       disabled={() => new Set<string>()}
+       apis={apis.apis}
+       whenMounted={apis.whenMounted}
++      ipc={props.ipc}
+     >
+       {props.children}
+     </ExtensionHostProvider>
+@@ -379,12 +390,24 @@ function RealHost(props: ParentProps<{ definitions: readonly Definition[]; captu
+  * does: a new session object each time, delivered through the same reactive inputs, while the one screen object
+  * `ctx.screen` returns follows the route. Its composer records which session each attachment reached.
+  */
+-export function mountSessionRegion(input: { definitions: readonly Definition[]; active: string }) {
++export function mountSessionRegion(input: {
++  definitions: readonly Definition[]
++  active: string
++  /** The panel fixture's typed main-process IPC provider. */
++  ipc?: (token: Ipc) => IpcClient<IpcSpec> | undefined
++  /** The panel fixture's live sidecar ref. */
++  server?: ServerRef
++  /** Stored panel keys, when a focused fixture needs a stable persisted strip. */
++  tabs?: readonly string[]
++}) {
+   const container = document.createElement("div")
++  container.dataset.testid = "session-region-fixture"
++  container.style.cssText = "position:fixed;inset:0;z-index:1000;background:var(--background-base);color:var(--text-base);padding:24px"
+   document.body.appendChild(container)
+   const hosts: ExtensionHost[] = []
+   const captured: Captured = {}
+   const attached: string[] = []
++  const opened: { key: string; session: string }[] = []
+ 
+   const object = (id: string) => {
+     const value = { key: `fixture\n${id}`, id, tab: id, pending: false, location: { directory: "/repo" }, visit: {} }
+@@ -396,6 +419,7 @@ export function mountSessionRegion(input: { definitions: readonly Definition[];
+ 
+   const [view, setView] = createSignal(object("a"))
+   const [routed, setRouted] = createSignal(true)
++  const [panelVisible, setPanelVisible] = createSignal(true)
+ 
+   const route = {
+     composer: { attach: () => void attached.push(view().id), update() {}, detach() {} },
+@@ -411,7 +435,7 @@ export function mountSessionRegion(input: { definitions: readonly Definition[];
+     const host = useExtensionHost()
+     hosts.push(host)
+     // Every panel's `main` tab is stored, and `active` selected, as a strip restored after a reload.
+-    const all = () => host.items(Panel).map((item) => `${item.extension}:main`)
++    const all = () => input.tabs ? [...input.tabs] : host.items(Panel).map((item) => `${item.extension}:main`)
+ 
+     const region = createRegion({
+       region: "side",
+@@ -463,9 +487,21 @@ export function mountSessionRegion(input: { definitions: readonly Definition[];
+             <RealHost
+               definitions={input.definitions}
+               captured={captured}
+-              mounted={standIn({ current: () => (routed() ? view() : undefined), screen: () => screen })}
++              mounted={standIn({
++                current: () => (routed() ? view() : undefined),
++                screen: () => screen,
++                servers: () => (input.server ? [input.server.id] : []),
++                server: (id) => (id === input.server?.id ? input.server : undefined),
++                layout: {
++                  ...layout,
++                  open: (key, session) => void opened.push({ key, session: session.id }),
++                },
++              })}
++              ipc={input.ipc}
+             >
+-              <Region />
++              <Show when={panelVisible()}>
++                <Region />
++              </Show>
+             </RealHost>
+           </DialogProvider>
+         </PlatformProvider>
+@@ -482,7 +518,19 @@ export function mountSessionRegion(input: { definitions: readonly Definition[];
+     leave: () => setRouted(false),
+     /** The session each composer attachment reached, in order. */
+     attached,
++    /** Opens the first titlebar contribution as the production titlebar does. */
++    openTitlebar: () => hosts[0]?.items(TitlebarItem)[0]?.value.run?.(),
++    /** The panel opens against the project that was selected at the action boundary. */
++    opened,
++    /** The currently routed project session remains independent of Commander. */
++    current: () => view().id,
++    /** Remounts the selected panel without replacing the host or its main-process Ipc state. */
++    reopen: () => {
++      setPanelVisible(false)
++      queueMicrotask(() => setPanelVisible(true))
++    },
+     status: (id: string) => hosts[0]?.state.status[id],
++    failure: (id: string) => hosts[0]?.state.failures[id]?.error,
+     unmount: () => {
+       dispose()
+       container.remove()
+diff --git a/packages/app/component-tests/commander-panel.spec.ts b/packages/app/component-tests/commander-panel.spec.ts
+new file mode 100644
+index 0000000..1e8c3cc
+--- /dev/null
++++ b/packages/app/component-tests/commander-panel.spec.ts
+@@ -0,0 +1,273 @@
++import type { Data, DataSessionStatus } from "@opencode/client/solid"
++import type { OpenCodeClient, SessionInfo, SessionPromptInput } from "@opencode/client/promise"
++import type { Ipc, IpcClient, IpcSpec, ServerRef } from "@opencode/gui-extensions/sdk"
++import { expect, sourceURL, story } from "../../storybook/playwright/story"
++
++const fixture = sourceURL(new URL("./extension-host.fixture.tsx", import.meta.url))
++
++const modules = {
++  fixture,
++  commander: sourceURL(new URL("../../gui-extensions/src/commander/index.ts", import.meta.url)),
++  contract: sourceURL(new URL("../../gui-extensions/src/commander/contract.ts", import.meta.url)),
++  renderer: sourceURL(new URL("../../gui-extensions/src/commander/renderer.tsx", import.meta.url)),
++  project: sourceURL(new URL("../../schema/src/project.ts", import.meta.url)),
++  session: sourceURL(new URL("../../schema/src/session.ts", import.meta.url)),
++}
++
++type CommanderState = {
++  revision: number
++  conversation?: { serverID: "sidecar"; sessionID: string; directory: string; agent: string }
++}
++
++type CommanderData = {
++  readonly session: {
++    get(sessionID: string): SessionInfo | undefined
++    sync(sessionID: string): Promise<void>
++    create(input: { id: string; title: string; location: { directory: string }; agent: string }): { request: Promise<void> }
++    prompt(input: SessionPromptInput): Promise<void>
++    status(sessionID: string): DataSessionStatus
++    readonly message: { list(sessionID: string): readonly []; sync(sessionID: string): Promise<void> }
++    readonly pending: { sync(sessionID: string): Promise<void> }
++  }
++}
++
++type CommanderClient = {
++  readonly session: { interrupt(input: { sessionID: string; resume: boolean }): Promise<void> }
++}
++
++type CommanderBridgeClient = Pick<IpcClient<IpcSpec>, "on"> & {
++  state(): CommanderState
++  reserve(input: { serverID: "sidecar"; sessionID: string }): Promise<CommanderState>
++}
++
++type Calls = {
++  reserve: string[]
++  create: string[]
++  prompt: SessionPromptInput[]
++  interrupt: string[]
++}
++
++story.beforeEach(async ({ mount }) => {
++  await mount("ui-line-comment--editor")
++})
++
++story("Commander reserves one neutral session, sends a msg_ prompt, interrupts it, and keeps its identity across projects", async ({ page }, testInfo) => {
++  // Vite can perform its dependency-optimization navigation on the first browser-side import.
++  // Warm Commander and its fixture before installing the controlled sidecar, then retry only that navigation race.
++  let warmed = false
++
++  for (const attempt of [0, 1]) {
++    try {
++      await page.evaluate(async (modules) => {
++        await Promise.all(Object.values(modules).map((module) => import(module)))
++      }, modules)
++      warmed = true
++      break
++    } catch (error) {
++      if (attempt === 1 || !(error instanceof Error) || !error.message.includes("Execution context was destroyed")) throw error
++      await page.waitForLoadState("domcontentloaded")
++    }
++  }
++
++  if (!warmed) throw new Error("Commander fixture modules did not initialize")
++
++  const initialize = () => page.evaluate(async (modules) => {
++    const [{ createSignal, mountSessionRegion, until }, commander, contract, { Project }, { Session }] = await Promise.all([
++      import(modules.fixture),
++      import(modules.commander),
++      import(modules.contract),
++      import(modules.project),
++      import(modules.session),
++    ])
++
++    const initialState: CommanderState = { revision: 0 }
++    const initialStatus: DataSessionStatus = "idle"
++    const [state, setState] = createSignal(initialState)
++    const [status, setStatus] = createSignal(initialStatus)
++    const [exists, setExists] = createSignal(false)
++    const calls: Calls = { reserve: [], create: [], prompt: [], interrupt: [] }
++    let report = () => {}
++
++    const session = (id: string): SessionInfo => ({
++      id: Session.ID.make(id),
++      projectID: Project.ID.make("prj_commander"),
++      cost: 0,
++      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
++      time: { created: 1, updated: 1 },
++      title: "Commander",
++      location: { directory: "/srv/digitaltwin/commander" },
++    })
++
++    const data: CommanderData = {
++      session: {
++        get: (id) => (exists() && state().conversation?.sessionID === id ? session(id) : undefined),
++        sync: async (id) => {
++          if (!exists()) {
++            setExists(true)
++            const tag: "SessionNotFoundError" = "SessionNotFoundError"
++            throw Object.assign(new Error("missing"), { _tag: tag, sessionID: id })
++          }
++        },
++        create: (input) => {
++          calls.create.push(input.id)
++          setExists(true)
++          report()
++
++          return { request: Promise.resolve() }
++        },
++        prompt: async (input) => {
++          calls.prompt.push(input)
++          setStatus("running")
++          report()
++        },
++        status: () => status(),
++        message: { list: () => [], sync: async () => {} },
++        pending: { sync: async () => {} },
++      },
++    }
++
++    const client: CommanderClient = {
++      session: {
++        interrupt: async ({ sessionID }) => {
++          calls.interrupt.push(sessionID)
++          setStatus("idle")
++          report()
++        },
++      },
++    }
++
++    const server: ServerRef = {
++      id: "sidecar",
++      name: "Sidecar",
++      url: "http://127.0.0.1:4096",
++      // SAFETY: Commander reaches only the typed `session` projection below in this component fixture.
++      // oxlint-disable-next-line anti-slop/no-chained-type-assertions -- the SDK requires a complete client, above is its exercised projection.
++      client: client as unknown as OpenCodeClient,
++      // SAFETY: Commander reaches only this typed session projection; the rest of Data is irrelevant to the panel.
++      // oxlint-disable-next-line anti-slop/no-chained-type-assertions -- the SDK requires complete Data, above is its exercised projection.
++      data: data as unknown as Data,
++      local: true,
++      builtin: true,
++      compatible: true,
++      connected: true,
++    }
++
++    const bridge: CommanderBridgeClient = {
++      state,
++      reserve: async ({ sessionID }) => {
++        calls.reserve.push(sessionID)
++        setState({
++          revision: 1,
++          conversation: {
++            serverID: "sidecar",
++            sessionID,
++            directory: "/srv/digitaltwin/commander",
++            agent: "commander",
++          },
++        })
++        report()
++
++        return state()
++      },
++      on: () => () => {},
++    }
++
++    const region = mountSessionRegion({
++      definitions: [{ ...commander.default, renderer: () => import(modules.renderer) }],
++      active: "commander:main",
++      tabs: ["commander:main"],
++      server,
++      // SAFETY: the fixture provides every Commander bridge method it invokes, and no unrelated Ipc.
++      // oxlint-disable-next-line anti-slop/no-chained-type-assertions -- IpcClient requires every unrelated method from a generic spec.
++      ipc: (token: Ipc) => (token.id === contract.CommanderBridge.id ? bridge as unknown as IpcClient<IpcSpec> : undefined),
++    })
++
++    await until(() => region.status("commander") === "active" && calls.create.length === 1)
++    report = () => {
++      region.container.dataset.commander = JSON.stringify({
++        calls,
++        sessionID: state().conversation?.sessionID,
++        opened: region.opened,
++        current: region.current(),
++      })
++    }
++
++    region.openTitlebar()
++    region.container.addEventListener("commander-loss", () => setExists(false))
++    region.container.addEventListener("commander-reopen", () => region.reopen())
++    region.container.addEventListener("commander-project-b", () => {
++      region.route("project-b")
++      region.openTitlebar()
++      report()
++    })
++    report()
++
++    await until(() => !!region.container.querySelector("[data-slot='commander-panel']") || !!region.failure("commander"))
++
++    if (region.failure("commander")) throw region.failure("commander")
++  }, modules)
++
++  let initialized = false
++
++  for (const attempt of [0, 1]) {
++    try {
++      await initialize()
++      initialized = true
++      break
++    } catch (error) {
++      if (attempt === 1 || !(error instanceof Error) || !error.message.includes("Execution context was destroyed")) throw error
++      await page.waitForLoadState("domcontentloaded")
++    }
++  }
++
++  if (!initialized) throw new Error("Commander fixture did not initialize")
++
++  const panel = page.getByTestId("session-region-fixture")
++  await expect(panel.getByText("Commander is ready when you are.", { exact: true })).toBeVisible()
++  await expect(panel.getByRole("textbox")).toBeEnabled()
++
++  await panel.getByRole("textbox").fill("Continue the release review")
++  await panel.getByRole("button", { name: "Send", exact: true }).click()
++  await expect(panel.getByRole("button", { name: "Stop", exact: true })).toBeVisible()
++  await panel.getByRole("button", { name: "Stop", exact: true }).click()
++
++  await page.evaluate(() => document.querySelector<HTMLElement>("[data-testid='session-region-fixture']")?.dispatchEvent(new Event("commander-loss")))
++  await expect(panel.getByRole("button", { name: "Reconnect", exact: true })).toBeVisible()
++  await panel.getByRole("button", { name: "Reconnect", exact: true }).click()
++  await expect(panel.getByRole("textbox")).toBeEnabled()
++
++  await page.evaluate(() => document.querySelector<HTMLElement>("[data-testid='session-region-fixture']")?.dispatchEvent(new Event("commander-reopen")))
++  await expect(panel.getByRole("textbox")).toBeEnabled()
++
++  await page.evaluate(() => document.querySelector<HTMLElement>("[data-testid='session-region-fixture']")?.dispatchEvent(new Event("commander-project-b")))
++
++  await expect.poll(() => page.evaluate(() => document.querySelector<HTMLElement>("[data-testid='session-region-fixture']")?.dataset.commander)).toBeTruthy()
++  await panel.screenshot({ path: testInfo.outputPath("commander-panel.png") })
++
++  const result = await page.evaluate(() => {
++    const value = document.querySelector<HTMLElement>("[data-testid='session-region-fixture']")?.dataset.commander
++
++    if (!value) throw new Error("Commander fixture did not report its boundary calls")
++
++    return JSON.parse(value)
++  })
++
++  expect(result.calls.reserve).toHaveLength(1)
++  expect(result.calls.reserve[0]).toMatch(/^ses_/)
++  expect(result.calls.create).toEqual([result.calls.reserve[0], result.calls.reserve[0]])
++  expect(result.calls.prompt).toEqual([
++    expect.objectContaining({
++      id: expect.stringMatching(/^msg_/),
++      sessionID: result.sessionID,
++      text: "Continue the release review",
++      delivery: "steer",
++      metadata: { fromCommander: true },
++    }),
++  ])
++  expect(result.calls.interrupt).toEqual([result.sessionID])
++  expect(result.opened).toEqual([
++    { key: "commander:main", session: "a" },
++    { key: "commander:main", session: "project-b" },
++  ])
++  expect(result.current).toBe("project-b")
++})

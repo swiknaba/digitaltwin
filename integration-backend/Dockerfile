@@ -20,6 +20,7 @@ RUN apk add --no-cache libpq=18.6-r0 liburing=2.14-r0 git=2.54.0-r0 bash=5.3.9-r
 WORKDIR /app
 COPY --from=dependencies /usr/local/bundle /usr/local/bundle
 COPY --chown=10001:10001 . .
+RUN mkdir -p /app/local/heartbeats && chown -R 10001:10001 /app/local
 ENV RACK_ENV=production APP_VERSION=development PORT=3000
 USER 10001:10001
 EXPOSE 3000

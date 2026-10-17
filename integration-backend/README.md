@@ -1,104 +1,93 @@
-# Integration Backend
+# Kirei FutureTasks
 
-The routing layer between chat (Mattermost) and the LLM agent sessions that run on the server.
+Kirei is the durable future-commitment service for Commander. It does not receive
+ordinary OpenCode project prompts, transcripts, chat events, reviews, approvals, or
+Git workflow control.
 
-## Why this exists
+## What it owns
 
-Agent sessions run on a server. People talk to them in chat. Something must sit between the two.
-It decides which message goes to which session, who may steer it, and which thread receives the result.
-Without it, any chat member could prompt any agent, a reconnect could deliver a message twice,
-and a lost reply could go to the wrong thread. This service verifies the sender,
-routes the message, and posts the agent's result back to the thread it came from.
+- one-time Commander check-ins with actor-scoped idempotency keys;
+- task versions, cancellation, rescheduling, and immutable delivery attempts;
+- a durable due-job generation and exactly one delivery key per generation;
+- explicit `scheduled`, `running`, `awaiting_disposition`, `completed`, `failed`,
+  `canceled`, and `uncertain` task states.
 
-## What it does
+There is deliberately no recurrence engine. A due task may create its own next
+one-time successor through the same capability API, using a stable successor
+idempotency key; a worker retry therefore returns the existing successor instead
+of creating a duplicate.
 
-- Verifies each human message (channel, thread, sender), then routes it to Commander or to a workflow session.
-- Moves a workflow through spec, plan, implementation, review, and human approval gates.
-  Approvals name an exact commit. A changed artifact fails closed.
-- Lets agent sessions post results, artifacts, and review requests back to their thread.
-- Delivers each message once. An external effect with an unknown outcome is marked `uncertain`
-  and held for a human to reconcile with a `recover-*` command. It is never retried blindly.
+When a task is due, the worker uses the project-local Hermes Commander adapter
+when `HERMES_ADAPTER_URL` is configured; otherwise it uses the legacy ordinary
+authenticated OpenCode session API. The Hermes adapter keeps its bearer token and
+durable Commander session outside Kirei. It never starts project work. An unknown effect becomes
+`uncertain`, then one reconciliation attempt uses the same immutable delivery key.
+The in-repository gateway fails closed until an operator wires an exact OpenCode
+session and authorization file; it does not create or ship a credential.
 
-## Chat commands
+## Capability and bridge contract
 
-The Commander bot defaults to the configurable `@commander` handle. The project workflow bot defaults to `@agent` (`COMMANDER_HANDLE`, `AGENT_HANDLE`). Each command is the whole message.
+`Services::FutureTasks::CapabilityApi` is the single typed API behind the MCP and
+global OpenCode tool adapters. It supports create, cursor-paged list, read, update,
+cancel, disposition, and owner resolution. Each call consumes one short-lived signed
+capability containing only an audience, actor, Commander conversation, expiry, and
+nonce. Kirei records the nonce before task mutation, so replayed, expired, or
+cross-actor capabilities fail closed. The body never supplies an actor, origin, or
+target; conversation is retained only as creation provenance so a valid Commander
+session can manage the actor's Commander-targeted tasks created elsewhere.
 
-| Command | Effect |
-| --- | --- |
-| `@commander approve WORKFLOW_ID spec\|plan COMMIT_SHA` | Approve a workflow gate at an exact 40-character commit. |
-| `@commander route WORKFLOW_ID` + newline + text | Send the text to that workflow's Writer session. |
-| `@commander recover-commander REQUEST_ID` | Close an expired or uncertain Commander request. No prompt replay. |
-| `@commander recover-start REQUEST_ID THREAD_ID` | Continue a thread start against the existing root post. |
-| `@commander recover-session OPERATION_ID PANE_ID` | Resolve an uncertain session start or stop. |
-| `@commander recover-followup FOLLOWUP_ID delivered\|discard` | Record the human outcome of a lost follow-up. |
-| `@agent start` (new thread root) | Start a workflow for the channel's enrolled project in this thread. |
-| `@agent approve` | Approve the artifact waiting at the current human-approval gate. |
-| `@agent pause` / `resume` | Pause the workflow; resume only if the revision did not change meanwhile. |
-| `@agent finish` | Close a delivered workflow and stop its sessions. |
-| `@agent cancel` | Cancel the workflow and stop its sessions. |
+The bounded OpenCode host transport is mounted at `/v1/future-tasks` and delegates
+only to `Adapters::FutureTasks::OpencodeTool`; it accepts the capability as a Bearer
+credential and exposes create/list/read/update/cancel/disposition/resolution routes.
+`Services::Composition` constructs both the MCP and OpenCode adapters from the same
+capability API, so neither transport can schedule directly or select an actor. This
+is an internal task API, not a generic workflow server or a replacement for the
+operator-owned native MCP server bootstrap.
 
-Only the original human can run a recover command. Details: [Commander routing setup](../docs/interfaces/commander-routing-setup.md).
+Set all of the following only in operator-owned runtime configuration:
 
-## Run it
+- `HERMES_ADAPTER_URL` — a loopback URL for the project-local Hermes Commander adapter; or
 
-Roles share one image and one schema. Migrate first. No role migrates at startup, and all refuse to start with pending migrations.
+- `OPENCODE_URL` — existing authenticated OpenCode server base URL;
+- `OPENCODE_SESSION_ID` — exact operator-selected OpenCode session; and
+- `OPENCODE_AUTHORIZATION_FILE` — mounted authorization value for that OpenCode server; and
+- `FUTURE_TASK_CAPABILITY_SECRET_FILE` — mounted verification secret for
+  operator-issued capabilities.
+
+Without the bridge values, delivery is explicitly unavailable. Without the capability
+secret, the agent scheduling API is unavailable. Neither condition affects ordinary
+OpenCode project work.
+
+The local OpenCode plugin receives the same ignored capability-secret file path
+and mints a fresh 60-second capability inside its trusted server process for each
+call; it never asks the model to supply or retain a bearer token. Keep the
+OpenCode service authorization in its own local file, and configure the bridge
+with a Commander session ID only after the panel has reserved that session.
+
+## Run and verify
 
 ```sh
 bundle install
-bundle exec rake db:migrate                    # needs DATABASE_URL
-bin/web                                        # HTTP: /livez, /readyz, private callbacks
-bin/worker                                     # durable jobs and delivery
-bin/chat-listener                              # Mattermost ingestion
-bin/mcp                                        # stdio bridge for Commander (runs in Runtime, not here)
-bin/health web|worker|chat-listener            # container probe
+bundle exec rake db:migrate  # DATABASE_URL points at an empty Kirei database
+bin/web                      # /livez and /readyz only
+bin/worker                   # FutureTasks due-job handler
 ```
 
-Tests need two disposable PostgreSQL databases, `digitaltwin_backend_test` and `digitaltwin_migration_test`:
+For the backend check, use a disposable `digitaltwin_backend_test` PostgreSQL
+database:
 
 ```sh
-DATABASE_URL=... MIGRATION_TEST_DATABASE_URL=... bin/check   # specs, RuboCop, Sorbet
+DATABASE_URL=... bin/check
 ```
 
-## Configuration
+The greenfield migration is `001_future_tasks.rb`; it intentionally replaces the
+historical chat/workflow schema rather than migrating Mattermost data.
 
-| Variable | Meaning |
-| --- | --- |
-| `DATABASE_URL` | Dedicated PostgreSQL database and role. Required. Never a Mattermost database. |
-| `MATTERMOST_URL` | Private base URL of the Mattermost server. |
-| `MATTERMOST_LISTENER_TOKEN_FILE` | File with the listener credential. |
-| `MATTERMOST_COMMANDER_TOKEN_FILE`, `MATTERMOST_AGENT_TOKEN_FILE` | Files with the Commander and Agent bot credentials used for delivery. |
-| `MATTERMOST_COMMANDER_BOT_ID`, `MATTERMOST_AGENT_BOT_ID` | Expected Commander and Agent bot identities. Checked against the authenticated user. |
-| `MATTERMOST_LOCAL_BOT_IDS` | Bots excluded from human authority. Required by the listener. |
-| `MATTERMOST_PEER_BOT_IDS` | Other bots to exclude. Optional. |
-| `MATTERMOST_CHANNEL_IDS` | Monitored channels. Listed explicitly, never inferred. |
-| `COMMANDER_CHANNEL_ID` | Channel for Commander chat. |
-| `ROLE_CONFIG_FILE` | Trusted Commander, Writer, and Reviewer profiles (CLI, provider, model). |
-| `COMMANDER_HANDLE`, `AGENT_HANDLE` | Chat handles. Default `commander`, `agent`. |
-| `WORKSPACE_ROOT`, `WORKTREE_ROOT` | Shared repo and worktree mounts. Default `/workspace/repos`, `/workspace/worktrees`. |
-| `PORT`, `WEB_PROCESSES` | Web port and process count. Default `3000`, `1`. |
-| `DB_POOL_SIZE`, `DB_POOL_TIMEOUT` | Connection pool size and wait seconds. Default `5`, `2`. |
-| `HEARTBEAT_DIR` | Where worker and listener write heartbeats. Default `/tmp`. Stale after 60 seconds. |
-| `CHAT_VALIDATION_MODE` | `1` opens the listener and delivery for disposable chat checks only. |
-| `DIGITALTWIN_CALLBACK_URL` | Backend URL used by `bin/digitaltwin` and `bin/mcp` in Runtime. |
-| `DIGITALTWIN_COMMANDER_REQUEST_TOKEN_FILE`, `DIGITALTWIN_SESSION_GENERATION` | Per-request Commander and per-session credentials for Runtime clients. |
+## Boundaries
 
-## Operating rules
-
-- Dispatch to agent sessions is blocked by default. The only exception is the documented,
-  file-gated [local Commander/direct-agent activation](../docs/interfaces/local-commander-activation.md),
-  which validates mounted chat identities, role selection and the shared Herdr socket before the
-  operator starts effect-owning services. It is not a boolean environment override or a production path.
-  Workflow starts, prompts, reviews, and session renewals otherwise stay queued or blocked.
-- `CHAT_VALIDATION_MODE=1` does not enable agent sessions, reviews, approvals, or production workflows.
-- Store credentials only as mounted read-only files. Keep no tokens, signing keys, or provider login state in Git or images.
-- Only the worker mounts Git workspaces and the Herdr socket. Live GitHub creation needs an operator-provided `gh` login.
-- The backend never reads or migrates Mattermost tables.
-- Callbacks are session-bound and deduplicated. A changed body or a stale generation is rejected.
-- Unknown outcomes need human or remote evidence. See the recover commands above.
-- Open gates and ownership: [service boundaries](../docs/interfaces/service-boundaries.md).
-
-## Code layout
-
-`app/domains/` holds bounded contexts that own tables and rules. `app/services/` holds cross-domain use cases and job handlers.
-`app/adapters/` translates vendors and transports (Mattermost, Herdr, git, credential files, HTTP, MCP).
-`app/platform/` holds shared jobs, locks, transactions, audit, and JSON boundary types. Conventions: [AGENTS.md](AGENTS.md).
+OpenCode owns project sessions, agents, remote workspaces, and Git feedback.
+Commander owns its durable conversation and runtime credentials. Kirei receives only
+validated future-task operations through the shared MCP/OpenCode tool API and
+delivers them through an exact operator-selected normal OpenCode session. The
+production issuer and OpenCode authorization remain operator work. No task can trigger a code change,
+merge, deployment, or revive a project session by itself.

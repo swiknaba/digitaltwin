@@ -1,0 +1,72 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+
+default_commander_workspace="$repo_root/local/commander-workspace"
+
+if [ "$DIGITALTWIN_COMMANDER_WORKSPACE" = "$default_commander_workspace" ]; then
+  mkdir -p "$DIGITALTWIN_COMMANDER_WORKSPACE"
+elif [ ! -d "$DIGITALTWIN_COMMANDER_WORKSPACE" ]; then
+  printf '%s\n' "Commander workspace does not exist: $DIGITALTWIN_COMMANDER_WORKSPACE" >&2
+  exit 78
+fi
+
+if [ "$DIGITALTWIN_COMMANDER_WORKSPACE" = "$default_commander_workspace" ] && [ "$DIGITALTWIN_COMMANDER_AGENT" = "commander" ]; then
+  commander_agent_dir="$DIGITALTWIN_COMMANDER_WORKSPACE/.opencode/agents"
+  commander_agent="$commander_agent_dir/commander.md"
+  commander_agent_baseline="$repo_root/commander/commander-agent-baseline.md"
+  legacy_commander_agent=$(printf '%s\n' \
+    '---' \
+    'description: Persistent Commander coordination session.' \
+    '---' \
+    "Coordinate the user's requests in this persistent Commander session.")
+  test -f "$commander_agent_baseline" || {
+    printf '%s\n' "Commander agent baseline is missing: $commander_agent_baseline" >&2
+    exit 78
+  }
+  mkdir -p "$commander_agent_dir"
+  if [ ! -e "$commander_agent" ]; then
+    cp "$commander_agent_baseline" "$commander_agent"
+  elif [ "$(cat "$commander_agent")" = "$legacy_commander_agent" ]; then
+    cp "$commander_agent_baseline" "$commander_agent"
+  fi
+fi
+
+commander_plugin_source="$repo_root/commander/opencode-gate-plugin/commander-continuation.ts"
+commander_plugin_entry="$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR/index.ts"
+test -f "$commander_plugin_source" || {
+  printf '%s\n' "Commander continuation source is missing: $commander_plugin_source" >&2
+  exit 78
+}
+mkdir -p "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR"
+if [ -e "$commander_plugin_entry" ] && [ ! -L "$commander_plugin_entry" ]; then
+  printf '%s\n' "Refusing to replace non-symlink Commander plugin entry: $commander_plugin_entry" >&2
+  exit 78
+fi
+ln -sfn "$commander_plugin_source" "$commander_plugin_entry"
+
+if [ ! -s "$FUTURE_TASK_CAPABILITY_SECRET_FILE" ]; then
+  mkdir -p "$(dirname -- "$FUTURE_TASK_CAPABILITY_SECRET_FILE")"
+  umask 077
+  openssl rand -hex 32 > "$FUTURE_TASK_CAPABILITY_SECRET_FILE"
+fi
+
+ensure_database() {
+  database=$1
+  existing=$(psql -h "$DIGITALTWIN_PGHOST" -p "$DIGITALTWIN_PGPORT" -U "$DIGITALTWIN_PGUSER" -d postgres -Atqc "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '$database'")
+  if [ -z "$existing" ]; then
+    createdb -h "$DIGITALTWIN_PGHOST" -p "$DIGITALTWIN_PGPORT" -U "$DIGITALTWIN_PGUSER" -O "$DIGITALTWIN_PGUSER" "$database"
+    return
+  fi
+  test "$existing" = "$DIGITALTWIN_PGUSER" || {
+    printf '%s\n' "Refusing database $database: it is owned by $existing, not $DIGITALTWIN_PGUSER" >&2
+    exit 78
+  }
+}
+
+ensure_database "$DIGITALTWIN_LOCAL_DATABASE"
+ensure_database "$DIGITALTWIN_TEST_DATABASE"
+printf '%s\n' "Local PostgreSQL databases are ready: $DIGITALTWIN_LOCAL_DATABASE and $DIGITALTWIN_TEST_DATABASE"

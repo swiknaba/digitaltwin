@@ -12,15 +12,14 @@
 
 ## Layout
 
-- `app/` has four Zeitwerk layers. See `docs/superpowers/plans/2026-10-02-backend-ddd-refactor.md` for the full rules.
-  - `domains/<ctx>/` holds bounded contexts that own tables and invariants. Each context has private `entities/`, public `dto/` and `errors/`, and public services.
-  - `services/` holds cross-domain use cases and job handlers.
-  - `adapters/` holds vendor and transport translation: Mattermost, Herdr, git, credential files, HTTP, and MCP.
-  - `platform/` holds shared primitives: jobs, lock, transaction, audit, and JSON boundary types.
+- `app/` has four Zeitwerk layers.
+  - `domains/future_tasks/` owns durable future commitments, their executions, and their disposition records.
+  - `services/` holds the due-job handler and the small composition root.
+  - `adapters/opencode/` is the sole delivery boundary. It fails closed until an operator wires an existing authenticated OpenCode session.
+  - `platform/` holds shared primitives: jobs, lock, transaction, failures, JSON boundary types, and the process heartbeat.
 - Domains reference only their own code, `Platform`, and other contexts' `Dto`. Domains never reference `Services` or `Adapters`.
 - Nothing outside a context references its `entities/`.
-- Public services return `Kirei::Services::Result`. Persistence uses `Kirei::Model` only. Do not access raw tables with `db[:table]`.
-- `spec/contracts/architecture_boundaries_spec.rb` enforces these rules.
+- Persistence uses Kirei models where it adds value; the future-task transition service may use a narrow transaction-scoped Sequel dataset for atomic state changes.
 
 ## Loading dependencies
 
@@ -31,5 +30,5 @@
 ## Operational invariants
 
 - Test migrations through real Rake tasks against an empty disposable database. Do not preload the application or spec helper.
-- Advance Mattermost history checkpoints only through accepted snapshot coverage. Retain and recover when the result reaches a cap or fetching fails.
-- Quarantine permanent rejections idempotently. Retry transient failures without moving the checkpoint.
+- Delivery uses one key per execution generation. If the bridge outcome is uncertain, persist `uncertain` and stop; do not blind-retry an externally visible Commander action.
+- Edits, cancellation, and dispositions require an expected task version and preserve the prior execution record.

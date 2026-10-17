@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -eu
+
+# The application lockfile pins Ruby 4.0.7. Overmind starts non-login shells,
+# so select that already-installed user Ruby explicitly without changing a
+# global default.
+exec zsh -ic 'chruby ruby-4.0.7; exec "$@"' zsh "$@"

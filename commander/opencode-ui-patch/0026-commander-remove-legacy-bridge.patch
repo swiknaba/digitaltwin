@@ -1,0 +1,73 @@
+diff --git a/packages/gui-extensions/package.json b/packages/gui-extensions/package.json
+index f0288da..2ffe597 100644
+--- a/packages/gui-extensions/package.json
++++ b/packages/gui-extensions/package.json
+@@ -25,7 +25,6 @@
+     "@dnd-kit/abstract": "0.5.0",
+     "@dnd-kit/dom": "0.5.0",
+     "@dnd-kit/solid": "0.5.0",
+-    "@digitaltwin/commander-bridge": "workspace:*",
+     "@effect/platform-node": "catalog:",
+     "@kobalte/core": "catalog:",
+     "@opencode/client": "workspace:*",
+diff --git a/bun.lock b/bun.lock
+index c593dfc..3824e25 100644
+--- a/bun.lock
++++ b/bun.lock
+@@ -216,15 +216,6 @@
+         "@typescript/native-preview": "catalog:",
+       },
+     },
+-    "packages/commander-bridge": {
+-      "name": "@digitaltwin/commander-bridge",
+-      "version": "0.1.0",
+-      "devDependencies": {
+-        "@tsconfig/node22": "catalog:",
+-        "@types/node": "catalog:",
+-        "@typescript/native-preview": "catalog:",
+-      },
+-    },
+     "packages/console/app": {
+       "name": "@opencode/console-app",
+       "version": "2.0.27",
+@@ -523,7 +514,6 @@
+         "@betteroffice/fonts": "0.4.0",
+         "@betteroffice/pptx": "0.2.0",
+         "@betteroffice/xlsx": "0.3.0",
+-        "@digitaltwin/commander-bridge": "workspace:*",
+         "@dnd-kit/abstract": "0.5.0",
+         "@dnd-kit/dom": "0.5.0",
+         "@dnd-kit/solid": "0.5.0",
+@@ -1711,7 +1701,6 @@
+     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
+ 
+     "@ctrl/tinycolor": ["@ctrl/tinycolor@4.2.0", "", {}, "sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A=="],
+-    "@digitaltwin/commander-bridge": ["@digitaltwin/commander-bridge@workspace:packages/commander-bridge"],
+ 
+     "@dnd-kit/abstract": ["@dnd-kit/abstract@0.5.0", "", { "dependencies": { "@dnd-kit/geometry": "^0.5.0", "@dnd-kit/state": "^0.5.0", "tslib": "^2.6.2" } }, "sha512-hi13iMJgjPX/KDYVKg5VeDIhmYiV6buc9bAX+tCLYf4QdyYjPbsXjn2sPo6m7fQ6SGJBEFgHJ2PemeKDUbwBaA=="],
+ 
+diff --git a/packages/gui-extensions/src/commander/dialog.tsx b/packages/gui-extensions/src/commander/dialog.tsx
+deleted file mode 100644
+index 7c9cfc0..0000000
+--- a/packages/gui-extensions/src/commander/dialog.tsx
++++ /dev/null
+@@ -1,19 +0,0 @@
+-import { Dialog, DialogBody } from "@opencode/ui/dialog"
+-import { onCleanup, onMount } from "solid-js"
+-import CommanderPanel from "./panel"
+-
+-export default function CommanderDialog(props: { onOpen(): void; onClose(): void }) {
+-  onMount(props.onOpen)
+-  onCleanup(props.onClose)
+-
+-  return (
+-    <Dialog
+-      class="flex h-[min(820px,calc(100vh-32px))] w-[min(1100px,calc(100vw-24px))] min-h-[420px] min-w-[560px] max-h-[calc(100vh-32px)] max-w-[calc(100vw-24px)] resize overflow-hidden"
+-      containerClass="max-w-none"
+-    >
+-      <DialogBody class="min-h-0 flex-1 p-0">
+-        <CommanderPanel />
+-      </DialogBody>
+-    </Dialog>
+-  )
+-}

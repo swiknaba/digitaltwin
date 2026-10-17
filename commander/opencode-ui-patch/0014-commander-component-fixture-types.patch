@@ -1,0 +1,21 @@
+--- a/packages/app/component-tests/commander-panel.spec.ts
++++ b/packages/app/component-tests/commander-panel.spec.ts
+@@ -87,7 +87,7 @@
+     const [state, setState] = createSignal(initialState)
+     const [status, setStatus] = createSignal(initialStatus)
+     const [exists, setExists] = createSignal(false)
+-    const [messages, setMessages] = createSignal<readonly object[]>([])
++    const [messages, setMessages] = createSignal([] as readonly object[])
+     const calls: Calls = { reserve: [], create: [], prompt: [], interrupt: [] }
+     let report = () => {}
+ 
+--- a/packages/app/component-tests/extension-host.fixture.tsx
++++ b/packages/app/component-tests/extension-host.fixture.tsx
+@@ -494,6 +494,7 @@
+                 server: (id) => (id === input.server?.id ? input.server : undefined),
+                 layout: {
+                   ...layout,
++                  stored: (_extension, session) => layout.stored(session),
+                   open: (key, session) => void opened.push({ key, session: session.id }),
+                 },
+               })}

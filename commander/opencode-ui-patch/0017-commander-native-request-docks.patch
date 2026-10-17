@@ -1,0 +1,114 @@
+diff --git a/packages/app/src/session/route.tsx b/packages/app/src/session/route.tsx
+index c648226..2e0d504 100644
+--- a/packages/app/src/session/route.tsx
++++ b/packages/app/src/session/route.tsx
+@@ -26,6 +26,7 @@ import { SessionErrorFallback } from "./route-error"
+ import { createSessionResolution } from "./session-resolution"
+ import { SessionScreenView } from "./screen"
+ import { PreparingComposer } from "./preparing-composer"
++import { CommanderRequestDock } from "./requests/commander-request-dock"
+ 
+ export function TargetSessionRouteContent() {
+   const params = useParams<{ serverKey: string; id: string }>()
+@@ -173,6 +174,7 @@ function TargetSessionPage() {
+     <FileProvider>
+       <ComposerPersistenceProvider>
+         <CommentsProvider>
++          <CommanderRequestDock />
+           <SessionPage />
+         </CommentsProvider>
+       </ComposerPersistenceProvider>
+diff --git a/packages/app/src/session/requests/commander-request-dock.tsx b/packages/app/src/session/requests/commander-request-dock.tsx
+new file mode 100644
+index 0000000..2c704c9
+--- /dev/null
++++ b/packages/app/src/session/requests/commander-request-dock.tsx
+@@ -0,0 +1,88 @@
++import { SessionPermissionDock } from "@/session/requests/session-permission-dock"
++import { SessionQuestionDock } from "@/session/requests/session-question-dock"
++import { useData } from "@/runtime/server/current"
++import { useServerSDK } from "@/runtime/server/client"
++import { sessionFormRequest, sessionPermissionRequest } from "@/session/requests/session-request-tree"
++import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
++import { createStore } from "solid-js/store"
++
++type CommanderOverlaySession = {
++  readonly serverID: "sidecar"
++  readonly sessionID: string
++  readonly directory: string
++}
++
++const eventName = "opencode-commander-session"
++
++function isCommanderOverlaySession(value: unknown): value is CommanderOverlaySession {
++  if (!value || typeof value !== "object") return false
++  if (!("serverID" in value) || !("sessionID" in value) || !("directory" in value)) return false
++
++  return value.serverID === "sidecar" && typeof value.sessionID === "string" && typeof value.directory === "string"
++}
++
++/** Renders the app-owned native request docks for the globally mounted Commander session. */
++export function CommanderRequestDock() {
++  const data = useData()
++  const server = useServerSDK()
++  const [session, setSession] = createSignal<CommanderOverlaySession>()
++  const [store, setStore] = createStore<{ responding?: string }>({})
++
++  onMount(() => {
++    const receive = (event: Event) => {
++      if (!(event instanceof CustomEvent) || !isCommanderOverlaySession(event.detail)) return
++      setSession(event.detail)
++    }
++
++    window.addEventListener(eventName, receive)
++    onCleanup(() => window.removeEventListener(eventName, receive))
++  })
++
++  createEffect(() => {
++    const current = session()
++
++    if (!current || server.connection.status() !== "connected") return
++    void Promise.all([data.session.form.sync(current.sessionID), data.session.permission.sync(current.sessionID)]).catch(
++      () => undefined,
++    )
++  })
++
++  const question = createMemo(() => {
++    const current = session()
++
++    if (!current) return
++    const form = sessionFormRequest(data.session.list(), data.session.form.list, current.sessionID)
++
++    return form?.metadata?.kind === "question" ? form : undefined
++  })
++  const permission = createMemo(() => {
++    const current = session()
++
++    return current ? sessionPermissionRequest(data.session.list(), data.session.permission.list, current.sessionID) : undefined
++  })
++  const responding = createMemo(() => store.responding === permission()?.id)
++
++  const decide = (decision: "once" | "always" | "reject") => {
++    const request = permission()
++
++    if (!request || store.responding === request.id) return
++    setStore("responding", request.id)
++    void server.api.permission
++      .reply({ sessionID: request.sessionID, requestID: request.id, decision })
++      .catch(() => undefined)
++      .finally(() => setStore("responding", (value) => (value === request.id ? undefined : value)))
++  }
++
++  return (
++    <Show when={question() || permission()}>
++      <div class="fixed inset-x-0 bottom-4 z-[90] mx-auto w-[min(760px,calc(100vw-32px))]">
++        <Show when={question()} keyed>
++          {(request) => <SessionQuestionDock request={request} onSubmit={() => void data.session.form.sync(request.sessionID)} />}
++        </Show>
++        <Show when={permission()} keyed>
++          {(request) => <SessionPermissionDock request={request} responding={responding()} onDecide={decide} />}
++        </Show>
++      </div>
++    </Show>
++  )
++}

@@ -12,6 +12,7 @@ module Platform
 
     sig { params(role: Role, dir: String).void }
     def self.touch(role:, dir:)
+      FileUtils.mkdir_p(dir)
       FileUtils.touch(path(role: role, dir: dir))
     end
 
