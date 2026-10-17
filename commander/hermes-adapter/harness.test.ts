@@ -6,10 +6,11 @@ import type { CommanderHarnessState, CommanderHarnessStore, HermesGateway } from
 function fixture() {
   let state: CommanderHarnessState = { revision: 0, runs: {} }
   const starts: unknown[] = []
+  const selected: unknown[] = []
   const gateway: HermesGateway = {
     capabilities: async () => ({ features: { run_submission: true } }),
-    models: async () => [],
-    setModel: async () => undefined,
+    models: async () => [{ provider: "operator", providerName: "Operator", model: "configured-model" }],
+    setModel: async (model) => { selected.push(model) },
     start: async (input) => { starts.push(input); return { runID: "run_1", sessionID: input.sessionID ?? "session_1", status: "started", model: input.model } },
     status: async (runID) => ({ runID, sessionID: "session_1", status: "completed" }),
     steer: async () => undefined,
@@ -18,7 +19,7 @@ function fixture() {
     history: async () => [{ role: "assistant", content: "persisted" }],
   }
   const store: CommanderHarnessStore = { read: async () => state, write: async (next) => { state = next } }
-  return { harness: new CommanderHarness(gateway, store), starts, state: () => state }
+  return { harness: new CommanderHarness(gateway, store), starts, selected, state: () => state }
 }
 
 test("preserves one Hermes session and makes retries deterministic", async () => {
@@ -49,4 +50,15 @@ test("rejects unknown opaque run references", async () => {
   const f = fixture()
   await assert.rejects(f.harness.status(`cmd_${"0".repeat(64)}`), /not found/)
   await assert.rejects(f.harness.stop("run_1"), /invalid/)
+})
+
+test("confirms the exact Hermes provider and model before saving selection", async () => {
+  const f = fixture()
+  await assert.rejects(f.harness.selectModel({ provider: "operator", model: "unavailable" }), /not available from Hermes/)
+  assert.equal(f.state().revision, 0)
+  assert.deepEqual(f.selected, [])
+
+  await f.harness.selectModel({ provider: "operator", model: "configured-model" })
+  assert.deepEqual(f.selected, [{ provider: "operator", model: "configured-model" }])
+  assert.deepEqual(f.state().model, { provider: "operator", model: "configured-model" })
 })

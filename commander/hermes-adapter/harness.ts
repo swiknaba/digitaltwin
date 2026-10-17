@@ -14,6 +14,10 @@ export class CommanderHarness {
 
   async selectModel(model: HermesModel): Promise<CommanderHarnessState> {
     validModel(model)
+    const available = await this.gateway.models()
+    if (!available.some((item) => item.provider === model.provider && item.model === model.model)) {
+      throw new Error("Selected Commander model is not available from Hermes.")
+    }
     await this.gateway.setModel(model)
     const current = await this.store.read()
     const next = { ...current, revision: current.revision + 1, model }

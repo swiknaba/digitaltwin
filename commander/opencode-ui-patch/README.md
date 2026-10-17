@@ -2,7 +2,7 @@
 
 This maintained patch targets OpenCode v2.0.27 at
 `1f4d07a4a519185955ae8ab2ea3607805509e386`. It adds a persistent global
-Commander dialog, native composer, and model picker.
+Commander dialog, native composer, and Hermes-backed model picker.
 
 Normal desktop startup preserves ordinary OpenCode project sessions. When the
 separately configured local Hermes adapter is available, Commander submits to
@@ -37,7 +37,7 @@ sh commander/opencode-ui-patch/prepare-opencode.sh
 The default target is `local/opencode`; pass an absolute checkout path only when
 an operator deliberately needs a different location. The script verifies the
 pinned revision, then applies all patches. The reviewed patch sequence is
-currently twenty-nine patches.
+currently thirty-one patches.
 It copies no configuration, credentials, persistent store, or operator state.
 
 For a local desktop walkthrough—including optional native-agent continuation and

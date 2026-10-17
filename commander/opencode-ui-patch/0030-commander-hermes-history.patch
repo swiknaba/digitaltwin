@@ -39,17 +39,3 @@
      if (request.operation === "steer" && request.runID && request.text) void live.value.steer({ runID: request.runID, text: request.text }).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander steer failed."))
 +    if (request.operation === "history") void live.value.history().then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander history failed."))
    }
---- a/packages/app/src/runtime/commander-overlay.tsx
-+++ b/packages/app/src/runtime/commander-overlay.tsx
-@@ -137,3 +137,6 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
-     window.addEventListener("opencode-commander-hermes-event", receive)
-     onCleanup(() => window.removeEventListener("opencode-commander-hermes-event", receive))
-+    void hermesRequest<readonly HermesTimelineEvent[]>({ operation: "history" }).then((items) => {
-+      setTimeline((current) => current.length > 0 ? current : items.filter(validTimelineEvent))
-+    }).catch(() => undefined)
-   })
-@@ -171,3 +174,3 @@ function validTimelineEvent(value: unknown): value is HermesTimelineEvent {
- }
- 
--function hermesRequest<T>(request: Readonly<{ operation: "start" | "stop" | "steer"; requestID?: string; runID?: string; text?: string }>): Promise<T> {
-+function hermesRequest<T>(request: Readonly<{ operation: "start" | "stop" | "steer" | "history"; requestID?: string; runID?: string; text?: string }>): Promise<T> {
