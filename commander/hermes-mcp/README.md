@@ -24,9 +24,10 @@ project operations fail closed before any request is sent to OpenCode. The MCP
 
 When authorized, the bridge accepts only a current-user-owned, non-symlink
 `service-local.json` with no group or other permissions. It verifies the
-registration's loopback endpoint, Basic-authenticated `/api/info` identity, and
-uses the discovered password only in memory for that request. A 401 causes one
-fresh registration discovery, so a desktop restart can rotate its credential
+registration's loopback endpoint, normalizing only the desktop service's literal
+`0.0.0.0` wildcard bind to `127.0.0.1`, then Basic-authenticates `/api/info`.
+The discovered password is used only in memory for that request. A 401 causes
+one fresh registration discovery, so a desktop restart can rotate its credential
 without a copied password or persisted bridge secret.
 
 Run `sh scripts/local-hermes-model` to open Hermes' interactive provider/model

@@ -156,6 +156,7 @@ async function readRegistration(path: string): Promise<ServiceRegistration> {
 function parseEndpoint(value: string): URL {
   try {
     const endpoint = new URL(value)
+    if (endpoint.hostname === "0.0.0.0") endpoint.hostname = "127.0.0.1"
     assertLoopbackSidecar(endpoint)
     return endpoint
   } catch (error) {

@@ -115,6 +115,30 @@ test("uses the official service registration, verifies it, and rediscovers after
   }
 })
 
+test("normalizes a registered wildcard bind to loopback before using its private credential", async () => {
+  const root = await mkdtemp(join(process.cwd(), "local/tmp/hermes-mcp-registration-wildcard-"))
+  const registration = join(root, "service-local.json")
+  await writeFile(registration, `${JSON.stringify({ url: "http://0.0.0.0:3086", pid: process.pid, password: "private" })}\n`, { mode: 0o600 })
+  await chmod(registration, 0o600)
+  const hosts: string[] = []
+  const request: typeof fetch = async (input) => {
+    const url = input instanceof URL ? input : new URL(input.toString())
+    hosts.push(url.hostname)
+    return new Response(JSON.stringify({ version: "2.0.27", pid: process.pid }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+  try {
+    const source = new ServiceRegistrationOpenCodeSidecar(registration, request)
+    const sidecar = await source.resolve()
+    assert.equal(sidecar.endpoint.hostname, "127.0.0.1")
+    assert.deepEqual(hosts, ["127.0.0.1"])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("refuses a service registration whose permissions expose the private credential", async () => {
   const root = await mkdtemp(join(process.cwd(), "local/tmp/hermes-mcp-registration-mode-"))
   const registration = join(root, "service-local.json")
