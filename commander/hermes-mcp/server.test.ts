@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { CommanderDelegation } from "./delegation"
 import { FileDelegationStore } from "./store"
@@ -200,6 +200,20 @@ test("serializes concurrent file-backed delegations so neither decision is lost"
     assert.equal(Object.keys(state.decisions).length, 2)
     assert.equal(Object.keys(state.requests).length, 2)
     assert.equal(Object.keys(state.pending).length, 0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("recovers a lock left without an owner by a process that died during lock bootstrap", async () => {
+  const root = await mkdtemp(join(process.cwd(), "local/tmp/hermes-mcp-orphaned-lock-"))
+  const file = join(root, "delegation.json")
+  try {
+    await mkdir(`${file}.lock`, { recursive: true })
+    const store = new FileDelegationStore(file, 0)
+    let entered = false
+    await store.exclusive(async () => { entered = true })
+    assert.equal(entered, true)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

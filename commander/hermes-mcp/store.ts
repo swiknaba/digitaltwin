@@ -1,13 +1,17 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 import type { DelegationDecision, DelegationState, DelegationStore, PendingDelegation } from "./contract"
 
 const empty = (): DelegationState => ({ revision: 0, decisions: {}, requests: {}, pending: {} })
 const lockTimeoutMilliseconds = 10_000
 const lockRetryMilliseconds = 25
+const missingOwnerRecoveryGraceMilliseconds = 2_000
 
 export class FileDelegationStore implements DelegationStore {
-  constructor(private readonly path: string) {}
+  constructor(
+    private readonly path: string,
+    private readonly recoveryGraceMilliseconds: number = missingOwnerRecoveryGraceMilliseconds,
+  ) {}
 
   async read(): Promise<DelegationState> {
     try {
@@ -46,7 +50,7 @@ export class FileDelegationStore implements DelegationStore {
         return async () => { await rm(lock, { recursive: true, force: true }) }
       } catch (error) {
         if (!isAlreadyExists(error)) throw error
-        if (await stale(lock)) {
+        if (await stale(lock, this.recoveryGraceMilliseconds)) {
           await rm(lock, { recursive: true, force: true })
           continue
         }
@@ -57,14 +61,20 @@ export class FileDelegationStore implements DelegationStore {
   }
 }
 
-async function stale(lock: string): Promise<boolean> {
+async function stale(lock: string, recoveryGraceMilliseconds: number): Promise<boolean> {
   try {
     const owner = (await readFile(`${lock}/owner`, "utf8")).trim()
     if (/^[1-9][0-9]*$/.test(owner)) return !running(Number(owner))
   } catch (error) {
     if (!isNotFound(error)) throw error
   }
-  return false
+  try {
+    const details = await stat(lock)
+    return Date.now() - details.mtimeMs >= recoveryGraceMilliseconds
+  } catch (error) {
+    if (isNotFound(error)) return false
+    throw error
+  }
 }
 
 function running(pid: number): boolean {
