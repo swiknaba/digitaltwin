@@ -1,6 +1,6 @@
 import { lstat, readFile } from "node:fs/promises"
 import { basename, isAbsolute } from "node:path"
-import type { CommanderMessage, CommanderProject, CommanderSession, Json, OpenCodeCommanderGateway } from "./contract"
+import type { CommanderAvailableModel, CommanderMessage, CommanderProject, CommanderSession, CommanderWorkerModel, Json, OpenCodeCommanderGateway } from "./contract"
 
 type Fetch = typeof fetch
 type OpenCodeSidecar = Readonly<{ endpoint: URL; password: string }>
@@ -64,8 +64,29 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
     })
   }
 
-  async createSession(input: Readonly<{ id: string; directory: string }>): Promise<CommanderSession> {
-    return session(data(await this.json("/api/session", { method: "POST", body: JSON.stringify({ id: input.id, location: { directory: input.directory } }) }), "session"))
+  async listAvailableModels(directory: string): Promise<readonly CommanderAvailableModel[]> {
+    const query = new URLSearchParams({ "location[directory]": directory })
+    const response = await this.json(`/api/model?${query.toString()}`)
+    if (!object(response) || !Array.isArray(response.data)) throw new Error("OpenCode returned an invalid model list.")
+    return response.data.flatMap(availableModel)
+  }
+
+  async createSession(input: Readonly<{ id: string; directory: string; model?: CommanderWorkerModel }>): Promise<CommanderSession> {
+    return session(data(await this.json("/api/session", {
+      method: "POST",
+      body: JSON.stringify({
+        id: input.id,
+        location: { directory: input.directory },
+        ...(input.model === undefined ? {} : { model: apiModel(input.model) }),
+      }),
+    }), "session"))
+  }
+
+  async selectSessionModel(input: Readonly<{ sessionID: string; model: CommanderWorkerModel }>): Promise<void> {
+    await this.empty(`/api/session/${encodeURIComponent(input.sessionID)}/model`, {
+      method: "POST",
+      body: JSON.stringify({ model: apiModel(input.model) }),
+    })
   }
 
   async prompt(input: Readonly<{ sessionID: string; messageID: string; text: string; metadata: Readonly<Record<string, Json>> }>): Promise<CommanderMessage> {
@@ -118,6 +139,14 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
       throw new Error(`OpenCode request failed (${response.status}).`)
     }
     return response.json()
+  }
+
+  private async empty(path: string, init: RequestInit): Promise<void> {
+    let response = await this.requestJson(await this.sidecar.resolve(), path, init)
+    if (response.status === 401 && this.sidecar.retryOnUnauthorized) response = await this.requestJson(await this.sidecar.resolve(), path, init)
+    if (response.ok) return
+    if (response.status === 401) throw new Error("OpenCode sidecar authorization was rejected (401).")
+    throw new Error(`OpenCode request failed (${response.status}).`)
   }
 
   private async requestJson(sidecar: OpenCodeSidecar, path: string, init: RequestInit): Promise<Response> {
@@ -230,6 +259,28 @@ function modelRef(value: unknown): Readonly<{ providerID: string; modelID: strin
     providerID: value.providerID,
     modelID: value.id,
     ...(typeof value.variant === "string" ? { variant: value.variant } : {}),
+  }
+}
+
+function availableModel(value: unknown): CommanderAvailableModel[] {
+  if (!object(value) || value.enabled !== true || typeof value.providerID !== "string" || typeof value.id !== "string") return []
+  const variants = Array.isArray(value.variants)
+    ? value.variants.flatMap((variant): string[] => object(variant) && typeof variant.id === "string" ? [variant.id] : [])
+    : []
+  return [{
+    model: {
+      providerID: value.providerID,
+      modelID: value.id,
+    },
+    variants,
+  }]
+}
+
+function apiModel(value: CommanderWorkerModel): Readonly<{ providerID: string; id: string; variant?: string }> {
+  return {
+    providerID: value.providerID,
+    id: value.modelID,
+    ...(value.variant === undefined ? {} : { variant: value.variant }),
   }
 }
 

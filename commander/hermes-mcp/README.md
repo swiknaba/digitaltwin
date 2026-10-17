@@ -14,6 +14,16 @@ Hermes provenance subject in OpenCode message metadata, and reject a changed
 body for an existing request id. Read only requests existing session/message
 data; it never posts a prompt.
 
+`commander_create_project_session` and `commander_continue_agent` accept an
+optional `worker_model` object (`provider_id`, `model_id`, and optional
+`variant`). It is deliberately separate from Commander’s Hermes model. Before
+creating a session or switching an existing worker, the bridge asks the target
+project's OpenCode model endpoint for its enabled inventory and rejects a model
+or variant not in that inventory. An explicit model is sent through OpenCode's
+per-session API only: it never changes a project or global default. When
+`worker_model` is omitted, OpenCode retains its normal project/default
+resolution behavior.
+
 OpenCode publishes its desktop sidecar through an owner-only
 `service-local.json` registration, which is its supported local-client discovery
 contract. The approved Hermes control bearer is not that credential and is never

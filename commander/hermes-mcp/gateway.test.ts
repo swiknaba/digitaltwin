@@ -4,7 +4,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { OpenCodeHttpGateway, ServiceRegistrationOpenCodeSidecar, staticOpenCodeSidecar } from "./gateway"
 
-test("uses the installed OpenCode HTTP envelopes without overriding the normal project model selection", async () => {
+test("uses the installed OpenCode HTTP envelopes and only selects enabled explicit worker models", async () => {
   const calls: Array<Readonly<{ path: string; body: unknown; authorization: string | null }>> = []
   const request: typeof fetch = async (input, init) => {
     const url = input instanceof URL ? input : new URL(input.toString())
@@ -13,7 +13,12 @@ test("uses the installed OpenCode HTTP envelopes without overriding the normal p
     calls.push({ path: `${url.pathname}${url.search}`, body, authorization: headers.get("Authorization") })
     const response = (() => {
       if (url.pathname === "/api/project") return [{ id: "project-1", canonical: "/srv/digitaltwin", name: "digitaltwin" }]
+      if (url.pathname === "/api/model") return { data: [
+        { providerID: "anthropic", id: "claude-opus-5-5", enabled: true, variants: [{ id: "high" }] },
+        { providerID: "opencode", id: "nemotron-3.5-super-vl-free", enabled: false, variants: [] },
+      ] }
       if (url.pathname === "/api/session" && init?.method === "POST") return { data: { id: "ses_hermes", projectID: "project-1" } }
+      if (url.pathname === "/api/session/ses_hermes/model" && init?.method === "POST") return undefined
       if (url.pathname === "/api/session/ses_hermes/prompt") {
         return { data: { id: "msg_hermes", type: "user", text: body.text, metadata: body.metadata } }
       }
@@ -27,7 +32,10 @@ test("uses the installed OpenCode HTTP envelopes without overriding the normal p
   }
   const gateway = new OpenCodeHttpGateway(staticOpenCodeSidecar(new URL("http://127.0.0.1:3086"), "approved-private-password"), request)
   assert.deepEqual(await gateway.listProjects(), [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }])
+  assert.deepEqual(await gateway.listAvailableModels("/srv/digitaltwin"), [{ model: { providerID: "anthropic", modelID: "claude-opus-5-5" }, variants: ["high"] }])
   assert.deepEqual(await gateway.createSession({ id: "ses_hermes", directory: "/srv/digitaltwin" }), { id: "ses_hermes", projectID: "project-1" })
+  assert.deepEqual(await gateway.createSession({ id: "ses_hermes", directory: "/srv/digitaltwin", model: { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" } }), { id: "ses_hermes", projectID: "project-1" })
+  await gateway.selectSessionModel({ sessionID: "ses_hermes", model: { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" } })
   assert.deepEqual(await gateway.prompt({ sessionID: "ses_hermes", messageID: "msg_hermes", text: "Start.", metadata: { fromCommander: true } }), {
     id: "msg_hermes",
     type: "user",
@@ -42,7 +50,10 @@ test("uses the installed OpenCode HTTP envelopes without overriding the normal p
   }])
   assert.deepEqual(calls, [
     { path: "/api/project", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
+    { path: "/api/model?location%5Bdirectory%5D=%2Fsrv%2Fdigitaltwin", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session", body: { id: "ses_hermes", location: { directory: "/srv/digitaltwin" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
+    { path: "/api/session", body: { id: "ses_hermes", location: { directory: "/srv/digitaltwin" }, model: { providerID: "anthropic", id: "claude-opus-5-5", variant: "high" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
+    { path: "/api/session/ses_hermes/model", body: { model: { providerID: "anthropic", id: "claude-opus-5-5", variant: "high" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes/prompt", body: { id: "msg_hermes", text: "Start.", metadata: { fromCommander: true }, resume: true }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes/message?order=desc&limit=100", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },

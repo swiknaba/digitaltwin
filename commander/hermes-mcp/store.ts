@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
-import type { DelegationDecision, DelegationState, DelegationStore, PendingDelegation } from "./contract"
+import type { CommanderWorkerModel, DelegationDecision, DelegationState, DelegationStore, PendingDelegation } from "./contract"
 
 const empty = (): DelegationState => ({ revision: 0, decisions: {}, requests: {}, pending: {} })
 const lockTimeoutMilliseconds = 10_000
@@ -123,6 +123,7 @@ function decodeDecision(key: string, value: unknown): DelegationDecision {
     if (!requestID(requestIDValue) || typeof requestDigest !== "string" || !digest(requestDigest)) throw new Error("Commander continuation state is invalid.")
     continued[requestIDValue] = requestDigest
   }
+  const workerModel = decodeWorkerModel(value.workerModel)
   return {
     decisionID: value.decisionID,
     subject: value.subject,
@@ -131,6 +132,7 @@ function decodeDecision(key: string, value: unknown): DelegationDecision {
     createRequestID: value.createRequestID,
     createDigest: value.createDigest,
     createMessageID: value.createMessageID,
+    ...(workerModel === undefined ? {} : { workerModel }),
     continued,
   }
 }
@@ -142,6 +144,7 @@ function decodePending(value: unknown): PendingDelegation {
   if (!decisionKey(value.decisionID) || !identifier(value.subject) || !identifier(value.projectID) || !identifier(value.sessionID) || !requestID(value.createRequestID) || !digest(value.createDigest) || !messageID(value.createMessageID)) {
     throw new Error("Commander pending delegation state is invalid.")
   }
+  const workerModel = decodeWorkerModel(value.workerModel)
   return {
     decisionID: value.decisionID,
     subject: value.subject,
@@ -150,6 +153,22 @@ function decodePending(value: unknown): PendingDelegation {
     createRequestID: value.createRequestID,
     createDigest: value.createDigest,
     createMessageID: value.createMessageID,
+    ...(workerModel === undefined ? {} : { workerModel }),
+  }
+}
+
+function decodeWorkerModel(value: unknown): CommanderWorkerModel | undefined {
+  if (value === undefined) return undefined
+  if (!object(value) || typeof value.providerID !== "string" || typeof value.modelID !== "string" || (value.variant !== undefined && typeof value.variant !== "string")) {
+    throw new Error("Commander delegation worker model state is invalid.")
+  }
+  if (!identifier(value.providerID) || !modelID(value.modelID) || (value.variant !== undefined && !identifier(value.variant))) {
+    throw new Error("Commander delegation worker model state is invalid.")
+  }
+  return {
+    providerID: value.providerID,
+    modelID: value.modelID,
+    ...(value.variant === undefined ? {} : { variant: value.variant }),
   }
 }
 
@@ -157,6 +176,7 @@ function object(value: unknown): value is Record<string, unknown> { return typeo
 function isNotFound(error: unknown): boolean { return object(error) && error.code === "ENOENT" }
 function isAlreadyExists(error: unknown): boolean { return object(error) && error.code === "EEXIST" }
 function identifier(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(value) }
+function modelID(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,255}$/.test(value) }
 function requestID(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/.test(value) }
 function digest(value: string): boolean { return /^[a-f0-9]{64}$/.test(value) }
 function messageID(value: string): boolean { return /^msg_hermes_commander_[a-f0-9]{64}$/.test(value) }

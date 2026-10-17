@@ -31,5 +31,14 @@ test("serves an actual stdio MCP initialize and the four allowlisted Commander t
     "commander_read_agent",
     "commander_continue_agent",
   ])
+  const create = toolResult.tools.find((item) => item.name === "commander_create_project_session") as { inputSchema: { properties: Record<string, unknown> } }
+  const continuation = toolResult.tools.find((item) => item.name === "commander_continue_agent") as { inputSchema: { properties: Record<string, unknown> } }
+  assert.deepEqual(create.inputSchema.properties.worker_model, {
+    type: "object",
+    additionalProperties: false,
+    required: ["provider_id", "model_id"],
+    properties: { provider_id: { type: "string" }, model_id: { type: "string" }, variant: { type: "string" } },
+  })
+  assert.deepEqual(continuation.inputSchema.properties.worker_model, create.inputSchema.properties.worker_model)
   assert.match(messages.find((item) => item.id === 3)?.error?.message ?? "", /service registration access is not configured/)
 })

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import type { CommanderMessage, DelegationDecision, DelegationState, DelegationStore, Json, OpenCodeCommanderGateway, PendingDelegation } from "./contract"
+import type { CommanderMessage, CommanderWorkerModel, DelegationDecision, DelegationState, DelegationStore, Json, OpenCodeCommanderGateway, PendingDelegation } from "./contract"
 
 export class CommanderDelegation {
   private readonly locks = new Map<string, Promise<void>>()
@@ -16,16 +16,16 @@ export class CommanderDelegation {
     return this.gateway.listProjects()
   }
 
-  async create(input: Readonly<{ projectID: string; requestID: string; text: string }>): Promise<Readonly<Record<string, Json>>> {
+  async create(input: Readonly<{ projectID: string; requestID: string; text: string; workerModel?: CommanderWorkerModel }>): Promise<Readonly<Record<string, Json>>> {
     validCreate(input)
     const requestKey = hash([this.provenanceSubject, input.projectID, input.requestID].join("\n"))
     return this.exclusive(requestKey, () => this.store.exclusive(async () => {
-      const digest = hash(input.text)
+      const digest = createDigest(input.text, input.workerModel)
       const current = await this.store.read()
       const priorID = current.requests[requestKey]
       if (priorID) {
         const prior = current.decisions[priorID]
-        if (!prior || prior.projectID !== input.projectID || prior.createDigest !== digest) {
+        if (!prior || prior.projectID !== input.projectID || !matchesCreateDigest(prior.createDigest, input.text, input.workerModel)) {
           throw new Error("Commander project session request conflicts with its original body.")
         }
         await this.admitCreate(prior, input.text)
@@ -33,7 +33,7 @@ export class CommanderDelegation {
       }
       const pending = current.pending[requestKey]
       if (pending) {
-        if (!samePending(pending, this.provenanceSubject, input.projectID, input.requestID, digest)) {
+        if (!samePending(pending, this.provenanceSubject, input.projectID, input.requestID, digest) && !matchesLegacyUnmodelledCreate(pending.createDigest, input.text, input.workerModel)) {
           throw new Error("Commander project session request conflicts with its original body.")
         }
         const recovered = await this.completePending(requestKey, pending)
@@ -42,6 +42,7 @@ export class CommanderDelegation {
       }
       const project = (await this.gateway.listProjects()).find((item) => item.id === input.projectID)
       if (!project) throw new Error("Commander project was not found.")
+      await this.assertEnabledWorkerModel(project.directory, input.workerModel)
       const intent: PendingDelegation = {
         decisionID: `hermes-project-session-${hash([this.provenanceSubject, project.id, input.requestID].join("\n"))}`,
         subject: this.provenanceSubject,
@@ -50,6 +51,7 @@ export class CommanderDelegation {
         createRequestID: input.requestID,
         createDigest: digest,
         createMessageID: messageID(project.id, `ses_hermes_commander_${hash([this.provenanceSubject, project.id, input.requestID].join("\n"))}`, input.requestID),
+        ...(input.workerModel === undefined ? {} : { workerModel: input.workerModel }),
       }
       await this.persistPending(current, requestKey, intent)
       const decision = await this.completePending(requestKey, intent, project.directory)
@@ -72,18 +74,25 @@ export class CommanderDelegation {
     }
   }
 
-  async continue(input: Readonly<{ decisionID?: string; sessionID?: string; requestID: string; text: string }>): Promise<Readonly<Record<string, Json>>> {
+  async continue(input: Readonly<{ decisionID?: string; sessionID?: string; requestID: string; text: string; workerModel?: CommanderWorkerModel }>): Promise<Readonly<Record<string, Json>>> {
     if (!requestID(input.requestID) || !input.text.trim()) throw new Error("Commander continuation request is invalid.")
     const decision = await this.resolve(input)
     return this.exclusive(decision.decisionID, () => this.store.exclusive(async () => {
       const current = await this.store.read()
       const persisted = current.decisions[decision.decisionID]
       if (!persisted || persisted.subject !== this.provenanceSubject) throw new Error("Commander decision was not found.")
-      const digest = hash(input.text)
+      validWorkerModel(input.workerModel)
+      const digest = createDigest(input.text, input.workerModel)
       const existing = persisted.continued[input.requestID]
       if (existing && existing !== digest) throw new Error("Commander continuation conflicts with its original body.")
       const message = messageID(persisted.projectID, persisted.sessionID, input.requestID)
       const metadata = continuationMetadata(persisted, input.requestID, digest)
+      if (input.workerModel !== undefined) {
+        const project = (await this.gateway.listProjects()).find((item) => item.id === persisted.projectID)
+        if (!project) throw new Error("Commander project was not found.")
+        await this.assertEnabledWorkerModel(project.directory, input.workerModel)
+        await this.gateway.selectSessionModel({ sessionID: persisted.sessionID, model: input.workerModel })
+      }
       await this.admit(persisted.sessionID, message, input.text, metadata)
       if (!existing) {
         const next: DelegationDecision = { ...persisted, continued: { ...persisted.continued, [input.requestID]: digest } }
@@ -95,6 +104,7 @@ export class CommanderDelegation {
         project_id: persisted.projectID,
         request_id: input.requestID,
         provenance: provenance(persisted),
+        ...(input.workerModel === undefined ? {} : { worker_model: workerModelJson(input.workerModel) }),
       }
     }))
   }
@@ -125,7 +135,8 @@ export class CommanderDelegation {
       ? (await this.gateway.listProjects()).find((item) => item.id === pending.projectID)
       : { id: pending.projectID, directory: knownDirectory }
     if (!project) throw new Error("Commander project was not found.")
-    const session = await this.gateway.createSession({ id: pending.sessionID, directory: project.directory })
+    await this.assertEnabledWorkerModel(project.directory, pending.workerModel)
+    const session = await this.gateway.createSession({ id: pending.sessionID, directory: project.directory, model: pending.workerModel })
     if (session.id !== pending.sessionID || session.projectID !== pending.projectID) throw new Error("OpenCode created a session for a different project.")
     const decision = decisionFrom(pending)
     const current = await this.store.read()
@@ -161,6 +172,16 @@ export class CommanderDelegation {
     }
   }
 
+  private async assertEnabledWorkerModel(directory: string, model: CommanderWorkerModel | undefined): Promise<void> {
+    if (model === undefined) return
+    const candidate = (await this.gateway.listAvailableModels(directory)).find(
+      (item) => item.model.providerID === model.providerID && item.model.modelID === model.modelID,
+    )
+    if (!candidate || (model.variant !== undefined && !candidate.variants.includes(model.variant))) {
+      throw new Error("Commander worker model is not an enabled OpenCode model for this project.")
+    }
+  }
+
   private async exclusive<T>(key: string, work: () => Promise<T>): Promise<T> {
     const previous = this.locks.get(key) ?? Promise.resolve()
     let release = () => undefined
@@ -177,8 +198,9 @@ export class CommanderDelegation {
   }
 }
 
-function validCreate(input: Readonly<{ projectID: string; requestID: string; text: string }>): void {
+function validCreate(input: Readonly<{ projectID: string; requestID: string; text: string; workerModel?: CommanderWorkerModel }>): void {
   if (!identifier(input.projectID) || !requestID(input.requestID) || !input.text.trim()) throw new Error("Commander project session request is invalid.")
+  validWorkerModel(input.workerModel)
 }
 
 function createResult(decision: DelegationDecision): Readonly<Record<string, Json>> {
@@ -189,6 +211,7 @@ function createResult(decision: DelegationDecision): Readonly<Record<string, Jso
     message_id: decision.createMessageID,
     request_id: decision.createRequestID,
     provenance: provenance(decision),
+    ...(decision.workerModel === undefined ? {} : { worker_model: workerModelJson(decision.workerModel) }),
   }
 }
 
@@ -249,6 +272,7 @@ function decisionFrom(pending: PendingDelegation): DelegationDecision {
     createRequestID: pending.createRequestID,
     createDigest: pending.createDigest,
     createMessageID: pending.createMessageID,
+    ...(pending.workerModel === undefined ? {} : { workerModel: pending.workerModel }),
     continued: {},
   }
 }
@@ -264,3 +288,26 @@ function messageID(projectID: string, sessionID: string, requestIDValue: string)
 function hash(value: string): string { return createHash("sha256").update(value, "utf8").digest("hex") }
 function identifier(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(value) }
 function requestID(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/.test(value) }
+function modelID(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,255}$/.test(value) }
+function validWorkerModel(value: CommanderWorkerModel | undefined): void {
+  if (value === undefined) return
+  if (!identifier(value.providerID) || !modelID(value.modelID) || (value.variant !== undefined && !identifier(value.variant))) {
+    throw new Error("Commander worker model is invalid.")
+  }
+}
+function createDigest(text: string, workerModel: CommanderWorkerModel | undefined): string {
+  return hash(JSON.stringify({ text, ...(workerModel === undefined ? {} : { workerModel }) }))
+}
+function matchesCreateDigest(value: string, text: string, workerModel: CommanderWorkerModel | undefined): boolean {
+  return value === createDigest(text, workerModel) || matchesLegacyUnmodelledCreate(value, text, workerModel)
+}
+function matchesLegacyUnmodelledCreate(value: string, text: string, workerModel: CommanderWorkerModel | undefined): boolean {
+  return workerModel === undefined && value === hash(text)
+}
+function workerModelJson(value: CommanderWorkerModel): Json {
+  return {
+    provider_id: value.providerID,
+    model_id: value.modelID,
+    ...(value.variant === undefined ? {} : { variant: value.variant }),
+  }
+}

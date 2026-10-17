@@ -9,18 +9,23 @@ import type { CommanderMessage, CommanderProject, CommanderSession, DelegationSt
 function fixture() {
   let state: DelegationState = { revision: 0, decisions: {}, requests: {}, pending: {} }
   const prompts: Array<Readonly<{ sessionID: string; messageID: string; text: string; metadata: Readonly<Record<string, Json>> }>> = []
+  const createdModels: Array<Readonly<{ providerID: string; modelID: string; variant?: string }> | undefined> = []
+  const selectedModels: Array<Readonly<{ sessionID: string; model: Readonly<{ providerID: string; modelID: string; variant?: string }> }>> = []
   let creates = 0
   const sessions = new Map<string, CommanderSession>()
   const projects: readonly CommanderProject[] = [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }]
   const gateway: OpenCodeCommanderGateway = {
     listProjects: async () => projects,
-    createSession: async ({ id, directory }) => {
+    listAvailableModels: async () => [{ model: { providerID: "anthropic", modelID: "claude-opus-5-5" }, variants: ["high"] }],
+    createSession: async ({ id, directory, model }) => {
       assert.equal(directory, "/srv/digitaltwin")
       creates += 1
+      createdModels.push(model)
       const session = { id, projectID: "project-1" }
       sessions.set(session.id, session)
       return session
     },
+    selectSessionModel: async (input) => { selectedModels.push(input) },
     prompt: async (input) => {
       prompts.push(input)
       return { id: input.messageID, type: "user", text: input.text, metadata: input.metadata }
@@ -34,7 +39,7 @@ function fixture() {
     readMessages: async () => [{ id: "msg_result", type: "assistant", text: "Finished." }],
   }
   const store: DelegationStore = { read: async () => state, write: async (next) => { state = next }, exclusive: async (work) => work() }
-  return { delegation: () => new CommanderDelegation(gateway, store, "hermes-profile-local"), gateway, prompts, creates: () => creates, state: () => state, sessions }
+  return { delegation: () => new CommanderDelegation(gateway, store, "hermes-profile-local"), gateway, prompts, createdModels, selectedModels, creates: () => creates, state: () => state, sessions }
 }
 
 test("lists projects and reads without dispatching a prompt", async () => {
@@ -106,10 +111,28 @@ test("continues only the persisted exact target and preserves idempotency after 
   assert.equal(f.state().decisions[String(created.decision_id)]?.continued["continue-2"].length, 64)
 })
 
+test("uses an explicit enabled worker model without changing a project default", async () => {
+  const f = fixture()
+  const workerModel = { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" }
+  const created = await f.delegation().create({ projectID: "project-1", requestID: "model-create-1", text: "Start.", workerModel })
+  assert.deepEqual(f.createdModels, [workerModel])
+  assert.deepEqual(created.worker_model, { provider_id: "anthropic", model_id: "claude-opus-5-5", variant: "high" })
+  const continued = await f.delegation().continue({ decisionID: String(created.decision_id), requestID: "model-continue-1", text: "Continue.", workerModel })
+  assert.deepEqual(f.selectedModels, [{ sessionID: created.session_id, model: workerModel }])
+  assert.deepEqual(continued.worker_model, { provider_id: "anthropic", model_id: "claude-opus-5-5", variant: "high" })
+  await assert.rejects(
+    f.delegation().create({ projectID: "project-1", requestID: "model-create-2", text: "Fail.", workerModel: { providerID: "opencode", modelID: "nemotron-3.5-super-vl-free" } }),
+    /not an enabled OpenCode model/,
+  )
+  assert.equal(f.creates(), 1)
+})
+
 test("rejects an OpenCode prompt admission that does not preserve metadata", async () => {
   const brokenGateway: OpenCodeCommanderGateway = {
     listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
+    listAvailableModels: async () => [],
     createSession: async ({ id }) => ({ id, projectID: "project-1" }),
+    selectSessionModel: async () => undefined,
     prompt: async (input): Promise<CommanderMessage> => ({ id: input.messageID, type: "user", text: input.text, metadata: {} }),
     waitSession: async () => undefined,
     readSession: async () => ({ id: "ses_broken", projectID: "project-1" }),
@@ -123,7 +146,9 @@ test("rejects an OpenCode prompt admission that does not preserve metadata", asy
 test("rejects an OpenCode prompt admission for a different session", async () => {
   const brokenGateway: OpenCodeCommanderGateway = {
     listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
+    listAvailableModels: async () => [],
     createSession: async ({ id }) => ({ id, projectID: "project-1" }),
+    selectSessionModel: async () => undefined,
     prompt: async (input): Promise<CommanderMessage> => ({ id: input.messageID, sessionID: "ses_other", type: "user", text: input.text, metadata: input.metadata }),
     waitSession: async () => undefined,
     readSession: async () => ({ id: "ses_broken", projectID: "project-1" }),
@@ -154,6 +179,7 @@ test("recovers a file-backed pending create with the caller-supplied OpenCode se
   let creates = 0
   const gateway: OpenCodeCommanderGateway = {
     listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
+    listAvailableModels: async () => [],
     createSession: async ({ id }) => {
       creates += 1
       const existing = sessions.get(id)
@@ -162,6 +188,7 @@ test("recovers a file-backed pending create with the caller-supplied OpenCode se
       sessions.set(id, created)
       return created
     },
+    selectSessionModel: async () => undefined,
     prompt: async (input) => ({ id: input.messageID, type: "user", text: input.text, metadata: input.metadata }),
     waitSession: async () => undefined,
     readSession: async (id) => {
@@ -206,11 +233,13 @@ test("serializes concurrent file-backed delegations so neither decision is lost"
   const sessions = new Map<string, CommanderSession>()
   const gateway: OpenCodeCommanderGateway = {
     listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
+    listAvailableModels: async () => [],
     createSession: async ({ id }) => {
       const session = { id, projectID: "project-1" }
       sessions.set(id, session)
       return session
     },
+    selectSessionModel: async () => undefined,
     prompt: async (input) => ({ id: input.messageID, type: "user", text: input.text, metadata: input.metadata }),
     waitSession: async () => undefined,
     readSession: async (id) => {
