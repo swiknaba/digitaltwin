@@ -34,6 +34,7 @@ fi
 : "${DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR:?DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR is required}"
 : "${DIGITALTWIN_HERMES_ADAPTER_PORT:=3087}"
 : "${DIGITALTWIN_HERMES_STATE_FILE:=local/hermes/commander-adapter-state.json}"
+: "${HERMES_ADAPTER_URL:=http://127.0.0.1:${DIGITALTWIN_HERMES_ADAPTER_PORT}}"
 
 case "$DIGITALTWIN_PGPORT" in
   *[!0-9]*|'') printf '%s\n' "DIGITALTWIN_PGPORT must be numeric" >&2; exit 78 ;;
@@ -79,3 +80,4 @@ export FUTURE_TASK_CAPABILITY_SECRET_FILE="$future_task_secret_file"
 export DIGITALTWIN_COMMANDER_WORKSPACE="$commander_workspace"
 export DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR="$commander_continuation_plugin_dir"
 export DIGITALTWIN_HERMES_STATE_FILE="$hermes_state_file"
+export HERMES_ADAPTER_URL

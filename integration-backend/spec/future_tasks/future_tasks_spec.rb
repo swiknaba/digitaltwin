@@ -338,4 +338,16 @@ RSpec.describe Domains::FutureTasks::Tasks do
     expect(resolution.receipt).to eq(receipt)
     expect(reconcile_request.pop).to include("GET /api/session/ses_operator/message/#{input_id} HTTP/1.1")
   end
+
+  it "delivers through the loopback Hermes Commander adapter with one deterministic run reference" do
+    url, delivery_thread, delivery_request = opencode_response(body: '{"id":"cmd_b564b325ea7946b5f8b1e572cfef1619bd83a70e34bccea19fba7bd5ccba71cf"}')
+    gateway = Adapters::Hermes::ConfiguredGateway.new(base_url: url)
+    receipt = gateway.deliver(task_id: "task-1", text: "Check", references: [], due_at: now, timezone: "UTC", origin: "commander:main", attempt: 1, delivery_key: "delivery-1")
+    delivery_thread.join
+
+    expect(receipt.commander_item_id).to start_with("cmd_")
+    headers, body = delivery_request.pop.split("\r\n\r\n", 2)
+    expect(headers).to include("POST /deliveries HTTP/1.1")
+    expect(JSON.parse(body)).to include("delivery_key" => "delivery-1")
+  end
 end

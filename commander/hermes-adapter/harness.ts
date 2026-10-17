@@ -1,35 +1,66 @@
 import { createHash, randomUUID } from "node:crypto"
-import type { CommanderHarnessState, CommanderHarnessStore, HermesGateway, HermesModel, HermesRun } from "./contract"
+import type { CommanderEvent, CommanderHarnessState, CommanderHarnessStore, CommanderRun, HermesEvent, HermesGateway, HermesModel, HermesRun } from "./contract"
 
 export class CommanderHarness {
   constructor(private readonly gateway: HermesGateway, private readonly store: CommanderHarnessStore) {}
 
-  capabilities() { return this.gateway.capabilities() }
-  models() { return this.gateway.models() }
-  async state() { return this.store.read() }
+  capabilities(): Promise<unknown> { return this.gateway.capabilities() }
+  models(): Promise<unknown> { return this.gateway.models() }
+  state(): Promise<CommanderHarnessState> { return this.store.read() }
 
   async selectModel(model: HermesModel): Promise<CommanderHarnessState> {
+    validModel(model)
+    await this.gateway.setModel(model)
     const current = await this.store.read()
     const next = { ...current, revision: current.revision + 1, model }
     await this.store.write(next)
     return next
   }
 
-  async start(text: string, requestID = randomUUID()): Promise<HermesRun> {
+  async start(text: string, requestID = randomUUID(), deliveryKey?: string): Promise<CommanderRun> {
     if (!text.trim()) throw new Error("Commander prompt must not be empty.")
+    if (!identifier(requestID)) throw new Error("Commander request ID is invalid.")
     const current = await this.store.read()
+    const existing = current.runs[requestID]
+    if (existing) return existing
     const started = await this.gateway.start({ text, sessionID: current.sessionID, model: current.model?.model, idempotencyKey: idempotency(requestID, text) })
     if (current.sessionID && current.sessionID !== started.sessionID) throw new Error("Hermes changed the persistent Commander session.")
-    if (!current.sessionID) await this.store.write({ ...current, revision: current.revision + 1, sessionID: started.sessionID })
-    return started
+    const run: CommanderRun = { id: opaqueID(requestID), hermesRunID: started.runID, sessionID: started.sessionID, requestID, ...(deliveryKey ? { deliveryKey } : {}) }
+    await this.store.write({ ...current, revision: current.revision + 1, sessionID: started.sessionID, runs: { ...current.runs, [requestID]: run } })
+    return run
   }
 
-  status(runID: string) { return this.gateway.status(runID) }
-  steer(runID: string, text: string) { return this.gateway.steer(runID, text) }
-  stop(runID: string) { return this.gateway.stop(runID) }
-  events(runID: string, after?: number) { return this.gateway.events(runID, after) }
+  async status(id: string): Promise<HermesRun> { return this.gateway.status((await this.run(id)).hermesRunID) }
+  async steer(id: string, text: string): Promise<void> { if (!text.trim()) throw new Error("Commander steer text must not be empty."); await this.gateway.steer((await this.run(id)).hermesRunID, text) }
+  async stop(id: string): Promise<void> { await this.gateway.stop((await this.run(id)).hermesRunID) }
+  async *events(id: string, after?: number): AsyncIterable<CommanderEvent> {
+    const run = await this.run(id)
+    for await (const item of this.gateway.events(run.hermesRunID, after)) {
+      const mapped = commanderEvent(item, run.id)
+      if (mapped) yield mapped
+    }
+  }
+
+  private async run(id: string): Promise<CommanderRun> {
+    if (!/^cmd_[a-f0-9]{64}$/.test(id)) throw new Error("Commander run reference is invalid.")
+    const found = Object.values((await this.store.read()).runs).find((run) => run.id === id)
+    if (!found) throw new Error("Commander run reference was not found.")
+    return found
+  }
 }
 
-function idempotency(requestID: string, text: string) {
-  return `commander-${createHash("sha256").update(`${requestID}\n${text}`, "utf8").digest("hex")}`
+function validModel(model: HermesModel): void { if (!model.provider.trim() || !model.model.trim()) throw new Error("Hermes model provider and model are required.") }
+function identifier(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(value) }
+function opaqueID(value: string): string { return `cmd_${createHash("sha256").update(value, "utf8").digest("hex")}` }
+function idempotency(requestID: string, text: string): string { return `commander-${createHash("sha256").update(`${requestID}\n${text}`, "utf8").digest("hex")}` }
+function commanderEvent(event: HermesEvent, runID: string): CommanderEvent {
+  const type = event.type.toLowerCase()
+  const text = typeof event.text === "string" ? event.text : typeof event.output === "string" ? event.output : undefined
+  if (type.includes("memory")) return { seq: event.seq, type: "learning", runID, learning: "memory" }
+  if (type.includes("skill")) return { seq: event.seq, type: "learning", runID, learning: "skill" }
+  if (type.includes("approval")) return { seq: event.seq, type: "approval", runID }
+  if (type.includes("completed")) return { seq: event.seq, type: "completed", runID, ...(text ? { text } : {}) }
+  if (type.includes("failed") || type.includes("error")) return { seq: event.seq, type: "failed", runID, ...(text ? { text } : {}) }
+  if (text) return { seq: event.seq, type: "output", runID, text }
+  return { seq: event.seq, type: "status", runID }
 }

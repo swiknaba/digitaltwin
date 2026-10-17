@@ -54,6 +54,16 @@ model selection; it never writes provider credentials. An existing
 `local/commander.env` remains an optional, ignored override for a deliberately
 different workspace or agent.
 
+Hermes Commander is separately local and opt-in. After the operator has approved
+the control API, create `local/hermes/commander-profile/config.yaml` and the
+owner-only `local/secrets/hermes-api-server-token`, then run
+`scripts/local-hermes-profile`. Overmind starts the Hermes gateway only on
+loopback and the adapter reads the token directly from that ignored file; neither
+the renderer nor Kirei receives it. Starting the control API does not select a
+model or make a provider call. The installed Hermes dependency environment must
+already be repaired; this repository does not download it or create provider
+credentials.
+
 Start the full local stack from the DigitalTwin repository root:
 
 ```sh

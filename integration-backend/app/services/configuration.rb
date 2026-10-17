@@ -16,6 +16,7 @@ module Services
     const :opencode_url, T.nilable(String), default: nil
     const :opencode_session_id, T.nilable(String), default: nil
     const :opencode_authorization_file, T.nilable(String), default: nil
+    const :hermes_adapter_url, T.nilable(String), default: nil
     const :capability_secret_file, T.nilable(String), default: nil
 
     sig { returns(Configuration) }
@@ -25,6 +26,7 @@ module Services
         opencode_url: ENV["OPENCODE_URL"],
         opencode_session_id: ENV["OPENCODE_SESSION_ID"],
         opencode_authorization_file: ENV["OPENCODE_AUTHORIZATION_FILE"],
+        hermes_adapter_url: ENV["HERMES_ADAPTER_URL"],
         capability_secret_file: ENV["FUTURE_TASK_CAPABILITY_SECRET_FILE"]
       )
     end

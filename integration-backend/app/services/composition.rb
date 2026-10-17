@@ -56,6 +56,9 @@ module Services
 
     sig { returns(Adapters::OpenCode::Gateway) }
     private def configured_gateway
+      hermes_adapter_url = @configuration.hermes_adapter_url
+      return Adapters::Hermes::ConfiguredGateway.new(base_url: hermes_adapter_url) if hermes_adapter_url
+
       url = @configuration.opencode_url
       session_id = @configuration.opencode_session_id
       authorization_file = @configuration.opencode_authorization_file

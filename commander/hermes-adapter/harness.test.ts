@@ -4,11 +4,12 @@ import { CommanderHarness } from "./harness"
 import type { CommanderHarnessState, CommanderHarnessStore, HermesGateway } from "./contract"
 
 function fixture() {
-  let state: CommanderHarnessState = { revision: 0 }
+  let state: CommanderHarnessState = { revision: 0, runs: {} }
   const starts: unknown[] = []
   const gateway: HermesGateway = {
     capabilities: async () => ({ features: { run_submission: true } }),
     models: async () => ({ providers: [] }),
+    setModel: async () => undefined,
     start: async (input) => { starts.push(input); return { runID: "run_1", sessionID: input.sessionID ?? "session_1", status: "started", model: input.model } },
     status: async (runID) => ({ runID, sessionID: "session_1", status: "completed" }),
     steer: async () => undefined,
@@ -30,15 +31,20 @@ test("preserves one Hermes session and makes retries deterministic", async () =>
   assert.equal(f.state().model?.model, "configured-model")
   assert.deepEqual(f.starts, [
     { text: "status", sessionID: undefined, model: "configured-model", idempotencyKey: (f.starts[0] as { idempotencyKey: string }).idempotencyKey },
-    { text: "status", sessionID: "session_1", model: "configured-model", idempotencyKey: (f.starts[0] as { idempotencyKey: string }).idempotencyKey },
   ])
 })
 
 test("exposes status, event replay, steer, and stop without an OpenCode worker session", async () => {
   const f = fixture()
   const started = await f.harness.start("ping")
-  assert.equal((await f.harness.status(started.runID)).status, "completed")
-  assert.deepEqual(await Array.fromAsync(f.harness.events(started.runID)), [{ seq: 1, type: "run.completed", run_id: "run_1" }])
-  await f.harness.steer(started.runID, "be brief")
-  await f.harness.stop(started.runID)
+  assert.equal((await f.harness.status(started.id)).status, "completed")
+  assert.deepEqual(await Array.fromAsync(f.harness.events(started.id)), [{ seq: 1, type: "completed", runID: started.id }])
+  await f.harness.steer(started.id, "be brief")
+  await f.harness.stop(started.id)
+})
+
+test("rejects unknown opaque run references", async () => {
+  const f = fixture()
+  await assert.rejects(f.harness.status(`cmd_${"0".repeat(64)}`), /not found/)
+  await assert.rejects(f.harness.stop("run_1"), /invalid/)
 })

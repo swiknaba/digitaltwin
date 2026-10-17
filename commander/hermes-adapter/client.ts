@@ -1,22 +1,25 @@
-import type { HermesEvent, HermesGateway, HermesRun } from "./contract"
+import type { HermesEvent, HermesGateway, HermesModel, HermesRun } from "./contract"
 
 type Fetch = typeof fetch
 
 export class HermesGatewayClient implements HermesGateway {
   constructor(private readonly endpoint: URL, private readonly token: string, private readonly request: Fetch = fetch) {}
 
-  capabilities() { return this.json("/v1/capabilities") }
-  models() { return this.json("/api/model/options") }
+  capabilities(): Promise<unknown> { return this.json("/v1/capabilities") }
+  models(): Promise<unknown> { return this.json("/api/model/options") }
+
+  async setModel(model: HermesModel): Promise<void> {
+    await this.json("/api/model/set", { method: "POST", body: JSON.stringify({ scope: "main", provider: model.provider, model: model.model }) })
+  }
 
   async start(input: Readonly<{ text: string; sessionID?: string; model?: string; idempotencyKey: string }>): Promise<HermesRun> {
     const body = { input: input.text, ...(input.sessionID ? { session_id: input.sessionID } : {}), ...(input.model ? { model: input.model } : {}) }
-    const value = await this.json("/v1/runs", { method: "POST", headers: { "Idempotency-Key": input.idempotencyKey }, body: JSON.stringify(body) })
-    return run(value)
+    return run(await this.json("/v1/runs", { method: "POST", headers: { "Idempotency-Key": input.idempotencyKey }, body: JSON.stringify(body) }))
   }
 
-  status(runID: string): Promise<HermesRun> { return this.json(`/v1/runs/${encodeURIComponent(runID)}`).then(run) }
-  async steer(runID: string, text: string) { await this.json(`/v1/runs/${encodeURIComponent(runID)}/steer`, { method: "POST", body: JSON.stringify({ input: text }) }) }
-  async stop(runID: string) { await this.json(`/v1/runs/${encodeURIComponent(runID)}/stop`, { method: "POST" }) }
+  async status(runID: string): Promise<HermesRun> { return run(await this.json(`/v1/runs/${encodeURIComponent(runID)}`)) }
+  async steer(runID: string, text: string): Promise<void> { await this.json(`/v1/runs/${encodeURIComponent(runID)}/steer`, { method: "POST", body: JSON.stringify({ input: text }) }) }
+  async stop(runID: string): Promise<void> { await this.json(`/v1/runs/${encodeURIComponent(runID)}/stop`, { method: "POST" }) }
 
   async *events(runID: string, after?: number): AsyncIterable<HermesEvent> {
     const response = await this.request(new URL(`/v1/runs/${encodeURIComponent(runID)}/events`, this.endpoint), { headers: this.headers(after === undefined ? {} : { "Last-Event-ID": String(after) }) })
@@ -55,12 +58,9 @@ export class HermesGatewayClient implements HermesGateway {
 }
 
 function run(value: unknown): HermesRun {
-  if (!value || typeof value !== "object") throw new Error("Hermes returned an invalid run.")
-  const item = value as Record<string, unknown>
-  if (typeof item.run_id !== "string" || typeof item.session_id !== "string" || typeof item.status !== "string") throw new Error("Hermes returned an incomplete run.")
-  return { runID: item.run_id, sessionID: item.session_id, status: item.status, ...(typeof item.model === "string" ? { model: item.model } : {}) }
+  if (!object(value) || typeof value.run_id !== "string" || typeof value.session_id !== "string" || typeof value.status !== "string") throw new Error("Hermes returned an incomplete run.")
+  return { runID: value.run_id, sessionID: value.session_id, status: value.status, ...(typeof value.model === "string" ? { model: value.model } : {}) }
 }
 
-function event(value: unknown): value is HermesEvent {
-  return !!value && typeof value === "object" && typeof (value as Record<string, unknown>).seq === "number" && typeof (value as Record<string, unknown>).type === "string" && typeof (value as Record<string, unknown>).run_id === "string"
-}
+function event(value: unknown): value is HermesEvent { return object(value) && typeof value.seq === "number" && typeof value.type === "string" && typeof value.run_id === "string" }
+function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }

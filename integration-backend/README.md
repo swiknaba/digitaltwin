@@ -17,8 +17,10 @@ one-time successor through the same capability API, using a stable successor
 idempotency key; a worker retry therefore returns the existing successor instead
 of creating a duplicate.
 
-When a task is due, the worker uses the ordinary authenticated OpenCode session API
-to append a visible check-in. It never starts project work. An unknown effect becomes
+When a task is due, the worker uses the project-local Hermes Commander adapter
+when `HERMES_ADAPTER_URL` is configured; otherwise it uses the legacy ordinary
+authenticated OpenCode session API. The Hermes adapter keeps its bearer token and
+durable Commander session outside Kirei. It never starts project work. An unknown effect becomes
 `uncertain`, then one reconciliation attempt uses the same immutable delivery key.
 The in-repository gateway fails closed until an operator wires an exact OpenCode
 session and authorization file; it does not create or ship a credential.
@@ -43,6 +45,8 @@ is an internal task API, not a generic workflow server or a replacement for the
 operator-owned native MCP server bootstrap.
 
 Set all of the following only in operator-owned runtime configuration:
+
+- `HERMES_ADAPTER_URL` — a loopback URL for the project-local Hermes Commander adapter; or
 
 - `OPENCODE_URL` — existing authenticated OpenCode server base URL;
 - `OPENCODE_SESSION_ID` — exact operator-selected OpenCode session; and
