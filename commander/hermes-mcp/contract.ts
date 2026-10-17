@@ -40,7 +40,7 @@ export type CommanderMessage = Readonly<{
 export interface OpenCodeCommanderGateway {
   listProjects(): Promise<readonly CommanderProject[]>
   listAvailableModels(directory: string): Promise<readonly CommanderAvailableModel[]>
-  createSession(input: Readonly<{ id: string; directory: string; model?: CommanderWorkerModel }>): Promise<CommanderSession>
+  createSession(input: Readonly<{ id: string; directory: string; model: CommanderWorkerModel }>): Promise<CommanderSession>
   selectSessionModel(input: Readonly<{ sessionID: string; model: CommanderWorkerModel }>): Promise<void>
   prompt(input: Readonly<{
     sessionID: string
@@ -61,7 +61,7 @@ export type DelegationDecision = Readonly<{
   createRequestID: string
   createDigest: string
   createMessageID: string
-  workerModel?: CommanderWorkerModel
+  workerModel: CommanderWorkerModel
   continued: Readonly<Record<string, string>>
 }>
 
@@ -73,7 +73,7 @@ export type PendingDelegation = Readonly<{
   createRequestID: string
   createDigest: string
   createMessageID: string
-  workerModel?: CommanderWorkerModel
+  workerModel: CommanderWorkerModel
 }>
 
 export type DelegationState = Readonly<{

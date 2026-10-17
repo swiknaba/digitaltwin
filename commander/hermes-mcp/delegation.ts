@@ -16,7 +16,7 @@ export class CommanderDelegation {
     return this.gateway.listProjects()
   }
 
-  async create(input: Readonly<{ projectID: string; requestID: string; text: string; workerModel?: CommanderWorkerModel }>): Promise<Readonly<Record<string, Json>>> {
+  async create(input: Readonly<{ projectID: string; requestID: string; text: string; workerModel: CommanderWorkerModel }>): Promise<Readonly<Record<string, Json>>> {
     validCreate(input)
     const requestKey = hash([this.provenanceSubject, input.projectID, input.requestID].join("\n"))
     return this.exclusive(requestKey, () => this.store.exclusive(async () => {
@@ -33,7 +33,7 @@ export class CommanderDelegation {
       }
       const pending = current.pending[requestKey]
       if (pending) {
-        if (!samePending(pending, this.provenanceSubject, input.projectID, input.requestID, digest) && !matchesLegacyUnmodelledCreate(pending.createDigest, input.text, input.workerModel)) {
+        if (!samePending(pending, this.provenanceSubject, input.projectID, input.requestID, digest)) {
           throw new Error("Commander project session request conflicts with its original body.")
         }
         const recovered = await this.completePending(requestKey, pending)
@@ -51,7 +51,7 @@ export class CommanderDelegation {
         createRequestID: input.requestID,
         createDigest: digest,
         createMessageID: messageID(project.id, `ses_hermes_commander_${hash([this.provenanceSubject, project.id, input.requestID].join("\n"))}`, input.requestID),
-        ...(input.workerModel === undefined ? {} : { workerModel: input.workerModel }),
+        workerModel: input.workerModel,
       }
       await this.persistPending(current, requestKey, intent)
       const decision = await this.completePending(requestKey, intent, project.directory)
@@ -172,8 +172,7 @@ export class CommanderDelegation {
     }
   }
 
-  private async assertEnabledWorkerModel(directory: string, model: CommanderWorkerModel | undefined): Promise<void> {
-    if (model === undefined) return
+  private async assertEnabledWorkerModel(directory: string, model: CommanderWorkerModel): Promise<void> {
     const candidate = (await this.gateway.listAvailableModels(directory)).find(
       (item) => item.model.providerID === model.providerID && item.model.modelID === model.modelID,
     )
@@ -198,8 +197,9 @@ export class CommanderDelegation {
   }
 }
 
-function validCreate(input: Readonly<{ projectID: string; requestID: string; text: string; workerModel?: CommanderWorkerModel }>): void {
+function validCreate(input: Readonly<{ projectID: string; requestID: string; text: string; workerModel: CommanderWorkerModel }>): void {
   if (!identifier(input.projectID) || !requestID(input.requestID) || !input.text.trim()) throw new Error("Commander project session request is invalid.")
+  if (!input.workerModel) throw new Error("Commander worker model is required for a new project session.")
   validWorkerModel(input.workerModel)
 }
 
@@ -211,7 +211,7 @@ function createResult(decision: DelegationDecision): Readonly<Record<string, Jso
     message_id: decision.createMessageID,
     request_id: decision.createRequestID,
     provenance: provenance(decision),
-    ...(decision.workerModel === undefined ? {} : { worker_model: workerModelJson(decision.workerModel) }),
+    worker_model: workerModelJson(decision.workerModel),
   }
 }
 
@@ -272,7 +272,7 @@ function decisionFrom(pending: PendingDelegation): DelegationDecision {
     createRequestID: pending.createRequestID,
     createDigest: pending.createDigest,
     createMessageID: pending.createMessageID,
-    ...(pending.workerModel === undefined ? {} : { workerModel: pending.workerModel }),
+    workerModel: pending.workerModel,
     continued: {},
   }
 }
@@ -298,11 +298,8 @@ function validWorkerModel(value: CommanderWorkerModel | undefined): void {
 function createDigest(text: string, workerModel: CommanderWorkerModel | undefined): string {
   return hash(JSON.stringify({ text, ...(workerModel === undefined ? {} : { workerModel }) }))
 }
-function matchesCreateDigest(value: string, text: string, workerModel: CommanderWorkerModel | undefined): boolean {
-  return value === createDigest(text, workerModel) || matchesLegacyUnmodelledCreate(value, text, workerModel)
-}
-function matchesLegacyUnmodelledCreate(value: string, text: string, workerModel: CommanderWorkerModel | undefined): boolean {
-  return workerModel === undefined && value === hash(text)
+function matchesCreateDigest(value: string, text: string, workerModel: CommanderWorkerModel): boolean {
+  return value === createDigest(text, workerModel)
 }
 function workerModelJson(value: CommanderWorkerModel): Json {
   return {

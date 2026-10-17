@@ -57,11 +57,11 @@ function tools(): readonly Readonly<Record<string, unknown>>[] {
     { name: "commander_list_projects", description: "List the existing OpenCode projects Commander may target. This operation never dispatches a prompt.", inputSchema: { type: "object", additionalProperties: false, properties: {} } },
     {
       name: "commander_create_project_session",
-      description: "Create a normal project session, admit the supplied prompt, and return opaque follow-up references with Hermes MCP provenance. worker_model is an optional explicit OpenCode worker choice; it is not the Commander/Hermes model and must be enabled for the target project.",
+      description: "Create a normal project session, admit the supplied prompt, and return opaque follow-up references with Hermes MCP provenance. worker_model is required for every new session: use the exact native Commander selection supplied with this request. It is not the Commander/Hermes model and must be enabled for the target project.",
       inputSchema: {
         type: "object",
         additionalProperties: false,
-        required: ["project_id", "request_id", "text"],
+        required: ["project_id", "request_id", "text", "worker_model"],
         properties: {
           project_id: { type: "string" },
           request_id: { type: "string" },
@@ -95,12 +95,12 @@ async function call(params: unknown): Promise<unknown> {
   const args = params.arguments
   if (params.name === "commander_list_projects") return content(await delegation.listProjects())
   if (params.name === "commander_create_project_session") {
-    const worker = workerModel(args)
+    const worker = requiredWorkerModel(args)
     return content(await delegation.create({
       projectID: required(args, "project_id"),
       requestID: required(args, "request_id"),
       text: required(args, "text"),
-      ...(worker === undefined ? {} : { workerModel: worker }),
+      workerModel: worker,
     }))
   }
   if (params.name === "commander_read_agent") return content(await delegation.read(references(args)))
@@ -150,6 +150,12 @@ function workerModel(value: Record<string, unknown>): Readonly<{ providerID: str
     modelID: candidate.model_id,
     ...(candidate.variant === undefined ? {} : { variant: candidate.variant }),
   }
+}
+
+function requiredWorkerModel(value: Record<string, unknown>): Readonly<{ providerID: string; modelID: string; variant?: string }> {
+  const result = workerModel(value)
+  if (result === undefined) throw new Error("worker_model is required when creating a Commander project session.")
+  return result
 }
 
 function workerModelSchema(): Readonly<Record<string, unknown>> {

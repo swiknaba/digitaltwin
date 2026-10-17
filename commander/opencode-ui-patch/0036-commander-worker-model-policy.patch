@@ -1,0 +1,312 @@
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -7,6 +7,7 @@ import { Composer } from "@/composer/composer"
+ import { createComposerModel } from "@/composer/model"
+ import { createMemoryComposerState } from "@/composer/state"
+ import type { ActiveComposerAdapter, ComposerControls } from "@/composer/adapter"
++import { useConfiguredModel } from "@/providers/models/configured"
+ import type { ModelKey, ModelSelection } from "@/providers/models/selection"
+ import { ModelsProvider, useModels } from "@/providers/models/models"
+ import { useData } from "@/runtime/server/current"
+@@ -73,6 +74,7 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   const data = useData()
+   const server = useServerSDK()
+   const models = useModels()
++  const configuredModel = useConfiguredModel()
+   const [runID, setRunID] = createSignal<string>()
+   const [followTimeline, setFollowTimeline] = createSignal(true)
+   const [transport, setTransport] = createSignal<CommanderTransport>("checking")
+@@ -82,6 +84,7 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   const [selecting, setSelecting] = createSignal(false)
+   const [selectionError, setSelectionError] = createSignal<string>()
+   const [selected, setSelected] = createSignal<CommanderModel | undefined>(props.conversation.model)
++  const [workerSelection, setWorkerSelection] = createSignal<CommanderModel>()
+   const prompt = createMemoryComposerState(props.conversation.model ? { model: props.conversation.model } : undefined)
+   let timelineElement: HTMLDivElement | undefined
+ 
+@@ -89,7 +92,23 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   // identities that Hermes has confirmed for Commander.
+   const offeredByHermes = (key: Readonly<{ providerID: string; modelID: string }>) => inventory()?.some((item) => item.providerID === key.providerID && item.modelID === key.modelID) ?? false
+   const commanderModels = () => models.list().filter((item) => offeredByHermes({ providerID: item.provider.id, modelID: item.id }) && models.visible({ providerID: item.provider.id, modelID: item.id }))
++  const workerModels = () => models.list().filter((item) => models.visible({ providerID: item.provider.id, modelID: item.id }))
+   const visibleModel = (key: Readonly<{ providerID: string; modelID: string }>) => offeredByHermes(key) && models.visible(key) ? models.find(key) : undefined
++  const visibleWorkerModel = (key: Readonly<{ providerID: string; modelID: string }>) => workerModels().find((item) => item.provider.id === key.providerID && item.id === key.modelID)
++  const configuredWorkerModel = () => {
++    const configured = configuredModel()
++    if (!configured || !visibleWorkerModel(configured)) return
++    return configured
++  }
++  const workerModel = () => {
++    const explicit = workerSelection()
++    if (explicit && visibleWorkerModel(explicit)) return explicit
++    const configured = configuredWorkerModel()
++    if (configured) return configured
++    const available = workerModels()
++    if (available.length !== 1) return
++    return { providerID: available[0].provider.id, modelID: available[0].id }
++  }
+   const currentModel = () => {
+     const key = selected() ?? prompt.model.current()
+     if (!key) return
+@@ -172,9 +191,11 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+       commanderPrompt: async (input) => {
+         if (transport() !== "hermes") throw new Error("Hermes is unavailable. Commander cannot send messages until its harness returns.")
+         if (!currentModel()) throw new Error("Choose an enabled Commander model before sending.")
++        const selectedWorker = workerModel()
++        if (!selectedWorker) throw new Error("Choose an enabled OpenCode worker model before sending project delegation.")
+         setRuntimeError(undefined)
+         try {
+-          const result = await hermesRequest<{ id: string }>({ operation: "start", requestID: input.id, text: input.text })
++          const result = await hermesRequest<{ id: string }>({ operation: "start", requestID: input.id, text: input.text, workerModel: selectedWorker })
+           setRunID(result.id)
+         } catch (error) {
+           const message = error instanceof Error ? error.message : "Commander could not start Hermes. Your draft was not sent."
+@@ -314,6 +335,28 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+             <Show when={selecting()}>
+               <p class="mb-2 text-12-regular text-v2-text-text-muted">Saving Commander model…</p>
+             </Show>
++            <label class="mb-2 flex flex-col gap-1 text-12-regular text-v2-text-text-muted">
++              Project worker model
++              <select
++                aria-label="Project worker model"
++                class="rounded-md border border-v2-border-border-base bg-v2-background-bg-base px-2 py-1 text-13-regular text-v2-text-text-base"
++                value={workerModelValue(workerModel())}
++                onChange={(event) => {
++                  const selected = workerModels().find((item) => workerModelValue({ providerID: item.provider.id, modelID: item.id }) === event.currentTarget.value)
++                  setWorkerSelection(selected ? { providerID: selected.provider.id, modelID: selected.id } : undefined)
++                }}
++              >
++                <Show when={workerModel()} fallback={<option value="">Choose a visible worker model</option>}>
++                  <option value="">Choose a visible worker model</option>
++                </Show>
++                <For each={workerModels()}>
++                  {(item) => <option value={workerModelValue({ providerID: item.provider.id, modelID: item.id })}>{item.provider.name} / {item.name}</option>}
++                </For>
++              </select>
++              <Show when={!workerModel()}>
++                <span>Choose a visible OpenCode worker model. Commander will not use a server default.</span>
++              </Show>
++            </label>
+             <Composer model={composer} />
+           </div>
+         </div>
+@@ -330,7 +373,11 @@ function validHermesModel(value: HermesModelOption): boolean {
+   return !!value.providerID.trim() && !!value.providerName.trim() && !!value.modelID.trim()
+ }
+ 
+-function hermesRequest<T>(request: Readonly<{ operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "select-model"; requestID?: string; runID?: string; text?: string; model?: CommanderModel }>): Promise<T> {
++function workerModelValue(model: CommanderModel | undefined): string {
++  return model === undefined ? "" : `${encodeURIComponent(model.providerID)}:${encodeURIComponent(model.modelID)}`
++}
++
++function hermesRequest<T>(request: Readonly<{ operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "select-model"; requestID?: string; runID?: string; text?: string; model?: CommanderModel; workerModel?: CommanderModel }>): Promise<T> {
+   const id = crypto.randomUUID()
+   return new Promise<T>((resolve, reject) => {
+     const receive = (event: Event) => {
+diff --git a/packages/gui-extensions/src/commander/contract.ts b/packages/gui-extensions/src/commander/contract.ts
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -48,7 +48,7 @@ export const CommanderEvent = Schema.Struct({
+ })
+ export type CommanderEvent = typeof CommanderEvent.Type
+ 
+-export const CommanderRunRequest = Schema.Struct({ requestID: Schema.String, text: Schema.String })
++export const CommanderRunRequest = Schema.Struct({ requestID: Schema.String, text: Schema.String, workerModel: CommanderModel })
+ export const CommanderRunControl = Schema.Struct({ runID: Schema.String, text: Schema.optional(Schema.String) })
+ 
+ export const CommanderReservation = Schema.Struct({
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -20,6 +20,7 @@ type CommanderRequest = Readonly<{
+   readonly runID?: string
+   readonly text?: string
+   readonly model?: CommanderModelEvent
++  readonly workerModel?: CommanderModelEvent
+ }>
+ 
+ function isCommanderModel(value: unknown): value is CommanderModelEvent {
+@@ -157,7 +158,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+         new CustomEvent("opencode-commander-hermes-response", { detail: { id: request.id, result, error } }),
+       )
+     if (request.operation === "health") void live.value.health().then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander runtime check failed."))
+-    if (request.operation === "start" && request.requestID && request.text) void live.value.start({ requestID: request.requestID, text: request.text }).then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander request failed."))
++    if (request.operation === "start" && request.requestID && request.text && request.workerModel && isCommanderModel(request.workerModel)) void live.value.start({ requestID: request.requestID, text: request.text, workerModel: request.workerModel }).then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander request failed."))
+     if (request.operation === "stop" && request.runID) void live.value.stop(request.runID).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander stop failed."))
+     if (request.operation === "steer" && request.runID && request.text) void live.value.steer({ runID: request.runID, text: request.text }).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander steer failed."))
+     if (request.operation === "history") void live.value.history().then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander history failed."))
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -62,6 +62,21 @@ async function models(): Promise<readonly CommanderModelOption[]> {
+   return decoded.value.map((item) => ({ providerID: item.provider, providerName: item.providerName, modelID: item.model }))
+ }
+ 
++function withWorkerModelPolicy(request: Readonly<{ text: string; workerModel: Readonly<{ providerID: string; modelID: string; variant?: string }> }>): string {
++  const workerModel = JSON.stringify({
++    provider_id: request.workerModel.providerID,
++    model_id: request.workerModel.modelID,
++    ...(request.workerModel.variant === undefined ? {} : { variant: request.workerModel.variant }),
++  })
++  return [
++    "Native Commander worker policy (not user-authored text):",
++    `For a new project session, call commander_create_project_session with this exact worker_model: ${workerModel}.`,
++    "For an existing project-session follow-up, call commander_continue_agent without worker_model unless the user explicitly requests a model change. Never rely on an OpenCode default for a new project session.",
++    "User request:",
++    request.text,
++  ].join("\n\n")
++}
++
+ async function relayEvents(
+   runID: string,
+   window: number,
+@@ -176,7 +191,7 @@ export function createCommanderRuntime(input: CommanderRuntime) {
+       return next
+     },
+     start: async (request, caller) => {
+-      const value = await adapter("/runs", { method: "POST", body: JSON.stringify({ request_id: request.requestID, text: request.text }) })
++      const value = await adapter("/runs", { method: "POST", body: JSON.stringify({ request_id: request.requestID, text: withWorkerModelPolicy(request) }) })
+       const decoded = Schema.decodeUnknownOption(CommanderRun)(value)
+       if (Option.isNone(decoded)) throw new Error("Commander Hermes adapter returned an invalid run.")
+       void relayEvents(decoded.value.id, caller.window, provider, caller.signal).catch(() => undefined)
+diff --git a/packages/gui-extensions/src/commander/main.test.ts b/packages/gui-extensions/src/commander/main.test.ts
+--- a/packages/gui-extensions/src/commander/main.test.ts
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -98,6 +98,7 @@ function hermes(options: readonly { provider: string; providerName: string; mode
+     requests.push({ path: url.pathname, method: init?.method ?? "GET", body })
+     if (url.pathname === "/models") return Response.json(options)
+     if (url.pathname === "/model") return Response.json({ revision: 4 }, { status: modelStatus })
++    if (url.pathname === "/runs") return Response.json({ id: "cmd_fixture", sessionID: "hermes_fixture" })
+     throw new Error(`unexpected Hermes request ${url.pathname}`)
+   }
+   globalThis.fetch = Object.assign(request, { preconnect: original.fetch.preconnect })
+@@ -198,3 +199,30 @@ test("Commander reports Hermes unavailable when its adapter is not configured",
+     hermes: false,
+   })
+ })
++
++test("Commander relays the native visible worker selection as a no-default creation policy", async () => {
++  const backing = persistent({
++    revision: 2,
++    conversation: { serverID: "sidecar", sessionID: Session.ID.make("ses_commander_worker_model"), directory: configured.directory, agent: Agent.ID.make(configured.agent) },
++  })
++  const first = runtime(backing)
++  const requests = hermes([])
++
++  await expect(first.bridge.start({
++    requestID: "worker-model-request",
++    text: "Ask Advoport to reply only: fixture pong",
++    workerModel: { providerID: "anthropic", modelID: "claude-haiku-5-5", variant: "low" },
++  }, caller)).resolves.toEqual({ id: "cmd_fixture", sessionID: "hermes_fixture" })
++
++  const body = requests.find((request) => request.path === "/runs")?.body
++  expect(body).toEqual({
++    request_id: "worker-model-request",
++    text: [
++      "Native Commander worker policy (not user-authored text):",
++      "For a new project session, call commander_create_project_session with this exact worker_model: {\"provider_id\":\"anthropic\",\"model_id\":\"claude-haiku-5-5\",\"variant\":\"low\"}.",
++      "For an existing project-session follow-up, call commander_continue_agent without worker_model unless the user explicitly requests a model change. Never rely on an OpenCode default for a new project session.",
++      "User request:",
++      "Ask Advoport to reply only: fixture pong",
++    ].join("\n\n"),
++  })
++})
+diff --git a/packages/app/component-tests/commander-vite-fixture/main.tsx b/packages/app/component-tests/commander-vite-fixture/main.tsx
+--- a/packages/app/component-tests/commander-vite-fixture/main.tsx
++++ b/packages/app/component-tests/commander-vite-fixture/main.tsx
+@@ -17,6 +17,7 @@ type HermesRequest = {
+   id: string
+   operation?: "health" | "history" | "models" | "select-model" | "start" | "stop" | "steer"
+   model?: Model
++  workerModel?: Model
+ }
+ 
+ declare global {
+@@ -28,6 +29,7 @@ declare global {
+       hermesRequests(): number
+       resetHermesRequests(): void
+       hermesInventoryRequests(): number
++      lastStartWorkerModel(): Model | undefined
+       setModelVisibility(modelID: string, visible: boolean): boolean
+     }
+   }
+@@ -51,6 +53,7 @@ function Fixture() {
+   let hermesMode: "available" | "unavailable" | "reject" = new URLSearchParams(window.location.search).get("hermes") === "unavailable" ? "unavailable" : "available"
+   let hermesRequests = 0
+   let hermesInventoryRequests = 0
++  let lastStartWorkerModel: Model | undefined
+   const open = () => window.dispatchEvent(new CustomEvent("opencode-commander-overlay", { detail: { conversation, model } }))
+   onMount(() => {
+     window.addEventListener("opencode-commander-hermes-request", (event) => {
+@@ -84,6 +87,7 @@ function Fixture() {
+       }
+       if (request.operation === "start") {
+         hermesRequests += 1
++        lastStartWorkerModel = request.workerModel
+         if (hermesMode === "reject") reply(undefined, "Hermes is unavailable for this controlled test.")
+         else reply({ id: `run_${hermesRequests}` })
+       }
+@@ -97,6 +101,7 @@ function Fixture() {
+       },
+       hermesRequests: () => hermesRequests,
+       hermesInventoryRequests: () => hermesInventoryRequests,
++      lastStartWorkerModel: () => lastStartWorkerModel,
+       resetHermesRequests: () => {
+         hermesRequests = 0
+       },
+diff --git a/packages/app/component-tests/commander-vite-fixture/vite.config.ts b/packages/app/component-tests/commander-vite-fixture/vite.config.ts
+--- a/packages/app/component-tests/commander-vite-fixture/vite.config.ts
++++ b/packages/app/component-tests/commander-vite-fixture/vite.config.ts
+@@ -56,5 +56,6 @@ function fixture(path: string) {
+     })),
+   }
++  if (path.startsWith("/api/config")) return []
+   if (path.startsWith("/api/project")) return []
+   if (path.startsWith("/api/integration")) return { location: { directory: "/fixture/commander" }, data: [] }
+   if (path.startsWith("/api/vcs")) return { location: { directory: "/fixture/commander" }, data: { branch: "fixture" } }
+diff --git a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+--- a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -21,10 +21,12 @@ test("Commander shows only Hermes-confirmed native visible models, confirms selection, and persists it", async ({ page }) => {
+   await expect(picker).toContainText("commander-large")
+ 
+   const prompt = overlay.locator('[contenteditable="true"]')
++  await overlay.getByLabel("Project worker model").selectOption("fixture:commander-small")
+   await prompt.fill("send this from Commander")
+   await expect(overlay.getByRole("button", { name: "Send" })).toBeEnabled()
+   await overlay.getByRole("button", { name: "Send" }).click({ force: true })
+   await expect.poll(() => page.evaluate(() => window.commanderFixture?.hermesRequests())).toBe(1)
++  await expect.poll(() => page.evaluate(() => window.commanderFixture?.lastStartWorkerModel())).toEqual({ providerID: "fixture", modelID: "commander-small" })
+ 
+   await page.evaluate(() => window.commanderFixture?.reopen())
+   await expect(overlay).toBeVisible()
+@@ -69,4 +71,21 @@ test("Commander excludes disabled native models and reapplies visibility on reop
+   await expect(page.locator('[data-option-key="fixture:commander-large"]')).toBeVisible()
+ })
+ 
++test("Commander requires a visible worker choice before delegating", async ({ page }) => {
++  await page.goto("/")
++  const overlay = page.locator('[data-slot="commander-native-overlay"]')
++  const prompt = overlay.locator('[contenteditable="true"]')
++
++  const picker = overlay.locator('[data-action="composer-model"]')
++  await picker.click()
++  await page.locator('[data-option-key="fixture:commander-small"]').click()
++  await expect(picker).toContainText("commander-small")
++  await expect(overlay.getByText("Choose a visible OpenCode worker model. Commander will not use a server default.")).toBeVisible()
++  await prompt.fill("do not use a hidden default")
++  await overlay.getByRole("button", { name: "Send" }).click()
++
++  await expect(prompt).toHaveText("do not use a hidden default")
++  expect(await page.evaluate(() => window.commanderFixture?.hermesRequests())).toBe(0)
++})
++
+ test("Commander retains rejected Hermes drafts and submits a confirmed button retry once", async ({ page }) => {
+@@ -74,5 +93,6 @@ test("Commander retains rejected Hermes drafts and submits a confirmed button re
+   await page.evaluate(() => window.commanderFixture?.setHermesMode("reject"))
+ 
+   const prompt = overlay.locator('[contenteditable="true"]')
++  await overlay.getByLabel("Project worker model").selectOption("fixture:commander-small")
+   await prompt.fill("keep this Commander draft")
+   await overlay.getByRole("button", { name: "Send" }).click()

@@ -6,6 +6,8 @@ import { CommanderDelegation } from "./delegation"
 import { FileDelegationStore } from "./store"
 import type { CommanderMessage, CommanderProject, CommanderSession, DelegationState, DelegationStore, Json, OpenCodeCommanderGateway } from "./contract"
 
+const enabledWorkerModel = { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" }
+
 function fixture() {
   let state: DelegationState = { revision: 0, decisions: {}, requests: {}, pending: {} }
   const prompts: Array<Readonly<{ sessionID: string; messageID: string; text: string; metadata: Readonly<Record<string, Json>> }>> = []
@@ -52,7 +54,7 @@ test("lists projects and reads without dispatching a prompt", async () => {
 
 test("creates a precisely-provenanced normal project session and restores its stable reference after restart", async () => {
   const f = fixture()
-  const first = await f.delegation().create({ projectID: "project-1", requestID: "create-1", text: "Investigate the regression." })
+  const first = await f.delegation().create({ projectID: "project-1", requestID: "create-1", text: "Investigate the regression.", workerModel: enabledWorkerModel })
   assert.equal(f.creates(), 1)
   assert.match(String(first.decision_id), /^hermes-project-session-[a-f0-9]{64}$/)
   assert.match(String(first.message_id), /^msg_hermes_commander_[a-f0-9]{64}$/)
@@ -75,7 +77,7 @@ test("creates a precisely-provenanced normal project session and restores its st
       commanderRequestID: "create-1",
     },
   })
-  const retry = await f.delegation().create({ projectID: "project-1", requestID: "create-1", text: "Investigate the regression." })
+  const retry = await f.delegation().create({ projectID: "project-1", requestID: "create-1", text: "Investigate the regression.", workerModel: enabledWorkerModel })
   assert.equal(f.creates(), 1)
   assert.deepEqual(retry, first)
   const reloaded = f.delegation()
@@ -92,7 +94,7 @@ test("creates a precisely-provenanced normal project session and restores its st
 
 test("continues only the persisted exact target and preserves idempotency after restart", async () => {
   const f = fixture()
-  const created = await f.delegation().create({ projectID: "project-1", requestID: "create-1", text: "Start." })
+  const created = await f.delegation().create({ projectID: "project-1", requestID: "create-1", text: "Start.", workerModel: enabledWorkerModel })
   const result = await f.delegation().continue({ decisionID: String(created.decision_id), requestID: "continue-1", text: "Continue." })
   assert.deepEqual(result, {
     decision_id: created.decision_id,
@@ -113,7 +115,7 @@ test("continues only the persisted exact target and preserves idempotency after 
 
 test("uses an explicit enabled worker model without changing a project default", async () => {
   const f = fixture()
-  const workerModel = { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" }
+  const workerModel = enabledWorkerModel
   const created = await f.delegation().create({ projectID: "project-1", requestID: "model-create-1", text: "Start.", workerModel })
   assert.deepEqual(f.createdModels, [workerModel])
   assert.deepEqual(created.worker_model, { provider_id: "anthropic", model_id: "claude-opus-5-5", variant: "high" })
@@ -127,10 +129,22 @@ test("uses an explicit enabled worker model without changing a project default",
   assert.equal(f.creates(), 1)
 })
 
+test("rejects a missing worker model before creating a session or falling back to an OpenCode default", async () => {
+  const f = fixture()
+  await assert.rejects(
+    // This simulates an older Hermes path that omitted worker_model entirely.
+    f.delegation().create({ projectID: "project-1", requestID: "missing-worker-model", text: "Do not use a default." } as never),
+    /worker model is required/,
+  )
+  assert.equal(f.creates(), 0)
+  assert.equal(f.prompts.length, 0)
+  assert.equal(Object.keys(f.state().pending).length, 0)
+})
+
 test("rejects an OpenCode prompt admission that does not preserve metadata", async () => {
   const brokenGateway: OpenCodeCommanderGateway = {
     listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
-    listAvailableModels: async () => [],
+    listAvailableModels: async () => [{ model: enabledWorkerModel, variants: ["high"] }],
     createSession: async ({ id }) => ({ id, projectID: "project-1" }),
     selectSessionModel: async () => undefined,
     prompt: async (input): Promise<CommanderMessage> => ({ id: input.messageID, type: "user", text: input.text, metadata: {} }),
@@ -140,13 +154,13 @@ test("rejects an OpenCode prompt admission that does not preserve metadata", asy
   }
   let persisted: DelegationState = { revision: 0, decisions: {}, requests: {}, pending: {} }
   const state: DelegationStore = { read: async () => persisted, write: async (next) => { persisted = next }, exclusive: async (work) => work() }
-  await assert.rejects(new CommanderDelegation(brokenGateway, state, "hermes-profile-local").create({ projectID: "project-1", requestID: "broken-1", text: "Fail safely." }), /admission conflicts/)
+  await assert.rejects(new CommanderDelegation(brokenGateway, state, "hermes-profile-local").create({ projectID: "project-1", requestID: "broken-1", text: "Fail safely.", workerModel: enabledWorkerModel }), /admission conflicts/)
 })
 
 test("rejects an OpenCode prompt admission for a different session", async () => {
   const brokenGateway: OpenCodeCommanderGateway = {
     listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
-    listAvailableModels: async () => [],
+    listAvailableModels: async () => [{ model: enabledWorkerModel, variants: ["high"] }],
     createSession: async ({ id }) => ({ id, projectID: "project-1" }),
     selectSessionModel: async () => undefined,
     prompt: async (input): Promise<CommanderMessage> => ({ id: input.messageID, sessionID: "ses_other", type: "user", text: input.text, metadata: input.metadata }),
@@ -156,12 +170,12 @@ test("rejects an OpenCode prompt admission for a different session", async () =>
   }
   let persisted: DelegationState = { revision: 0, decisions: {}, requests: {}, pending: {} }
   const state: DelegationStore = { read: async () => persisted, write: async (next) => { persisted = next }, exclusive: async (work) => work() }
-  await assert.rejects(new CommanderDelegation(brokenGateway, state, "hermes-profile-local").create({ projectID: "project-1", requestID: "wrong-session-1", text: "Fail safely." }), /admission conflicts/)
+  await assert.rejects(new CommanderDelegation(brokenGateway, state, "hermes-profile-local").create({ projectID: "project-1", requestID: "wrong-session-1", text: "Fail safely.", workerModel: enabledWorkerModel }), /admission conflicts/)
 })
 
 test("reports a structured worker failure without its private provider message", async () => {
   const f = fixture()
-  const created = await f.delegation().create({ projectID: "project-1", requestID: "failure-1", text: "Ping." })
+  const created = await f.delegation().create({ projectID: "project-1", requestID: "failure-1", text: "Ping.", workerModel: enabledWorkerModel })
   f.gateway.readMessages = async () => [{ id: "msg_failed", type: "assistant", model: { providerID: "anthropic", modelID: "claude-opus-5-5" }, finish: "error", error: { type: "provider.auth", status: 403 } }]
   assert.deepEqual(await f.delegation().read({ decisionID: String(created.decision_id) }), {
     decision_id: created.decision_id,
@@ -179,7 +193,7 @@ test("recovers a file-backed pending create with the caller-supplied OpenCode se
   let creates = 0
   const gateway: OpenCodeCommanderGateway = {
     listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
-    listAvailableModels: async () => [],
+    listAvailableModels: async () => [{ model: enabledWorkerModel, variants: ["high"] }],
     createSession: async ({ id }) => {
       creates += 1
       const existing = sessions.get(id)
@@ -213,11 +227,11 @@ test("recovers a file-backed pending create with the caller-supplied OpenCode se
   }
   try {
     const first = new CommanderDelegation(gateway, interrupted, "hermes-profile-local")
-    await assert.rejects(first.create({ projectID: "project-1", requestID: "recover-1", text: "Recover me." }), /simulated process interruption/)
+    await assert.rejects(first.create({ projectID: "project-1", requestID: "recover-1", text: "Recover me.", workerModel: enabledWorkerModel }), /simulated process interruption/)
     const pending = await raw.read()
     assert.equal(Object.keys(pending.pending).length, 1)
     const restored = new CommanderDelegation(gateway, raw, "hermes-profile-local")
-    const result = await restored.create({ projectID: "project-1", requestID: "recover-1", text: "Recover me." })
+    const result = await restored.create({ projectID: "project-1", requestID: "recover-1", text: "Recover me.", workerModel: enabledWorkerModel })
     assert.match(String(result.session_id), /^ses_hermes_commander_[a-f0-9]{64}$/)
     assert.equal(sessions.size, 1)
     assert.equal(creates, 2)
@@ -233,7 +247,7 @@ test("serializes concurrent file-backed delegations so neither decision is lost"
   const sessions = new Map<string, CommanderSession>()
   const gateway: OpenCodeCommanderGateway = {
     listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
-    listAvailableModels: async () => [],
+    listAvailableModels: async () => [{ model: enabledWorkerModel, variants: ["high"] }],
     createSession: async ({ id }) => {
       const session = { id, projectID: "project-1" }
       sessions.set(id, session)
@@ -253,8 +267,8 @@ test("serializes concurrent file-backed delegations so neither decision is lost"
     const first = new CommanderDelegation(gateway, new FileDelegationStore(file), "hermes-profile-local")
     const second = new CommanderDelegation(gateway, new FileDelegationStore(file), "hermes-profile-local")
     await Promise.all([
-      first.create({ projectID: "project-1", requestID: "concurrent-1", text: "First." }),
-      second.create({ projectID: "project-1", requestID: "concurrent-2", text: "Second." }),
+      first.create({ projectID: "project-1", requestID: "concurrent-1", text: "First.", workerModel: enabledWorkerModel }),
+      second.create({ projectID: "project-1", requestID: "concurrent-2", text: "Second.", workerModel: enabledWorkerModel }),
     ])
     const state = await new FileDelegationStore(file).read()
     assert.equal(Object.keys(state.decisions).length, 2)

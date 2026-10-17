@@ -71,13 +71,13 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
     return response.data.flatMap(availableModel)
   }
 
-  async createSession(input: Readonly<{ id: string; directory: string; model?: CommanderWorkerModel }>): Promise<CommanderSession> {
+  async createSession(input: Readonly<{ id: string; directory: string; model: CommanderWorkerModel }>): Promise<CommanderSession> {
     return session(data(await this.json("/api/session", {
       method: "POST",
       body: JSON.stringify({
         id: input.id,
         location: { directory: input.directory },
-        ...(input.model === undefined ? {} : { model: apiModel(input.model) }),
+        model: apiModel(input.model),
       }),
     }), "session"))
   }

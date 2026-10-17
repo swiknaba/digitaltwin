@@ -14,15 +14,17 @@ Hermes provenance subject in OpenCode message metadata, and reject a changed
 body for an existing request id. Read only requests existing session/message
 data; it never posts a prompt.
 
-`commander_create_project_session` and `commander_continue_agent` accept an
-optional `worker_model` object (`provider_id`, `model_id`, and optional
-`variant`). It is deliberately separate from Commander’s Hermes model. Before
-creating a session or switching an existing worker, the bridge asks the target
-project's OpenCode model endpoint for its enabled inventory and rejects a model
-or variant not in that inventory. An explicit model is sent through OpenCode's
-per-session API only: it never changes a project or global default. When
-`worker_model` is omitted, OpenCode retains its normal project/default
-resolution behavior.
+`commander_create_project_session` requires a `worker_model` object
+(`provider_id`, `model_id`, and optional `variant`) chosen by the native
+Commander overlay. It is deliberately separate from Commander’s Hermes model.
+Before creating a session or switching an existing worker, the bridge asks the
+target project's OpenCode model endpoint for its enabled inventory and rejects
+a model or variant not in that inventory. The selected model is sent through
+OpenCode's per-session API only: it never changes a project or global default.
+`commander_continue_agent` keeps `worker_model` optional: omitting it preserves
+the persisted worker session model, while providing it explicitly changes that
+one session before the next turn. Creation fails closed if the selection is
+missing, so an invisible provider default cannot be selected silently.
 
 OpenCode publishes its desktop sidecar through an owner-only
 `service-local.json` registration, which is its supported local-client discovery

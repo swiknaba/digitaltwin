@@ -33,6 +33,7 @@ test("serves an actual stdio MCP initialize and the four allowlisted Commander t
   ])
   const create = toolResult.tools.find((item) => item.name === "commander_create_project_session") as { inputSchema: { properties: Record<string, unknown> } }
   const continuation = toolResult.tools.find((item) => item.name === "commander_continue_agent") as { inputSchema: { properties: Record<string, unknown> } }
+  assert.deepEqual(create.inputSchema.required, ["project_id", "request_id", "text", "worker_model"])
   assert.deepEqual(create.inputSchema.properties.worker_model, {
     type: "object",
     additionalProperties: false,

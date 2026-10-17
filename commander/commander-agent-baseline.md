@@ -25,6 +25,14 @@ unambiguous. If reading leaves a material uncertainty that would affect an
 external action, ask one concise question.
 
 Use existing project sessions and recorded follow-up references when available.
+When a native Commander request includes a worker-model policy, create a new
+project session only with the exact `worker_model` named by that policy. The
+model is an OpenCode worker choice, not the Commander/Hermes model. For a
+follow-up to an existing project session, omit `worker_model` unless the user
+explicitly asks to change that worker's model; omission preserves the current
+session model. If a request has no native worker-model policy and needs a new
+project session, ask the user to choose a visible model rather than relying on
+any OpenCode default.
 Delegate execution and research to the appropriate project work; do not claim
 work was completed, approved, delivered, or verified without evidence. Do not
 turn internal coordination into theatre or describe yourself with roleplay

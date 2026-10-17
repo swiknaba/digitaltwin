@@ -33,7 +33,6 @@ test("uses the installed OpenCode HTTP envelopes and only selects enabled explic
   const gateway = new OpenCodeHttpGateway(staticOpenCodeSidecar(new URL("http://127.0.0.1:3086"), "approved-private-password"), request)
   assert.deepEqual(await gateway.listProjects(), [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }])
   assert.deepEqual(await gateway.listAvailableModels("/srv/digitaltwin"), [{ model: { providerID: "anthropic", modelID: "claude-opus-5-5" }, variants: ["high"] }])
-  assert.deepEqual(await gateway.createSession({ id: "ses_hermes", directory: "/srv/digitaltwin" }), { id: "ses_hermes", projectID: "project-1" })
   assert.deepEqual(await gateway.createSession({ id: "ses_hermes", directory: "/srv/digitaltwin", model: { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" } }), { id: "ses_hermes", projectID: "project-1" })
   await gateway.selectSessionModel({ sessionID: "ses_hermes", model: { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" } })
   assert.deepEqual(await gateway.prompt({ sessionID: "ses_hermes", messageID: "msg_hermes", text: "Start.", metadata: { fromCommander: true } }), {
@@ -51,7 +50,6 @@ test("uses the installed OpenCode HTTP envelopes and only selects enabled explic
   assert.deepEqual(calls, [
     { path: "/api/project", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/model?location%5Bdirectory%5D=%2Fsrv%2Fdigitaltwin", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
-    { path: "/api/session", body: { id: "ses_hermes", location: { directory: "/srv/digitaltwin" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session", body: { id: "ses_hermes", location: { directory: "/srv/digitaltwin" }, model: { providerID: "anthropic", id: "claude-opus-5-5", variant: "high" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes/model", body: { model: { providerID: "anthropic", id: "claude-opus-5-5", variant: "high" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes/prompt", body: { id: "msg_hermes", text: "Start.", metadata: { fromCommander: true }, resume: true }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
