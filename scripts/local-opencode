@@ -30,5 +30,11 @@ elif ! printf '%s' "$OPENCODE_CONFIG_CONTENT" | grep -Fq "$DIGITALTWIN_COMMANDER
   exit 78
 fi
 
+hermes_token_file="$repo_root/local/secrets/hermes-api-server-token"
+if [ -s "$hermes_token_file" ]; then
+  export DIGITALTWIN_HERMES_ADAPTER_URL="${DIGITALTWIN_HERMES_ADAPTER_URL:-http://127.0.0.1:3087}"
+  export DIGITALTWIN_HERMES_ADAPTER_TOKEN="$(cat "$hermes_token_file")"
+fi
+
 cd "$repo_root/local/opencode"
 exec bun run dev:desktop

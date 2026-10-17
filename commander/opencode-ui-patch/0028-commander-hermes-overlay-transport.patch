@@ -38,7 +38,7 @@
  import type definition from "./index"
  
  type CommanderStore = Readonly<{
-@@ -19,6 +19,19 @@
+@@ -19,6 +19,21 @@
  
  const AgentListResponse = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Agent.ID })) })
  
@@ -50,7 +50,9 @@
 +}
 +
 +async function adapter(path: string, init: RequestInit = {}) {
-+  const response = await fetch(adapterURL(path), { ...init, headers: { "content-type": "application/json", ...init.headers } })
++  const token = process.env.DIGITALTWIN_HERMES_ADAPTER_TOKEN
++  if (!token) throw new Error("Commander Hermes adapter token is not configured.")
++  const response = await fetch(adapterURL(path), { ...init, headers: { "content-type": "application/json", "authorization": `Bearer ${token}`, ...init.headers } })
 +  if (!response.ok) throw new Error(`Commander Hermes adapter rejected request (${response.status}).`)
 +  return response.json()
 +}

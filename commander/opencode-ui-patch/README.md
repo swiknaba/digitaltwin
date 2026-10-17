@@ -4,13 +4,11 @@ This maintained patch targets OpenCode v2.0.27 at
 `1f4d07a4a519185955ae8ab2ea3607805509e386`. It adds a persistent global
 Commander dialog, native composer, and model picker.
 
-Normal desktop startup needs no harness flag. The extension stores one Commander
-OpenCode session identity in desktop extension storage. It creates, loads,
-streams, sends to, interrupts, and reconnects that ordinary session through
-OpenCode's existing client APIs. The same identity is used across project
-switches, close/reopen, and desktop restart. It does not load user
-configuration, make a second socket, or pass endpoint credentials through a
-new renderer bridge.
+Normal desktop startup preserves ordinary OpenCode project sessions. When the
+separately configured local Hermes adapter is available, Commander submits to
+its durable Hermes session through typed main-process IPC. The renderer receives
+neither the bearer token nor the Hermes profile path; the local adapter requires
+the private loopback bearer header from the trusted desktop process or Kirei.
 
 The active OpenCode continuation plugin owns exact-session follow-up bindings.
 Scheduled Kirei delivery independently uses the authenticated normal OpenCode
@@ -39,7 +37,7 @@ sh commander/opencode-ui-patch/prepare-opencode.sh
 The default target is `local/opencode`; pass an absolute checkout path only when
 an operator deliberately needs a different location. The script verifies the
 pinned revision, then applies all patches. The reviewed patch sequence is
-currently twenty-six patches.
+currently twenty-eight patches.
 It copies no configuration, credentials, persistent store, or operator state.
 
 For a local desktop walkthrough—including optional native-agent continuation and
