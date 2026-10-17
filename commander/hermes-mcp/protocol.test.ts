@@ -31,5 +31,5 @@ test("serves an actual stdio MCP initialize and the four allowlisted Commander t
     "commander_read_agent",
     "commander_continue_agent",
   ])
-  assert.match(messages.find((item) => item.id === 3)?.error?.message ?? "", /OpenCode sidecar authorization is not configured/)
+  assert.match(messages.find((item) => item.id === 3)?.error?.message ?? "", /service registration access is not configured/)
 })

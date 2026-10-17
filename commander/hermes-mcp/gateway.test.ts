@@ -1,6 +1,8 @@
 import assert from "node:assert/strict"
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { join } from "node:path"
 import test from "node:test"
-import { OpenCodeHttpGateway } from "./gateway"
+import { OpenCodeHttpGateway, ServiceRegistrationOpenCodeSidecar, staticOpenCodeSidecar } from "./gateway"
 
 test("uses the installed OpenCode HTTP envelopes, top-level provenance, and assistant content", async () => {
   const calls: Array<Readonly<{ path: string; body: unknown; authorization: string | null }>> = []
@@ -23,7 +25,7 @@ test("uses the installed OpenCode HTTP envelopes, top-level provenance, and assi
     })()
     return new Response(JSON.stringify(response), { status: 200, headers: { "Content-Type": "application/json" } })
   }
-  const gateway = new OpenCodeHttpGateway(new URL("http://127.0.0.1:3086"), "approved-private-password", request)
+  const gateway = new OpenCodeHttpGateway(staticOpenCodeSidecar(new URL("http://127.0.0.1:3086"), "approved-private-password"), request)
   assert.deepEqual(await gateway.listProjects(), [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }])
   assert.deepEqual(await gateway.createSession({ id: "ses_hermes", directory: "/srv/digitaltwin" }), { id: "ses_hermes", projectID: "project-1" })
   assert.deepEqual(await gateway.prompt({ sessionID: "ses_hermes", messageID: "msg_hermes", text: "Start.", metadata: { fromCommander: true } }), {
@@ -47,14 +49,14 @@ test("uses the installed OpenCode HTTP envelopes, top-level provenance, and assi
   ])
 })
 
-test("fails before network access when no OpenCode sidecar password was explicitly provided", async () => {
+test("fails before network access until service-registration discovery is explicitly authorized", async () => {
   let invoked = false
   const request: typeof fetch = async () => {
     invoked = true
     return new Response("{}")
   }
-  const gateway = new OpenCodeHttpGateway(new URL("http://127.0.0.1:3086"), undefined, request)
-  await assert.rejects(gateway.listProjects(), /authorization is not configured/)
+  const gateway = new OpenCodeHttpGateway(staticOpenCodeSidecar(new URL("http://127.0.0.1:3086"), undefined), request)
+  await assert.rejects(gateway.listProjects(), /registration access is not configured/)
   assert.equal(invoked, false)
 })
 
@@ -65,8 +67,81 @@ test("rejects a non-loopback sidecar endpoint before it can attach a Basic crede
     return new Response("{}")
   }
   assert.throws(
-    () => new OpenCodeHttpGateway(new URL("https://opencode.example.test"), "approved-private-password", request),
+    () => staticOpenCodeSidecar(new URL("https://opencode.example.test"), "approved-private-password"),
     /http loopback origin/,
   )
   assert.equal(invoked, false)
+})
+
+test("uses the official service registration, verifies it, and rediscovers after a sidecar rotation", async () => {
+  const root = await mkdtemp(join(process.cwd(), "local/tmp/hermes-mcp-registration-"))
+  const registration = join(root, "service-local.json")
+  const pid = process.pid
+  const writeRegistration = async (password: string) => {
+    await writeFile(registration, `${JSON.stringify({ id: "service", version: "2.0.27", url: "http://127.0.0.1:3086", pid, password })}\n`, { mode: 0o600 })
+    await chmod(registration, 0o600)
+  }
+  await writeRegistration("first-private-password")
+  let healthProbes = 0
+  const projectAuthorizations: string[] = []
+  const request: typeof fetch = async (input, init) => {
+    const url = input instanceof URL ? input : new URL(input.toString())
+    const authorization = new Headers(init?.headers).get("authorization") ?? ""
+    if (url.pathname === "/api/info") {
+      healthProbes += 1
+      return new Response(JSON.stringify({ version: "2.0.27", pid }), { status: 200, headers: { "Content-Type": "application/json" } })
+    }
+    if (url.pathname === "/api/project") {
+      projectAuthorizations.push(authorization)
+      if (projectAuthorizations.length === 1) {
+        await writeRegistration("second-private-password")
+        return new Response("{}", { status: 401 })
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`)
+  }
+  try {
+    const sidecar = new ServiceRegistrationOpenCodeSidecar(registration, request)
+    const gateway = new OpenCodeHttpGateway(sidecar, request)
+    assert.deepEqual(await gateway.listProjects(), [])
+    assert.equal(healthProbes, 2)
+    assert.deepEqual(projectAuthorizations, [
+      "Basic b3BlbmNvZGU6Zmlyc3QtcHJpdmF0ZS1wYXNzd29yZA==",
+      "Basic b3BlbmNvZGU6c2Vjb25kLXByaXZhdGUtcGFzc3dvcmQ=",
+    ])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("refuses a service registration whose permissions expose the private credential", async () => {
+  const root = await mkdtemp(join(process.cwd(), "local/tmp/hermes-mcp-registration-mode-"))
+  const registration = join(root, "service-local.json")
+  await writeFile(registration, `${JSON.stringify({ url: "http://127.0.0.1:3086", pid: process.pid, password: "private" })}\n`, { mode: 0o600 })
+  await chmod(registration, 0o644)
+  try {
+    const source = new ServiceRegistrationOpenCodeSidecar(registration)
+    await assert.rejects(source.resolve(), /permissions must exclude group and other access/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("refuses a service registration with a non-loopback endpoint before its credential is sent", async () => {
+  const root = await mkdtemp(join(process.cwd(), "local/tmp/hermes-mcp-registration-endpoint-"))
+  const registration = join(root, "service-local.json")
+  await writeFile(registration, `${JSON.stringify({ url: "https://opencode.example.test", pid: process.pid, password: "private" })}\n`, { mode: 0o600 })
+  let invoked = false
+  const request: typeof fetch = async () => {
+    invoked = true
+    return new Response("{}")
+  }
+  try {
+    const source = new ServiceRegistrationOpenCodeSidecar(registration, request)
+    await assert.rejects(source.resolve(), /http loopback origin/)
+    assert.equal(invoked, false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })

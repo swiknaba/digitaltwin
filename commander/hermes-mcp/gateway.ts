@@ -1,15 +1,58 @@
+import { lstat, readFile } from "node:fs/promises"
+import { basename, isAbsolute } from "node:path"
 import type { CommanderMessage, CommanderProject, CommanderSession, Json, OpenCodeCommanderGateway } from "./contract"
 
 type Fetch = typeof fetch
+type OpenCodeSidecar = Readonly<{ endpoint: URL; password: string }>
+
+export interface OpenCodeSidecarSource {
+  readonly retryOnUnauthorized: boolean
+  resolve(): Promise<OpenCodeSidecar>
+}
+
+export function staticOpenCodeSidecar(endpoint: URL, password: string | undefined): OpenCodeSidecarSource {
+  assertLoopbackSidecar(endpoint)
+  return {
+    retryOnUnauthorized: false,
+    resolve: async () => {
+      if (!password) throw new Error("OpenCode service registration access is not configured. Authorize a supported registration file before using Commander project tools.")
+      return { endpoint, password }
+    },
+  }
+}
+
+export class ServiceRegistrationOpenCodeSidecar implements OpenCodeSidecarSource {
+  readonly retryOnUnauthorized = true
+
+  constructor(
+    private readonly registrationFile: string,
+    private readonly request: Fetch = fetch,
+  ) {
+    if (!isAbsolute(registrationFile) || basename(registrationFile) !== "service-local.json") {
+      throw new Error("OpenCode service registration must be an absolute service-local.json path.")
+    }
+  }
+
+  async resolve(): Promise<OpenCodeSidecar> {
+    const registration = await readRegistration(this.registrationFile)
+    const endpoint = parseEndpoint(registration.url)
+    const health = await this.request(new URL("/api/info", endpoint), {
+      headers: { Authorization: basicAuthorization(registration.password) },
+    })
+    if (!health.ok) throw new Error("Registered OpenCode service is not ready.")
+    const info = await health.json().catch(() => undefined)
+    if (!object(info) || info.pid !== registration.pid || (registration.version !== undefined && info.version !== registration.version)) {
+      throw new Error("Registered OpenCode service failed identity verification.")
+    }
+    return { endpoint, password: registration.password }
+  }
+}
 
 export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
   constructor(
-    private readonly endpoint: URL,
-    private readonly sidecarPassword: string | undefined,
+    private readonly sidecar: OpenCodeSidecarSource,
     private readonly request: Fetch = fetch,
-  ) {
-    assertLoopbackSidecar(endpoint)
-  }
+  ) {}
 
   async listProjects(): Promise<readonly CommanderProject[]> {
     const body = await this.json("/api/project")
@@ -55,18 +98,20 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
   }
 
   private async json(path: string, init: RequestInit = {}): Promise<unknown> {
-    if (!this.sidecarPassword) {
-      throw new Error("OpenCode sidecar authorization is not configured. Set DIGITALTWIN_OPENCODE_SIDECAR_PASSWORD only after the owner approves this bridge.")
-    }
-    const headers = new Headers(init.headers)
-    headers.set("Authorization", `Basic ${Buffer.from(`opencode:${this.sidecarPassword}`).toString("base64")}`)
-    headers.set("Content-Type", "application/json")
-    const response = await this.request(new URL(path, this.endpoint), { ...init, headers })
+    let response = await this.requestJson(await this.sidecar.resolve(), path, init)
+    if (response.status === 401 && this.sidecar.retryOnUnauthorized) response = await this.requestJson(await this.sidecar.resolve(), path, init)
     if (!response.ok) {
       if (response.status === 401) throw new Error("OpenCode sidecar authorization was rejected (401).")
       throw new Error(`OpenCode request failed (${response.status}).`)
     }
     return response.json()
+  }
+
+  private async requestJson(sidecar: OpenCodeSidecar, path: string, init: RequestInit): Promise<Response> {
+    const headers = new Headers(init.headers)
+    headers.set("Authorization", basicAuthorization(sidecar.password))
+    headers.set("Content-Type", "application/json")
+    return this.request(new URL(path, sidecar.endpoint), { ...init, headers })
   }
 }
 
@@ -75,6 +120,58 @@ function assertLoopbackSidecar(endpoint: URL): void {
   if (endpoint.protocol !== "http:" || !loopback || endpoint.username || endpoint.password || endpoint.pathname !== "/" || endpoint.search || endpoint.hash) {
     throw new Error("OpenCode sidecar endpoint must be an http loopback origin.")
   }
+}
+
+type ServiceRegistration = Readonly<{
+  url: string
+  pid: number
+  password: string
+  version?: string
+}>
+
+async function readRegistration(path: string): Promise<ServiceRegistration> {
+  const details = await lstat(path)
+  if (!details.isFile() || details.isSymbolicLink()) throw new Error("OpenCode service registration must be a regular file.")
+  if (process.platform !== "win32") {
+    if ((details.mode & 0o077) !== 0) throw new Error("OpenCode service registration permissions must exclude group and other access.")
+    if (details.uid !== currentUserID()) throw new Error("OpenCode service registration must be owned by the current user.")
+  }
+  let value: unknown
+  try {
+    value = JSON.parse(await readFile(path, "utf8"))
+  } catch {
+    throw new Error("OpenCode service registration is invalid.")
+  }
+  if (!object(value)) throw new Error("OpenCode service registration is invalid.")
+  const url = value.url
+  const pid = value.pid
+  const password = value.password
+  if (typeof url !== "string" || typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0 || typeof password !== "string" || !password) {
+    throw new Error("OpenCode service registration is invalid.")
+  }
+  if (value.version !== undefined && typeof value.version !== "string") throw new Error("OpenCode service registration is invalid.")
+  return { url, pid, password, ...(typeof value.version === "string" ? { version: value.version } : {}) }
+}
+
+function parseEndpoint(value: string): URL {
+  try {
+    const endpoint = new URL(value)
+    assertLoopbackSidecar(endpoint)
+    return endpoint
+  } catch (error) {
+    if (error instanceof Error && error.message === "OpenCode sidecar endpoint must be an http loopback origin.") throw error
+    throw new Error("OpenCode service registration has an invalid endpoint.")
+  }
+}
+
+function basicAuthorization(password: string): string {
+  return `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`
+}
+
+function currentUserID(): number {
+  const getuid = process.getuid
+  if (getuid === undefined) throw new Error("OpenCode service registration ownership cannot be verified.")
+  return getuid()
 }
 
 function session(value: unknown): CommanderSession {

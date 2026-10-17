@@ -1,5 +1,5 @@
 import { CommanderDelegation } from "./delegation"
-import { OpenCodeHttpGateway } from "./gateway"
+import { OpenCodeHttpGateway, ServiceRegistrationOpenCodeSidecar, staticOpenCodeSidecar } from "./gateway"
 import { FileDelegationStore } from "./store"
 
 type JSONRPCID = string | number | null
@@ -7,9 +7,12 @@ type JSONRPCRequest = Readonly<{ jsonrpc?: unknown; id?: JSONRPCID; method?: unk
 
 const root = new URL("../..", import.meta.url).pathname
 const stateFile = process.env.DIGITALTWIN_HERMES_DELEGATION_STATE ?? `${root}local/hermes/commander-delegation-state.json`
-const endpoint = new URL(process.env.DIGITALTWIN_OPENCODE_URL ?? "http://127.0.0.1:3086")
+const registrationFile = process.env.DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE
+const sidecar = registrationFile === undefined
+  ? staticOpenCodeSidecar(new URL("http://127.0.0.1:3086"), undefined)
+  : new ServiceRegistrationOpenCodeSidecar(registrationFile)
 const delegation = new CommanderDelegation(
-  new OpenCodeHttpGateway(endpoint, process.env.DIGITALTWIN_OPENCODE_SIDECAR_PASSWORD),
+  new OpenCodeHttpGateway(sidecar),
   new FileDelegationStore(stateFile),
   process.env.DIGITALTWIN_HERMES_PROVENANCE_SUBJECT ?? "hermes-profile-local",
 )

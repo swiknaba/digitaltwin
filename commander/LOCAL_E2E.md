@@ -72,6 +72,18 @@ the pinned runtime under `local/hermes/runtime/`; it redirects `HOME`, XDG state
 the Hermes tool store, and gateway locks to that project-local directory. It does
 not change a user-shell startup file or a global Hermes installation.
 
+When the owner is ready to choose a native Hermes provider and model, open the
+project-local official picker with:
+
+```sh
+sh scripts/local-hermes-model
+```
+
+It reuses the local Hermes launcher while omitting the gateway control bearer;
+its `HOME`, `HERMES_HOME`, caches, and runtime state remain below `local/hermes/`.
+It is interactive and may write the owner-selected provider configuration there,
+so do not run it until that configuration is approved.
+
 When those approved files and the project-local runtime are present,
 `sh scripts/local-overmind` starts the loopback Hermes gateway and adapter with
 the Kirei web service, worker, and patched OpenCode desktop. If Hermes is not

@@ -26,6 +26,16 @@ It uses the checked-in non-secret `.env.overmind`, the existing host PostgreSQL,
 one Kirei web process, one Kirei worker, and one prepared OpenCode desktop. Its
 status, logs, and stop commands reuse a project-local Overmind socket.
 
+`local-hermes-model` opens the interactive Hermes provider/model picker with its
+home, profile, caches, and runtime state under `local/hermes/`:
+
+```sh
+sh scripts/local-hermes-model
+```
+
+It does not start the Hermes gateway or use its control bearer. Run it only when
+the owner approves provider configuration.
+
 `init-postgres.sh` runs only on an empty local PostgreSQL volume. It creates the
 single Kirei role and `digitaltwin_development` database; it does not create a
 Mattermost role or database.

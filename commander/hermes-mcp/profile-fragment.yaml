@@ -1,7 +1,8 @@
 # Merge this generated-path fragment into the approved project-local Hermes profile.
-# The sidecar credential is deliberately not represented here. The stdio process
-# exposes its MCP schema without it and fails project calls closed until an owner
-# authorizes DIGITALTWIN_OPENCODE_SIDECAR_PASSWORD in its launch environment.
+# The desktop service-registration path is deliberately not represented here. The
+# stdio process exposes its MCP schema without it and fails project calls closed
+# until an owner authorizes DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE in its
+# launch environment. Do not add or copy the rotating service password.
 mcp_servers:
   commander-delegation:
     command: sh
