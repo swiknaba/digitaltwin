@@ -2,10 +2,17 @@ import { createHash, randomUUID } from "node:crypto"
 import type { CommanderEvent, CommanderHarnessState, CommanderHarnessStore, CommanderRun, HermesEvent, HermesGateway, HermesHistoryMessage, HermesModel, HermesModelOption, HermesRun } from "./contract"
 
 export class CommanderHarness {
-  constructor(private readonly gateway: HermesGateway, private readonly store: CommanderHarnessStore) {}
+  constructor(
+    private readonly gateway: HermesGateway,
+    private readonly store: CommanderHarnessStore,
+    private readonly allowedProvider?: string,
+  ) {}
 
   capabilities(): Promise<unknown> { return this.gateway.capabilities() }
-  models(): Promise<readonly HermesModelOption[]> { return this.gateway.models() }
+  async models(): Promise<readonly HermesModelOption[]> {
+    const models = await this.gateway.models()
+    return this.allowedProvider ? models.filter((model) => model.provider === this.allowedProvider) : models
+  }
   state(): Promise<CommanderHarnessState> { return this.store.read() }
   async history(): Promise<readonly HermesHistoryMessage[]> {
     const sessionID = (await this.store.read()).sessionID
@@ -13,7 +20,7 @@ export class CommanderHarness {
   }
 
   async selectModel(model: HermesModel): Promise<CommanderHarnessState> {
-    validModel(model)
+    await this.confirmModel(model)
     const current = await this.store.read()
     const next = { ...current, revision: current.revision + 1, model }
     await this.store.write(next)
@@ -27,6 +34,7 @@ export class CommanderHarness {
     const existing = current.runs[requestID]
     if (existing) return existing
     if (!current.model) throw new Error("Choose an enabled Commander model before sending.")
+    await this.confirmModel(current.model)
     const sessionID = current.sessionID ?? `commander_${randomUUID()}`
     // Persist the client-selected session first. Hermes' 202 admission does not
     // echo session_id, so this makes a retry/restart use the exact same identity.
@@ -61,9 +69,20 @@ export class CommanderHarness {
     if (!found) throw new Error("Commander run reference was not found.")
     return found
   }
+
+  private async confirmModel(model: HermesModel): Promise<void> {
+    validModel(model, this.allowedProvider)
+    const available = await this.models()
+    if (!available.some((item) => item.provider === model.provider && item.model === model.model)) {
+      throw new Error("Hermes does not expose the selected Commander provider and model.")
+    }
+  }
 }
 
-function validModel(model: HermesModel): void { if (!model.provider.trim() || !model.model.trim()) throw new Error("Hermes model provider and model are required.") }
+function validModel(model: HermesModel, allowedProvider?: string): void {
+  if (!model.provider.trim() || !model.model.trim()) throw new Error("Hermes model provider and model are required.")
+  if (allowedProvider && model.provider !== allowedProvider) throw new Error(`Commander is configured only for the ${allowedProvider} provider.`)
+}
 function identifier(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(value) }
 function opaqueID(value: string): string { return `cmd_${createHash("sha256").update(value, "utf8").digest("hex")}` }
 function idempotency(requestID: string, text: string): string { return `commander-${createHash("sha256").update(`${requestID}\n${text}`, "utf8").digest("hex")}` }

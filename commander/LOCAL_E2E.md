@@ -60,7 +60,12 @@ the control API, create `local/hermes/commander-profile/config.yaml` and the
 owner-only `local/secrets/hermes-api-server-token`, then run
 `scripts/local-hermes-profile`. The project-local Hermes source, tool store,
 cache, lock root, and profile all live below `local/hermes/`; the gateway never
-uses or updates an installation under the user's home directory.
+uses or updates an installation under the user's home directory. In the default
+local stack, the trusted OpenCode server plugin resolves only the active
+Anthropic **API-key** credential and gives it directly to its Hermes gateway
+child in memory. OAuth and every other credential type/provider are rejected,
+and the child starts with a stripped environment and isolated handoff home so a
+profile `.env` cannot override that selected OpenCode credential.
 
 Provision the pinned project-local runtime once with:
 
@@ -110,9 +115,11 @@ dedicated `digitaltwin_local` and `digitaltwin_local_test` databases when they
 do not exist.
 
 The local launcher also creates one ignored, stack-local OpenCode plugin entry
-under `local/opencode/.opencode/plugins/digitaltwin-commander-continuation/`. It is supplied as an
-explicit additive OpenCode config, so normal user-global OpenCode configuration
-remains available. It installs only `commander_continue_agent`; it does not read
+under `local/opencode/.opencode/plugins/digitaltwin-commander-continuation/`. The
+launcher disables only an identically named legacy Commander plugin, then assigns
+this setup-owned copy a stack-local plugin ID; normal user-global OpenCode model,
+permission, credential, and session settings remain available. It installs the Commander continuation tools and the narrow
+Anthropic API-key handoff; it does not read
 or configure the pending sidecar service-registration credential.
 
 The development launcher runs its own isolated sidecar on `127.0.0.1:3086`.

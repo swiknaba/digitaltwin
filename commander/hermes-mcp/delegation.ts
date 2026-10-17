@@ -60,6 +60,7 @@ export class CommanderDelegation {
 
   async read(input: Readonly<{ decisionID?: string; sessionID?: string }>): Promise<Readonly<Record<string, Json>>> {
     const decision = await this.resolve(input)
+    await this.gateway.waitSession(decision.sessionID)
     const [session, messages] = await Promise.all([this.gateway.readSession(decision.sessionID), this.gateway.readMessages(decision.sessionID)])
     if (session.id !== decision.sessionID || session.projectID !== decision.projectID) throw new Error("Commander target session provenance no longer matches.")
     return {
@@ -219,7 +220,7 @@ function continuationMetadata(decision: DelegationDecision, request: string, dig
 }
 
 function admitted(message: CommanderMessage, sessionID: string, id: string, text: string, metadata: Readonly<Record<string, Json>>): boolean {
-  return message.id === id && message.type === "user" && message.text === text && Object.entries(metadata).every(([key, value]) => message.metadata?.[key] === value) && sessionID.length > 0
+  return message.id === id && message.type === "user" && (message.sessionID === undefined || message.sessionID === sessionID) && message.text === text && Object.entries(metadata).every(([key, value]) => message.metadata?.[key] === value)
 }
 
 function latestAssistant(messages: readonly CommanderMessage[]): Json {
@@ -233,6 +234,9 @@ function messageToJson(value: CommanderMessage): Json {
     id: value.id,
     type: value.type,
     ...(value.text === undefined && assistantText === undefined ? {} : { text: value.text ?? assistantText }),
+    ...(value.model === undefined ? {} : { model: value.model }),
+    ...(value.finish === undefined ? {} : { finish: value.finish }),
+    ...(value.error === undefined ? {} : { error: value.error }),
   }
 }
 

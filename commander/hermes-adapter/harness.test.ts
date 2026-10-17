@@ -17,7 +17,7 @@ function fixture() {
     history: async () => [{ role: "assistant", content: "persisted" }],
   }
   const store: CommanderHarnessStore = { read: async () => state, write: async (next) => { state = next } }
-  return { harness: new CommanderHarness(gateway, store), starts, state: () => state }
+  return { harness: new CommanderHarness(gateway, store), starts, state: () => state, gateway, store }
 }
 
 test("preserves one Hermes session and makes retries deterministic", async () => {
@@ -52,8 +52,22 @@ test("rejects unknown opaque run references", async () => {
   await assert.rejects(f.harness.stop("run_1"), /invalid/)
 })
 
-test("persists an exact Commander provider and model without requiring a Hermes global model inventory", async () => {
+test("persists an exact Commander provider and model after Hermes confirms its inventory identity", async () => {
   const f = fixture()
-  await f.harness.selectModel({ provider: "openai", model: "enabled-in-opencode" })
-  assert.deepEqual(f.state().model, { provider: "openai", model: "enabled-in-opencode" })
+  await f.harness.selectModel({ provider: "operator", model: "configured-model" })
+  assert.deepEqual(f.state().model, { provider: "operator", model: "configured-model" })
+})
+
+test("does not persist a model Hermes does not expose", async () => {
+  const f = fixture()
+  await assert.rejects(f.harness.selectModel({ provider: "operator", model: "missing-model" }), /does not expose/)
+  assert.equal(f.state().model, undefined)
+})
+
+test("fails closed when the persisted selection is outside the approved Anthropic handoff", async () => {
+  const f = fixture()
+  const anthopicOnly = new CommanderHarness(f.gateway, f.store, "anthropic")
+  assert.deepEqual(await anthopicOnly.models(), [])
+  await assert.rejects(anthopicOnly.selectModel({ provider: "openai", model: "enabled-in-opencode" }), /only for the anthropic provider/)
+  await assert.rejects(anthopicOnly.selectModel({ provider: "anthropic", model: "claude-haiku" }), /does not expose/)
 })

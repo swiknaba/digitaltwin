@@ -37,16 +37,33 @@ fi
 
 commander_plugin_source="$repo_root/commander/opencode-gate-plugin/commander-continuation.ts"
 commander_plugin_entry="$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR/index.ts"
+commander_handoff_source="$repo_root/commander/opencode-gate-plugin/hermes-anthropic-handoff.ts"
+commander_handoff_entry="$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR/hermes-anthropic-handoff.ts"
+commander_plugin_marker="$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR/.digitaltwin-managed"
 test -f "$commander_plugin_source" || {
   printf '%s\n' "Commander continuation source is missing: $commander_plugin_source" >&2
   exit 78
 }
+test -f "$commander_handoff_source" || {
+  printf '%s\n' "Commander Hermes handoff source is missing: $commander_handoff_source" >&2
+  exit 78
+}
 mkdir -p "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR"
-if [ -e "$commander_plugin_entry" ] && [ ! -L "$commander_plugin_entry" ]; then
-  printf '%s\n' "Refusing to replace non-symlink Commander plugin entry: $commander_plugin_entry" >&2
+if [ -e "$commander_plugin_entry" ] && [ ! -L "$commander_plugin_entry" ] && [ ! -f "$commander_plugin_marker" ]; then
+  printf '%s\n' "Refusing to replace unmanaged Commander plugin entry: $commander_plugin_entry" >&2
   exit 78
 fi
-ln -sfn "$commander_plugin_source" "$commander_plugin_entry"
+if [ -e "$commander_handoff_entry" ] && [ ! -L "$commander_handoff_entry" ] && [ ! -f "$commander_plugin_marker" ]; then
+  printf '%s\n' "Refusing to replace unmanaged Commander Hermes handoff entry: $commander_handoff_entry" >&2
+  exit 78
+fi
+# OpenCode resolves each configured local plugin to its real path, then rejects an
+# entrypoint that escapes the configured directory. Keep these setup-owned copies
+# inside the stack-local plugin directory; they contain no credentials.
+rm -f "$commander_plugin_entry" "$commander_handoff_entry"
+cp "$commander_plugin_source" "$commander_plugin_entry"
+cp "$commander_handoff_source" "$commander_handoff_entry"
+printf '%s\n' "Managed by scripts/local-setup; do not edit." > "$commander_plugin_marker"
 
 if [ ! -s "$FUTURE_TASK_CAPABILITY_SECRET_FILE" ]; then
   mkdir -p "$(dirname -- "$FUTURE_TASK_CAPABILITY_SECRET_FILE")"

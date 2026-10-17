@@ -1,0 +1,246 @@
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+index 008e0de..3f430c9 100644
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -26,6 +26,7 @@ type CommanderRuntime = Readonly<{
+ }>
+ 
+ const AgentListResponse = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Agent.ID })) })
++const HermesModelInventory = Schema.Array(Schema.Struct({ provider: Schema.String, providerName: Schema.String, model: Schema.String }))
+ function adapterURL(path: string) {
+   const raw = process.env.DIGITALTWIN_HERMES_ADAPTER_URL ?? "http://127.0.0.1:3087"
+   const url = new URL(path, raw)
+@@ -54,6 +55,13 @@ async function history() {
+   })
+ }
+ 
++async function models(): Promise<readonly CommanderModelOption[]> {
++  const value = await adapter("/models")
++  const decoded = Schema.decodeUnknownOption(HermesModelInventory)(value)
++  if (Option.isNone(decoded)) throw new Error("Commander Hermes adapter returned an invalid model inventory.")
++  return decoded.value.map((item) => ({ providerID: item.provider, providerName: item.providerName, modelID: item.model }))
++}
++
+ async function relayEvents(
+   runID: string,
+   window: number,
+@@ -154,11 +162,7 @@ export function createCommanderRuntime(input: CommanderRuntime) {
+       if (Option.isNone(decoded)) throw new Error("Commander Hermes adapter returned an invalid health response.")
+       return decoded.value
+     },
+-    // Hermes' gateway model inventory is diagnostic only. Commander chooses from
+-    // OpenCode's already-enabled native model list, then submits that exact
+-    // identity on each Hermes run. This route remains intentionally empty so a
+-    // future diagnostics UI cannot mistake it for the selection source.
+-    models: async () => [] satisfies readonly CommanderModelOption[],
++    models,
+     selectModel: async (model) => {
+       const current = input.store.value
+ 
+diff --git a/packages/gui-extensions/src/commander/main.test.ts b/packages/gui-extensions/src/commander/main.test.ts
+index eeb266d..d4f06a3 100644
+--- a/packages/gui-extensions/src/commander/main.test.ts
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -145,22 +145,25 @@ test("Commander rejects missing or changed persisted agent configuration without
+   expect(changed.store.value.revision).toBe(5)
+ })
+ 
+-test("Commander persists a visible OpenCode model when Hermes inventory is empty", async () => {
++test("Commander returns the exact Hermes model inventory and persists only an adapter-confirmed selection", async () => {
+   const session = Session.ID.make("ses_commander_model")
+   const backing = persistent({
+     revision: 3,
+     conversation: { serverID: "sidecar", sessionID: session, directory: configured.directory, agent: Agent.ID.make(configured.agent) },
+   })
+   const first = runtime(backing)
+-  const requests = hermes([])
++  const requests = hermes([{ provider: "fixture", providerName: "Fixture", model: "enabled-in-opencode" }])
+ 
+-  await expect(first.bridge.models(undefined, caller)).resolves.toEqual([])
++  await expect(first.bridge.models(undefined, caller)).resolves.toEqual([
++    { providerID: "fixture", providerName: "Fixture", modelID: "enabled-in-opencode" },
++  ])
+ 
+   await expect(first.bridge.selectModel({ providerID: "fixture", modelID: "enabled-in-opencode" }, caller)).resolves.toMatchObject({
+     revision: 4,
+     model: { providerID: "fixture", modelID: "enabled-in-opencode" },
+   })
+   expect(requests).toEqual([
++    { path: "/models", method: "GET", body: undefined },
+     { path: "/model", method: "POST", body: { provider: "fixture", model: "enabled-in-opencode" } },
+   ])
+ 
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+index 64cb6fb..8fe08d6 100644
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -16,6 +16,8 @@ import { LocationProvider } from "@/workspaces/location"
+ import { commanderOverlayContainerClass } from "./commander-overlay-layout"
+ 
+ type CommanderModel = Readonly<{ readonly providerID: string; readonly modelID: string; readonly variant?: string }>
++type CommanderModelSelection = Readonly<{ readonly model?: CommanderModel }>
++type HermesModelOption = Readonly<{ readonly providerID: string; readonly providerName: string; readonly modelID: string }>
+ type HermesTimelineEvent = Readonly<{
+   readonly seq: number
+   readonly type: string
+@@ -76,17 +78,18 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   const [transport, setTransport] = createSignal<CommanderTransport>("checking")
+   const [runtimeError, setRuntimeError] = createSignal<string>()
+   const [timeline, setTimeline] = createSignal<readonly HermesTimelineEvent[]>([])
++  const [inventory, setInventory] = createSignal<readonly HermesModelOption[]>()
+   const [selecting, setSelecting] = createSignal(false)
+   const [selectionError, setSelectionError] = createSignal<string>()
+   const [selected, setSelected] = createSignal<CommanderModel | undefined>(props.conversation.model)
+   const prompt = createMemoryComposerState(props.conversation.model ? { model: props.conversation.model } : undefined)
+   let timelineElement: HTMLDivElement | undefined
+ 
+-  // The native selector applies ModelSelection.visible() to this catalog. Keep
+-  // Commander on that exact path so its picker respects OpenCode's configured
+-  // provider/model visibility rather than listing every connected model.
+-  const commanderModels = () => models.list()
+-  const visibleModel = (key: Readonly<{ providerID: string; modelID: string }>) => models.visible(key) ? models.find(key) : undefined
++  // Preserve the native selector and visibility preferences, but only expose
++  // identities that Hermes has confirmed for Commander.
++  const offeredByHermes = (key: Readonly<{ providerID: string; modelID: string }>) => inventory()?.some((item) => item.providerID === key.providerID && item.modelID === key.modelID) ?? false
++  const commanderModels = () => models.list().filter((item) => offeredByHermes({ providerID: item.provider.id, modelID: item.id }) && models.visible({ providerID: item.provider.id, modelID: item.id }))
++  const visibleModel = (key: Readonly<{ providerID: string; modelID: string }>) => offeredByHermes(key) && models.visible(key) ? models.find(key) : undefined
+   const currentModel = () => {
+     const key = selected() ?? prompt.model.current()
+     if (!key) return
+@@ -97,14 +100,18 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   const chooseModel = async (key: CommanderModel) => {
+     if (selecting()) return
+     if (!visibleModel(key)) {
+-      setSelectionError("That Commander model is not enabled in OpenCode.")
++      setSelectionError("That Commander model is not available from Hermes and enabled in OpenCode.")
+       return
+     }
+ 
+     setSelecting(true)
+     setSelectionError(undefined)
+     try {
+-      const model = await hermesRequest<CommanderModel>({ operation: "select-model", model: key })
++      const persisted = await hermesRequest<CommanderModelSelection>({ operation: "select-model", model: key })
++      const model = persisted.model
++      if (!model || model.providerID !== key.providerID || model.modelID !== key.modelID) {
++        throw new Error("Commander could not confirm the selected Hermes model.")
++      }
+       setSelected(model)
+       prompt.model.set(model)
+     } catch (error) {
+@@ -145,7 +152,7 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+ 
+   const controls = (): ComposerControls => ({
+     agents: { available: [], options: [props.conversation.agent], current: props.conversation.agent, visible: false, select: () => undefined },
+-    model: { selection, paid: true, loading: transport() !== "hermes" || !models.ready() || selecting() },
++    model: { selection, paid: true, loading: transport() !== "hermes" || !models.ready() || !inventory() || selecting() },
+   })
+   const adapter: ActiveComposerAdapter = {
+     kind: "active-session",
+@@ -191,10 +198,10 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+     const saved = selected()
+     if (!saved) return
+     if (visibleModel(saved)) {
+-      if (selectionError() === "Saved Commander model is unavailable in OpenCode. Choose an enabled model.") setSelectionError(undefined)
++      if (selectionError() === "Saved Commander model is unavailable from Hermes or disabled in OpenCode. Choose an enabled model.") setSelectionError(undefined)
+       return
+     }
+-    setSelectionError("Saved Commander model is unavailable in OpenCode. Choose an enabled model.")
++    setSelectionError("Saved Commander model is unavailable from Hermes or disabled in OpenCode. Choose an enabled model.")
+   })
+ 
+   createEffect(() => {
+@@ -227,10 +234,22 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+           setRuntimeError("Hermes is unavailable. Commander cannot send messages until its harness returns.")
+           return
+         }
+-        setTransport("hermes")
+-        void hermesRequest<readonly HermesTimelineEvent[]>({ operation: "history" })
+-          .then((items) => setTimeline((current) => current.length > 0 ? current : items.filter(validTimelineEvent)))
+-          .catch(() => setRuntimeError("Commander history could not be restored from Hermes."))
++        void Promise.all([
++          hermesRequest<readonly HermesTimelineEvent[]>({ operation: "history" }),
++          hermesRequest<readonly HermesModelOption[]>({ operation: "models" }),
++        ]).then(
++          ([items, options]) => {
++            if (disposed) return
++            setTimeline((current) => current.length > 0 ? current : items.filter(validTimelineEvent))
++            setInventory(options.filter(validHermesModel))
++            setTransport("hermes")
++          },
++          () => {
++            if (disposed) return
++            setTransport("unavailable")
++            setRuntimeError("Hermes model inventory is unavailable. Commander cannot send messages until its harness returns.")
++          },
++        )
+       },
+       () => {
+         if (disposed) return
+@@ -307,6 +326,10 @@ function validTimelineEvent(value: unknown): value is HermesTimelineEvent {
+   return !!value && typeof value === "object" && "seq" in value && typeof value.seq === "number" && "type" in value && typeof value.type === "string" && "runID" in value && typeof value.runID === "string"
+ }
+ 
++function validHermesModel(value: HermesModelOption): boolean {
++  return !!value.providerID.trim() && !!value.providerName.trim() && !!value.modelID.trim()
++}
++
+ function hermesRequest<T>(request: Readonly<{ operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "select-model"; requestID?: string; runID?: string; text?: string; model?: CommanderModel }>): Promise<T> {
+   const id = crypto.randomUUID()
+   return new Promise<T>((resolve, reject) => {
+diff --git a/packages/app/component-tests/commander-vite-fixture/main.tsx b/packages/app/component-tests/commander-vite-fixture/main.tsx
+index df0541a..4bbd7fd 100644
+--- a/packages/app/component-tests/commander-vite-fixture/main.tsx
++++ b/packages/app/component-tests/commander-vite-fixture/main.tsx
+@@ -63,7 +63,11 @@ function Fixture() {
+       }
+       if (request.operation === "models") {
+         hermesInventoryRequests += 1
+-        reply([])
++        reply([
++          { providerID: "fixture", providerName: "Fixture", modelID: "commander-small" },
++          { providerID: "fixture", providerName: "Fixture", modelID: "commander-large" },
++          { providerID: "fixture", providerName: "Fixture", modelID: "rejected-model" },
++        ])
+         return
+       }
+       if (request.operation === "history") {
+@@ -74,7 +78,7 @@ function Fixture() {
+         if (request.model.modelID === "rejected-model") reply(undefined, "Hermes rejected this model.")
+         else {
+           model = request.model
+-          reply(model)
++          reply({ revision: 1, conversation, model })
+         }
+         return
+       }
+diff --git a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+index b589244..8df2636 100644
+--- a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -1,6 +1,6 @@
+ import { expect, test } from "@playwright/test"
+ 
+-test("Commander uses native visible OpenCode models when Hermes inventory is empty, confirms selection, and persists it", async ({ page }) => {
++test("Commander shows only Hermes-confirmed native visible models, confirms selection, and persists it", async ({ page }) => {
+   await page.goto("/")
+   const overlay = page.locator('[data-slot="commander-native-overlay"]')
+   await expect(overlay).toBeVisible()
+@@ -13,7 +13,7 @@ test("Commander uses native visible OpenCode models when Hermes inventory is emp
+   await expect(page.locator('[data-option-key="fixture:rejected-model"]')).toBeVisible()
+   await page.locator('[data-option-key="fixture:commander-large"]').click()
+   await expect(picker).toContainText("commander-large")
+-  expect(await page.evaluate(() => window.commanderFixture?.hermesInventoryRequests())).toBe(0)
++  expect(await page.evaluate(() => window.commanderFixture?.hermesInventoryRequests())).toBe(1)
+ 
+   await picker.click()
+   await page.locator('[data-option-key="fixture:rejected-model"]').click()
+@@ -55,7 +55,7 @@ test("Commander excludes disabled native models and reapplies visibility on reop
+ 
+   await overlay.getByRole("button", { name: "Close" }).click()
+   await page.evaluate(() => window.commanderFixture?.reopen())
+-  await expect(overlay.getByRole("alert")).toContainText("Saved Commander model is unavailable in OpenCode")
++  await expect(overlay.getByRole("alert")).toContainText("Saved Commander model is unavailable from Hermes or disabled in OpenCode")
+   await picker.click()
+   await expect(page.locator('[data-option-key="fixture:commander-small"]')).toBeVisible()
+   await expect(page.locator('[data-option-key="fixture:commander-large"]')).toHaveCount(0)

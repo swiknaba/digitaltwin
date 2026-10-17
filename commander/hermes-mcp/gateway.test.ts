@@ -4,7 +4,7 @@ import { join } from "node:path"
 import test from "node:test"
 import { OpenCodeHttpGateway, ServiceRegistrationOpenCodeSidecar, staticOpenCodeSidecar } from "./gateway"
 
-test("uses the installed OpenCode HTTP envelopes, top-level provenance, and assistant content", async () => {
+test("uses the installed OpenCode HTTP envelopes without overriding the normal project model selection", async () => {
   const calls: Array<Readonly<{ path: string; body: unknown; authorization: string | null }>> = []
   const request: typeof fetch = async (input, init) => {
     const url = input instanceof URL ? input : new URL(input.toString())
@@ -47,6 +47,68 @@ test("uses the installed OpenCode HTTP envelopes, top-level provenance, and assi
     { path: "/api/session/ses_hermes", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes/message?order=desc&limit=100", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
   ])
+})
+
+test("normalizes the current durable inbox admission response", async () => {
+  const request: typeof fetch = async (input) => {
+    const url = input instanceof URL ? input : new URL(input.toString())
+    assert.equal(url.pathname, "/api/session/ses_hermes/prompt")
+    return new Response(JSON.stringify({
+      data: {
+        id: "msg_hermes",
+        sessionID: "ses_hermes",
+        type: "user",
+        payload: { text: "Start.", metadata: { fromCommander: true } },
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } })
+  }
+  const gateway = new OpenCodeHttpGateway(staticOpenCodeSidecar(new URL("http://127.0.0.1:3086"), "approved-private-password"), request)
+  assert.deepEqual(await gateway.prompt({ sessionID: "ses_hermes", messageID: "msg_hermes", text: "Start.", metadata: { fromCommander: true } }), {
+    id: "msg_hermes",
+    sessionID: "ses_hermes",
+    type: "user",
+    text: "Start.",
+    metadata: { fromCommander: true },
+  })
+})
+
+test("waits for the exact session to become idle", async () => {
+  const calls: string[] = []
+  const request: typeof fetch = async (input) => {
+    const url = input instanceof URL ? input : new URL(input.toString())
+    calls.push(`${url.pathname}${url.search}`)
+    return new Response(null, { status: 204 })
+  }
+  const gateway = new OpenCodeHttpGateway(staticOpenCodeSidecar(new URL("http://127.0.0.1:3086"), "approved-private-password"), request)
+  await gateway.waitSession("ses_hermes")
+  assert.deepEqual(calls, ["/api/experimental/session/ses_hermes/wait"])
+})
+
+test("preserves a completed assistant provider failure without exposing its message", async () => {
+  const request: typeof fetch = async (input) => {
+    const url = input instanceof URL ? input : new URL(input.toString())
+    assert.equal(url.pathname, "/api/session/ses_hermes/message")
+    return new Response(JSON.stringify({
+      data: [{
+        id: "msg_failed",
+        type: "assistant",
+        agent: "build",
+        model: { providerID: "anthropic", id: "claude-opus-5-5", variant: "high" },
+        content: [],
+        finish: "error",
+        error: { type: "provider.auth", message: "private detail", status: 403 },
+        time: { created: 1, completed: 2 },
+      }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })
+  }
+  const gateway = new OpenCodeHttpGateway(staticOpenCodeSidecar(new URL("http://127.0.0.1:3086"), "approved-private-password"), request)
+  assert.deepEqual(await gateway.readMessages("ses_hermes"), [{
+    id: "msg_failed",
+    type: "assistant",
+    model: { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" },
+    finish: "error",
+    error: { type: "provider.auth", status: 403 },
+  }])
 })
 
 test("fails before network access until service-registration discovery is explicitly authorized", async () => {

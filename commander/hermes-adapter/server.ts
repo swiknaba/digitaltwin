@@ -28,7 +28,8 @@ const endpoint = process.env.DIGITALTWIN_HERMES_API_URL
 const token = process.env.DIGITALTWIN_HERMES_API_TOKEN
 const adapterToken = process.env.DIGITALTWIN_HERMES_ADAPTER_TOKEN
 const statePath = required("DIGITALTWIN_HERMES_STATE_FILE")
-const harness = endpoint && token ? new CommanderHarness(new HermesGatewayClient(loopbackURL(endpoint), token), new JsonStore(statePath)) : undefined
+const allowedProvider = allowedAnthropicProvider(process.env.DIGITALTWIN_HERMES_ALLOWED_PROVIDER)
+const harness = endpoint && token ? new CommanderHarness(new HermesGatewayClient(loopbackURL(endpoint), token), new JsonStore(statePath), allowedProvider) : undefined
 
 Bun.serve({
   port,
@@ -89,5 +90,6 @@ function numeric(name: string, fallback: number): number { const value = process
 function bad(error: string): Response { return Response.json({ error }, { status: 400 }) }
 function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }
 function loopbackURL(value: string): URL { const url = new URL(value); if (url.protocol !== "http:" || (url.hostname !== "127.0.0.1" && url.hostname !== "::1" && url.hostname !== "localhost")) throw new Error("DIGITALTWIN_HERMES_API_URL must be an HTTP loopback URL."); return url }
+function allowedAnthropicProvider(value: string | undefined): string | undefined { if (!value) return; if (value !== "anthropic") throw new Error("DIGITALTWIN_HERMES_ALLOWED_PROVIDER must be anthropic when set."); return value }
 async function json(request: Request): Promise<Record<string, unknown>> { const value: unknown = await request.json(); if (!object(value)) throw new Error("JSON object required."); return value }
 function authorized(request: Request): boolean { return !!adapterToken && request.headers.get("Authorization") === `Bearer ${adapterToken}` }

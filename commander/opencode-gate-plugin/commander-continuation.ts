@@ -2,16 +2,22 @@ import { createHash } from "node:crypto"
 import { Plugin } from "@opencode/plugin"
 import type { Tool } from "@opencode/schema/tool"
 import { Schema } from "effect"
+import { startAnthropicHermesHandoff } from "./hermes-anthropic-handoff.ts"
 
 const prefix = "digitaltwin.commander.decision."
 const projectRequestPrefix = "digitaltwin.commander.project-request."
 const projectSessionPrefix = "digitaltwin.commander.project-session."
+const localPluginID = "digitaltwin-commander-continuation-local"
+const pluginID = process.env.DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_ID === localPluginID
+  ? localPluginID
+  : "digitaltwin-commander-continuation"
 type Decision = Readonly<{ parent: string; parentMessage: string; child: string; project: string; requests: Readonly<Record<string, string>> }>
 type ProjectRequest = Readonly<{ parent: string; project: string; requestDigest: string; decisionID: string }>
 
 export default Plugin.define({
-  id: "digitaltwin-commander-continuation",
+  id: pluginID,
   async setup(context) {
+    const stopHermesHandoff = await startAnthropicHermesHandoff(context)
     const locks = new Map<string, Promise<void>>()
 
     const validate = async (value: Readonly<{ parent: string; parentMessage: string; child: string }>): Promise<Decision | undefined> => {
@@ -218,6 +224,7 @@ export default Plugin.define({
         })
       },
     }))
+    return stopHermesHandoff
   },
 })
 
@@ -256,7 +263,18 @@ function nativeDecision(value: unknown, expected: string, parent: string): Reado
 }
 
 function admission(value: unknown, session: string, id: string, text: string, metadata: Readonly<{ fromCommander: true; [key: string]: string }>) {
-  return object(value) && value.sessionID === session && value.id === id && value.type === "user" && object(value.payload) && value.payload.text === text && object(value.payload.metadata) && Object.entries(metadata).every(([key, expected]) => value.payload.metadata[key] === expected)
+  // Some OpenCode Promise-plugin host versions complete session.prompt without
+  // serializing its durable inbox record. A fulfilled call is the typed
+  // admission acknowledgment in that form; conflicts reject instead.
+  if (value === undefined) return true
+  const admitted = object(value) && object(value.data) ? value.data : value
+  if (!object(admitted) || admitted.id !== id || admitted.type !== "user") return false
+  if (object(admitted.payload)) {
+    const accepted = admitted.sessionID === session && admitted.payload.text === text && object(admitted.payload.metadata) && Object.entries(metadata).every(([key, expected]) => admitted.payload.metadata[key] === expected)
+    return accepted
+  }
+  const accepted = admitted.text === text && object(admitted.metadata) && Object.entries(metadata).every(([key, expected]) => admitted.metadata[key] === expected)
+  return accepted
 }
 
 function decode(value: unknown): Decision | undefined {

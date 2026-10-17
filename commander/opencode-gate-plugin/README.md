@@ -3,7 +3,9 @@
 These are standard OpenCode v2.0.27 server plugins for the thin desktop client.
 They are installed by an operator into an operator-owned global plugin directory;
 they do not use project configuration, expose a renderer bridge, or read/write user
-configuration. The helper creates symlinks only, so it never stores credentials.
+configuration. The local setup helper copies only the credential-free TypeScript
+sources into its setup-owned plugin directory, because OpenCode rejects a symlink
+whose resolved entrypoint escapes that directory.
 
 ```sh
 OPENCODE_GLOBAL_PLUGIN_DIR=/operator-owned/opencode/plugins \

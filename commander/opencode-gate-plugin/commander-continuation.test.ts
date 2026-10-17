@@ -107,6 +107,50 @@ test("reuses a direct project-session reference across a repeated create request
   assert.equal((await create.execute({ project_id: "project-1", request_id: "ping-1", text: "different" }, context)).content, "Commander project session request conflicts with its original body.")
 })
 
+test("accepts the Promise-plugin session-prompt response envelope", async () => {
+  const f = fixture(); await continuation.setup(f.context as never)
+  f.context.session.create = async () => {
+    f.sessions.ses_wrapped = { id: "ses_wrapped", projectID: "project-1" }
+    return { id: "ses_wrapped" }
+  }
+  f.context.session.prompt = async (input: any) => ({
+    data: { id: input.id, sessionID: input.sessionID, type: "user", payload: { text: input.text, metadata: input.metadata } },
+  })
+  const create = f.tools.get("commander_create_project_session")
+  const result = JSON.parse((await create.execute({ project_id: "project-1", request_id: "wrapped-1", text: "ping" }, { sessionID: "ses_commander", messageID: "msg_wrapped", id: "call_wrapped" })).content)
+  assert.equal(result.session_id, "ses_wrapped")
+})
+
+test("accepts the exact visible user-message response", async () => {
+  const f = fixture(); await continuation.setup(f.context as never)
+  f.context.session.create = async () => {
+    f.sessions.ses_visible = { id: "ses_visible", projectID: "project-1" }
+    return { id: "ses_visible" }
+  }
+  f.context.session.prompt = async (input: any) => ({
+    id: input.id, type: "user", text: input.text, metadata: input.metadata,
+  })
+  const create = f.tools.get("commander_create_project_session")
+  const result = JSON.parse((await create.execute({ project_id: "project-1", request_id: "visible-1", text: "ping" }, { sessionID: "ses_commander", messageID: "msg_visible", id: "call_visible" })).content)
+  assert.equal(result.session_id, "ses_visible")
+})
+
+test("accepts a successful Promise-plugin prompt with no serialized record", async () => {
+  const f = fixture(); await continuation.setup(f.context as never)
+  f.context.session.create = async () => {
+    f.sessions.ses_no_record = { id: "ses_no_record", projectID: "project-1" }
+    return { id: "ses_no_record" }
+  }
+  f.context.session.prompt = async (input: any) => {
+    f.prompts.push(input)
+    return undefined
+  }
+  const create = f.tools.get("commander_create_project_session")
+  const result = JSON.parse((await create.execute({ project_id: "project-1", request_id: "no-record-1", text: "ping" }, { sessionID: "ses_commander", messageID: "msg_no_record", id: "call_no_record" })).content)
+  assert.equal(result.session_id, "ses_no_record")
+  assert.equal(f.prompts.at(-1).id, result.message_id)
+})
+
 test("recovers an older project creation that returned only a session and message id", async () => {
   const f = fixture(); f.sessions.ses_legacy = { id: "ses_legacy", projectID: "project-1" }
   f.native.push(

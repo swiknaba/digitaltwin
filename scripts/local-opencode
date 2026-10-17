@@ -4,29 +4,40 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$repo_root/scripts/local-env"
+export DIGITALTWIN_REPO_ROOT="$repo_root"
 
 test -d "$DIGITALTWIN_COMMANDER_WORKSPACE" || {
   printf '%s\n' "Commander workspace does not exist: $DIGITALTWIN_COMMANDER_WORKSPACE" >&2
   exit 78
 }
 
-test -f "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR/index.ts" || {
+case "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" in
+  /*) commander_plugin_directory="$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" ;;
+  *) commander_plugin_directory="$repo_root/$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" ;;
+esac
+
+test -f "$commander_plugin_directory/index.ts" || {
   printf '%s\n' "Commander continuation plugin is not installed; run scripts/local-setup first." >&2
   exit 78
 }
 
-case "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" in
+case "$commander_plugin_directory" in
   *'"'*|*'\\'*)
     printf '%s\n' "Commander continuation plugin path cannot be represented safely in OpenCode config." >&2
     exit 78
     ;;
 esac
 
-commander_plugin_config="{\"plugins\":[\"$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR\"]}"
+# A user's global Commander continuation plugin can be discovered before this
+# stack-local directory. Disable only that known global ID, then give the
+# setup-owned copy its dedicated local ID. This preserves the user's normal
+# OpenCode config, model settings, permissions, credentials, and sessions.
+export DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_ID="digitaltwin-commander-continuation-local"
+commander_plugin_config="{\"plugins\":[\"-digitaltwin-commander-continuation\",\"$commander_plugin_directory\"]}"
 if [ -z "${OPENCODE_CONFIG_CONTENT:-}" ]; then
   export OPENCODE_CONFIG_CONTENT="$commander_plugin_config"
-elif ! printf '%s' "$OPENCODE_CONFIG_CONTENT" | grep -Fq "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR"; then
-  printf '%s\n' "OPENCODE_CONFIG_CONTENT is already set and does not include the stack-local Commander continuation plugin: $DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" >&2
+elif ! printf '%s' "$OPENCODE_CONFIG_CONTENT" | grep -Fq "$commander_plugin_directory"; then
+  printf '%s\n' "OPENCODE_CONFIG_CONTENT is already set and does not include the stack-local Commander continuation plugin: $commander_plugin_directory" >&2
   exit 78
 fi
 

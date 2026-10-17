@@ -32,7 +32,7 @@ healthy() {
 }
 
 waiting_message() {
-  printf '%s\n' "Hermes $role is unavailable; Commander will retain its OpenCode fallback while the regular local stack continues." >&2
+  printf '%s\n' "Hermes $role is unavailable; Commander remains unavailable while the regular local stack continues." >&2
   printf '%s\n' "Expected project-local profile, token, and runtime launcher: $profile/config.yaml, $token_file, $runtime_launcher" >&2
 }
 
@@ -50,6 +50,12 @@ while :; do
     continue
   fi
 
+  if [ "$role" = "gateway" ] && [ "${DIGITALTWIN_HERMES_GATEWAY_OWNER:-}" = "opencode-plugin" ]; then
+    printf '%s\n' "Hermes gateway is waiting for the trusted OpenCode Anthropic API-key handoff." >&2
+    sleep 5
+    continue
+  fi
+
   if [ "$role" = "adapter" ]; then
     printf '%s\n' "Hermes adapter is waiting for the local gateway." >&2
     while ! healthy gateway; do sleep 2; done
@@ -62,6 +68,6 @@ while :; do
     sh "$repo_root/scripts/local-hermes-adapter"
   fi
   status=$?
-  printf '%s\n' "Hermes $role exited with status $status; Commander will use its OpenCode fallback while local startup retries." >&2
+  printf '%s\n' "Hermes $role exited with status $status; Commander remains unavailable while local startup retries." >&2
   sleep 15
 done

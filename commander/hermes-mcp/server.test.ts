@@ -25,6 +25,7 @@ function fixture() {
       prompts.push(input)
       return { id: input.messageID, type: "user", text: input.text, metadata: input.metadata }
     },
+    waitSession: async () => undefined,
     readSession: async (sessionID) => {
       const session = sessions.get(sessionID)
       if (!session) throw new Error("not found")
@@ -33,7 +34,7 @@ function fixture() {
     readMessages: async () => [{ id: "msg_result", type: "assistant", text: "Finished." }],
   }
   const store: DelegationStore = { read: async () => state, write: async (next) => { state = next }, exclusive: async (work) => work() }
-  return { delegation: () => new CommanderDelegation(gateway, store, "hermes-profile-local"), prompts, creates: () => creates, state: () => state, sessions }
+  return { delegation: () => new CommanderDelegation(gateway, store, "hermes-profile-local"), gateway, prompts, creates: () => creates, state: () => state, sessions }
 }
 
 test("lists projects and reads without dispatching a prompt", async () => {
@@ -110,12 +111,40 @@ test("rejects an OpenCode prompt admission that does not preserve metadata", asy
     listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
     createSession: async ({ id }) => ({ id, projectID: "project-1" }),
     prompt: async (input): Promise<CommanderMessage> => ({ id: input.messageID, type: "user", text: input.text, metadata: {} }),
+    waitSession: async () => undefined,
     readSession: async () => ({ id: "ses_broken", projectID: "project-1" }),
     readMessages: async () => [],
   }
   let persisted: DelegationState = { revision: 0, decisions: {}, requests: {}, pending: {} }
   const state: DelegationStore = { read: async () => persisted, write: async (next) => { persisted = next }, exclusive: async (work) => work() }
   await assert.rejects(new CommanderDelegation(brokenGateway, state, "hermes-profile-local").create({ projectID: "project-1", requestID: "broken-1", text: "Fail safely." }), /admission conflicts/)
+})
+
+test("rejects an OpenCode prompt admission for a different session", async () => {
+  const brokenGateway: OpenCodeCommanderGateway = {
+    listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
+    createSession: async ({ id }) => ({ id, projectID: "project-1" }),
+    prompt: async (input): Promise<CommanderMessage> => ({ id: input.messageID, sessionID: "ses_other", type: "user", text: input.text, metadata: input.metadata }),
+    waitSession: async () => undefined,
+    readSession: async () => ({ id: "ses_broken", projectID: "project-1" }),
+    readMessages: async () => [],
+  }
+  let persisted: DelegationState = { revision: 0, decisions: {}, requests: {}, pending: {} }
+  const state: DelegationStore = { read: async () => persisted, write: async (next) => { persisted = next }, exclusive: async (work) => work() }
+  await assert.rejects(new CommanderDelegation(brokenGateway, state, "hermes-profile-local").create({ projectID: "project-1", requestID: "wrong-session-1", text: "Fail safely." }), /admission conflicts/)
+})
+
+test("reports a structured worker failure without its private provider message", async () => {
+  const f = fixture()
+  const created = await f.delegation().create({ projectID: "project-1", requestID: "failure-1", text: "Ping." })
+  f.gateway.readMessages = async () => [{ id: "msg_failed", type: "assistant", model: { providerID: "anthropic", modelID: "claude-opus-5-5" }, finish: "error", error: { type: "provider.auth", status: 403 } }]
+  assert.deepEqual(await f.delegation().read({ decisionID: String(created.decision_id) }), {
+    decision_id: created.decision_id,
+    session_id: created.session_id,
+    project_id: "project-1",
+    provenance: created.provenance,
+    latest_result: { id: "msg_failed", type: "assistant", model: { providerID: "anthropic", modelID: "claude-opus-5-5" }, finish: "error", error: { type: "provider.auth", status: 403 } },
+  })
 })
 
 test("recovers a file-backed pending create with the caller-supplied OpenCode session id", async () => {
@@ -134,6 +163,7 @@ test("recovers a file-backed pending create with the caller-supplied OpenCode se
       return created
     },
     prompt: async (input) => ({ id: input.messageID, type: "user", text: input.text, metadata: input.metadata }),
+    waitSession: async () => undefined,
     readSession: async (id) => {
       const result = sessions.get(id)
       if (!result) throw new Error("not found")
@@ -182,6 +212,7 @@ test("serializes concurrent file-backed delegations so neither decision is lost"
       return session
     },
     prompt: async (input) => ({ id: input.messageID, type: "user", text: input.text, metadata: input.metadata }),
+    waitSession: async () => undefined,
     readSession: async (id) => {
       const result = sessions.get(id)
       if (!result) throw new Error("not found")

@@ -3,6 +3,8 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+handoff_mode=${DIGITALTWIN_HERMES_AUTH_HANDOFF:-}
+handoff_api_key=${ANTHROPIC_API_KEY:-}
 . "$repo_root/scripts/local-env"
 
 mode="${1:-gateway}"
@@ -17,9 +19,22 @@ token_file="$repo_root/local/secrets/hermes-api-server-token"
 runtime_root="$repo_root/local/hermes/runtime"
 runtime_source="$runtime_root/source"
 runtime_launcher="$runtime_source/.hermes/bin/hermes"
+handoff_home="$runtime_root/anthropic-api-key-handoff"
 
 test -f "$profile/config.yaml" || { printf '%s\n' "Hermes profile configuration is required: $profile/config.yaml" >&2; exit 78; }
 test -x "$runtime_launcher" || { printf '%s\n' "Project-local Hermes runtime is required: $runtime_launcher" >&2; exit 78; }
+
+case "$handoff_mode" in
+  "") ;;
+  anthropic-api-key)
+    test "$mode" = "gateway" || { printf '%s\n' "The Anthropic API-key handoff can only launch the Hermes gateway." >&2; exit 64; }
+    test -n "$handoff_api_key" || { printf '%s\n' "The trusted OpenCode Anthropic API-key handoff did not supply an active API key." >&2; exit 78; }
+    ;;
+  *)
+    printf '%s\n' "Unsupported Hermes authentication handoff mode." >&2
+    exit 64
+    ;;
+esac
 
 umask 077
 mkdir -p \
@@ -34,7 +49,18 @@ mkdir -p \
   "$runtime_root/uv-cache"
 
 export HOME="$runtime_root/home"
-export HERMES_HOME="$profile"
+if [ "$handoff_mode" = "anthropic-api-key" ]; then
+  mkdir -p "$handoff_home"
+  test ! -e "$handoff_home/.env" || { printf '%s\n' "The isolated Anthropic API-key handoff home must not contain a Hermes .env file." >&2; exit 78; }
+  if [ -e "$handoff_home/config.yaml" ] && [ ! -L "$handoff_home/config.yaml" ]; then
+    printf '%s\n' "The isolated Anthropic API-key handoff configuration must be a symlink." >&2
+    exit 78
+  fi
+  ln -sfn "$profile/config.yaml" "$handoff_home/config.yaml"
+  export HERMES_HOME="$handoff_home"
+else
+  export HERMES_HOME="$profile"
+fi
 export HERMES_INSTALL_ROOT="$runtime_source"
 export HERMES_RUNTIME_DIR="$runtime_root/tools"
 export HERMES_GATEWAY_LOCK_DIR="$runtime_root/gateway-locks"
@@ -52,6 +78,33 @@ if [ "$mode" = "gateway" ]; then
   export API_SERVER_KEY="$(cat "$token_file")"
   export API_SERVER_HOST=127.0.0.1
   export API_SERVER_PORT="${DIGITALTWIN_HERMES_API_PORT:-8642}"
+fi
+
+if [ "$handoff_mode" = "anthropic-api-key" ]; then
+  gateway_api_key=${API_SERVER_KEY:-}
+  inherited_path=$PATH
+  for handoff_environment_name in $(command env | command sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*$/\1/p'); do
+    unset "$handoff_environment_name"
+  done
+  export PATH="$inherited_path"
+  export HOME="$runtime_root/home"
+  export HERMES_HOME="$handoff_home"
+  export HERMES_INSTALL_ROOT="$runtime_source"
+  export HERMES_RUNTIME_DIR="$runtime_root/tools"
+  export HERMES_GATEWAY_LOCK_DIR="$runtime_root/gateway-locks"
+  export XDG_CACHE_HOME="$runtime_root/cache"
+  export XDG_CONFIG_HOME="$runtime_root/config"
+  export XDG_DATA_HOME="$runtime_root/data"
+  export XDG_RUNTIME_DIR="$runtime_root/run"
+  export XDG_STATE_HOME="$runtime_root/state"
+  export UV_CACHE_DIR="$runtime_root/uv-cache"
+  export UV_PYTHON_INSTALL_DIR="$runtime_root/uv-python"
+  export DIGITALTWIN_REPO_ROOT="$repo_root"
+  export API_SERVER_KEY="$gateway_api_key"
+  export API_SERVER_HOST=127.0.0.1
+  export API_SERVER_PORT="${DIGITALTWIN_HERMES_API_PORT:-8642}"
+  export ANTHROPIC_API_KEY="$handoff_api_key"
+  unset gateway_api_key handoff_api_key inherited_path handoff_environment_name
 fi
 
 cd "$repo_root"

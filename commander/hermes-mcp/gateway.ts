@@ -76,6 +76,14 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
     return message(data(body, "prompt admission"))
   }
 
+  async waitSession(sessionID: string): Promise<void> {
+    let response = await this.requestJson(await this.sidecar.resolve(), `/api/experimental/session/${encodeURIComponent(sessionID)}/wait`, { method: "POST" })
+    if (response.status === 401 && this.sidecar.retryOnUnauthorized) response = await this.requestJson(await this.sidecar.resolve(), `/api/experimental/session/${encodeURIComponent(sessionID)}/wait`, { method: "POST" })
+    if (response.ok) return
+    if (response.status === 401) throw new Error("OpenCode sidecar authorization was rejected (401).")
+    throw new Error(`OpenCode request failed (${response.status}).`)
+  }
+
   async readSession(sessionID: string): Promise<CommanderSession> {
     return session(data(await this.json(`/api/session/${encodeURIComponent(sessionID)}`), "session"))
   }
@@ -87,10 +95,15 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
       if (!object(item) || typeof item.id !== "string" || typeof item.type !== "string") return []
       const metadata = object(item.metadata) ? jsonRecord(item.metadata) : undefined
       const content = Array.isArray(item.content) ? item.content.flatMap(contentPart) : undefined
+      const error = structuredError(item.error)
+      const model = modelRef(item.model)
       return [{
         id: item.id,
         type: item.type,
         ...(typeof item.text === "string" ? { text: item.text } : {}),
+        ...(model === undefined ? {} : { model }),
+        ...(typeof item.finish === "string" ? { finish: item.finish } : {}),
+        ...(error === undefined ? {} : { error }),
         ...(metadata ? { metadata } : {}),
         ...(content && content.length > 0 ? { content } : {}),
       }]
@@ -182,12 +195,15 @@ function session(value: unknown): CommanderSession {
 
 function message(value: unknown): CommanderMessage {
   if (!object(value) || typeof value.id !== "string" || typeof value.type !== "string") throw new Error("OpenCode returned an invalid prompt admission.")
-  const metadata = object(value.metadata) ? jsonRecord(value.metadata) : undefined
+  const payload = object(value.payload) ? value.payload : undefined
+  const metadataSource = object(value.metadata) ? value.metadata : payload !== undefined && object(payload.metadata) ? payload.metadata : undefined
+  const metadata = metadataSource === undefined ? undefined : jsonRecord(metadataSource)
   const content = Array.isArray(value.content) ? value.content.flatMap(contentPart) : undefined
   return {
     id: value.id,
     type: value.type,
-    ...(typeof value.text === "string" ? { text: value.text } : {}),
+    ...(typeof value.sessionID === "string" ? { sessionID: value.sessionID } : {}),
+    ...(typeof value.text === "string" ? { text: value.text } : payload !== undefined && typeof payload.text === "string" ? { text: payload.text } : {}),
     ...(metadata ? { metadata } : {}),
     ...(content && content.length > 0 ? { content } : {}),
   }
@@ -201,6 +217,20 @@ function data(value: unknown, resource: string): Record<string, unknown> {
 function contentPart(value: unknown): Readonly<{ type: string; text?: string }>[] {
   if (!object(value) || typeof value.type !== "string") return []
   return [{ type: value.type, ...(typeof value.text === "string" ? { text: value.text } : {}) }]
+}
+
+function structuredError(value: unknown): Readonly<{ type: string; status?: number }> | undefined {
+  if (!object(value) || typeof value.type !== "string") return undefined
+  return { type: value.type, ...(typeof value.status === "number" ? { status: value.status } : {}) }
+}
+
+function modelRef(value: unknown): Readonly<{ providerID: string; modelID: string; variant?: string }> | undefined {
+  if (!object(value) || typeof value.providerID !== "string" || typeof value.id !== "string") return undefined
+  return {
+    providerID: value.providerID,
+    modelID: value.id,
+    ...(typeof value.variant === "string" ? { variant: value.variant } : {}),
+  }
 }
 
 function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }

@@ -14,7 +14,11 @@ export type CommanderSession = Readonly<{
 export type CommanderMessage = Readonly<{
   id: string
   type: string
+  sessionID?: string
   text?: string
+  model?: Readonly<{ providerID: string; modelID: string; variant?: string }>
+  finish?: string
+  error?: Readonly<{ type: string; status?: number }>
   metadata?: Readonly<Record<string, Json>>
   content?: readonly Readonly<{
     type: string
@@ -31,6 +35,7 @@ export interface OpenCodeCommanderGateway {
     text: string
     metadata: Readonly<Record<string, Json>>
   }>): Promise<CommanderMessage>
+  waitSession(sessionID: string): Promise<void>
   readSession(sessionID: string): Promise<CommanderSession>
   readMessages(sessionID: string): Promise<readonly CommanderMessage[]>
 }
