@@ -1,4 +1,4 @@
-import type { HermesEvent, HermesGateway, HermesHistoryMessage, HermesModel, HermesModelOption, HermesRun } from "./contract"
+import type { HermesEvent, HermesGateway, HermesHistoryMessage, HermesModelOption, HermesRun } from "./contract"
 
 type Fetch = typeof fetch
 
@@ -8,12 +8,17 @@ export class HermesGatewayClient implements HermesGateway {
   capabilities(): Promise<unknown> { return this.json("/v1/capabilities") }
   async models(): Promise<readonly HermesModelOption[]> { return modelOptions(await this.json("/api/model/options")) }
 
-  async setModel(model: HermesModel): Promise<void> {
-    await this.json("/api/model/set", { method: "POST", body: JSON.stringify({ scope: "main", provider: model.provider, model: model.model }) })
-  }
-
-  async start(input: Readonly<{ text: string; sessionID?: string; model?: string; idempotencyKey: string }>): Promise<HermesRun> {
-    const body = { input: input.text, ...(input.sessionID ? { session_id: input.sessionID } : {}), ...(input.model ? { model: input.model } : {}) }
+  async start(input: Readonly<{ text: string; sessionID?: string; model: Readonly<{ provider: string; model: string }>; idempotencyKey: string }>): Promise<HermesRun> {
+    // `hermes gateway` does not implement dashboard-only /api/model/set. Submit
+    // the durable Commander choice on every run instead, and require its router
+    // to lock the exact provider/model rather than silently using a default.
+    const body = {
+      input: input.text,
+      ...(input.sessionID ? { session_id: input.sessionID } : {}),
+      provider: input.model.provider,
+      model: input.model.model,
+      require_model_lock: true,
+    }
     return run(await this.json("/v1/runs", { method: "POST", headers: { "Idempotency-Key": input.idempotencyKey }, body: JSON.stringify(body) }), input.sessionID)
   }
 

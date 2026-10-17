@@ -49,8 +49,9 @@ and agent. The first launch creates its workspace-scoped `commander` agent under
 `local/commander-workspace/.opencode/agents/`. The managed `commander` agent is
 seeded from `commander/commander-agent-baseline.md` when absent, or upgraded
 only from the legacy generated default; a locally customized agent file is left
-unchanged. It uses your ordinary OpenCode
-model selection; it never writes provider credentials. An existing
+unchanged. Commander itself stores one provider/model identity from the native
+OpenCode visible-model picker, including its model visibility preferences, and
+never writes or reads provider credentials. An existing
 `local/commander.env` remains an optional, ignored override for a deliberately
 different workspace or agent.
 
@@ -72,8 +73,8 @@ the pinned runtime under `local/hermes/runtime/`; it redirects `HOME`, XDG state
 the Hermes tool store, and gateway locks to that project-local directory. It does
 not change a user-shell startup file or a global Hermes installation.
 
-When the owner is ready to choose a native Hermes provider and model, open the
-project-local official picker with:
+When the owner is ready to configure Hermes authentication or a shared LiteLLM
+route, open the project-local official picker with:
 
 ```sh
 sh scripts/local-hermes-model
@@ -81,16 +82,18 @@ sh scripts/local-hermes-model
 
 It reuses the local Hermes launcher while omitting the gateway control bearer;
 its `HOME`, `HERMES_HOME`, caches, and runtime state remain below `local/hermes/`.
-It is interactive and may write the owner-selected provider configuration there,
-so do not run it until that configuration is approved.
+It is interactive and may write provider authentication there, so do not run it
+until that configuration is approved. It is not a second Commander model picker:
+Commander always uses its native OpenCode selection and locks that exact identity
+for each Hermes run.
 
 When those approved files and the project-local runtime are present,
 `sh scripts/local-overmind` starts the loopback Hermes gateway and adapter with
 the Kirei web service, worker, and patched OpenCode desktop. If Hermes is not
 available, its supervised processes report the missing project-local dependency
-and keep retrying while the rest of the local stack stays up; Commander visibly
-uses its existing OpenCode fallback. Starting the control API does not select a
-model or make a provider call. The renderer never receives the adapter token;
+and keep retrying while the rest of the local stack stays up; Commander remains
+unavailable and never falls back to an ordinary OpenCode model. Starting the
+control API does not select a model or make a provider call. The renderer never receives the adapter token;
 the local worker reads it directly from the ignored owner-only file into its
 process environment, never Kirei persistence or a tracked configuration file.
 
@@ -130,16 +133,19 @@ and OpenCode runtimes; its size must be measured during packaging.
    ordinary project. It opens the same independent Commander dialog without
    changing the selected project or requiring a project session. It reserves one
    neutral session in `local/commander-workspace`, not the focused project.
-3. Send a prompt and confirm streamed content appears. **Stop** must interrupt
-   that same session.
-4. Switch projects, close and reopen Commander, then relaunch through the same
-   command. The Commander conversation identity should remain unchanged.
-5. Make the stored Commander session unavailable, then choose **Reconnect**.
+3. Open **Settings → Commander**, choose a visible native OpenCode model, and
+   close and reopen Commander. The same selection should remain visible.
+4. Send a prompt and confirm streamed Hermes content appears. **Stop** must interrupt
+   that same Hermes run. If Hermes cannot authenticate the selected model,
+   Commander must show the failure without sending through OpenCode.
+5. Switch projects, close and reopen Commander, then relaunch through the same
+   command. The Commander conversation identity and model choice should remain unchanged.
+6. Make the stored Commander session unavailable, then choose **Reconnect**.
    Commander should recreate the reserved session using the configured workspace
    and agent.
 
-This tests the patched Commander panel and normal OpenCode session path. Panel
-reservation does not send a provider request; the optional **Send** step does.
+This tests the patched Commander panel and Hermes run path. Panel reservation
+does not send a provider request; the optional **Send** step does.
 
 ## Scheduling status
 

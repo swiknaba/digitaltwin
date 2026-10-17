@@ -6,11 +6,9 @@ import type { CommanderHarnessState, CommanderHarnessStore, HermesGateway } from
 function fixture() {
   let state: CommanderHarnessState = { revision: 0, runs: {} }
   const starts: unknown[] = []
-  const selected: unknown[] = []
   const gateway: HermesGateway = {
     capabilities: async () => ({ features: { run_submission: true } }),
     models: async () => [{ provider: "operator", providerName: "Operator", model: "configured-model" }],
-    setModel: async (model) => { selected.push(model) },
     start: async (input) => { starts.push(input); return { runID: "run_1", sessionID: input.sessionID ?? "session_1", status: "started", model: input.model } },
     status: async (runID) => ({ runID, sessionID: "session_1", status: "completed" }),
     steer: async () => undefined,
@@ -19,7 +17,7 @@ function fixture() {
     history: async () => [{ role: "assistant", content: "persisted" }],
   }
   const store: CommanderHarnessStore = { read: async () => state, write: async (next) => { state = next } }
-  return { harness: new CommanderHarness(gateway, store), starts, selected, state: () => state }
+  return { harness: new CommanderHarness(gateway, store), starts, state: () => state }
 }
 
 test("preserves one Hermes session and makes retries deterministic", async () => {
@@ -32,12 +30,14 @@ test("preserves one Hermes session and makes retries deterministic", async () =>
   assert.equal(f.state().sessionID, first.sessionID)
   assert.equal(f.state().model?.model, "configured-model")
   assert.deepEqual(f.starts, [
-    { text: "status", sessionID: first.sessionID, model: "configured-model", idempotencyKey: (f.starts[0] as { idempotencyKey: string }).idempotencyKey },
+    { text: "status", sessionID: first.sessionID, model: { provider: "operator", model: "configured-model" }, idempotencyKey: (f.starts[0] as { idempotencyKey: string }).idempotencyKey },
   ])
 })
 
-test("exposes status, event replay, steer, and stop without an OpenCode worker session", async () => {
+test("requires a Commander model before a Hermes run", async () => {
   const f = fixture()
+  await assert.rejects(f.harness.start("ping"), /Choose an enabled Commander model/)
+  await f.harness.selectModel({ provider: "operator", model: "configured-model" })
   const started = await f.harness.start("ping")
   assert.equal((await f.harness.status(started.id)).status, "completed")
   assert.deepEqual(await Array.fromAsync(f.harness.events(started.id)), [{ seq: 1, type: "completed", runID: started.id }])
@@ -52,13 +52,8 @@ test("rejects unknown opaque run references", async () => {
   await assert.rejects(f.harness.stop("run_1"), /invalid/)
 })
 
-test("confirms the exact Hermes provider and model before saving selection", async () => {
+test("persists an exact Commander provider and model without requiring a Hermes global model inventory", async () => {
   const f = fixture()
-  await assert.rejects(f.harness.selectModel({ provider: "operator", model: "unavailable" }), /not available from Hermes/)
-  assert.equal(f.state().revision, 0)
-  assert.deepEqual(f.selected, [])
-
-  await f.harness.selectModel({ provider: "operator", model: "configured-model" })
-  assert.deepEqual(f.selected, [{ provider: "operator", model: "configured-model" }])
-  assert.deepEqual(f.state().model, { provider: "operator", model: "configured-model" })
+  await f.harness.selectModel({ provider: "openai", model: "enabled-in-opencode" })
+  assert.deepEqual(f.state().model, { provider: "openai", model: "enabled-in-opencode" })
 })

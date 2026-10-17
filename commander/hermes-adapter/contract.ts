@@ -34,8 +34,7 @@ export type HermesHistoryMessage = Readonly<{ role: "user" | "assistant"; conten
 export interface HermesGateway {
   capabilities(): Promise<unknown>
   models(): Promise<readonly HermesModelOption[]>
-  setModel(model: HermesModel): Promise<void>
-  start(input: Readonly<{ text: string; sessionID?: string; model?: string; idempotencyKey: string }>): Promise<HermesRun>
+  start(input: Readonly<{ text: string; sessionID?: string; model: HermesModel; idempotencyKey: string }>): Promise<HermesRun>
   status(runID: string): Promise<HermesRun>
   steer(runID: string, text: string): Promise<void>
   stop(runID: string): Promise<void>

@@ -14,11 +14,6 @@ export class CommanderHarness {
 
   async selectModel(model: HermesModel): Promise<CommanderHarnessState> {
     validModel(model)
-    const available = await this.gateway.models()
-    if (!available.some((item) => item.provider === model.provider && item.model === model.model)) {
-      throw new Error("Selected Commander model is not available from Hermes.")
-    }
-    await this.gateway.setModel(model)
     const current = await this.store.read()
     const next = { ...current, revision: current.revision + 1, model }
     await this.store.write(next)
@@ -31,12 +26,19 @@ export class CommanderHarness {
     const current = await this.store.read()
     const existing = current.runs[requestID]
     if (existing) return existing
+    if (!current.model) throw new Error("Choose an enabled Commander model before sending.")
     const sessionID = current.sessionID ?? `commander_${randomUUID()}`
     // Persist the client-selected session first. Hermes' 202 admission does not
     // echo session_id, so this makes a retry/restart use the exact same identity.
     const prepared = current.sessionID ? current : { ...current, revision: current.revision + 1, sessionID }
     if (!current.sessionID) await this.store.write(prepared)
-    const started = await this.gateway.start({ text, sessionID, model: prepared.model?.model, idempotencyKey: idempotency(requestID, text) })
+    let started: HermesRun
+    try {
+      started = await this.gateway.start({ text, sessionID, model: current.model, idempotencyKey: idempotency(requestID, text) })
+    } catch (error) {
+      const cause = error instanceof Error ? error.message : "Hermes rejected the run."
+      throw new Error(`Hermes could not use the selected Commander model. Configure compatible Hermes authentication or a shared LiteLLM route; no OpenCode fallback was used. ${cause}`)
+    }
     const run: CommanderRun = { id: opaqueID(requestID), hermesRunID: started.runID, sessionID, requestID, ...(deliveryKey ? { deliveryKey } : {}) }
     await this.store.write({ ...prepared, revision: prepared.revision + 1, runs: { ...prepared.runs, [requestID]: run } })
     return run
