@@ -107,6 +107,42 @@ test("reuses a direct project-session reference across a repeated create request
   assert.equal((await create.execute({ project_id: "project-1", request_id: "ping-1", text: "different" }, context)).content, "Commander project session request conflicts with its original body.")
 })
 
+test("recovers an older project creation that returned only a session and message id", async () => {
+  const f = fixture(); f.sessions.ses_legacy = { id: "ses_legacy", projectID: "project-1" }
+  f.native.push(
+    {
+      id: "msg_parent_legacy",
+      type: "assistant",
+      content: [{
+        type: "tool",
+        id: "tool_legacy_create",
+        name: "commander_create_project_session",
+        state: {
+          status: "completed",
+          input: { project_id: "project-1", request_id: "legacy-1", text: "Original work" },
+          content: [{ type: "text", text: JSON.stringify({ project_id: "project-1", session_id: "ses_legacy", message_id: "msg_legacy_start", request_id: "legacy-1" }) }],
+        },
+      }],
+    },
+    { id: "msg_legacy_start", type: "user", metadata: { fromCommander: true, commanderProjectID: "project-1", commanderRequestID: "legacy-1" } },
+  )
+  await continuation.setup(f.context as never)
+  const followUp = f.tools.get("commander_continue_agent")
+  assert.equal((await followUp.execute({ session_id: "ses_legacy", request_id: "legacy-follow-up", text: "Continue historical work." }, { sessionID: "ses_commander" })).content.startsWith("Continued Commander decision project-session-"), true)
+  assert.deepEqual(f.prompts.at(-1), {
+    sessionID: "ses_legacy", id: f.prompts.at(-1).id, text: "Commander-directed work:\n\nContinue historical work.", resume: true,
+    metadata: { fromCommander: true, commanderRequestDigest: "11e1c60d2b1157d481d68680bb9e11f85a7d8272632f5432c96a888293254d6d" },
+  })
+  const stored = [...f.storage.entries()].find(([key]) => key.startsWith("digitaltwin.commander.decision.project-session-"))
+  assert.ok(stored)
+  const restarted = fixture(); restarted.sessions.ses_legacy = { id: "ses_legacy", projectID: "project-1" }
+  for (const [key, value] of f.storage) restarted.storage.set(key, value)
+  await continuation.setup(restarted.context as never)
+  const recovered = restarted.tools.get("commander_continue_agent")
+  assert.equal((await recovered.execute({ session_id: "ses_legacy", request_id: "legacy-after-restart", text: "Recovered continuation." }, { sessionID: "ses_commander" })).content.startsWith("Continued Commander decision project-session-"), true)
+  assert.equal(restarted.prompts.at(-1).sessionID, "ses_legacy")
+})
+
 test("recovers a referenced decision from the persisted native parent result after restart", async () => {
   const first = fixture(); await continuation.setup(first.context as never); const { decision } = await bind(first, "call_restart", "ses_commander", "ses_child", "completed")
   const second = fixture(); second.native.push(...first.native); await continuation.setup(second.context as never)

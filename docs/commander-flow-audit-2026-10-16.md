@@ -125,3 +125,22 @@ Therefore no browser click/type pixel assertion is claimed from this run; that
 runner failure must be corrected before the native overlay visual regression can
 execute.
 
+## Historical project-session recovery
+
+Read-only inspection of the active local OpenCode database found a real
+Commander-created project session from the pre-reference response contract. It
+has no `parent_id` and no plugin KV decision mapping, but its first user message
+has the immutable Commander project/request metadata. The originating Commander
+transcript contains the completed `commander_create_project_session` tool result
+with the same project, target-session, request, and first-message identifiers.
+
+`commander_continue_agent` now accepts exactly one of `decision_id` or
+`session_id`. The latter is limited to this historical recovery case: it scans
+only the calling Commander's transcript for the authoritative create result,
+checks the target project and first-message provenance, derives and stores the
+normal opaque decision record, then continues through the existing idempotent
+path. It does not route arbitrary session IDs and does not infer an owner from
+the target title or directory. The regression covers old create output,
+plugin-restart recovery, ownership checks, and concurrent successors. No live
+follow-up was dispatched during inspection.
+

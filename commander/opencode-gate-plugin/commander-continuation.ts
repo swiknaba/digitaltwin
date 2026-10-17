@@ -5,6 +5,7 @@ import { Schema } from "effect"
 
 const prefix = "digitaltwin.commander.decision."
 const projectRequestPrefix = "digitaltwin.commander.project-request."
+const projectSessionPrefix = "digitaltwin.commander.project-session."
 type Decision = Readonly<{ parent: string; parentMessage: string; child: string; project: string; requests: Readonly<Record<string, string>> }>
 type ProjectRequest = Readonly<{ parent: string; project: string; requestDigest: string; decisionID: string }>
 
@@ -55,6 +56,40 @@ export default Plugin.define({
       if (!restored) return
       await context.storage.set(key, restored)
       return restored
+    }
+
+    const recoverProjectSession = async (sessionID: string, parent: string): Promise<Readonly<{ decisionID: string; decision: Decision }> | undefined> => {
+      const referenceKey = projectSessionPrefix + projectSessionReferenceID(parent, sessionID)
+      const remembered = await context.storage.get(referenceKey)
+      if (typeof remembered === "string" && decisionID(remembered)) {
+        const decision = await recover(remembered, parent)
+        if (decision) return { decisionID: remembered, decision }
+      }
+      let parentMessages: unknown
+      try {
+        parentMessages = await context.session.context({ sessionID: parent })
+      } catch {
+        return
+      }
+      const candidate = historicalProjectSession(parentMessages, parent, sessionID)
+      if (!candidate) return
+      const decision = await validateProjectSession(candidate)
+      if (!decision) return
+      let childMessages: unknown
+      try {
+        childMessages = await context.session.context({ sessionID })
+      } catch {
+        return
+      }
+      if (!createdMessage(childMessages, candidate.messageID, candidate.project, candidate.requestID)) return
+      const resolvedID = projectSessionDecisionIDFor(parent, candidate.parentMessage, candidate.callID, sessionID)
+      const key = prefix + resolvedID
+      await exclusive(locks, key, async () => {
+        const previous = decode(await context.storage.get(key))
+        if (!previous) await context.storage.set(key, decision)
+      })
+      await context.storage.set(referenceKey, resolvedID)
+      return { decisionID: resolvedID, decision }
     }
 
     await context.tool.hook("execute.after", async (event) => {
@@ -131,15 +166,18 @@ export default Plugin.define({
 
     await context.tool.transform((editor) => editor.add({
       name: "commander_continue_agent",
-      description: "Resume the exact agent or project session identified by a Commander follow-up reference from this Commander session.",
-      input: Schema.Struct({ decision_id: Schema.String, request_id: Schema.String, text: Schema.String }),
+      description: "Resume an exact Commander-created target. Use decision_id from a current create result, or session_id for an older create result that returned only session_id and message_id. Never invent either value.",
+      input: Schema.Struct({ decision_id: Schema.optional(Schema.String), session_id: Schema.optional(Schema.String), request_id: Schema.String, text: Schema.String }),
       options: { codemode: false },
       async execute(input, tool) {
-        if (!decisionID(input.decision_id) || !requestID(input.request_id) || !input.text.trim()) return { content: "Invalid Commander follow-up." }
-        const key = prefix + input.decision_id
-        return exclusive(locks, key, async () => {
-          const decision = await recover(input.decision_id, tool.sessionID)
-          if (!decision) return { content: "Commander decision was not found." }
+        const target = followUpTarget(input.decision_id, input.session_id)
+        if (!target || !requestID(input.request_id) || !input.text.trim()) return { content: "Invalid Commander follow-up. Use exactly one decision_id or session_id from Commander-created work." }
+        const targetKey = target.kind === "decision" ? prefix + target.value : `${prefix}session.${target.value}`
+        return exclusive(locks, targetKey, async () => {
+          const resolved = target.kind === "decision" ? await recover(target.value, tool.sessionID).then((decision) => decision ? { decisionID: target.value, decision } : undefined) : await recoverProjectSession(target.value, tool.sessionID)
+          if (!resolved) return { content: "Commander decision was not found." }
+          const key = prefix + resolved.decisionID
+          const decision = resolved.decision
           if (decision.parent !== tool.sessionID) return { content: "Commander follow-up is not authorized for this session." }
           const digest = hash(input.text); const old = decision.requests[input.request_id]
           if (old && old !== digest) return { content: "Commander follow-up conflicts with its original body." }
@@ -149,7 +187,7 @@ export default Plugin.define({
           const admitted = await context.session.prompt({ sessionID: decision.child, id: message, text, metadata, resume: true })
           if (!admission(admitted, decision.child, message, text, metadata)) return { content: "Commander follow-up admission conflicts with the existing message." }
           if (!old) await context.storage.set(key, { ...decision, requests: { ...decision.requests, [input.request_id]: digest } })
-          return { content: `Continued Commander decision ${input.decision_id}.` }
+          return { content: `Continued Commander decision ${resolved.decisionID}.` }
         })
       },
     }))
@@ -227,6 +265,7 @@ function decode(value: unknown): Decision | undefined {
 }
 
 function decisionID(value: string) { return /^(?:subagent|project-session)-[a-f0-9]{64}$/.test(value) }
+function sessionID(value: string) { return /^ses_[A-Za-z0-9]+$/.test(value) }
 function requestID(value: string) { return /^[a-z0-9][a-z0-9_-]{0,255}$/i.test(value) }
 function hash(value: string) { return createHash("sha256").update(value, "utf8").digest("hex") }
 function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }
@@ -243,6 +282,10 @@ function projectSessionDecisionIDFor(parent: string, message: string, call: stri
   return "project-session-" + hash([parent, message, call, child].join("\n"))
 }
 
+function projectSessionReferenceID(parent: string, child: string): string {
+  return hash([parent, child].join("\n"))
+}
+
 function projectSessionResult(project: string, session: string, request: string, decision: string) {
   return { content: JSON.stringify({ project_id: project, session_id: session, message_id: projectMessageIDFor(project, request), request_id: request, decision_id: decision }) }
 }
@@ -254,6 +297,45 @@ function commanderAgentText(text: string): string {
 function latestAssistant(messages: unknown): unknown {
   if (!Array.isArray(messages)) return undefined
   return messages.findLast((message) => object(message) && message.type === "assistant")
+}
+
+function followUpTarget(decision: string | undefined, session: string | undefined): Readonly<{ kind: "decision" | "session"; value: string }> | undefined {
+  if (decision !== undefined && session !== undefined) return
+  if (decision !== undefined && decisionID(decision)) return { kind: "decision", value: decision }
+  if (session !== undefined && sessionID(session)) return { kind: "session", value: session }
+}
+
+function historicalProjectSession(messages: unknown, parent: string, child: string): Readonly<{ parent: string; parentMessage: string; child: string; project: string; messageID: string; requestID: string; callID: string }> | undefined {
+  if (!Array.isArray(messages)) return
+  for (const message of messages) {
+    if (!object(message) || message.type !== "assistant" || typeof message.id !== "string" || !Array.isArray(message.content)) continue
+    for (const part of message.content) {
+      if (!object(part) || part.type !== "tool" || part.name !== "commander_create_project_session" || !object(part.state) || !object(part.state.input)) continue
+      const input = part.state.input
+      if (typeof input.project_id !== "string" || typeof input.request_id !== "string" || !requestID(input.request_id) || typeof part.id !== "string") continue
+      const output = toolOutput(part.state.content)
+      if (!output || output.session_id !== child || output.project_id !== input.project_id || output.request_id !== input.request_id || typeof output.message_id !== "string") continue
+      return { parent, parentMessage: message.id, child, project: input.project_id, messageID: output.message_id, requestID: input.request_id, callID: part.id }
+    }
+  }
+}
+
+function toolOutput(value: unknown): Readonly<{ project_id: string; session_id: string; message_id: string; request_id: string }> | undefined {
+  if (!Array.isArray(value)) return
+  for (const part of value) {
+    if (!object(part) || part.type !== "text" || typeof part.text !== "string") continue
+    try {
+      const parsed = JSON.parse(part.text)
+      if (object(parsed) && typeof parsed.project_id === "string" && typeof parsed.session_id === "string" && typeof parsed.message_id === "string" && typeof parsed.request_id === "string") return parsed
+    } catch {
+      continue
+    }
+  }
+}
+
+function createdMessage(messages: unknown, id: string, project: string, request: string): boolean {
+  if (!Array.isArray(messages)) return false
+  return messages.some((message) => object(message) && message.type === "user" && message.id === id && object(message.metadata) && message.metadata.fromCommander === true && message.metadata.commanderProjectID === project && message.metadata.commanderRequestID === request)
 }
 
 function decodeProjectRequest(value: unknown): ProjectRequest | undefined {
