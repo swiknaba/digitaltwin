@@ -15,6 +15,7 @@ function fixture() {
     steer: async () => undefined,
     stop: async () => undefined,
     async *events() { yield { seq: 1, type: "run.completed", run_id: "run_1" } },
+    history: async () => [{ role: "assistant", content: "persisted" }],
   }
   const store: CommanderHarnessStore = { read: async () => state, write: async (next) => { state = next } }
   return { harness: new CommanderHarness(gateway, store), starts, state: () => state }
@@ -41,6 +42,7 @@ test("exposes status, event replay, steer, and stop without an OpenCode worker s
   assert.deepEqual(await Array.fromAsync(f.harness.events(started.id)), [{ seq: 1, type: "completed", runID: started.id }])
   await f.harness.steer(started.id, "be brief")
   await f.harness.stop(started.id)
+  assert.deepEqual(await f.harness.history(), [{ role: "assistant", content: "persisted" }])
 })
 
 test("rejects unknown opaque run references", async () => {

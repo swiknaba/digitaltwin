@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import type { CommanderEvent, CommanderHarnessState, CommanderHarnessStore, CommanderRun, HermesEvent, HermesGateway, HermesModel, HermesModelOption, HermesRun } from "./contract"
+import type { CommanderEvent, CommanderHarnessState, CommanderHarnessStore, CommanderRun, HermesEvent, HermesGateway, HermesHistoryMessage, HermesModel, HermesModelOption, HermesRun } from "./contract"
 
 export class CommanderHarness {
   constructor(private readonly gateway: HermesGateway, private readonly store: CommanderHarnessStore) {}
@@ -7,6 +7,10 @@ export class CommanderHarness {
   capabilities(): Promise<unknown> { return this.gateway.capabilities() }
   models(): Promise<readonly HermesModelOption[]> { return this.gateway.models() }
   state(): Promise<CommanderHarnessState> { return this.store.read() }
+  async history(): Promise<readonly HermesHistoryMessage[]> {
+    const sessionID = (await this.store.read()).sessionID
+    return sessionID ? this.gateway.history(sessionID) : []
+  }
 
   async selectModel(model: HermesModel): Promise<CommanderHarnessState> {
     validModel(model)

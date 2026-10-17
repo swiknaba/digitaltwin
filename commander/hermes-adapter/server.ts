@@ -40,6 +40,7 @@ Bun.serve({
       if (!authorized(request)) return new Response("Unauthorized", { status: 401 })
       if (!harness) return Response.json({ error: "Hermes adapter is not configured." }, { status: 503 })
       if (request.method === "GET" && url.pathname === "/state") return Response.json(await harness.state())
+      if (request.method === "GET" && url.pathname === "/history") return Response.json(await harness.history())
       if (request.method === "GET" && url.pathname === "/capabilities") return Response.json(await harness.capabilities())
       if (request.method === "GET" && url.pathname === "/models") return Response.json(await harness.models())
       if (request.method === "POST" && url.pathname === "/model") {

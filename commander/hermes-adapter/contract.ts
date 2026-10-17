@@ -29,6 +29,8 @@ export type CommanderEvent = Readonly<{
   learning?: "memory" | "skill"
 }>
 
+export type HermesHistoryMessage = Readonly<{ role: "user" | "assistant"; content: string }>
+
 export interface HermesGateway {
   capabilities(): Promise<unknown>
   models(): Promise<readonly HermesModelOption[]>
@@ -38,6 +40,7 @@ export interface HermesGateway {
   steer(runID: string, text: string): Promise<void>
   stop(runID: string): Promise<void>
   events(runID: string, after?: number): AsyncIterable<HermesEvent>
+  history(sessionID: string): Promise<readonly HermesHistoryMessage[]>
 }
 
 export interface CommanderHarnessStore {

@@ -14,6 +14,7 @@ test("uses Hermes durable run, control, and SSE contracts", async () => {
     if (url.pathname === "/api/model/set") return Response.json({ ok: true })
     if (url.pathname === "/v1/runs/run_1") return Response.json({ run_id: "run_1", status: "completed" })
     if (url.pathname === "/v1/runs/run_1/events") return new Response("id: 4\ndata: {\"seq\":4,\"type\":\"run.completed\",\"run_id\":\"run_1\"}\n\n", { headers: { "Content-Type": "text/event-stream" } })
+    if (url.pathname === "/api/sessions/session_1/messages") return Response.json({ data: [{ role: "user", content: "ping" }, { role: "assistant", content: "pong" }] })
     return Response.json({})
   }
   const client = new HermesGatewayClient(new URL("http://127.0.0.1:8642"), "adapter-only-token", fixture)
@@ -22,6 +23,7 @@ test("uses Hermes durable run, control, and SSE contracts", async () => {
   assert.deepEqual(await client.models(), [{ provider: "operator", providerName: "Operator", model: "configured-model" }])
   await client.setModel({ provider: "operator", model: "configured-model" })
   assert.deepEqual(await Array.fromAsync(client.events("run_1", 3)), [{ seq: 4, type: "run.completed", run_id: "run_1" }])
+  assert.deepEqual(await client.history("session_1"), [{ role: "user", content: "ping" }, { role: "assistant", content: "pong" }])
   await client.steer("run_1", "be brief")
   await client.stop("run_1")
   assert.deepEqual(requests, [
@@ -30,6 +32,7 @@ test("uses Hermes durable run, control, and SSE contracts", async () => {
     { path: "/api/model/options", method: "GET", authorization: "Bearer adapter-only-token", idempotency: null, body: undefined },
     { path: "/api/model/set", method: "POST", authorization: "Bearer adapter-only-token", idempotency: null, body: { scope: "main", provider: "operator", model: "configured-model" } },
     { path: "/v1/runs/run_1/events", method: "GET", authorization: "Bearer adapter-only-token", idempotency: null, body: undefined },
+    { path: "/api/sessions/session_1/messages", method: "GET", authorization: "Bearer adapter-only-token", idempotency: null, body: undefined },
     { path: "/v1/runs/run_1/steer", method: "POST", authorization: "Bearer adapter-only-token", idempotency: null, body: { input: "be brief" } },
     { path: "/v1/runs/run_1/stop", method: "POST", authorization: "Bearer adapter-only-token", idempotency: null, body: undefined },
   ])

@@ -1,4 +1,4 @@
-import type { HermesEvent, HermesGateway, HermesModel, HermesModelOption, HermesRun } from "./contract"
+import type { HermesEvent, HermesGateway, HermesHistoryMessage, HermesModel, HermesModelOption, HermesRun } from "./contract"
 
 type Fetch = typeof fetch
 
@@ -20,6 +20,14 @@ export class HermesGatewayClient implements HermesGateway {
   async status(runID: string): Promise<HermesRun> { return run(await this.json(`/v1/runs/${encodeURIComponent(runID)}`), "") }
   async steer(runID: string, text: string): Promise<void> { await this.json(`/v1/runs/${encodeURIComponent(runID)}/steer`, { method: "POST", body: JSON.stringify({ input: text }) }) }
   async stop(runID: string): Promise<void> { await this.json(`/v1/runs/${encodeURIComponent(runID)}/stop`, { method: "POST" }) }
+  async history(sessionID: string): Promise<readonly HermesHistoryMessage[]> {
+    const value = await this.json(`/api/sessions/${encodeURIComponent(sessionID)}/messages?order=oldest&limit=500`)
+    if (!object(value) || !Array.isArray(value.data)) throw new Error("Hermes returned invalid session history.")
+    return value.data.flatMap((message): HermesHistoryMessage[] => {
+      if (!object(message) || (message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") return []
+      return [{ role: message.role, content: message.content }]
+    })
+  }
 
   async *events(runID: string, after?: number): AsyncIterable<HermesEvent> {
     const response = await this.request(new URL(`/v1/runs/${encodeURIComponent(runID)}/events`, this.endpoint), { headers: this.headers(after === undefined ? {} : { "Last-Event-ID": String(after) }) })

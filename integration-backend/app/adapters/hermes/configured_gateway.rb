@@ -79,7 +79,7 @@ module Adapters
         "cmd_#{Digest::SHA256.hexdigest("delivery:#{delivery_key}")}"
       end
 
-      sig { params(value: T.untyped).returns(T::Boolean) }
+      sig { params(value: T.nilable(String)).returns(T::Boolean) }
       private def active_status?(value)
         ["queued", "running", "started", "accepted"].include?(value)
       end
