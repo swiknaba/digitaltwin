@@ -57,19 +57,30 @@ different workspace or agent.
 Hermes Commander is separately local and opt-in. After the operator has approved
 the control API, create `local/hermes/commander-profile/config.yaml` and the
 owner-only `local/secrets/hermes-api-server-token`, then run
-`scripts/local-hermes-profile`. Once the normal Overmind stack is healthy, start
-the opt-in gateway and adapter in separate terminals:
+`scripts/local-hermes-profile`. The project-local Hermes source, tool store,
+cache, lock root, and profile all live below `local/hermes/`; the gateway never
+uses or updates an installation under the user's home directory.
+
+Provision the pinned project-local runtime once with:
 
 ```sh
-sh scripts/local-hermes-gateway
-sh scripts/local-hermes-adapter
+sh scripts/local-hermes-runtime-install
 ```
 
-They run only on loopback and the adapter reads the token directly from that ignored file; neither
-the renderer nor Kirei receives it. Starting the control API does not select a
-model or make a provider call. The installed Hermes dependency environment must
-already be repaired; this repository does not download it or create provider
-credentials.
+The bootstrap script reads the existing official Hermes installer only to create
+the pinned runtime under `local/hermes/runtime/`; it redirects `HOME`, XDG state,
+the Hermes tool store, and gateway locks to that project-local directory. It does
+not change a user-shell startup file or a global Hermes installation.
+
+When those approved files and the project-local runtime are present,
+`sh scripts/local-overmind` starts the loopback Hermes gateway and adapter with
+the Kirei web service, worker, and patched OpenCode desktop. If Hermes is not
+available, its supervised processes report the missing project-local dependency
+and keep retrying while the rest of the local stack stays up; Commander visibly
+uses its existing OpenCode fallback. Starting the control API does not select a
+model or make a provider call. The renderer never receives the adapter token;
+the local worker reads it directly from the ignored owner-only file into its
+process environment, never Kirei persistence or a tracked configuration file.
 
 Start the full local stack from the DigitalTwin repository root:
 

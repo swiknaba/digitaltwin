@@ -1,0 +1,67 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+
+role=${1:-}
+profile="$repo_root/local/hermes/commander-profile"
+token_file="$repo_root/local/secrets/hermes-api-server-token"
+runtime_launcher="$repo_root/local/hermes/runtime/source/.hermes/bin/hermes"
+gateway_url="http://127.0.0.1:${DIGITALTWIN_HERMES_API_PORT:-8642}/health"
+adapter_url="http://127.0.0.1:${DIGITALTWIN_HERMES_ADAPTER_PORT:-3087}/health"
+
+case "$role" in
+  gateway|adapter) ;;
+  *)
+    printf '%s\n' "usage: $0 gateway|adapter" >&2
+    exit 64
+    ;;
+esac
+
+configured() {
+  test -f "$profile/config.yaml" && test -s "$token_file" && test -x "$runtime_launcher"
+}
+
+healthy() {
+  case "$1" in
+    gateway) curl --silent --show-error --fail "$gateway_url" >/dev/null 2>&1 ;;
+    adapter) curl --silent --show-error --fail "$adapter_url" >/dev/null 2>&1 ;;
+  esac
+}
+
+waiting_message() {
+  printf '%s\n' "Hermes $role is unavailable; Commander will retain its OpenCode fallback while the regular local stack continues." >&2
+  printf '%s\n' "Expected project-local profile, token, and runtime launcher: $profile/config.yaml, $token_file, $runtime_launcher" >&2
+}
+
+while :; do
+  if healthy "$role"; then
+    printf '%s\n' "Hermes $role is already healthy on loopback; local startup is supervising it." >&2
+    while healthy "$role"; do sleep 5; done
+    printf '%s\n' "Hermes $role became unavailable; retrying without stopping the regular local stack." >&2
+    continue
+  fi
+
+  if ! configured; then
+    waiting_message
+    sleep 30
+    continue
+  fi
+
+  if [ "$role" = "adapter" ]; then
+    printf '%s\n' "Hermes adapter is waiting for the local gateway." >&2
+    while ! healthy gateway; do sleep 2; done
+  fi
+
+  printf '%s\n' "Starting project-local Hermes $role." >&2
+  if [ "$role" = "gateway" ]; then
+    sh "$repo_root/scripts/local-hermes-gateway"
+  else
+    sh "$repo_root/scripts/local-hermes-adapter"
+  fi
+  status=$?
+  printf '%s\n' "Hermes $role exited with status $status; Commander will use its OpenCode fallback while local startup retries." >&2
+  sleep 15
+done

@@ -4,6 +4,12 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$repo_root/scripts/local-env"
+
+hermes_token_file="$repo_root/local/secrets/hermes-api-server-token"
+if [ -s "$hermes_token_file" ]; then
+  export DIGITALTWIN_HERMES_ADAPTER_TOKEN="$(cat "$hermes_token_file")"
+fi
+
 for _ in $(seq 1 120); do
   if curl --silent --show-error --fail "http://127.0.0.1:$PORT/readyz" >/dev/null; then
     cd "$repo_root/integration-backend"
