@@ -1,5 +1,7 @@
 export type HermesModel = Readonly<{ provider: string; model: string }>
 
+export type HermesModelOption = Readonly<{ provider: string; model: string; providerName: string }>
+
 export type HermesRun = Readonly<{ runID: string; sessionID: string; status: string; model?: string }>
 
 export type CommanderRun = Readonly<{
@@ -29,7 +31,7 @@ export type CommanderEvent = Readonly<{
 
 export interface HermesGateway {
   capabilities(): Promise<unknown>
-  models(): Promise<unknown>
+  models(): Promise<readonly HermesModelOption[]>
   setModel(model: HermesModel): Promise<void>
   start(input: Readonly<{ text: string; sessionID?: string; model?: string; idempotencyKey: string }>): Promise<HermesRun>
   status(runID: string): Promise<HermesRun>

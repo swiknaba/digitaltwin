@@ -8,7 +8,7 @@ function fixture() {
   const starts: unknown[] = []
   const gateway: HermesGateway = {
     capabilities: async () => ({ features: { run_submission: true } }),
-    models: async () => ({ providers: [] }),
+    models: async () => [],
     setModel: async () => undefined,
     start: async (input) => { starts.push(input); return { runID: "run_1", sessionID: input.sessionID ?? "session_1", status: "started", model: input.model } },
     status: async (runID) => ({ runID, sessionID: "session_1", status: "completed" }),

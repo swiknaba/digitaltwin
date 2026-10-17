@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto"
-import type { CommanderEvent, CommanderHarnessState, CommanderHarnessStore, CommanderRun, HermesEvent, HermesGateway, HermesModel, HermesRun } from "./contract"
+import type { CommanderEvent, CommanderHarnessState, CommanderHarnessStore, CommanderRun, HermesEvent, HermesGateway, HermesModel, HermesModelOption, HermesRun } from "./contract"
 
 export class CommanderHarness {
   constructor(private readonly gateway: HermesGateway, private readonly store: CommanderHarnessStore) {}
 
   capabilities(): Promise<unknown> { return this.gateway.capabilities() }
-  models(): Promise<unknown> { return this.gateway.models() }
+  models(): Promise<readonly HermesModelOption[]> { return this.gateway.models() }
   state(): Promise<CommanderHarnessState> { return this.store.read() }
 
   async selectModel(model: HermesModel): Promise<CommanderHarnessState> {

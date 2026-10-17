@@ -1,4 +1,4 @@
-import type { HermesEvent, HermesGateway, HermesModel, HermesRun } from "./contract"
+import type { HermesEvent, HermesGateway, HermesModel, HermesModelOption, HermesRun } from "./contract"
 
 type Fetch = typeof fetch
 
@@ -6,7 +6,7 @@ export class HermesGatewayClient implements HermesGateway {
   constructor(private readonly endpoint: URL, private readonly token: string, private readonly request: Fetch = fetch) {}
 
   capabilities(): Promise<unknown> { return this.json("/v1/capabilities") }
-  models(): Promise<unknown> { return this.json("/api/model/options") }
+  async models(): Promise<readonly HermesModelOption[]> { return modelOptions(await this.json("/api/model/options")) }
 
   async setModel(model: HermesModel): Promise<void> {
     await this.json("/api/model/set", { method: "POST", body: JSON.stringify({ scope: "main", provider: model.provider, model: model.model }) })
@@ -66,3 +66,10 @@ function run(value: unknown, submittedSessionID: string | undefined): HermesRun 
 
 function event(value: unknown): value is HermesEvent { return object(value) && typeof value.seq === "number" && typeof value.type === "string" && typeof value.run_id === "string" }
 function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }
+function modelOptions(value: unknown): readonly HermesModelOption[] {
+  if (!object(value) || !Array.isArray(value.providers)) throw new Error("Hermes returned invalid model options.")
+  return value.providers.flatMap((provider): HermesModelOption[] => {
+    if (!object(provider) || typeof provider.slug !== "string" || typeof provider.name !== "string" || !Array.isArray(provider.models)) return []
+    return provider.models.filter((model): model is string => typeof model === "string" && model.length > 0).map((model) => ({ provider: provider.slug, providerName: provider.name, model }))
+  })
+}
