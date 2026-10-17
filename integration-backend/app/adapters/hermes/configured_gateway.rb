@@ -16,21 +16,27 @@ module Adapters
 
       include Adapters::OpenCode::Gateway
 
-      sig { params(base_url: String).void }
-      def initialize(base_url:)
+      sig { params(base_url: String, adapter_token: String).void }
+      def initialize(base_url:, adapter_token: ENV.fetch("DIGITALTWIN_HERMES_ADAPTER_TOKEN", ""))
         @base_url = T.let(URI(base_url), URI::Generic)
+        @adapter_token = T.let(adapter_token, String)
         unless @base_url.scheme == "http" && ["127.0.0.1", "localhost", "::1"].include?(@base_url.host)
           raise ArgumentError, "Hermes adapter URL must use HTTP loopback"
         end
+        raise ArgumentError, "Hermes adapter token is required" if @adapter_token.empty?
       end
 
       sig { override.params(task_id: String, text: String, references: T::Array[String], due_at: Time, timezone: String, origin: String, attempt: Integer, delivery_key: String).returns(Domains::FutureTasks::Dto::DeliveryReceipt) }
       def deliver(task_id:, text:, references:, due_at:, timezone:, origin:, attempt:, delivery_key:)
         response = request("POST", "/deliveries", delivery_body(task_id: task_id, text: text, references: references, due_at: due_at, timezone: timezone, origin: origin, attempt: attempt, delivery_key: delivery_key))
-        raise "Hermes adapter rejected future-task delivery (HTTP #{response.code})" unless response.code.to_i.between?(200, 299)
+        raise "Hermes adapter rejected future-task delivery (HTTP #{response.code})" unless response.code.to_i == 200
+        admitted = JSON.parse(response.body)
+        expected_run_id = commander_run_id(delivery_key)
+        unless admitted.is_a?(Hash) && admitted.fetch("id", nil) == expected_run_id
+          raise "Hermes adapter returned an unexpected delivery run"
+        end
 
-        receipt = Domains::FutureTasks::Dto::DeliveryReceipt.new(delivery_key: delivery_key, commander_item_id: commander_run_id(delivery_key))
-        raise "Hermes adapter returned an unexpected delivery receipt" unless response.body.include?(receipt.commander_item_id)
+        receipt = Domains::FutureTasks::Dto::DeliveryReceipt.new(delivery_key: delivery_key, commander_item_id: expected_run_id)
 
         receipt
       end
@@ -40,7 +46,10 @@ module Adapters
         response = request("GET", "/runs/#{commander_run_id(delivery_key)}", nil)
         return Domains::FutureTasks::Dto::BridgeResolution.new if response.code.to_i == 404
 
-        raise "Hermes adapter rejected reconciliation (HTTP #{response.code})" unless response.code.to_i.between?(200, 299)
+        raise "Hermes adapter rejected reconciliation (HTTP #{response.code})" unless response.code.to_i == 200
+
+        status = JSON.parse(response.body)
+        return Domains::FutureTasks::Dto::BridgeResolution.new unless status.is_a?(Hash) && active_status?(status.fetch("status", nil))
 
         Domains::FutureTasks::Dto::BridgeResolution.new(receipt: Domains::FutureTasks::Dto::DeliveryReceipt.new(delivery_key: delivery_key, commander_item_id: commander_run_id(delivery_key)))
       end
@@ -60,7 +69,7 @@ module Adapters
       sig { params(method: String, path: String, body: T.nilable(T::Hash[String, T.any(String, Integer, T::Array[String])])).returns(Net::HTTPResponse) }
       private def request(method, path, body)
         target = @base_url + path
-        request = Net::HTTP.const_get(method.capitalize).new(target, { "Content-Type" => "application/json" })
+        request = Net::HTTP.const_get(method.capitalize).new(target, { "Content-Type" => "application/json", "Authorization" => "Bearer #{@adapter_token}" })
         request.body = JSON.generate(body) if body
         Net::HTTP.start(target.host, target.port, use_ssl: false, open_timeout: 2, read_timeout: 5) { |client| client.request(request) }
       end
@@ -68,6 +77,11 @@ module Adapters
       sig { params(delivery_key: String).returns(String) }
       private def commander_run_id(delivery_key)
         "cmd_#{Digest::SHA256.hexdigest("delivery:#{delivery_key}")}"
+      end
+
+      sig { params(value: T.untyped).returns(T::Boolean) }
+      private def active_status?(value)
+        ["queued", "running", "started", "accepted"].include?(value)
       end
     end
   end

@@ -23,14 +23,18 @@ export class CommanderHarness {
     const current = await this.store.read()
     const existing = current.runs[requestID]
     if (existing) return existing
-    const started = await this.gateway.start({ text, sessionID: current.sessionID, model: current.model?.model, idempotencyKey: idempotency(requestID, text) })
-    if (current.sessionID && current.sessionID !== started.sessionID) throw new Error("Hermes changed the persistent Commander session.")
-    const run: CommanderRun = { id: opaqueID(requestID), hermesRunID: started.runID, sessionID: started.sessionID, requestID, ...(deliveryKey ? { deliveryKey } : {}) }
-    await this.store.write({ ...current, revision: current.revision + 1, sessionID: started.sessionID, runs: { ...current.runs, [requestID]: run } })
+    const sessionID = current.sessionID ?? `commander_${randomUUID()}`
+    // Persist the client-selected session first. Hermes' 202 admission does not
+    // echo session_id, so this makes a retry/restart use the exact same identity.
+    const prepared = current.sessionID ? current : { ...current, revision: current.revision + 1, sessionID }
+    if (!current.sessionID) await this.store.write(prepared)
+    const started = await this.gateway.start({ text, sessionID, model: prepared.model?.model, idempotencyKey: idempotency(requestID, text) })
+    const run: CommanderRun = { id: opaqueID(requestID), hermesRunID: started.runID, sessionID, requestID, ...(deliveryKey ? { deliveryKey } : {}) }
+    await this.store.write({ ...prepared, revision: prepared.revision + 1, runs: { ...prepared.runs, [requestID]: run } })
     return run
   }
 
-  async status(id: string): Promise<HermesRun> { return this.gateway.status((await this.run(id)).hermesRunID) }
+  async status(id: string): Promise<HermesRun> { const run = await this.run(id); return { ...(await this.gateway.status(run.hermesRunID)), sessionID: run.sessionID } }
   async steer(id: string, text: string): Promise<void> { if (!text.trim()) throw new Error("Commander steer text must not be empty."); await this.gateway.steer((await this.run(id)).hermesRunID, text) }
   async stop(id: string): Promise<void> { await this.gateway.stop((await this.run(id)).hermesRunID) }
   async *events(id: string, after?: number): AsyncIterable<CommanderEvent> {

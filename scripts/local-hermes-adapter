@@ -12,6 +12,7 @@ token_file="$repo_root/local/secrets/hermes-api-server-token"
 test -s "$token_file" || { printf '%s\n' "Hermes API token is required: $token_file" >&2; exit 78; }
 export DIGITALTWIN_HERMES_STATE_FILE DIGITALTWIN_HERMES_ADAPTER_PORT DIGITALTWIN_HERMES_API_URL
 export DIGITALTWIN_HERMES_API_TOKEN="$(cat "$token_file")"
+export DIGITALTWIN_HERMES_ADAPTER_TOKEN="$DIGITALTWIN_HERMES_API_TOKEN"
 
 cd "$repo_root"
 exec bun commander/hermes-adapter/server.ts

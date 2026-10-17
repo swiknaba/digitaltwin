@@ -14,10 +14,10 @@ export class HermesGatewayClient implements HermesGateway {
 
   async start(input: Readonly<{ text: string; sessionID?: string; model?: string; idempotencyKey: string }>): Promise<HermesRun> {
     const body = { input: input.text, ...(input.sessionID ? { session_id: input.sessionID } : {}), ...(input.model ? { model: input.model } : {}) }
-    return run(await this.json("/v1/runs", { method: "POST", headers: { "Idempotency-Key": input.idempotencyKey }, body: JSON.stringify(body) }))
+    return run(await this.json("/v1/runs", { method: "POST", headers: { "Idempotency-Key": input.idempotencyKey }, body: JSON.stringify(body) }), input.sessionID)
   }
 
-  async status(runID: string): Promise<HermesRun> { return run(await this.json(`/v1/runs/${encodeURIComponent(runID)}`)) }
+  async status(runID: string): Promise<HermesRun> { return run(await this.json(`/v1/runs/${encodeURIComponent(runID)}`), "") }
   async steer(runID: string, text: string): Promise<void> { await this.json(`/v1/runs/${encodeURIComponent(runID)}/steer`, { method: "POST", body: JSON.stringify({ input: text }) }) }
   async stop(runID: string): Promise<void> { await this.json(`/v1/runs/${encodeURIComponent(runID)}/stop`, { method: "POST" }) }
 
@@ -57,9 +57,11 @@ export class HermesGatewayClient implements HermesGateway {
   }
 }
 
-function run(value: unknown): HermesRun {
-  if (!object(value) || typeof value.run_id !== "string" || typeof value.session_id !== "string" || typeof value.status !== "string") throw new Error("Hermes returned an incomplete run.")
-  return { runID: value.run_id, sessionID: value.session_id, status: value.status, ...(typeof value.model === "string" ? { model: value.model } : {}) }
+function run(value: unknown, submittedSessionID: string | undefined): HermesRun {
+  if (!object(value) || typeof value.run_id !== "string" || typeof value.status !== "string") throw new Error("Hermes returned an incomplete run admission.")
+  // Hermes admissions deliberately return only run_id/status.  The harness owns
+  // the stable session ID and persists it before the first submission.
+  return { runID: value.run_id, sessionID: submittedSessionID ?? "", status: value.status, ...(typeof value.model === "string" ? { model: value.model } : {}) }
 }
 
 function event(value: unknown): value is HermesEvent { return object(value) && typeof value.seq === "number" && typeof value.type === "string" && typeof value.run_id === "string" }

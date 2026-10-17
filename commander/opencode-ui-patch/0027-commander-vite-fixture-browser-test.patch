@@ -167,10 +167,7 @@ diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/r
 index e2fbcba..f38eec3 100644
 --- a/packages/app/src/runtime/commander-overlay.tsx
 +++ b/packages/app/src/runtime/commander-overlay.tsx
-@@ -132,6 +132,7 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
-       data.session.message.sync(props.conversation.sessionID),
+@@ -135,2 +135,3 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
        data.session.pending.sync(props.conversation.sessionID),
 +      data.location.provider.sync({ directory: props.conversation.directory }),
        data.location.model.sync({ directory: props.conversation.directory }),
-     ]).catch(() => setFailed(true))
-   })

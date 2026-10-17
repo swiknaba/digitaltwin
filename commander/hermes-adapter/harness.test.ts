@@ -25,12 +25,12 @@ test("preserves one Hermes session and makes retries deterministic", async () =>
   await f.harness.selectModel({ provider: "operator", model: "configured-model" })
   const first = await f.harness.start("status", "request-1")
   const second = await f.harness.start("status", "request-1")
-  assert.equal(first.sessionID, "session_1")
-  assert.equal(second.sessionID, "session_1")
-  assert.equal(f.state().sessionID, "session_1")
+  assert.match(first.sessionID, /^commander_/)
+  assert.equal(second.sessionID, first.sessionID)
+  assert.equal(f.state().sessionID, first.sessionID)
   assert.equal(f.state().model?.model, "configured-model")
   assert.deepEqual(f.starts, [
-    { text: "status", sessionID: undefined, model: "configured-model", idempotencyKey: (f.starts[0] as { idempotencyKey: string }).idempotencyKey },
+    { text: "status", sessionID: first.sessionID, model: "configured-model", idempotencyKey: (f.starts[0] as { idempotencyKey: string }).idempotencyKey },
   ])
 })
 

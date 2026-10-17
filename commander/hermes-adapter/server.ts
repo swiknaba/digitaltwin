@@ -26,6 +26,7 @@ class JsonStore implements CommanderHarnessStore {
 const port = numeric("DIGITALTWIN_HERMES_ADAPTER_PORT", 3087)
 const endpoint = process.env.DIGITALTWIN_HERMES_API_URL
 const token = process.env.DIGITALTWIN_HERMES_API_TOKEN
+const adapterToken = process.env.DIGITALTWIN_HERMES_ADAPTER_TOKEN
 const statePath = required("DIGITALTWIN_HERMES_STATE_FILE")
 const harness = endpoint && token ? new CommanderHarness(new HermesGatewayClient(loopbackURL(endpoint), token), new JsonStore(statePath)) : undefined
 
@@ -36,6 +37,7 @@ Bun.serve({
     const url = new URL(request.url)
     try {
       if (url.pathname === "/health") return Response.json({ ok: true, hermes: !!harness })
+      if (!authorized(request)) return new Response("Unauthorized", { status: 401 })
       if (!harness) return Response.json({ error: "Hermes adapter is not configured." }, { status: 503 })
       if (request.method === "GET" && url.pathname === "/state") return Response.json(await harness.state())
       if (request.method === "GET" && url.pathname === "/capabilities") return Response.json(await harness.capabilities())
@@ -87,3 +89,4 @@ function bad(error: string): Response { return Response.json({ error }, { status
 function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }
 function loopbackURL(value: string): URL { const url = new URL(value); if (url.protocol !== "http:" || (url.hostname !== "127.0.0.1" && url.hostname !== "::1" && url.hostname !== "localhost")) throw new Error("DIGITALTWIN_HERMES_API_URL must be an HTTP loopback URL."); return url }
 async function json(request: Request): Promise<Record<string, unknown>> { const value: unknown = await request.json(); if (!object(value)) throw new Error("JSON object required."); return value }
+function authorized(request: Request): boolean { return !!adapterToken && request.headers.get("Authorization") === `Bearer ${adapterToken}` }

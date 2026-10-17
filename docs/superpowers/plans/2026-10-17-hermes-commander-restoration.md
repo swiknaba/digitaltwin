@@ -57,6 +57,14 @@ unbounded autonomous-learning policy safe or required.
 - https://hermes-agent.nousresearch.com/docs/user-guide/features/heartbeat
 - https://github.com/NousResearch/hermes-agent/releases
 
+## Deployment constraints
+
+Local development and tests run directly on macOS under Overmind. Remote
+deployments run the complete stack in Docker; Docker is not part of the local
+test path. The later self-contained macOS application targets ARM64 only and
+bundles the required Ruby, Python, and OpenCode runtimes. Packaging remains a
+separate scope, and its final size must be measured rather than guessed.
+
 ## Smallest integration
 
 Keep the maintained OpenCode Commander overlay and every ordinary OpenCode project

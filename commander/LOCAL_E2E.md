@@ -57,8 +57,15 @@ different workspace or agent.
 Hermes Commander is separately local and opt-in. After the operator has approved
 the control API, create `local/hermes/commander-profile/config.yaml` and the
 owner-only `local/secrets/hermes-api-server-token`, then run
-`scripts/local-hermes-profile`. Overmind starts the Hermes gateway only on
-loopback and the adapter reads the token directly from that ignored file; neither
+`scripts/local-hermes-profile`. Once the normal Overmind stack is healthy, start
+the opt-in gateway and adapter in separate terminals:
+
+```sh
+sh scripts/local-hermes-gateway
+sh scripts/local-hermes-adapter
+```
+
+They run only on loopback and the adapter reads the token directly from that ignored file; neither
 the renderer nor Kirei receives it. Starting the control API does not select a
 model or make a provider call. The installed Hermes dependency environment must
 already be repaired; this repository does not download it or create provider
@@ -86,6 +93,11 @@ The development launcher runs its own isolated sidecar on `127.0.0.1:3086`.
 That avoids adopting or replacing an installed OpenCode service on its default
 port; the app retains its own desktop session storage and still layers its
 plugin configuration over normal user-global OpenCode configuration.
+
+Local development and tests run directly on macOS through Overmind; Docker is
+not part of this path. Remote deployment runs the complete stack in Docker. The
+future self-contained ARM64 macOS `.app` will bundle the required Ruby, Python,
+and OpenCode runtimes; its size must be measured during packaging.
 
 ## Test the Commander panel
 
