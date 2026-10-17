@@ -32,6 +32,8 @@ fi
 : "${DIGITALTWIN_COMMANDER_WORKSPACE:?DIGITALTWIN_COMMANDER_WORKSPACE is required}"
 : "${DIGITALTWIN_COMMANDER_AGENT:?DIGITALTWIN_COMMANDER_AGENT is required}"
 : "${DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR:?DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR is required}"
+: "${DIGITALTWIN_HERMES_ADAPTER_PORT:=3087}"
+: "${DIGITALTWIN_HERMES_STATE_FILE:=local/hermes/commander-adapter-state.json}"
 
 case "$DIGITALTWIN_PGPORT" in
   *[!0-9]*|'') printf '%s\n' "DIGITALTWIN_PGPORT must be numeric" >&2; exit 78 ;;
@@ -62,6 +64,10 @@ case "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" in
   /*) commander_continuation_plugin_dir=$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR ;;
   *) commander_continuation_plugin_dir="$repo_root/$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" ;;
 esac
+case "$DIGITALTWIN_HERMES_STATE_FILE" in
+  /*) hermes_state_file=$DIGITALTWIN_HERMES_STATE_FILE ;;
+  *) hermes_state_file="$repo_root/$DIGITALTWIN_HERMES_STATE_FILE" ;;
+esac
 
 mkdir -p "$heartbeat_dir" "$local_tmpdir" "$repo_root/local/runtime" "$repo_root/local/logs"
 export HEARTBEAT_DIR="$heartbeat_dir"
@@ -72,3 +78,4 @@ export DIGITALTWIN_FUTURE_TASKS_CAPABILITY_SECRET_FILE="$future_task_secret_file
 export FUTURE_TASK_CAPABILITY_SECRET_FILE="$future_task_secret_file"
 export DIGITALTWIN_COMMANDER_WORKSPACE="$commander_workspace"
 export DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR="$commander_continuation_plugin_dir"
+export DIGITALTWIN_HERMES_STATE_FILE="$hermes_state_file"

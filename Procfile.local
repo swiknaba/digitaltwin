@@ -1,3 +1,4 @@
 web: sh ./scripts/local-kirei-web
 worker: sh ./scripts/local-kirei-worker
 opencode: sh ./scripts/local-opencode
+hermes-adapter: sh ./scripts/local-hermes-adapter
