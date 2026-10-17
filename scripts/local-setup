@@ -17,13 +17,21 @@ fi
 if [ "$DIGITALTWIN_COMMANDER_WORKSPACE" = "$default_commander_workspace" ] && [ "$DIGITALTWIN_COMMANDER_AGENT" = "commander" ]; then
   commander_agent_dir="$DIGITALTWIN_COMMANDER_WORKSPACE/.opencode/agents"
   commander_agent="$commander_agent_dir/commander.md"
+  commander_agent_baseline="$repo_root/commander/commander-agent-baseline.md"
+  legacy_commander_agent=$(printf '%s\n' \
+    '---' \
+    'description: Persistent Commander coordination session.' \
+    '---' \
+    "Coordinate the user's requests in this persistent Commander session.")
+  test -f "$commander_agent_baseline" || {
+    printf '%s\n' "Commander agent baseline is missing: $commander_agent_baseline" >&2
+    exit 78
+  }
   mkdir -p "$commander_agent_dir"
   if [ ! -e "$commander_agent" ]; then
-    printf '%s\n' \
-      '---' \
-      'description: Persistent Commander coordination session.' \
-      '---' \
-      "Coordinate the user's requests in this persistent Commander session." > "$commander_agent"
+    cp "$commander_agent_baseline" "$commander_agent"
+  elif [ "$(cat "$commander_agent")" = "$legacy_commander_agent" ]; then
+    cp "$commander_agent_baseline" "$commander_agent"
   fi
 fi
 

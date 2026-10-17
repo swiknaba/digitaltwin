@@ -125,8 +125,14 @@ test("recovers an older project creation that returned only a session and messag
       }],
     },
     { id: "msg_legacy_start", type: "user", metadata: { fromCommander: true, commanderProjectID: "project-1", commanderRequestID: "legacy-1" } },
+    { id: "msg_legacy_result", type: "assistant", text: "Ping received." },
   )
   await continuation.setup(f.context as never)
+  const read = f.tools.get("commander_read_agent")
+  assert.deepEqual(JSON.parse((await read.execute({ session_id: "ses_legacy" }, { sessionID: "ses_commander" })).content), {
+    session_id: "ses_legacy", project_id: "project-1", latest_result: { id: "msg_legacy_result", type: "assistant", text: "Ping received." },
+  })
+  assert.equal(f.prompts.length, 0)
   const followUp = f.tools.get("commander_continue_agent")
   assert.equal((await followUp.execute({ session_id: "ses_legacy", request_id: "legacy-follow-up", text: "Continue historical work." }, { sessionID: "ses_commander" })).content.startsWith("Continued Commander decision project-session-"), true)
   assert.deepEqual(f.prompts.at(-1), {

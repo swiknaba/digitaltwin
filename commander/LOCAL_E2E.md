@@ -46,7 +46,10 @@ checkout; inspect it before deliberately replacing it.
 
 The checked-in `.env.overmind` supplies the normal local Commander workspace
 and agent. The first launch creates its workspace-scoped `commander` agent under
-`local/commander-workspace/.opencode/agents/`. It uses your ordinary OpenCode
+`local/commander-workspace/.opencode/agents/`. The managed `commander` agent is
+seeded from `commander/commander-agent-baseline.md` when absent, or upgraded
+only from the legacy generated default; a locally customized agent file is left
+unchanged. It uses your ordinary OpenCode
 model selection; it never writes provider credentials. An existing
 `local/commander.env` remains an optional, ignored override for a deliberately
 different workspace or agent.

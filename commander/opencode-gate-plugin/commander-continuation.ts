@@ -194,23 +194,28 @@ export default Plugin.define({
 
     await context.tool.transform((editor) => editor.add({
       name: "commander_read_agent",
-      description: "Read the current session and latest result for an exact Commander follow-up reference.",
-      input: Schema.Struct({ decision_id: Schema.String }),
+      description: "Read the current session and latest result without sending a prompt. Use decision_id from a current create result, or session_id for an older create result that returned only session_id and message_id. Never invent either value.",
+      input: Schema.Struct({ decision_id: Schema.optional(Schema.String), session_id: Schema.optional(Schema.String) }),
       options: { codemode: false },
       async execute(input, tool) {
-        if (!decisionID(input.decision_id)) return { content: "Invalid Commander follow-up reference." }
-        const decision = await recover(input.decision_id, tool.sessionID)
-        if (!decision) return { content: "Commander decision was not found." }
-        if (decision.parent !== tool.sessionID) return { content: "Commander follow-up is not authorized for this session." }
-        try {
-          const [session, messages] = await Promise.all([
-            context.session.get({ sessionID: decision.child }),
-            context.session.context({ sessionID: decision.child }),
-          ])
-          return { content: JSON.stringify({ session_id: session.id, project_id: session.projectID, latest_result: latestAssistant(messages) }) }
-        } catch {
-          return { content: "Commander target session is unavailable." }
-        }
+        const target = followUpTarget(input.decision_id, input.session_id)
+        if (!target) return { content: "Invalid Commander result reference. Use exactly one decision_id or session_id from Commander-created work." }
+        const targetKey = target.kind === "decision" ? prefix + target.value : `${prefix}session.${target.value}`
+        return exclusive(locks, targetKey, async () => {
+          const resolved = target.kind === "decision" ? await recover(target.value, tool.sessionID).then((decision) => decision ? { decisionID: target.value, decision } : undefined) : await recoverProjectSession(target.value, tool.sessionID)
+          if (!resolved) return { content: "Commander decision was not found." }
+          const decision = resolved.decision
+          if (decision.parent !== tool.sessionID) return { content: "Commander follow-up is not authorized for this session." }
+          try {
+            const [session, messages] = await Promise.all([
+              context.session.get({ sessionID: decision.child }),
+              context.session.context({ sessionID: decision.child }),
+            ])
+            return { content: JSON.stringify({ session_id: session.id, project_id: session.projectID, latest_result: latestAssistant(messages) }) }
+          } catch {
+            return { content: "Commander target session is unavailable." }
+          }
+        })
       },
     }))
   },

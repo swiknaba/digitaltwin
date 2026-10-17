@@ -37,8 +37,12 @@ native `subagent` tool, recording both the Commander parent and its actual child
 session in plugin storage. Its
 `commander_continue_agent` tool looks up that immutable decision and calls
 `context.session.prompt` for that exact session with a deterministic message id
-and `fromCommander` plus body-digest metadata. Neither tool accepts a session,
-message, project, endpoint, or credential from the caller.
+and `fromCommander` plus body-digest metadata. `commander_read_agent` returns a
+target's latest result without prompting it. Both tools accept an opaque
+`decision_id` from current create results; for a historical create result that
+only returned a `session_id` and `message_id`, they may recover the same binding
+only by validating that recorded Commander parent, project, and initial-message
+provenance. They do not accept a raw message, project, endpoint, or credential.
 
 The isolated fixture is validation-only: set `XDG_CONFIG_HOME` to
 `commander/opencode-gate-plugin/isolated-config`. Its checked-in
@@ -61,3 +65,9 @@ that value, rather than a raw session or message ID, to
 persists the binding to the trusted Commander parent session and rejects a
 reused create request with changed text. It neither selects a model nor makes a
 provider call itself.
+
+For older stored create results predating `decision_id`, pass their exact
+`session_id` to `commander_read_agent` first to inspect the latest result. Pass
+that same `session_id` to `commander_continue_agent` only when new work is
+explicitly requested; the plugin validates and stores the recovered binding
+before it can resume the target.
