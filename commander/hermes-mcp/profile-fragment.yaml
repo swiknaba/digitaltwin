@@ -1,0 +1,16 @@
+# Merge this generated-path fragment into the approved project-local Hermes profile.
+# The sidecar credential is deliberately not represented here. The stdio process
+# exposes its MCP schema without it and fails project calls closed until an owner
+# authorizes DIGITALTWIN_OPENCODE_SIDECAR_PASSWORD in its launch environment.
+mcp_servers:
+  commander-delegation:
+    command: sh
+    args:
+      - -c
+      - 'exec "${DIGITALTWIN_REPO_ROOT:?DIGITALTWIN_REPO_ROOT is required}/scripts/local-hermes-commander-mcp"'
+    tools:
+      include:
+        - commander_list_projects
+        - commander_create_project_session
+        - commander_read_agent
+        - commander_continue_agent

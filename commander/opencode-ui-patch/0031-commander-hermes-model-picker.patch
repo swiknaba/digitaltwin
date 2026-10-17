@@ -768,7 +768,7 @@ index aa7980055f..833f824d5b 100644
    globalThis.fetch = Object.assign(request, { preconnect: original.fetch.preconnect })
  }
  
-+function hermes(options: readonly { providerID: string; providerName: string; modelID: string }[], modelStatus = 200) {
++function hermes(options: readonly { provider: string; providerName: string; model: string }[], modelStatus = 200) {
 +  const requests: Array<{ path: string; method: string; body: unknown }> = []
 +  const request = async (...[input, init]: Parameters<typeof fetch>) => {
 +    const url = new URL(input.toString())
@@ -851,7 +851,7 @@ index aa7980055f..833f824d5b 100644
 +    },
    })
    const first = runtime(backing)
-+  const requests = hermes([{ providerID: "operator", providerName: "Operator", modelID: "configured-model" }])
++  const requests = hermes([{ provider: "operator", providerName: "Operator", model: "configured-model" }])
  
 -  await expect(first.bridge.selectModel({ providerID: "openai", modelID: "gpt-5.4", variant: "high" }, caller)).resolves.toMatchObject({
 +  await expect(first.bridge.models(undefined, caller)).resolves.toEqual([
@@ -900,7 +900,7 @@ index aa7980055f..833f824d5b 100644
 +    model: { providerID: "operator", modelID: "configured-model" },
 +  })
 +  const first = runtime(backing)
-+  hermes([{ providerID: "operator", providerName: "Operator", modelID: "replacement-model" }], 502)
++  hermes([{ provider: "operator", providerName: "Operator", model: "replacement-model" }], 502)
 +
 +  await expect(
 +    first.bridge.selectModel({ providerID: "operator", modelID: "replacement-model" }, caller),
@@ -953,9 +953,9 @@ index 7d23b9924b..1d024789ca 100644
  }
  
 +async function hermesModels() {
-+  const decoded = Schema.decodeUnknownOption(Schema.Array(CommanderModelOption))(await adapter("/models"))
++  const decoded = Schema.decodeUnknownOption(Schema.Array(Schema.Struct({ provider: Schema.String, providerName: Schema.String, model: Schema.String })))(await adapter("/models"))
 +  if (Option.isNone(decoded)) throw new Error("Commander Hermes adapter returned an invalid model inventory.")
-+  return decoded.value
++  return decoded.value.map((item) => ({ providerID: item.provider, providerName: item.providerName, modelID: item.model })) satisfies readonly CommanderModelOption[]
 +}
 +
  async function history() {

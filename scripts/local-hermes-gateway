@@ -39,6 +39,7 @@ export XDG_RUNTIME_DIR="$runtime_root/run"
 export XDG_STATE_HOME="$runtime_root/state"
 export UV_CACHE_DIR="$runtime_root/uv-cache"
 export UV_PYTHON_INSTALL_DIR="$runtime_root/uv-python"
+export DIGITALTWIN_REPO_ROOT="$repo_root"
 export API_SERVER_KEY="$(cat "$token_file")"
 export API_SERVER_HOST=127.0.0.1
 export API_SERVER_PORT="${DIGITALTWIN_HERMES_API_PORT:-8642}"
