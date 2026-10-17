@@ -7,7 +7,9 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
     private readonly endpoint: URL,
     private readonly sidecarPassword: string | undefined,
     private readonly request: Fetch = fetch,
-  ) {}
+  ) {
+    assertLoopbackSidecar(endpoint)
+  }
 
   async listProjects(): Promise<readonly CommanderProject[]> {
     const body = await this.json("/api/project")
@@ -65,6 +67,13 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
       throw new Error(`OpenCode request failed (${response.status}).`)
     }
     return response.json()
+  }
+}
+
+function assertLoopbackSidecar(endpoint: URL): void {
+  const loopback = endpoint.hostname === "127.0.0.1" || endpoint.hostname === "::1" || endpoint.hostname === "[::1]"
+  if (endpoint.protocol !== "http:" || !loopback || endpoint.username || endpoint.password || endpoint.pathname !== "/" || endpoint.search || endpoint.hash) {
+    throw new Error("OpenCode sidecar endpoint must be an http loopback origin.")
   }
 }
 

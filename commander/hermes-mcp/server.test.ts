@@ -32,7 +32,7 @@ function fixture() {
     },
     readMessages: async () => [{ id: "msg_result", type: "assistant", text: "Finished." }],
   }
-  const store: DelegationStore = { read: async () => state, write: async (next) => { state = next } }
+  const store: DelegationStore = { read: async () => state, write: async (next) => { state = next }, exclusive: async (work) => work() }
   return { delegation: () => new CommanderDelegation(gateway, store, "hermes-profile-local"), prompts, creates: () => creates, state: () => state, sessions }
 }
 
@@ -114,7 +114,7 @@ test("rejects an OpenCode prompt admission that does not preserve metadata", asy
     readMessages: async () => [],
   }
   let persisted: DelegationState = { revision: 0, decisions: {}, requests: {}, pending: {} }
-  const state: DelegationStore = { read: async () => persisted, write: async (next) => { persisted = next } }
+  const state: DelegationStore = { read: async () => persisted, write: async (next) => { persisted = next }, exclusive: async (work) => work() }
   await assert.rejects(new CommanderDelegation(brokenGateway, state, "hermes-profile-local").create({ projectID: "project-1", requestID: "broken-1", text: "Fail safely." }), /admission conflicts/)
 })
 
@@ -152,6 +152,7 @@ test("recovers a file-backed pending create with the caller-supplied OpenCode se
       }
       await raw.write(state)
     },
+    exclusive: (work) => raw.exclusive(work),
   }
   try {
     const first = new CommanderDelegation(gateway, interrupted, "hermes-profile-local")
@@ -164,6 +165,41 @@ test("recovers a file-backed pending create with the caller-supplied OpenCode se
     assert.equal(sessions.size, 1)
     assert.equal(creates, 2)
     assert.equal(Object.keys((await raw.read()).pending).length, 0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("serializes concurrent file-backed delegations so neither decision is lost", async () => {
+  const root = await mkdtemp(join(process.cwd(), "local/tmp/hermes-mcp-lock-"))
+  const file = join(root, "delegation.json")
+  const sessions = new Map<string, CommanderSession>()
+  const gateway: OpenCodeCommanderGateway = {
+    listProjects: async () => [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }],
+    createSession: async ({ id }) => {
+      const session = { id, projectID: "project-1" }
+      sessions.set(id, session)
+      return session
+    },
+    prompt: async (input) => ({ id: input.messageID, type: "user", text: input.text, metadata: input.metadata }),
+    readSession: async (id) => {
+      const result = sessions.get(id)
+      if (!result) throw new Error("not found")
+      return result
+    },
+    readMessages: async () => [],
+  }
+  try {
+    const first = new CommanderDelegation(gateway, new FileDelegationStore(file), "hermes-profile-local")
+    const second = new CommanderDelegation(gateway, new FileDelegationStore(file), "hermes-profile-local")
+    await Promise.all([
+      first.create({ projectID: "project-1", requestID: "concurrent-1", text: "First." }),
+      second.create({ projectID: "project-1", requestID: "concurrent-2", text: "Second." }),
+    ])
+    const state = await new FileDelegationStore(file).read()
+    assert.equal(Object.keys(state.decisions).length, 2)
+    assert.equal(Object.keys(state.requests).length, 2)
+    assert.equal(Object.keys(state.pending).length, 0)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

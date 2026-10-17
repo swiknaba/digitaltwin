@@ -19,7 +19,7 @@ export class CommanderDelegation {
   async create(input: Readonly<{ projectID: string; requestID: string; text: string }>): Promise<Readonly<Record<string, Json>>> {
     validCreate(input)
     const requestKey = hash([this.provenanceSubject, input.projectID, input.requestID].join("\n"))
-    return this.exclusive(requestKey, async () => {
+    return this.exclusive(requestKey, () => this.store.exclusive(async () => {
       const digest = hash(input.text)
       const current = await this.store.read()
       const priorID = current.requests[requestKey]
@@ -55,7 +55,7 @@ export class CommanderDelegation {
       const decision = await this.completePending(requestKey, intent, project.directory)
       await this.admitCreate(decision, input.text)
       return createResult(decision)
-    })
+    }))
   }
 
   async read(input: Readonly<{ decisionID?: string; sessionID?: string }>): Promise<Readonly<Record<string, Json>>> {
@@ -74,7 +74,7 @@ export class CommanderDelegation {
   async continue(input: Readonly<{ decisionID?: string; sessionID?: string; requestID: string; text: string }>): Promise<Readonly<Record<string, Json>>> {
     if (!requestID(input.requestID) || !input.text.trim()) throw new Error("Commander continuation request is invalid.")
     const decision = await this.resolve(input)
-    return this.exclusive(decision.decisionID, async () => {
+    return this.exclusive(decision.decisionID, () => this.store.exclusive(async () => {
       const current = await this.store.read()
       const persisted = current.decisions[decision.decisionID]
       if (!persisted || persisted.subject !== this.provenanceSubject) throw new Error("Commander decision was not found.")
@@ -95,7 +95,7 @@ export class CommanderDelegation {
         request_id: input.requestID,
         provenance: provenance(persisted),
       }
-    })
+    }))
   }
 
   private async resolve(input: Readonly<{ decisionID?: string; sessionID?: string }>): Promise<DelegationDecision> {

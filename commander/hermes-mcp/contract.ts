@@ -66,4 +66,5 @@ export type DelegationState = Readonly<{
 export interface DelegationStore {
   read(): Promise<DelegationState>
   write(next: DelegationState): Promise<void>
+  exclusive<T>(work: () => Promise<T>): Promise<T>
 }

@@ -1,8 +1,10 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 import type { DelegationDecision, DelegationState, DelegationStore, PendingDelegation } from "./contract"
 
 const empty = (): DelegationState => ({ revision: 0, decisions: {}, requests: {}, pending: {} })
+const lockTimeoutMilliseconds = 10_000
+const lockRetryMilliseconds = 25
 
 export class FileDelegationStore implements DelegationStore {
   constructor(private readonly path: string) {}
@@ -23,6 +25,61 @@ export class FileDelegationStore implements DelegationStore {
     await writeFile(temporary, `${JSON.stringify(state)}\n`, { encoding: "utf8", mode: 0o600 })
     await rename(temporary, this.path)
   }
+
+  async exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const release = await this.acquireLock()
+    try {
+      return await work()
+    } finally {
+      await release()
+    }
+  }
+
+  private async acquireLock(): Promise<() => Promise<void>> {
+    const lock = `${this.path}.lock`
+    await mkdir(dirname(lock), { recursive: true, mode: 0o700 })
+    const deadline = Date.now() + lockTimeoutMilliseconds
+    for (;;) {
+      try {
+        await mkdir(lock, { mode: 0o700 })
+        await writeFile(`${lock}/owner`, `${process.pid}\n`, { encoding: "utf8", mode: 0o600 })
+        return async () => { await rm(lock, { recursive: true, force: true }) }
+      } catch (error) {
+        if (!isAlreadyExists(error)) throw error
+        if (await stale(lock)) {
+          await rm(lock, { recursive: true, force: true })
+          continue
+        }
+        if (Date.now() >= deadline) throw new Error("Commander delegation state is busy; retry the request.")
+        await pause(lockRetryMilliseconds)
+      }
+    }
+  }
+}
+
+async function stale(lock: string): Promise<boolean> {
+  try {
+    const owner = (await readFile(`${lock}/owner`, "utf8")).trim()
+    if (/^[1-9][0-9]*$/.test(owner)) return !running(Number(owner))
+  } catch (error) {
+    if (!isNotFound(error)) throw error
+  }
+  return false
+}
+
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (object(error) && error.code === "ESRCH") return false
+    if (object(error) && error.code === "EPERM") return true
+    throw error
+  }
+}
+
+function pause(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
 function decodeState(value: unknown): DelegationState {
@@ -88,6 +145,7 @@ function decodePending(value: unknown): PendingDelegation {
 
 function object(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value) }
 function isNotFound(error: unknown): boolean { return object(error) && error.code === "ENOENT" }
+function isAlreadyExists(error: unknown): boolean { return object(error) && error.code === "EEXIST" }
 function identifier(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(value) }
 function requestID(value: string): boolean { return /^[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/.test(value) }
 function digest(value: string): boolean { return /^[a-f0-9]{64}$/.test(value) }

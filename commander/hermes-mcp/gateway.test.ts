@@ -23,7 +23,7 @@ test("uses the installed OpenCode HTTP envelopes, top-level provenance, and assi
     })()
     return new Response(JSON.stringify(response), { status: 200, headers: { "Content-Type": "application/json" } })
   }
-  const gateway = new OpenCodeHttpGateway(new URL("http://sidecar.test"), "approved-private-password", request)
+  const gateway = new OpenCodeHttpGateway(new URL("http://127.0.0.1:3086"), "approved-private-password", request)
   assert.deepEqual(await gateway.listProjects(), [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }])
   assert.deepEqual(await gateway.createSession({ id: "ses_hermes", directory: "/srv/digitaltwin" }), { id: "ses_hermes", projectID: "project-1" })
   assert.deepEqual(await gateway.prompt({ sessionID: "ses_hermes", messageID: "msg_hermes", text: "Start.", metadata: { fromCommander: true } }), {
@@ -53,7 +53,20 @@ test("fails before network access when no OpenCode sidecar password was explicit
     invoked = true
     return new Response("{}")
   }
-  const gateway = new OpenCodeHttpGateway(new URL("http://sidecar.test"), undefined, request)
+  const gateway = new OpenCodeHttpGateway(new URL("http://127.0.0.1:3086"), undefined, request)
   await assert.rejects(gateway.listProjects(), /authorization is not configured/)
+  assert.equal(invoked, false)
+})
+
+test("rejects a non-loopback sidecar endpoint before it can attach a Basic credential", () => {
+  let invoked = false
+  const request: typeof fetch = async () => {
+    invoked = true
+    return new Response("{}")
+  }
+  assert.throws(
+    () => new OpenCodeHttpGateway(new URL("https://opencode.example.test"), "approved-private-password", request),
+    /http loopback origin/,
+  )
   assert.equal(invoked, false)
 })
