@@ -28,8 +28,9 @@ export class ServiceRegistrationOpenCodeSidecar implements OpenCodeSidecarSource
     private readonly registrationFile: string,
     private readonly request: Fetch = fetch,
   ) {
-    if (!isAbsolute(registrationFile) || basename(registrationFile) !== "service-local.json") {
-      throw new Error("OpenCode service registration must be an absolute service-local.json path.")
+    const registrationName = basename(registrationFile)
+    if (!isAbsolute(registrationFile) || (registrationName !== "service-local.json" && registrationName !== "service.json")) {
+      throw new Error("OpenCode service registration must be an absolute service-local.json or service.json path.")
     }
   }
 

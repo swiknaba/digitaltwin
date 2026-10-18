@@ -169,6 +169,76 @@ except (json.JSONDecodeError, OSError, sqlite3.Error):
   unset ANTHROPIC_API_KEY
 }
 
+ensure_commander_mcp_profile() {
+  test -x "$resources/bin/commander-mcp" || { printf '%s\n' "Bundled Commander MCP executable is missing" >&2; exit 78; }
+  "$resources/ruby/bin/ruby" -rpsych -e '
+    config_path = ARGV.fetch(0)
+    raw = File.read(config_path, encoding: "UTF-8")
+    config = Psych.safe_load(raw, permitted_classes: [], aliases: false)
+    unless config.is_a?(Hash)
+      warn "Hermes profile config must contain a mapping"
+      exit 78
+    end
+
+    servers = config.fetch("mcp_servers", {})
+    unless servers.is_a?(Hash)
+      warn "Hermes profile mcp_servers must contain a mapping"
+      exit 78
+    end
+
+    args = ["-c", "unset ANTHROPIC_API_KEY; exec \"${DIGITALTWIN_COMMANDER_MCP_BIN:?DigitalTwin Commander MCP is unavailable}\""]
+    legacy_args = ["-c", "unset ANTHROPIC_API_KEY; exec \\\"${DIGITALTWIN_COMMANDER_MCP_BIN:?DigitalTwin Commander MCP is unavailable}\\\""]
+    environment = {
+      "DIGITALTWIN_COMMANDER_MCP_BIN" => "${DIGITALTWIN_COMMANDER_MCP_BIN}",
+      "DIGITALTWIN_HERMES_DELEGATION_STATE" => "${DIGITALTWIN_HERMES_DELEGATION_STATE}",
+      "DIGITALTWIN_HERMES_PROVENANCE_SUBJECT" => "${DIGITALTWIN_HERMES_PROVENANCE_SUBJECT}",
+      "DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE" => "${DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE}",
+    }
+    changed = false
+    entry = servers["commander-delegation"]
+    if entry.nil?
+      entry = {
+        "command" => "sh",
+        "args" => args,
+        "env" => environment,
+        "tools" => {
+          "include" => [
+            "commander_list_projects",
+            "commander_list_enabled_models",
+            "commander_create_project_session",
+            "commander_read_agent",
+            "commander_continue_agent",
+          ],
+        },
+      }
+      servers["commander-delegation"] = entry
+      config["mcp_servers"] = servers
+      changed = true
+    elsif entry.is_a?(Hash) && entry["command"] == "sh" && [args, legacy_args].include?(entry["args"])
+      if entry["args"] == legacy_args
+        entry["args"] = args
+        changed = true
+      end
+      entry_environment = entry.fetch("env", {})
+      unless entry_environment.is_a?(Hash)
+        warn "Managed Commander MCP profile env must contain a mapping"
+        exit 78
+      end
+      environment.each do |key, value|
+        next if entry_environment.key?(key)
+        entry_environment[key] = value
+        changed = true
+      end
+      entry["env"] = entry_environment
+    end
+    if changed
+      temporary = "#{config_path}.new-#{Process.pid}"
+      File.write(temporary, Psych.dump(config), encoding: "UTF-8")
+      File.rename(temporary, config_path)
+    end
+  ' "$hermes_home/config.yaml"
+}
+
 start_hermes() {
   ensure_hermes_token
   load_active_anthropic_credential
@@ -178,6 +248,11 @@ start_hermes() {
     cp "$resources/hermes/profile/SOUL.md" "$hermes_home/SOUL.md"
     cp "$resources/hermes/profile/AGENTS.md" "$hermes_home/AGENTS.md"
   fi
+  export DIGITALTWIN_COMMANDER_MCP_BIN="$resources/bin/commander-mcp"
+  export DIGITALTWIN_HERMES_DELEGATION_STATE="$data_root/hermes/commander-delegation-state.json"
+  export DIGITALTWIN_HERMES_PROVENANCE_SUBJECT="hermes-profile-local"
+  export DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE="$opencode_root/desktop/opencode/service.json"
+  ensure_commander_mcp_profile
   export HERMES_HOME="$hermes_home"
   export HERMES_INSTALL_ROOT="$resources/hermes/source"
   export HERMES_RUNTIME_DIR="$resources/hermes/runtime"

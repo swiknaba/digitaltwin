@@ -4,3 +4,21 @@ platforms:
     extra:
       host: "127.0.0.1"
       port: 8642
+mcp_servers:
+  commander-delegation:
+    command: sh
+    args:
+      - -c
+      - 'unset ANTHROPIC_API_KEY; exec "${DIGITALTWIN_COMMANDER_MCP_BIN:?DigitalTwin Commander MCP is unavailable}"'
+    env:
+      DIGITALTWIN_COMMANDER_MCP_BIN: "${DIGITALTWIN_COMMANDER_MCP_BIN}"
+      DIGITALTWIN_HERMES_DELEGATION_STATE: "${DIGITALTWIN_HERMES_DELEGATION_STATE}"
+      DIGITALTWIN_HERMES_PROVENANCE_SUBJECT: "${DIGITALTWIN_HERMES_PROVENANCE_SUBJECT}"
+      DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE: "${DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE}"
+    tools:
+      include:
+        - commander_list_projects
+        - commander_list_enabled_models
+        - commander_create_project_session
+        - commander_read_agent
+        - commander_continue_agent

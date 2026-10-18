@@ -179,7 +179,7 @@ from scripts.bundles.payload import seal_pm_runtime
 
 seal_pm_runtime(root, root / "pm-runtime/bin/python3")
 ' "$resources/hermes"
-"$resources/hermes/venv/bin/python" -I -c 'import anthropic'
+"$resources/hermes/venv/bin/python" -I -c 'import anthropic, mcp, ruamel.yaml'
 cp "$repo_root/macos-local-app-spike/hermes-manifest.json" "$resources/hermes/manifest.json"
 cp "$repo_root/commander/hermes-profile-template/config.yaml.example" "$resources/hermes/profile/config.yaml.example"
 cp "$repo_root/commander/hermes-profile-template/SOUL.md" "$resources/hermes/profile/SOUL.md"
@@ -189,6 +189,8 @@ cp "$repo_root/macos-local-app-spike/hermes-launcher.sh" "$resources/bin/hermes"
 chmod 755 "$resources/bin/hermes"
 
 bun build "$repo_root/commander/hermes-adapter/server.ts" --compile --target=bun-darwin-arm64 --outfile "$resources/bin/hermes-adapter"
+bun build "$repo_root/commander/hermes-mcp/server.ts" --compile --target=bun-darwin-arm64 --outfile "$resources/bin/commander-mcp"
+test -x "$resources/bin/commander-mcp" || fail "Bundled Commander MCP executable is missing"
 
 patch_manifest=$(
   for patch in "$patch_dir"/[0-9][0-9][0-9][0-9]-*.patch; do

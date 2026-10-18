@@ -23,18 +23,55 @@ class MacosLocalAppSpikeLauncherTest(unittest.TestCase):
             self.assertEqual((active / "opencode-adapter-token").read_text(), "present")
             self.assertEqual((active / "hermes-anthropic-key").read_text(), "present")
             self.assertEqual((active / "adapter-anthropic-key").read_text(), "absent")
+            active_profile = (active.parent / "spike" / "data" / "h" / "config.yaml").read_text()
+            self.assertIn("commander-delegation", active_profile)
+            self.assertIn("DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE", active_profile)
 
             inactive = self._launch(root, active_credential=False)
             self.assertEqual((inactive / "opencode-adapter-token").read_text(), "present")
             self.assertEqual((inactive / "hermes-anthropic-key").read_text(), "absent")
             self.assertEqual((inactive / "adapter-anthropic-key").read_text(), "absent")
+            inactive_profile = (inactive.parent / "spike" / "data" / "h" / "config.yaml").read_text()
+            self.assertIn("commander-delegation", inactive_profile)
+            self.assertIn("DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE", inactive_profile)
 
-    def _launch(self, root: Path, active_credential: bool) -> Path:
+    def test_launch_repairs_only_the_known_legacy_commander_mcp_entry(self):
+        legacy_profile = """platforms:
+  api_server:
+    enabled: true
+mcp_servers:
+  command-not-managed:
+    command: custom-mcp
+    args:
+      - --user-choice
+  commander-delegation:
+    command: sh
+    args:
+      - -c
+      - 'unset ANTHROPIC_API_KEY; exec \\"${DIGITALTWIN_COMMANDER_MCP_BIN:?DigitalTwin Commander MCP is unavailable}\\"'
+"""
+        with self._temporary_root() as temporary:
+            records = self._launch(Path(temporary), active_credential=True, existing_profile=legacy_profile)
+            profile = (records.parent / "spike" / "data" / "h" / "config.yaml").read_text()
+            self.assertIn("command-not-managed", profile)
+            self.assertIn("custom-mcp", profile)
+            self.assertNotIn('exec \\\"${DIGITALTWIN_COMMANDER_MCP_BIN', profile)
+            self.assertIn('exec "${DIGITALTWIN_COMMANDER_MCP_BIN', profile)
+            self.assertIn("DIGITALTWIN_COMMANDER_MCP_BIN", profile)
+            self.assertIn("DIGITALTWIN_HERMES_DELEGATION_STATE", profile)
+            self.assertIn("DIGITALTWIN_HERMES_PROVENANCE_SUBJECT", profile)
+            self.assertIn("DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE", profile)
+
+    def _launch(self, root: Path, active_credential: bool, existing_profile: str | None = None) -> Path:
         label = "active" if active_credential else "inactive"
-        app = root / label / "DigitalTwin.app"
+        # Mirror the shipped bundle layout: the data directory sits beside the
+        # app and its short Hermes path is a sibling of that app directory.
+        # This prevents the active and inactive fixture launches from sharing
+        # the same `dt` symlink.
+        app = root / label / "spike" / "DigitalTwin.app"
         resources = app / "Contents" / "Resources"
         records = root / label / "records"
-        data = root / label / "data"
+        data = root / label / "spike" / "data"
         launcher = app / "Contents" / "MacOS" / "DigitalTwin"
         records.mkdir(parents=True)
         launcher.parent.mkdir(parents=True)
@@ -42,6 +79,10 @@ class MacosLocalAppSpikeLauncherTest(unittest.TestCase):
         launcher.chmod(0o755)
         self._write_resources(resources)
         self._write_credential(data, active_credential)
+        if existing_profile is not None:
+            profile = data / "h"
+            profile.mkdir(parents=True)
+            (profile / "config.yaml").write_text(existing_profile)
         ports = self._ports(5)
         environment = os.environ.copy()
         environment.pop("ANTHROPIC_API_KEY", None)
@@ -73,16 +114,21 @@ fi
             self._executable(resources / "postgres" / "bin" / command, "#!/bin/sh\nexit 0\n")
         self._executable(
             resources / "ruby" / "bin" / "ruby",
-            "#!/bin/sh\nif test \"${1:-}\" = \"-rsecurerandom\"; then printf fixture-control-token; fi\nexit 0\n",
+            f"#!/bin/sh\nif test \"${{1:-}}\" = \"-rsecurerandom\"; then printf fixture-control-token; exit 0; fi\nexec {shutil.which('ruby')} \"$@\"\n",
         )
         for command in ["rake", "falcon"]:
             self._executable(resources / "kirei" / "vendor" / "bundle" / "ruby" / "4.0.0" / "bin" / command, "#!/bin/sh\nexit 0\n")
         (resources / "kirei" / "bin").mkdir(parents=True, exist_ok=True)
-        (resources / "kirei" / "bin" / "health").write_text("placeholder")
+        # The launcher calls this through the bundled Ruby executable while
+        # waiting for both fake Kirei processes. Keep it a valid, successful
+        # Ruby program so this test exercises profile migration rather than
+        # waiting for a deliberately failing readiness probe.
+        (resources / "kirei" / "bin" / "health").write_text("exit 0\n")
         (resources / "commander").mkdir(parents=True, exist_ok=True)
         (resources / "commander" / "commander-agent-baseline.md").write_text("# Commander\n")
         (resources / "hermes" / "profile").mkdir(parents=True, exist_ok=True)
-        for name in ["config.yaml.example", "SOUL.md", "AGENTS.md"]:
+        (resources / "hermes" / "profile" / "config.yaml.example").write_text("platforms:\n  api_server:\n    enabled: true\n")
+        for name in ["SOUL.md", "AGENTS.md"]:
             (resources / "hermes" / "profile" / name).write_text("placeholder\n")
         self._executable(resources / "hermes" / "runtime" / "python" / "bin" / "python3", f"#!/bin/sh\nexec {sys.executable} \"$@\"\n")
         self._executable(resources / "bin" / "hermes", """#!/bin/sh
@@ -101,6 +147,8 @@ else
 fi
 exec \"$DIGITALTWIN_TEST_PYTHON\" -c '\nimport os\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\nclass Handler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(200)\n        self.end_headers()\n    def log_message(self, *args):\n        return\nHTTPServer(("127.0.0.1", int(os.environ["DIGITALTWIN_HERMES_ADAPTER_PORT"])), Handler).serve_forever()\n'
 """)
+
+        self._executable(resources / "bin" / "commander-mcp", "#!/bin/sh\nexit 0\n")
 
     def _write_credential(self, data: Path, active: bool) -> None:
         database = data / "opencode" / "data" / "opencode" / "opencode.db"
