@@ -1,0 +1,25 @@
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -489,7 +489,7 @@
+                                 sessionID={props.conversation.sessionID}
+                                 message={user()}
+                                 historicalAgent=""
+-                                historicalModel={model()}
++                                historicalModel={{ providerID: "", id: "" }}
+                               />
+                             </div>
+                           </Show>
+diff --git a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+--- a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -105,6 +105,8 @@
+   await expect(overlay.getByText(userText, { exact: true })).toHaveCount(1)
+   await expect(overlay.getByText("fixture Commander reply", { exact: true })).toHaveCount(1)
+   await expect(overlay.locator('[data-component="user-message"]')).toHaveCount(1)
++  await expect(overlay.locator('[data-component="user-message"]')).not.toContainText("commander-small")
++  await expect(overlay.locator('[data-component="user-message"] [data-slot="user-message-meta"]')).toHaveCount(0)
+   await expect(overlay.locator('[data-component="text-part"]')).toHaveCount(1)
+   await expect(overlay.getByRole("button", { name: "Copy response" })).toHaveCount(1)
+ 
+
