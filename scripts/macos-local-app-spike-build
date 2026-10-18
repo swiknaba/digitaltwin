@@ -8,6 +8,7 @@ toolchain_root="$spike_root/toolchain"
 opencode_source=${DIGITALTWIN_OPENCODE_SOURCE:-"$repo_root/local/opencode-packaged-fresh"}
 app=${DIGITALTWIN_APP_OUTPUT:-"$spike_root/DigitalTwin.app"}
 build_root=${DIGITALTWIN_APP_BUILD_ROOT:-"$spike_root/build/candidate"}
+staged_app="$build_root/DigitalTwin.app"
 hermes_runtime="$repo_root/local/hermes/runtime"
 hermes_python="$hermes_runtime/tools/python-3.14.7+20260901-darwin-arm64/bin/python3"
 patch_dir="$repo_root/commander/opencode-ui-patch"
@@ -54,7 +55,7 @@ remove_generated_path() {
 }
 
 remove_generated_path "$build_root/opencode-dist"
-remove_generated_path "$app"
+remove_generated_path "$staged_app"
 mkdir -p "$build_root/cache" "$build_root/tmp" "$(dirname "$app")"
 
 export BUN_INSTALL_CACHE_DIR="$build_root/cache/bun"
@@ -72,7 +73,7 @@ export TMPDIR="$build_root/tmp"
 opencode_app="$build_root/opencode-dist/mac-arm64/OpenCode Dev.app"
 test -d "$opencode_app" || fail "fresh OpenCode package was not produced at $opencode_app"
 
-resources="$app/Contents/Resources"
+resources="$staged_app/Contents/Resources"
 
 case "$(uname -m)" in
   arm64) ;;
@@ -88,10 +89,10 @@ hermes_venv=$(
 )
 test -d "$hermes_venv" || { printf '%s\n' "The Hermes dependency closure is missing" >&2; exit 78; }
 
-mkdir -p "$resources/bin" "$app/Contents/MacOS"
-cp "$repo_root/macos-local-app-spike/Info.plist" "$app/Contents/Info.plist"
-cp "$repo_root/macos-local-app-spike/launcher.sh" "$app/Contents/MacOS/DigitalTwin"
-chmod 755 "$app/Contents/MacOS/DigitalTwin"
+mkdir -p "$resources/bin" "$staged_app/Contents/MacOS"
+cp "$repo_root/macos-local-app-spike/Info.plist" "$staged_app/Contents/Info.plist"
+cp "$repo_root/macos-local-app-spike/launcher.sh" "$staged_app/Contents/MacOS/DigitalTwin"
+chmod 755 "$staged_app/Contents/MacOS/DigitalTwin"
 ditto "$opencode_app" "$resources/OpenCode.app"
 ditto "$toolchain_root/ruby" "$resources/ruby"
 ditto "$toolchain_root/postgres" "$resources/postgres"
@@ -146,5 +147,13 @@ source_diff_sha=$(git -C "$opencode_source" diff --binary | shasum -a 256 | awk 
   }
   File.write(destination, JSON.pretty_generate(payload) + "\n")
 ' "$resources/build-provenance.json" "$(git -C "$opencode_source" rev-parse HEAD)" "$source_diff_sha" "$patch_manifest" "$opencode_source"
+
+# Do not discard a known-good canonical app until its replacement is fully
+# assembled. This keeps a failed build from leaving Finder with no launchable
+# DigitalTwin bundle.
+if test -e "$app"; then
+  remove_generated_path "$app"
+fi
+mv "$staged_app" "$app"
 
 printf '%s\n' "Built unsigned arm64 DigitalTwin app at $app"

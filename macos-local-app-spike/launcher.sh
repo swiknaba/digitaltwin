@@ -296,8 +296,20 @@ verify() {
 launch() {
   trap 'stop' 0
   trap 'exit 0' 1 2 15
-  start
-  launch_opencode
+
+  # OpenCode is the native interface. Starting it first avoids a long Finder
+  # bounce while the isolated local services initialise. The Commander bridge
+  # handles the sidecar becoming available after the UI.
+  launch_opencode &
+  opencode_launcher_pid=$!
+
+  if ! start; then
+    kill -TERM "$opencode_launcher_pid" 2>/dev/null || true
+    wait "$opencode_launcher_pid" 2>/dev/null || true
+    return 1
+  fi
+
+  wait "$opencode_launcher_pid"
 }
 
 case "${1:-launch}" in

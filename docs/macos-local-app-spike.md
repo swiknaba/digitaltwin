@@ -7,10 +7,10 @@ need to be rewritten just to begin the spike.
 ## Outcome and boundary
 
 The spike creates an unsigned, project-local `DigitalTwin.app` under
-`local/macos-local-app-spike/`. Its default app entry point starts the bundled
-services, launches the nested patched OpenCode Electron application, waits for
-that process, then stops the services when OpenCode quits. It is not a second
-desktop UI. The real OpenCode Electron application is bundled as a nested
+`local/macos-local-app-spike/`. Its default app entry point launches the nested
+patched OpenCode Electron application immediately, then starts the bundled
+services while the native UI is visible. It waits for OpenCode and stops the
+services when OpenCode quits. It is not a second desktop UI. The real OpenCode Electron application is bundled as a nested
 resource and is compiled from the maintained 46-patch Commander chain in a
 fresh prepared checkout; the packager never copies a prior desktop artifact.
 
@@ -112,7 +112,8 @@ maintained-patch manifest hash.
 
 For a candidate while the Finder app is running, select a separate generated
 output and build root. The packager refuses to replace an existing default app
-unless `DIGITALTWIN_REPLACE_DEFAULT_APP=yes` is explicit:
+unless `DIGITALTWIN_REPLACE_DEFAULT_APP=yes` is explicit. It assembles a staged
+bundle first, so a failed build leaves the existing default app intact:
 
 ```sh
 DIGITALTWIN_OPENCODE_SOURCE="$PWD/local/opencode-packaged-fresh" \
