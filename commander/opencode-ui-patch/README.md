@@ -52,7 +52,7 @@ sh commander/opencode-ui-patch/prepare-opencode.sh
 The default target is `local/opencode`; pass an absolute checkout path only when
 an operator deliberately needs a different location. The script verifies the
 pinned revision, then applies all patches. The reviewed patch sequence is
-currently forty-seven patches.
+currently forty-nine patches.
 It copies no configuration, credentials, persistent store, or operator state.
 
 For a local desktop walkthrough—including optional native-agent continuation and

@@ -26,7 +26,17 @@ export class HermesGatewayClient implements HermesGateway {
   async steer(runID: string, text: string): Promise<void> { await this.json(`/v1/runs/${encodeURIComponent(runID)}/steer`, { method: "POST", body: JSON.stringify({ input: text }) }) }
   async stop(runID: string): Promise<void> { await this.json(`/v1/runs/${encodeURIComponent(runID)}/stop`, { method: "POST" }) }
   async history(sessionID: string): Promise<readonly HermesHistoryMessage[]> {
-    const value = await this.json(`/api/sessions/${encodeURIComponent(sessionID)}/messages?order=oldest&limit=500`)
+    let value: unknown
+
+    try {
+      value = await this.json(`/api/sessions/${encodeURIComponent(sessionID)}/messages?order=oldest&limit=500`)
+    } catch (error) {
+      // A gateway restart can discard an already-persisted Commander session.
+      // Its transcript is optional; the next run recreates it under the same id.
+      if (error instanceof HermesResponseError && error.status === 404) return []
+      throw error
+    }
+
     if (!object(value) || !Array.isArray(value.data)) throw new Error("Hermes returned invalid session history.")
     return value.data.flatMap((message): HermesHistoryMessage[] => {
       if (!object(message) || (message.role !== "user" && message.role !== "assistant") || typeof message.content !== "string") return []
@@ -58,7 +68,7 @@ export class HermesGatewayClient implements HermesGateway {
 
   private async json(path: string, init: RequestInit = {}): Promise<unknown> {
     const response = await this.request(new URL(path, this.endpoint), { ...init, headers: this.headers(init.headers), body: init.body })
-    if (!response.ok) throw new Error(`Hermes request failed (${response.status}).`)
+    if (!response.ok) throw new HermesResponseError(response.status)
     return response.json()
   }
 
@@ -67,6 +77,12 @@ export class HermesGatewayClient implements HermesGateway {
     headers.set("Authorization", `Bearer ${this.token}`)
     headers.set("Content-Type", "application/json")
     return headers
+  }
+}
+
+class HermesResponseError extends Error {
+  constructor(readonly status: number) {
+    super(`Hermes request failed (${status}).`)
   }
 }
 

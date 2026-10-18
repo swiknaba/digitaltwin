@@ -1,0 +1,148 @@
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+index 74350fa..0120f2c 100644
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -388,7 +388,9 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+           return
+         }
+         void Promise.all([
+-          loadHistory(),
++          // A stale Hermes session has no transcript after a gateway restart. Its
++          // history is optional and must not hide a healthy model picker.
++          loadHistory().catch(() => undefined),
+           hermesRequest<readonly HermesModelOption[]>({ operation: "models" }),
+           hermesRequest<CommanderModelSelection>({ operation: "selected-model" }),
+         ]).then(
+diff --git a/packages/desktop/scripts/prebuild.ts b/packages/desktop/scripts/prebuild.ts
+index ef9e517..c0259bb 100644
+--- a/packages/desktop/scripts/prebuild.ts
++++ b/packages/desktop/scripts/prebuild.ts
+@@ -13,10 +13,10 @@ await $`bun ./scripts/copy-icons.ts ${channel}`
+ 
+ await $`bun ./scripts/copy-metainfo.ts ${channel}`
+ 
+-if (channel === "dev") await downloadCliToResources()
+-
+-if ((channel === "beta" || channel === "prod") && Bun.env.OPENCODE_CLI_DIST) {
++if (Bun.env.OPENCODE_CLI_DIST) {
+   await copyBuiltCliToResources(Bun.env.OPENCODE_CLI_DIST)
++} else if (channel === "dev") {
++  await downloadCliToResources()
+ }
+ 
+ if (channel === "beta" && !Bun.env.OPENCODE_CLI_DIST) await downloadCliToResources("beta")
+diff --git a/packages/desktop/scripts/utils.ts b/packages/desktop/scripts/utils.ts
+index 3c11928..d3c1858 100644
+--- a/packages/desktop/scripts/utils.ts
++++ b/packages/desktop/scripts/utils.ts
+@@ -107,7 +107,16 @@ async function copyCliToResources(pkg: string, dest: string) {
+   const manifest = (await Bun.file(join(pkg, "package.json")).json()) as { version?: string }
+ 
+   if (!manifest.version) throw new Error(`Bundled CLI package has no version: ${pkg}`)
+-  await Bun.write(versionFile(dest), manifest.version)
++  await Bun.write(versionFile(dest), `${manifest.version}${buildIdentitySuffix()}`)
++}
++
++function buildIdentitySuffix() {
++  const identity = Bun.env.OPENCODE_CLI_BUILD_ID
++
++  if (!identity) return ""
++  if (!/^[a-f0-9]{12,64}$/i.test(identity)) throw new Error("OPENCODE_CLI_BUILD_ID must be a hexadecimal build identity.")
++
++  return `+${identity}`
+ }
+ 
+ export function versionFile(cli: string) {
+diff --git a/packages/app/component-tests/commander-vite-fixture/main.tsx b/packages/app/component-tests/commander-vite-fixture/main.tsx
+index eb83337..0b2bce1 100644
+--- a/packages/app/component-tests/commander-vite-fixture/main.tsx
++++ b/packages/app/component-tests/commander-vite-fixture/main.tsx
+@@ -41,6 +41,7 @@ declare global {
+       reopen(): void
+       setColorScheme(scheme: "light" | "dark"): void
+       setHermesMode(mode: "available" | "unavailable" | "reject"): void
++      setHistoryMode(mode: "available" | "unavailable"): void
+       hermesRequests(): number
+       resetHermesRequests(): void
+       hermesInventoryRequests(): number
+@@ -72,6 +73,8 @@ function Fixture() {
+   let model: Model = { providerID: "fixture", modelID: "commander-small" }
+   let hermesMode: "available" | "unavailable" | "reject" =
+     new URLSearchParams(window.location.search).get("hermes") === "unavailable" ? "unavailable" : "available"
++  let historyMode: "available" | "unavailable" =
++    new URLSearchParams(window.location.search).get("history") === "unavailable" ? "unavailable" : "available"
+   let hermesRequests = 0
+   let hermesInventoryRequests = 0
+   let lastStartHasWorkerModel = false
+@@ -106,6 +109,10 @@ function Fixture() {
+         return
+       }
+       if (request.operation === "history") {
++        if (historyMode === "unavailable") {
++          reply(undefined, "Hermes history is unavailable for this controlled test.")
++          return
++        }
+         if (delayedCompletionReply) {
+           const reply = delayedCompletionReply
+           delayedCompletionReply = undefined
+@@ -153,6 +160,9 @@ function Fixture() {
+       setHermesMode: (mode) => {
+         hermesMode = mode
+       },
++      setHistoryMode: (mode) => {
++        historyMode = mode
++      },
+       hermesRequests: () => hermesRequests,
+       hermesInventoryRequests: () => hermesInventoryRequests,
+       lastStartHasWorkerModel: () => lastStartHasWorkerModel,
+diff --git a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+index 34c3c45..f5b8481 100644
+--- a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -84,9 +84,24 @@ test("Commander starts with no implicit model and admits one only after native
+ 
+   expect(await page.evaluate(() => window.commanderFixture?.setModelVisibility("commander-small", true))).toBe(true)
+   await expect(picker).toContainText("commander-small")
++  await expect(overlay.getByRole("button", { name: "Send" })).toBeDisabled()
++  await overlay.locator('[contenteditable="true"]').fill("send with the explicitly enabled model")
+   await expect(overlay.getByRole("button", { name: "Send" })).toBeEnabled()
+ })
+ 
++test("Commander keeps a healthy Hermes model picker when stale history is unavailable", async ({ page }) => {
++  await page.goto("/?history=unavailable")
++  const overlay = page.locator('[data-slot="commander-native-overlay"]')
++  const picker = overlay.locator('[data-action="composer-model"]')
++
++  await expect(overlay.getByText("Using Hermes with the selected Commander model.")).toBeVisible()
++  await expect(
++    overlay.getByText("Hermes model inventory is unavailable. Commander cannot send messages until its harness returns."),
++  ).toHaveCount(0)
++  await picker.click()
++  await expect(page.locator('[data-option-key="fixture:commander-small"]')).toBeVisible()
++})
++
+ test("Commander delegates economical worker selection without a stale client override", async ({ page }) => {
+   await page.goto("/")
+   const overlay = page.locator('[data-slot="commander-native-overlay"]')
+@@ -177,10 +192,18 @@ test("Commander does not fall back to an OpenCode conversation when Hermes is u
+ }) => {
+   await page.goto("/?hermes=unavailable")
+   const overlay = page.locator('[data-slot="commander-native-overlay"]')
++  const unavailable = overlay.getByText(
++    "Hermes is unavailable. Commander cannot send messages until its harness returns.",
++    { exact: true },
++  )
++  await expect(unavailable).toHaveCount(1)
++  await expect(unavailable).toBeVisible()
+   await expect(
+-    overlay.getByText("Hermes is unavailable. Commander cannot send messages until its harness returns.").first(),
++    overlay.getByText(
++      "Hermes model inventory is unavailable. Commander cannot send messages until its harness returns.",
++      { exact: true },
++    ),
+-  ).toBeVisible()
++  ).toHaveCount(0)
+-  await expect(overlay.getByRole("alert")).toHaveCount(1)
+   await expect(overlay.getByText("Commander is ready when you are.")).toHaveCount(0)
+   await expect(overlay.getByText("Using Hermes with the selected Commander model.")).toHaveCount(0)
+   await expect(overlay.getByRole("button", { name: "Send" })).toBeDisabled()

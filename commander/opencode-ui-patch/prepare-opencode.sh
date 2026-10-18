@@ -30,7 +30,7 @@ cp "$operator_example" "$upstream/commander.env.example"
 cp "$operator_launcher" "$upstream/run-opencode-commander.sh"
 chmod +x "$upstream/run-opencode-commander.sh"
 
-for patch in $patch_names 0046-commander-packaged-readiness-and-native-tone.patch 0047-commander-native-enabled-models.patch; do
+for patch in $patch_names 0046-commander-packaged-readiness-and-native-tone.patch 0047-commander-native-enabled-models.patch 0048-commander-packaged-cli-and-history.patch 0049-commander-cli-stage-identity.patch; do
   test -f "$patch_dir/$patch" || fail "missing patch $patch"
   git -C "$upstream" apply --allow-empty --check "$patch_dir/$patch"
   git -C "$upstream" apply --allow-empty "$patch_dir/$patch"
