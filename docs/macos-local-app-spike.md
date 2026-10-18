@@ -7,10 +7,11 @@ need to be rewritten just to begin the spike.
 ## Outcome and boundary
 
 The spike creates an unsigned, project-local `DigitalTwin.app` under
-`local/macos-local-app-spike/`.  Its wrapper is deliberately small: it starts,
-checks, stops, and restarts the already-packaged services.  It is not a second
-desktop UI.  The real OpenCode Electron application is bundled as a nested
-resource and is built from the maintained 42-patch Commander chain in the
+`local/macos-local-app-spike/`. Its default app entry point starts the bundled
+services, launches the nested patched OpenCode Electron application, waits for
+that process, then stops the services when OpenCode quits. It is not a second
+desktop UI. The real OpenCode Electron application is bundled as a nested
+resource and is built from the maintained 45-patch Commander chain in the
 existing validation checkout.
 
 The production follow-up will move the same supervisor into OpenCode's existing
@@ -36,8 +37,19 @@ All writable state is outside the app bundle, below the configurable absolute
 creates `~/Library/Application Support/DigitalTwin`, and all build caches and
 temporary directories are rooted at `local/macos-local-app-spike/`.
 
-The wrapper uses independent loopback ports (15432, 13000, 18642, and 13087 by
-default), so it does not bind the normal local stack's ports.  It requires an
+The nested OpenCode process receives a separate app-private home and XDG tree
+below that same data directory. It does not adopt the user's ordinary OpenCode
+state or local development sidecar. The wrapper creates a neutral Commander
+workspace and seeds the shipped Commander agent only when it is absent; a
+locally customized app-private agent is retained. It passes the bundled
+loopback Hermes adapter endpoint and bearer only to Electron's main process,
+which keeps it out of the renderer.
+
+The wrapper uses independent loopback ports (15432, 13000, 18642, 13087, and
+13086 for OpenCode's bundled sidecar by default), so it does not bind the
+normal local stack's ports. Its packaged sidecar uses its own state root and
+registration file, and shutdown verifies that registration points to an
+app-private staged executable before terminating it. It requires an
 *existing* API-server token file when starting Hermes.  The token is read into
 the child environment, never copied into the app, profile, logs, or Git.  The
 profile is created from the credential-free tracked Commander template, so it
@@ -89,8 +101,9 @@ any ignored profile data, rewrites its sealed virtual-environment launch paths
 to bundle-relative Python, and copies the already-built OpenCode app from the
 isolated validation checkout.
 
-For a run, pass an existing local API-server token file explicitly rather than
-writing a new credential:
+Launching `DigitalTwin.app` normally runs the complete application. For a
+non-GUI service verification, pass an existing local API-server token file
+explicitly rather than writing a new credential:
 
 ```sh
 DIGITALTWIN_HERMES_API_TOKEN_FILE="$PWD/local/secrets/hermes-api-server-token" \
@@ -101,3 +114,9 @@ DIGITALTWIN_HERMES_API_TOKEN_FILE="$PWD/local/secrets/hermes-api-server-token" \
 and worker readiness, Hermes's unauthenticated rejection endpoint (no provider
 call), adapter health, ordered shutdown, and a fresh restart.  It does not send
 a model request, mutate the active profile, or launch the user's running stack.
+
+The desktop acceptance build additionally uses the 0043--0045 maintained
+OpenCode patches. They keep Electron's user data and XDG roots under the
+app-private data directory, choose a fixed app-private sidecar port, and use
+the bundled CLI's canonical registration name so the native renderer can reach
+its own sidecar even while a normal OpenCode development service is running.

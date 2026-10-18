@@ -1,0 +1,106 @@
+diff --git a/packages/desktop/src/main/lifecycle/configure.ts b/packages/desktop/src/main/lifecycle/configure.ts
+index 678b775c5..a95fcda6b 100644
+--- a/packages/desktop/src/main/lifecycle/configure.ts
++++ b/packages/desktop/src/main/lifecycle/configure.ts
+@@ -5,6 +5,7 @@ import { homedir, tmpdir } from "node:os"
+ import path from "node:path"
+ import { app } from "electron"
+ import { APP_ID, APP_NAME } from "../constants"
++import { configuredStateRoot } from "./data-root"
+ 
+ const testOnboarding = process.env.OPENCODE_TEST_ONBOARDING === "1"
+ 
+@@ -29,13 +30,13 @@ export function configureApplication() {
+   if (!app.isPackaged)
+     app.commandLine.appendSwitch("remote-debugging-port", process.env.OPENCODE_DESKTOP_REMOTE_DEBUGGING_PORT ?? "9222")
+ 
+-  const testRoot = createTestRoot()
+-  app.setPath("userData", testRoot ? path.join(testRoot, "desktop") : path.join(app.getPath("appData"), APP_ID))
++  const stateRoot = createStateRoot()
++  app.setPath("userData", stateRoot ? path.join(stateRoot, "desktop") : path.join(app.getPath("appData"), APP_ID))
+ 
+-  if (testRoot) {
+-    app.setPath("sessionData", path.join(testRoot, "session"))
++  if (stateRoot) {
++    app.setPath("sessionData", path.join(stateRoot, "session"))
+ 
+-    if (testOnboarding) app.setPath("documents", path.join(testRoot, "documents"))
++    if (testOnboarding) app.setPath("documents", path.join(stateRoot, "documents"))
+   }
+ 
+   // V8 bytecode for the main bundle survives between launches, like the renderer's code cache.
+@@ -49,12 +50,14 @@ export function acquireApplicationLock() {
+   return false
+ }
+ 
+-function createTestRoot() {
+-  const root = testOnboarding
+-    ? path.join(tmpdir(), `opencode-onboarding-${randomUUID()}`)
+-    : app.isPackaged
+-      ? undefined
+-      : process.env.OPENCODE_DESKTOP_TEST_ROOT
++function createStateRoot() {
++  const root = testOnboarding
++    ? path.join(tmpdir(), `opencode-onboarding-${randomUUID()}`)
++    : configuredStateRoot({
++        packaged: app.isPackaged,
++        dataRoot: process.env.DIGITALTWIN_OPENCODE_DATA_ROOT,
++        testRoot: process.env.OPENCODE_DESKTOP_TEST_ROOT,
++      })
+ 
+   if (!root) return undefined
+ 
+ 
+diff --git a/packages/desktop/src/main/lifecycle/data-root.test.ts b/packages/desktop/src/main/lifecycle/data-root.test.ts
+new file mode 100644
+index 000000000..b95ecb60c
+--- /dev/null
++++ b/packages/desktop/src/main/lifecycle/data-root.test.ts
+@@ -0,0 +1,22 @@
++import { expect, test } from "bun:test"
++import { configuredStateRoot } from "./data-root"
++
++test("uses the packaged app's explicit state root without sharing the normal desktop profile", () => {
++  expect(
++    configuredStateRoot({
++      packaged: true,
++      dataRoot: "/var/lib/digitaltwin/opencode",
++      testRoot: "/tmp/test-root",
++    }),
++  ).toBe("/var/lib/digitaltwin/opencode")
++})
++
++test("keeps the non-packaged desktop test root contract", () => {
++  expect(configuredStateRoot({ packaged: false, dataRoot: "/ignored", testRoot: "/tmp/test-root" })).toBe("/tmp/test-root")
++})
++
++test("rejects a relative packaged state root", () => {
++  expect(() => configuredStateRoot({ packaged: true, dataRoot: "relative", testRoot: undefined })).toThrow(
++    "DIGITALTWIN_OPENCODE_DATA_ROOT must be absolute.",
++  )
++})
+diff --git a/packages/desktop/src/main/lifecycle/data-root.ts b/packages/desktop/src/main/lifecycle/data-root.ts
+new file mode 100644
+index 000000000..27cd6ca1d
+--- /dev/null
++++ b/packages/desktop/src/main/lifecycle/data-root.ts
+@@ -0,0 +1,19 @@
++import path from "node:path"
++
++export function configuredStateRoot(
++  input: Readonly<{
++    packaged: boolean
++    dataRoot: string | undefined
++    testRoot: string | undefined
++  }>,
++) {
++  const root = input.packaged ? input.dataRoot : input.testRoot
++
++  if (!root) return
++  if (!path.isAbsolute(root)) {
++    const name = input.packaged ? "DIGITALTWIN_OPENCODE_DATA_ROOT" : "OPENCODE_DESKTOP_TEST_ROOT"
++    throw new Error(`${name} must be absolute.`)
++  }
++
++  return root
++}

@@ -17,9 +17,10 @@ postgres_port=${DIGITALTWIN_APP_POSTGRES_PORT:-15432}
 web_port=${DIGITALTWIN_APP_WEB_PORT:-13000}
 hermes_port=${DIGITALTWIN_APP_HERMES_PORT:-18642}
 adapter_port=${DIGITALTWIN_APP_ADAPTER_PORT:-13087}
+opencode_port=${DIGITALTWIN_APP_OPENCODE_PORT:-13086}
 token_file=${DIGITALTWIN_HERMES_API_TOKEN_FILE:-}
 
-for port in "$postgres_port" "$web_port" "$hermes_port" "$adapter_port"; do
+for port in "$postgres_port" "$web_port" "$hermes_port" "$adapter_port" "$opencode_port"; do
   case "$port" in
     *[!0-9]*|'') printf '%s\n' "DigitalTwin app ports must be numeric" >&2; exit 64 ;;
   esac
@@ -30,8 +31,13 @@ log_root="$data_root/logs"
 postgres_data="$data_root/postgres"
 hermes_home="$data_root/hermes/profile"
 pid_root="$run_root/pids"
+commander_workspace="$data_root/commander-workspace"
+opencode_root="$data_root/opencode"
+opencode_home="$opencode_root/home"
+opencode_tmp="$opencode_root/tmp"
+opencode_executable="$resources/OpenCode.app/Contents/MacOS/OpenCode Dev"
 
-mkdir -p "$run_root" "$log_root" "$pid_root" "$data_root/heartbeats" "$data_root/home" "$data_root/tmp"
+mkdir -p "$run_root" "$log_root" "$pid_root" "$data_root/heartbeats" "$data_root/home" "$data_root/tmp" "$commander_workspace"
 umask 077
 
 if test "$data_root" = "$default_data_root"; then
@@ -76,10 +82,10 @@ start_postgres() {
   if ! test -f "$postgres_data/PG_VERSION"; then
     "$resources/postgres/bin/initdb" --auth=trust --username=digitaltwin --pgdata="$postgres_data" >> "$log_root/postgres.log" 2>&1
   fi
-  if ! "$resources/postgres/bin/pg_isready" --host=127.0.0.1 --port="$postgres_port" --username=digitaltwin >/dev/null 2>&1; then
+  if ! "$resources/postgres/bin/pg_isready" --host=127.0.0.1 --port="$postgres_port" --username=digitaltwin --dbname=digitaltwin_spike >/dev/null 2>&1; then
     "$resources/postgres/bin/pg_ctl" --pgdata="$postgres_data" --log="$log_root/postgres.log" --options="-h 127.0.0.1 -p $postgres_port" start >> "$log_root/postgres.log" 2>&1
   fi
-  wait_for "PostgreSQL" "$resources/postgres/bin/pg_isready" --host=127.0.0.1 --port="$postgres_port" --username=digitaltwin
+  wait_for "PostgreSQL" "$resources/postgres/bin/pg_isready" --host=127.0.0.1 --port="$postgres_port" --username=digitaltwin --dbname=digitaltwin_spike
   if ! "$resources/postgres/bin/psql" --host=127.0.0.1 --port="$postgres_port" --username=digitaltwin --dbname=postgres --tuples-only --no-align --command="SELECT 1 FROM pg_database WHERE datname = 'digitaltwin_spike'" | grep -qx 1; then
     "$resources/postgres/bin/createdb" --host=127.0.0.1 --port="$postgres_port" --username=digitaltwin digitaltwin_spike
   fi
@@ -158,6 +164,50 @@ start_adapter() {
   wait_for "Hermes adapter" curl --silent --fail --output /dev/null --max-time 2 "http://127.0.0.1:$adapter_port/health"
 }
 
+prepare_commander_workspace() {
+  agent_directory="$commander_workspace/.opencode/agents"
+  agent_file="$agent_directory/commander.md"
+  baseline="$resources/commander/commander-agent-baseline.md"
+
+  test -f "$baseline" || { printf '%s\n' "Bundled Commander agent baseline is missing" >&2; exit 78; }
+  mkdir -p "$agent_directory"
+  if ! test -e "$agent_file"; then
+    cp "$baseline" "$agent_file"
+  fi
+}
+
+launch_opencode() {
+  test -x "$opencode_executable" || { printf '%s\n' "Bundled OpenCode executable is missing" >&2; exit 78; }
+  prepare_commander_workspace
+
+  # Keep Electron, its sidecar, and its shell-environment probe inside this app's
+  # writable root. The app owns this state and must not adopt a user's desktop
+  # service, provider configuration, or regular development profile.
+  mkdir -p "$opencode_home" "$opencode_tmp"
+  export HOME="$opencode_home"
+  export TMPDIR="$opencode_tmp"
+  export SHELL=/bin/sh
+  export DIGITALTWIN_OPENCODE_DATA_ROOT="$opencode_root"
+  export DIGITALTWIN_COMMANDER_WORKSPACE="$commander_workspace"
+  export DIGITALTWIN_COMMANDER_AGENT=commander
+  export DIGITALTWIN_HERMES_ADAPTER_URL="http://127.0.0.1:$adapter_port"
+  export DIGITALTWIN_OPENCODE_ISOLATED_SERVER=1
+  export DIGITALTWIN_OPENCODE_ISOLATED_SERVER_PORT="$opencode_port"
+  export OPENCODE_DESKTOP_SERVER_CHANNEL=local
+  export OPENCODE_DESKTOP_DISABLE_PROTOCOL_REGISTRATION=1
+  unset BUNDLE_GEMFILE BUNDLE_IGNORE_CONFIG BUNDLE_PATH GEM_HOME GEM_PATH RUBYLIB RUBYOPT ZDOTDIR
+
+  "$opencode_executable" >> "$log_root/opencode.log" 2>&1 &
+  echo $! > "$(pid_file opencode)"
+  if wait "$!"; then
+    result_code=0
+  else
+    result_code=$?
+  fi
+  rm -f "$(pid_file opencode)"
+  return "$result_code"
+}
+
 stop_named() {
   name=$1
   if alive "$name"; then
@@ -173,6 +223,29 @@ stop_named() {
   rm -f "$(pid_file "$name")"
 }
 
+stop_opencode_sidecar() {
+  for registration in "$opencode_root/desktop/opencode/service.json" "$opencode_root/desktop/opencode/service-local.json"; do
+    test -f "$registration" || continue
+    sidecar_pid=$("$resources/ruby/bin/ruby" -rjson -e 'value = JSON.parse(File.read(ARGV.fetch(0))); pid = value["pid"]; print(pid) if pid.is_a?(Integer) && pid.positive?' "$registration" 2>/dev/null || true)
+    case "$sidecar_pid" in
+      *[!0-9]*|'') continue ;;
+    esac
+    sidecar_command=$(ps -p "$sidecar_pid" -o command= 2>/dev/null || true)
+    case "$sidecar_command" in
+      "$opencode_root"/desktop/cli/*)
+        kill -TERM "$sidecar_pid" 2>/dev/null || true
+        attempts=0
+        while kill -0 "$sidecar_pid" 2>/dev/null && test "$attempts" -lt 15; do
+          attempts=$((attempts + 1))
+          sleep 1
+        done
+        kill -0 "$sidecar_pid" 2>/dev/null && kill -KILL "$sidecar_pid" 2>/dev/null || true
+        rm -f "$registration"
+        ;;
+    esac
+  done
+}
+
 start() {
   start_postgres
   start_kirei
@@ -181,6 +254,7 @@ start() {
 }
 
 stop() {
+  stop_opencode_sidecar
   stop_named hermes-adapter
   stop_named hermes
   stop_named kirei-worker
@@ -191,7 +265,7 @@ stop() {
 }
 
 status() {
-  "$resources/postgres/bin/pg_isready" --host=127.0.0.1 --port="$postgres_port" --username=digitaltwin
+  "$resources/postgres/bin/pg_isready" --host=127.0.0.1 --port="$postgres_port" --username=digitaltwin --dbname=digitaltwin_spike
   curl --silent --fail --output /dev/null --max-time 2 "http://127.0.0.1:$web_port/readyz"
   test -f "$data_root/heartbeats/digitaltwin-worker.heartbeat"
   curl --silent --fail --output /dev/null --max-time 2 "http://127.0.0.1:$adapter_port/health"
@@ -206,10 +280,18 @@ verify() {
   stop
 }
 
-case "${1:-start}" in
+launch() {
+  start
+  trap 'stop' 0
+  trap 'stop; exit 0' 1 2 15
+  launch_opencode
+}
+
+case "${1:-launch}" in
+  launch) launch ;;
   start) start ;;
   stop) stop ;;
   status) status ;;
   verify) verify ;;
-  *) printf '%s\n' "Usage: DigitalTwin [start|stop|status|verify]" >&2; exit 64 ;;
+  *) printf '%s\n' "Usage: DigitalTwin [launch|start|stop|status|verify]" >&2; exit 64 ;;
 esac
