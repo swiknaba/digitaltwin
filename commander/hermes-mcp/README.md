@@ -1,9 +1,10 @@
 # Hermes Commander delegation MCP
 
-This is the native Hermes stdio MCP boundary for the four narrow Commander
+This is the native Hermes stdio MCP boundary for the five narrow Commander
 delegation operations:
 
 - `commander_list_projects`
+- `commander_list_enabled_models`
 - `commander_create_project_session`
 - `commander_read_agent`
 - `commander_continue_agent`
@@ -25,6 +26,12 @@ OpenCode's per-session API only: it never changes a project or global default.
 the persisted worker session model, while providing it explicitly changes that
 one session before the next turn. Creation fails closed if the selection is
 missing, so an invisible provider default cannot be selected silently.
+
+When there is no explicit native or human worker-model choice, Commander first
+uses `commander_list_enabled_models` for the target project. That read-only
+tool returns only enabled identities, display names, and variants. Commander
+then applies the configured task-tier instructions before passing one exact
+identity to creation. The bridge does not rank models or substitute a default.
 
 OpenCode publishes its desktop sidecar through an owner-only
 `service-local.json` registration, which is its supported local-client discovery

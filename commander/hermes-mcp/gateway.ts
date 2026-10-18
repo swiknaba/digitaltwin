@@ -272,6 +272,7 @@ function availableModel(value: unknown): CommanderAvailableModel[] {
       providerID: value.providerID,
       modelID: value.id,
     },
+    ...(typeof value.name === "string" && value.name.trim() ? { displayName: value.name } : {}),
     variants,
   }]
 }

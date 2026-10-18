@@ -12,6 +12,7 @@ mcp_servers:
     tools:
       include:
         - commander_list_projects
+        - commander_list_enabled_models
         - commander_create_project_session
         - commander_read_agent
         - commander_continue_agent

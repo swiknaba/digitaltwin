@@ -14,7 +14,7 @@ test("uses the installed OpenCode HTTP envelopes and only selects enabled explic
     const response = (() => {
       if (url.pathname === "/api/project") return [{ id: "project-1", canonical: "/srv/digitaltwin", name: "digitaltwin" }]
       if (url.pathname === "/api/model") return { data: [
-        { providerID: "anthropic", id: "claude-opus-5-5", enabled: true, variants: [{ id: "high" }] },
+        { providerID: "anthropic", id: "claude-opus-5-5", name: "Claude Opus 5.5", enabled: true, variants: [{ id: "high" }] },
         { providerID: "opencode", id: "nemotron-3.5-super-vl-free", enabled: false, variants: [] },
       ] }
       if (url.pathname === "/api/session" && init?.method === "POST") return { data: { id: "ses_hermes", projectID: "project-1" } }
@@ -32,7 +32,7 @@ test("uses the installed OpenCode HTTP envelopes and only selects enabled explic
   }
   const gateway = new OpenCodeHttpGateway(staticOpenCodeSidecar(new URL("http://127.0.0.1:3086"), "approved-private-password"), request)
   assert.deepEqual(await gateway.listProjects(), [{ id: "project-1", name: "digitaltwin", directory: "/srv/digitaltwin" }])
-  assert.deepEqual(await gateway.listAvailableModels("/srv/digitaltwin"), [{ model: { providerID: "anthropic", modelID: "claude-opus-5-5" }, variants: ["high"] }])
+  assert.deepEqual(await gateway.listAvailableModels("/srv/digitaltwin"), [{ model: { providerID: "anthropic", modelID: "claude-opus-5-5" }, displayName: "Claude Opus 5.5", variants: ["high"] }])
   assert.deepEqual(await gateway.createSession({ id: "ses_hermes", directory: "/srv/digitaltwin", model: { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" } }), { id: "ses_hermes", projectID: "project-1" })
   await gateway.selectSessionModel({ sessionID: "ses_hermes", model: { providerID: "anthropic", modelID: "claude-opus-5-5", variant: "high" } })
   assert.deepEqual(await gateway.prompt({ sessionID: "ses_hermes", messageID: "msg_hermes", text: "Start.", metadata: { fromCommander: true } }), {

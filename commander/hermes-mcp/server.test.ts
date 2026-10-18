@@ -52,6 +52,16 @@ test("lists projects and reads without dispatching a prompt", async () => {
   assert.equal(f.prompts.length, 0)
 })
 
+test("lists only the target project's enabled worker inventory without creating a session", async () => {
+  const f = fixture()
+  assert.deepEqual(await f.delegation().listEnabledModels("project-1"), {
+    project_id: "project-1",
+    models: [{ provider_id: "anthropic", model_id: "claude-opus-5-5", display_name: "claude-opus-5-5", variants: ["high"] }],
+  })
+  assert.equal(f.creates(), 0)
+  assert.equal(f.prompts.length, 0)
+})
+
 test("creates a precisely-provenanced normal project session and restores its stable reference after restart", async () => {
   const f = fixture()
   const first = await f.delegation().create({ projectID: "project-1", requestID: "create-1", text: "Investigate the regression.", workerModel: enabledWorkerModel })

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import type { CommanderMessage, CommanderWorkerModel, DelegationDecision, DelegationState, DelegationStore, Json, OpenCodeCommanderGateway, PendingDelegation } from "./contract"
+import type { CommanderAvailableModel, CommanderMessage, CommanderWorkerModel, DelegationDecision, DelegationState, DelegationStore, Json, OpenCodeCommanderGateway, PendingDelegation } from "./contract"
 
 export class CommanderDelegation {
   private readonly locks = new Map<string, Promise<void>>()
@@ -14,6 +14,16 @@ export class CommanderDelegation {
 
   async listProjects(): Promise<readonly Readonly<{ id: string; name: string; directory: string }>[]> {
     return this.gateway.listProjects()
+  }
+
+  async listEnabledModels(projectID: string): Promise<Readonly<Record<string, Json>>> {
+    if (!identifier(projectID)) throw new Error("Commander project id is invalid.")
+    const project = (await this.gateway.listProjects()).find((item) => item.id === projectID)
+    if (!project) throw new Error("Commander project was not found.")
+    return {
+      project_id: project.id,
+      models: (await this.gateway.listAvailableModels(project.directory)).map(availableModelJson),
+    }
   }
 
   async create(input: Readonly<{ projectID: string; requestID: string; text: string; workerModel: CommanderWorkerModel }>): Promise<Readonly<Record<string, Json>>> {
@@ -306,5 +316,14 @@ function workerModelJson(value: CommanderWorkerModel): Json {
     provider_id: value.providerID,
     model_id: value.modelID,
     ...(value.variant === undefined ? {} : { variant: value.variant }),
+  }
+}
+
+function availableModelJson(value: CommanderAvailableModel): Json {
+  return {
+    provider_id: value.model.providerID,
+    model_id: value.model.modelID,
+    display_name: value.displayName ?? value.model.modelID,
+    variants: value.variants,
   }
 }

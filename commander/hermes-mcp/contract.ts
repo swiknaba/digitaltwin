@@ -19,6 +19,7 @@ export type CommanderWorkerModel = Readonly<{
 
 export type CommanderAvailableModel = Readonly<{
   model: CommanderWorkerModel
+  displayName?: string
   variants: readonly string[]
 }>
 

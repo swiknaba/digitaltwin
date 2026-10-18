@@ -56,6 +56,16 @@ function tools(): readonly Readonly<Record<string, unknown>>[] {
   return [
     { name: "commander_list_projects", description: "List the existing OpenCode projects Commander may target. This operation never dispatches a prompt.", inputSchema: { type: "object", additionalProperties: false, properties: {} } },
     {
+      name: "commander_list_enabled_models",
+      description: "List the exact enabled OpenCode worker models for one target project. Use this inventory before choosing a worker model without an explicit native user choice. This operation never creates a session or dispatches a prompt.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["project_id"],
+        properties: { project_id: { type: "string" } },
+      },
+    },
+    {
       name: "commander_create_project_session",
       description: "Create a normal project session, admit the supplied prompt, and return opaque follow-up references with Hermes MCP provenance. worker_model is required for every new session: use the exact native Commander selection supplied with this request. It is not the Commander/Hermes model and must be enabled for the target project.",
       inputSchema: {
@@ -94,6 +104,7 @@ async function call(params: unknown): Promise<unknown> {
   if (!object(params) || typeof params.name !== "string" || !object(params.arguments)) throw new Error("Invalid tool call parameters.")
   const args = params.arguments
   if (params.name === "commander_list_projects") return content(await delegation.listProjects())
+  if (params.name === "commander_list_enabled_models") return content(await delegation.listEnabledModels(required(args, "project_id")))
   if (params.name === "commander_create_project_session") {
     const worker = requiredWorkerModel(args)
     return content(await delegation.create({

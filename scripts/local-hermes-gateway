@@ -57,6 +57,14 @@ if [ "$handoff_mode" = "anthropic-api-key" ]; then
     exit 78
   fi
   ln -sfn "$profile/config.yaml" "$handoff_home/config.yaml"
+  # The isolated handoff home deliberately holds no provider login state. Its
+  # generated default persona is therefore disposable; use the user-owned
+  # Commander profile persona so policy changes actually reach Hermes.
+  handoff_soul="$handoff_home/SOUL.md"
+  if [ -e "$handoff_soul" ] && [ ! -L "$handoff_soul" ]; then
+    rm -f "$handoff_soul"
+  fi
+  ln -sfn "$profile/SOUL.md" "$handoff_soul"
   export HERMES_HOME="$handoff_home"
 else
   export HERMES_HOME="$profile"

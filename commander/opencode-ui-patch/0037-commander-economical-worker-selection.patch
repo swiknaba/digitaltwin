@@ -1,0 +1,164 @@
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -85,6 +85,7 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   const [selectionError, setSelectionError] = createSignal<string>()
+   const [selected, setSelected] = createSignal<CommanderModel | undefined>(props.conversation.model)
+   const [workerSelection, setWorkerSelection] = createSignal<CommanderModel>()
++  const [commanderSelectsWorker, setCommanderSelectsWorker] = createSignal(false)
+   const prompt = createMemoryComposerState(props.conversation.model ? { model: props.conversation.model } : undefined)
+   let timelineElement: HTMLDivElement | undefined
+ 
+@@ -101,6 +102,7 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+     return configured
+   }
+   const workerModel = () => {
++    if (commanderSelectsWorker()) return
+     const explicit = workerSelection()
+     if (explicit && visibleWorkerModel(explicit)) return explicit
+     const configured = configuredWorkerModel()
+@@ -192,10 +194,9 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+         if (transport() !== "hermes") throw new Error("Hermes is unavailable. Commander cannot send messages until its harness returns.")
+         if (!currentModel()) throw new Error("Choose an enabled Commander model before sending.")
+         const selectedWorker = workerModel()
+-        if (!selectedWorker) throw new Error("Choose an enabled OpenCode worker model before sending project delegation.")
+         setRuntimeError(undefined)
+         try {
+-          const result = await hermesRequest<{ id: string }>({ operation: "start", requestID: input.id, text: input.text, workerModel: selectedWorker })
++          const result = await hermesRequest<{ id: string }>({ operation: "start", requestID: input.id, text: input.text, ...(selectedWorker === undefined ? {} : { workerModel: selectedWorker }) })
+           setRunID(result.id)
+         } catch (error) {
+           const message = error instanceof Error ? error.message : "Commander could not start Hermes. Your draft was not sent."
+@@ -343,18 +344,19 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+                 value={workerModelValue(workerModel())}
+                 onChange={(event) => {
+                   const selected = workerModels().find((item) => workerModelValue({ providerID: item.provider.id, modelID: item.id }) === event.currentTarget.value)
++                  setCommanderSelectsWorker(selected === undefined)
+                   setWorkerSelection(selected ? { providerID: selected.provider.id, modelID: selected.id } : undefined)
+                 }}
+               >
+-                <Show when={workerModel()} fallback={<option value="">Choose a visible worker model</option>}>
+-                  <option value="">Choose a visible worker model</option>
++                <Show when={workerModel()} fallback={<option value="">Let Commander choose for this task</option>}>
++                  <option value="">Let Commander choose for this task</option>
+                 </Show>
+                 <For each={workerModels()}>
+                   {(item) => <option value={workerModelValue({ providerID: item.provider.id, modelID: item.id })}>{item.provider.name} / {item.name}</option>}
+                 </For>
+               </select>
+               <Show when={!workerModel()}>
+-                <span>Choose a visible OpenCode worker model. Commander will not use a server default.</span>
++                <span>Commander will choose an enabled worker model using the configured task tiers. Choose a model to override.</span>
+               </Show>
+             </label>
+             <Composer model={composer} />
+diff --git a/packages/gui-extensions/src/commander/contract.ts b/packages/gui-extensions/src/commander/contract.ts
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -48,7 +48,7 @@ export const CommanderEvent = Schema.Struct({
+ })
+ export type CommanderEvent = typeof CommanderEvent.Type
+ 
+-export const CommanderRunRequest = Schema.Struct({ requestID: Schema.String, text: Schema.String, workerModel: CommanderModel })
++export const CommanderRunRequest = Schema.Struct({ requestID: Schema.String, text: Schema.String, workerModel: Schema.optional(CommanderModel) })
+ export const CommanderRunControl = Schema.Struct({ runID: Schema.String, text: Schema.optional(Schema.String) })
+ 
+ export const CommanderReservation = Schema.Struct({
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -161,2 +161,5 @@ const setup: Setup<typeof definition> = (ctx) => {
+-    if (request.operation === "start" && request.requestID && request.text && request.workerModel && isCommanderModel(request.workerModel)) void live.value.start({ requestID: request.requestID, text: request.text, workerModel: request.workerModel }).then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander request failed."))
++    if (request.operation === "start" && request.requestID && request.text) {
++      if (request.workerModel !== undefined && !isCommanderModel(request.workerModel)) reply(undefined, "Commander received an invalid native worker model.")
++      else void live.value.start({ requestID: request.requestID, text: request.text, ...(request.workerModel === undefined ? {} : { workerModel: request.workerModel }) }).then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander request failed."))
++    }
+     if (request.operation === "stop" && request.runID) void live.value.stop(request.runID).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander stop failed."))
+     if (request.operation === "steer" && request.runID && request.text) void live.value.steer({ runID: request.runID, text: request.text }).then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander steer failed."))
+     if (request.operation === "history") void live.value.history().then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander history failed."))
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -62,7 +62,17 @@ async function models(): Promise<readonly CommanderModelOption[]> {
+   return decoded.value.map((item) => ({ providerID: item.provider, providerName: item.providerName, modelID: item.model }))
+ }
+ 
+-function withWorkerModelPolicy(request: Readonly<{ text: string; workerModel: Readonly<{ providerID: string; modelID: string; variant?: string }> }>): string {
++function withWorkerModelPolicy(request: Readonly<{ text: string; workerModel?: Readonly<{ providerID: string; modelID: string; variant?: string }> }>): string {
++  if (request.workerModel === undefined) {
++    return [
++      "Native Commander worker selection policy (not user-authored text):",
++      "For a new project session without an explicit human model choice, first call commander_list_enabled_models for the target project. Use only the returned enabled inventory.",
++      "Use the cheapest tier, such as Haiku, for search, summaries, and mechanical edits. Use the middle tier, such as Sonnet, for specified implementation work. Reserve the top tier for the main Commander session.",
++      "If the appropriate tier is unavailable, report the missing configuration instead of inventing a profile or relying on an OpenCode default. Create only with the exact enabled worker_model you selected. For an existing project-session follow-up, do not pass worker_model unless the user explicitly requests a model change.",
++      "User request:",
++      request.text,
++    ].join("\n\n")
++  }
+   const workerModel = JSON.stringify({
+     provider_id: request.workerModel.providerID,
+     model_id: request.workerModel.modelID,
+diff --git a/packages/gui-extensions/src/commander/main.test.ts b/packages/gui-extensions/src/commander/main.test.ts
+--- a/packages/gui-extensions/src/commander/main.test.ts
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -226,3 +226,30 @@ test("Commander relays the native visible worker selection as a no-default creat
+     ].join("\n\n"),
+   })
+ })
++
++test("Commander asks Hermes to select an enabled economical tier when the user has not overridden the worker model", async () => {
++  const backing = persistent({
++    revision: 2,
++    conversation: { serverID: "sidecar", sessionID: Session.ID.make("ses_commander_economical_model"), directory: configured.directory, agent: Agent.ID.make(configured.agent) },
++  })
++  const first = runtime(backing)
++  const requests = hermes([])
++
++  await expect(first.bridge.start({
++    requestID: "economical-model-request",
++    text: "Summarize the existing worker result.",
++  }, caller)).resolves.toEqual({ id: "cmd_fixture", sessionID: "hermes_fixture" })
++
++  const body = requests.find((request) => request.path === "/runs")?.body
++  expect(body).toEqual({
++    request_id: "economical-model-request",
++    text: [
++      "Native Commander worker selection policy (not user-authored text):",
++      "For a new project session without an explicit human model choice, first call commander_list_enabled_models for the target project. Use only the returned enabled inventory.",
++      "Use the cheapest tier, such as Haiku, for search, summaries, and mechanical edits. Use the middle tier, such as Sonnet, for specified implementation work. Reserve the top tier for the main Commander session.",
++      "If the appropriate tier is unavailable, report the missing configuration instead of inventing a profile or relying on an OpenCode default. Create only with the exact enabled worker_model you selected. For an existing project-session follow-up, do not pass worker_model unless the user explicitly requests a model change.",
++      "User request:",
++      "Summarize the existing worker result.",
++    ].join("\n\n"),
++  })
++})
+diff --git a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+--- a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -69,7 +69,7 @@ test("Commander excludes disabled native models and reapplies visibility on reop
+   await expect(page.locator('[data-option-key="fixture:commander-large"]')).toBeVisible()
+ })
+ 
+-test("Commander requires a visible worker choice before delegating", async ({ page }) => {
++test("Commander delegates economical worker selection when the user has not overridden it", async ({ page }) => {
+   await page.goto("/")
+   const overlay = page.locator('[data-slot="commander-native-overlay"]')
+   const prompt = overlay.locator('[contenteditable="true"]')
+@@ -78,12 +78,14 @@ test("Commander requires a visible worker choice before delegating", async ({ pa
+   await picker.click()
+   await page.locator('[data-option-key="fixture:commander-small"]').click()
+   await expect(picker).toContainText("commander-small")
+-  await expect(overlay.getByText("Choose a visible OpenCode worker model. Commander will not use a server default.")).toBeVisible()
++
++  await expect(overlay.getByText("Commander will choose an enabled worker model using the configured task tiers. Choose a model to override.")).toBeVisible()
+   await prompt.fill("do not use a hidden default")
+   await overlay.getByRole("button", { name: "Send" }).click()
+ 
+-  await expect(prompt).toHaveText("do not use a hidden default")
+-  expect(await page.evaluate(() => window.commanderFixture?.hermesRequests())).toBe(0)
++  await expect(prompt).toHaveText("")
++  await expect.poll(() => page.evaluate(() => window.commanderFixture?.hermesRequests())).toBe(1)
++  expect(await page.evaluate(() => window.commanderFixture?.lastStartWorkerModel())).toBeUndefined()
+ })
+ 
+ test("Commander retains rejected Hermes drafts and submits a confirmed button retry once", async ({ page }) => {
