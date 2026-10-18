@@ -28,8 +28,9 @@ export class ServiceRegistrationOpenCodeSidecar implements OpenCodeSidecarSource
     private readonly registrationFile: string,
     private readonly request: Fetch = fetch,
   ) {
-    if (!isAbsolute(registrationFile) || basename(registrationFile) !== "service-local.json") {
-      throw new Error("OpenCode service registration must be an absolute service-local.json path.")
+    const registrationName = basename(registrationFile)
+    if (!isAbsolute(registrationFile) || (registrationName !== "service-local.json" && registrationName !== "service.json")) {
+      throw new Error("OpenCode service registration must be an absolute service-local.json or service.json path.")
     }
   }
 
@@ -66,7 +67,7 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
 
   async listAvailableModels(directory: string): Promise<readonly CommanderAvailableModel[]> {
     const query = new URLSearchParams({ "location[directory]": directory })
-    const response = await this.json(`/api/model?${query.toString()}`)
+    const response = await this.json(`/api/model/enabled?${query.toString()}`)
     if (!object(response) || !Array.isArray(response.data)) throw new Error("OpenCode returned an invalid model list.")
     return response.data.flatMap(availableModel)
   }

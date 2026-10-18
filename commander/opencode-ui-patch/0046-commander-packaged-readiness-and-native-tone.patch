@@ -1,0 +1,453 @@
+diff --git a/packages/app/src/runtime/extension/titlebar-items.tsx b/packages/app/src/runtime/extension/titlebar-items.tsx
+index 01a01ea86c..da4f93a140 100644
+--- a/packages/app/src/runtime/extension/titlebar-items.tsx
++++ b/packages/app/src/runtime/extension/titlebar-items.tsx
+@@ -36,13 +36,14 @@ export function TitlebarItems(props: { items: ReturnType<typeof useTitlebarItems
+ 
+ function TitlebarItemButton(props: { item: TitlebarItem; vertical?: boolean }) {
+   const expanded = () => !!props.item.expanded
++  const inverse = () => props.item.tone === "inverse"
+   const success = () => props.item.tone === "success"
+   const label = () => (
+     <span
+-      style={success() ? { color: "rgb(255 255 255)" } : undefined}
+       class="shrink-0 text-[11px] leading-4 text-v2-text-text-accent [font-weight:530] opacity-0 motion-safe:transition-all duration-150 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0 motion-reduce:translate-x-0"
+       classList={{
+-        "!text-white opacity-100 motion-safe:transition-none": expanded(),
++        "!text-v2-background-bg-base opacity-100 motion-safe:transition-none": expanded() && inverse(),
++        "!text-white opacity-100 motion-safe:transition-none": expanded() && success(),
+         "ms-px me-4 -translate-x-2 rtl:translate-x-2": props.vertical && !expanded(),
+         "ms-2 me-px translate-x-2 rtl:-translate-x-2": !props.vertical && !expanded(),
+         "translate-x-0": expanded(),
+@@ -66,13 +67,13 @@ function TitlebarItemButton(props: { item: TitlebarItem; vertical?: boolean }) {
+       <button
+         type="button"
+         class="z-10 flex h-full items-center overflow-hidden rounded-full bg-v2-icon-icon-accent/20 text-v2-icon-icon-accent transition-[background-color] duration-150 ease-out group-hover:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] group-focus-within:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] focus-visible:outline-none disabled:opacity-60 motion-reduce:transition-none [app-region:no-drag]"
+-        style={success() ? { color: "rgb(255 255 255)" } : undefined}
+         classList={{
+           "absolute top-0 w-full": !expanded(),
+           "static w-auto px-3": expanded(),
+           "start-0 justify-start": props.vertical,
+           "end-0 justify-end": !props.vertical,
+           "!bg-surface-success-strong !text-white hover:!bg-surface-success-base hover:!text-white focus-visible:!text-white group-hover:!bg-surface-success-base group-hover:!text-white group-focus-within:!bg-surface-success-base group-focus-within:!text-white disabled:!text-white": success(),
++          "!bg-v2-text-text-base !text-v2-background-bg-base hover:!bg-v2-text-text-base hover:!text-v2-background-bg-base focus-visible:!text-v2-background-bg-base group-hover:!bg-v2-text-text-base group-hover:!text-v2-background-bg-base group-focus-within:!bg-v2-text-text-base group-focus-within:!text-v2-background-bg-base disabled:!text-v2-background-bg-base": inverse(),
+         }}
+         onClick={() => props.item.run?.()}
+         disabled={!!props.item.busy}
+diff --git a/packages/gui-extensions/src/commander/i18n/en.ts b/packages/gui-extensions/src/commander/i18n/en.ts
+index d021f794b4..b5406d1e7a 100644
+--- a/packages/gui-extensions/src/commander/i18n/en.ts
++++ b/packages/gui-extensions/src/commander/i18n/en.ts
+@@ -1,7 +1,8 @@
+ export default {
+   title: "Commander",
+   "action.open": "Open Commander",
+-  "action.unavailable": "Open a project session to use Commander.",
++  "action.unavailable": "Commander is still starting. Try again in a moment.",
++  "action.openFailed": "Commander could not open.",
+   "command.open": "Open Commander",
+   "command.description": "Open the Commander control surface for this project session.",
+   "command.category.view": "View",
+diff --git a/packages/gui-extensions/src/commander/main.test.ts b/packages/gui-extensions/src/commander/main.test.ts
+index 6d78cdfda3..a03ba6de58 100644
+--- a/packages/gui-extensions/src/commander/main.test.ts
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -5,7 +5,9 @@ import type { IpcImpl, IpcProvider, ServerEndpoint } from "../sdk/main"
+ import { CommanderBridge, type CommanderBridgeState } from "./contract"
+ import { createCommanderRuntime } from "./main"
+ 
+-const caller = { window: 1, signal: AbortSignal.timeout(1_000) }
++function caller() {
++  return { window: 1, signal: AbortSignal.timeout(1_000) }
++}
+ 
+ const configured = { directory: "/srv/digitaltwin/commander", agent: "commander" }
+ 
+@@ -80,6 +82,11 @@ function sidecar(): ServerEndpoint {
+ function agents(ids: readonly string[]) {
+   const request = async (...[input, init]: Parameters<typeof fetch>) => {
+     const url = new URL(input.toString())
++    if (url.pathname === "/api/event") {
++      expect(init?.headers).toEqual({ authorization: "Bearer sidecar", accept: "text/event-stream" })
++      return new Response(new ReadableStream({ start: (controller) => controller.close() }))
++    }
++
+     expect(url.pathname).toBe("/api/agent")
+     expect(url.searchParams.get("location[directory]")).toBe(configured.directory)
+     expect(init?.headers).toEqual({ authorization: "Bearer sidecar" })
+@@ -118,7 +125,7 @@ test("Commander recreates from persisted state only after validating its configu
+   const first = runtime(backing)
+   const session = Session.ID.make("ses_commander_persisted")
+ 
+-  await expect(first.bridge.reserve({ serverID: "sidecar", sessionID: session }, caller)).resolves.toMatchObject({
++  await expect(first.bridge.reserve({ serverID: "sidecar", sessionID: session }, caller())).resolves.toMatchObject({
+     revision: 1,
+     conversation: { serverID: "sidecar", sessionID: session, directory: configured.directory, agent: configured.agent },
+   })
+@@ -126,7 +133,7 @@ test("Commander recreates from persisted state only after validating its configu
+ 
+   const recreated = runtime(backing)
+   await expect(
+-    recreated.bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_ignored") }, caller),
++    recreated.bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_ignored") }, caller()),
+   ).resolves.toEqual(backing.store.value)
+   expect(recreated.changes()).toBe(0)
+ })
+@@ -146,7 +153,7 @@ test("Commander rejects missing or changed persisted agent configuration without
+   })
+ 
+   await expect(
+-    runtime(missing).bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_new") }, caller),
++    runtime(missing).bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_new") }, caller()),
+   ).rejects.toThrow("Configured Commander agent 'retired' is unavailable")
+   expect(missing.store.value.revision).toBe(4)
+ 
+@@ -164,11 +171,59 @@ test("Commander rejects missing or changed persisted agent configuration without
+   })
+ 
+   await expect(
+-    runtime(changed).bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_newer") }, caller),
++    runtime(changed).bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_newer") }, caller()),
+   ).rejects.toThrow("saved state does not match the current operator workspace or agent")
+   expect(changed.store.value.revision).toBe(5)
+ })
+ 
++test("Commander waits for the sidecar agent update event before reserving", async () => {
++  const encoder = new TextEncoder()
++  let agentRequests = 0
++  let eventController: ReadableStreamDefaultController<Uint8Array> | undefined
++  const request = async (...[input, init]: Parameters<typeof fetch>) => {
++    const url = new URL(input.toString())
++    if (url.pathname === "/api/event") {
++      expect(init?.headers).toEqual({ authorization: "Bearer sidecar", accept: "text/event-stream" })
++      return new Response(
++        new ReadableStream({
++          start: (controller) => {
++            eventController = controller
++          },
++        }),
++      )
++    }
++
++    expect(url.pathname).toBe("/api/agent")
++    expect(url.searchParams.get("location[directory]")).toBe(configured.directory)
++    expect(init?.headers).toEqual({ authorization: "Bearer sidecar" })
++    agentRequests += 1
++
++    if (agentRequests === 2) {
++      queueMicrotask(() =>
++        eventController?.enqueue(
++          encoder.encode(
++            `data: ${JSON.stringify({ type: "agent.updated", location: { directory: configured.directory } })}\n\n`,
++          ),
++        ),
++      )
++    }
++
++    return Response.json({
++      location: { directory: configured.directory },
++      data: agentRequests === 3 ? [{ id: configured.agent }] : [],
++    })
++  }
++  globalThis.fetch = Object.assign(request, { preconnect: original.fetch.preconnect })
++
++  await expect(
++    runtime(persistent({ revision: 0 })).bridge.reserve(
++      { serverID: "sidecar", sessionID: Session.ID.make("ses_commander_agent_ready") },
++      caller(),
++    ),
++  ).resolves.toMatchObject({ conversation: { agent: configured.agent } })
++  expect(agentRequests).toBe(3)
++})
++
+ test("Commander returns the exact Hermes model inventory and persists only an adapter-confirmed selection", async () => {
+   const session = Session.ID.make("ses_commander_model")
+   const backing = persistent({
+@@ -183,12 +238,12 @@ test("Commander returns the exact Hermes model inventory and persists only an ad
+   const first = runtime(backing)
+   const requests = hermes([{ provider: "fixture", providerName: "Fixture", model: "enabled-in-opencode" }])
+ 
+-  await expect(first.bridge.models(undefined, caller)).resolves.toEqual([
++  await expect(first.bridge.models(undefined, caller())).resolves.toEqual([
+     { providerID: "fixture", providerName: "Fixture", modelID: "enabled-in-opencode" },
+   ])
+ 
+   await expect(
+-    first.bridge.selectModel({ providerID: "fixture", modelID: "enabled-in-opencode" }, caller),
++    first.bridge.selectModel({ providerID: "fixture", modelID: "enabled-in-opencode" }, caller()),
+   ).resolves.toMatchObject({
+     revision: 4,
+     model: { providerID: "fixture", modelID: "enabled-in-opencode" },
+@@ -201,7 +256,7 @@ test("Commander returns the exact Hermes model inventory and persists only an ad
+   const reopened = runtime(backing)
+   agents([configured.agent])
+   await expect(
+-    reopened.bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_ignored") }, caller),
++    reopened.bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_ignored") }, caller()),
+   ).resolves.toMatchObject({
+     model: { providerID: "fixture", modelID: "enabled-in-opencode" },
+   })
+@@ -222,7 +277,7 @@ test("Commander leaves its saved model untouched when Hermes rejects the selecti
+   hermes([], 502)
+ 
+   await expect(
+-    first.bridge.selectModel({ providerID: "operator", modelID: "replacement-model" }, caller),
++    first.bridge.selectModel({ providerID: "operator", modelID: "replacement-model" }, caller()),
+   ).rejects.toThrow("rejected request")
+   expect(backing.store.value).toMatchObject({
+     revision: 7,
+@@ -243,7 +298,7 @@ test("Commander restores the Hermes-held model when its persisted app state is e
+   const first = runtime(backing)
+   const requests = hermes([], 200, [], { provider: "fixture", model: "restored-model" })
+ 
+-  await expect(first.bridge.selectedModel(undefined, caller)).resolves.toEqual({
++  await expect(first.bridge.selectedModel(undefined, caller())).resolves.toEqual({
+     model: { providerID: "fixture", modelID: "restored-model" },
+   })
+   expect(backing.store.value).toMatchObject({
+@@ -271,7 +326,7 @@ test("Commander history restores the original user request and hides only its kn
+     { role: "user", content: "A normal user message that happens to mention User request:" },
+   ])
+ 
+-  await expect(runtime(backing).bridge.history(undefined, caller)).resolves.toEqual([
++  await expect(runtime(backing).bridge.history(undefined, caller())).resolves.toEqual([
+     { seq: 0, type: "user", runID: "history", text: originalRequest },
+     { seq: 1, type: "assistant", runID: "history", text: "The worker completed its result." },
+     { seq: 2, type: "user", runID: "history", text: "A normal user message that happens to mention User request:" },
+@@ -281,7 +336,7 @@ test("Commander history restores the original user request and hides only its kn
+ test("Commander reports Hermes unavailable when its adapter is not configured", async () => {
+   delete process.env.DIGITALTWIN_HERMES_ADAPTER_TOKEN
+ 
+-  await expect(runtime(persistent({ revision: 0 })).bridge.health(undefined, caller)).resolves.toEqual({
++  await expect(runtime(persistent({ revision: 0 })).bridge.health(undefined, caller())).resolves.toEqual({
+     ok: true,
+     hermes: false,
+   })
+@@ -306,7 +361,7 @@ test("Commander sends no client worker-model override and asks Hermes to select
+         requestID: "economical-model-request",
+         text: "Summarize the existing worker result.",
+       },
+-      caller,
++      caller(),
+     ),
+   ).resolves.toEqual({ id: "cmd_fixture", sessionID: "hermes_fixture" })
+ 
+@@ -345,7 +400,7 @@ test("Commander tells automatic worker selection to honor a clear human model ch
+         requestID: "human-model-request",
+         text: "Use anthropic/claude-sonnet-5-5 for this implementation.",
+       },
+-      caller,
++      caller(),
+     ),
+   ).resolves.toEqual({ id: "cmd_fixture", sessionID: "hermes_fixture" })
+ 
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+index 584ef8ba10..2c4b8f5700 100644
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -27,6 +27,10 @@ type CommanderRuntime = Readonly<{
+ }>
+ 
+ const AgentListResponse = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Agent.ID })) })
++const AgentUpdatedEvent = Schema.Struct({
++  type: Schema.Literal("agent.updated"),
++  location: Schema.optional(Schema.Struct({ directory: Schema.String })),
++})
+ const HermesModelInventory = Schema.Array(
+   Schema.Struct({ provider: Schema.String, providerName: Schema.String, model: Schema.String }),
+ )
+@@ -154,22 +158,75 @@ function configuredCommander() {
+ }
+ 
+ async function validateConfiguredCommander(
+-  input: Readonly<{ endpoint: ServerEndpoint; directory: string; agent: Agent.ID }>,
++  input: Readonly<{ endpoint: ServerEndpoint; directory: string; agent: Agent.ID; signal: AbortSignal }>,
+ ) {
+-  const url = new URL("/api/agent", input.endpoint.url)
+-  url.searchParams.set("location[directory]", input.directory)
++  const available = async () => {
++    const url = new URL("/api/agent", input.endpoint.url)
++    url.searchParams.set("location[directory]", input.directory)
+ 
+-  const response = await fetch(url, { headers: input.endpoint.headers })
++    const response = await fetch(url, { headers: input.endpoint.headers, signal: input.signal })
+ 
+-  if (!response.ok)
+-    throw new Error(`Commander could not validate its configured agent with the OpenCode sidecar (${response.status}).`)
++    if (!response.ok)
++      throw new Error(`Commander could not validate its configured agent with the OpenCode sidecar (${response.status}).`)
+ 
+-  const body: unknown = await response.json()
+-  const agents = Schema.decodeUnknownOption(AgentListResponse)(body)
++    const body: unknown = await response.json()
++    const agents = Schema.decodeUnknownOption(AgentListResponse)(body)
+ 
+-  if (Option.isNone(agents) || !agents.value.data.some((agent) => agent.id === input.agent)) {
+-    throw new Error(`Configured Commander agent '${input.agent}' is unavailable for '${input.directory}'.`)
++    return Option.isSome(agents) && agents.value.data.some((agent) => agent.id === input.agent)
+   }
++
++  if (await available()) return
++
++  const events = await fetch(new URL("/api/event", input.endpoint.url), {
++    headers: { ...input.endpoint.headers, accept: "text/event-stream" },
++    signal: input.signal,
++  })
++
++  if (!events.ok || !events.body)
++    throw new Error(`Commander could not wait for the OpenCode sidecar (${events.status}).`)
++
++  const reader = events.body.getReader()
++
++  try {
++    // The agent could be registered after the first list request but before the
++    // stream subscription; check once more before relying on the next event.
++    if (await available()) return
++
++    const decoder = new TextDecoder()
++    let pending = ""
++
++    while (!input.signal.aborted) {
++      const chunk = await reader.read()
++      if (chunk.done) break
++
++      pending += decoder.decode(chunk.value, { stream: true })
++      const frames = pending.split(/\r?\n\r?\n/)
++      pending = frames.pop() ?? ""
++
++      for (const frame of frames) {
++        const line = frame.split(/\r?\n/).find((item) => item.startsWith("data: "))
++        if (!line) continue
++
++        let raw: unknown
++        try {
++          raw = JSON.parse(line.slice(6))
++        } catch {
++          continue
++        }
++
++        const event = Schema.decodeUnknownOption(AgentUpdatedEvent)(raw)
++        if (Option.isNone(event)) continue
++        if (event.value.location && event.value.location.directory !== input.directory) continue
++        if (await available()) return
++      }
++    }
++  } finally {
++    await reader.cancel().catch(() => undefined)
++  }
++
++  if (input.signal.aborted) throw input.signal.reason
++
++  throw new Error(`Configured Commander agent '${input.agent}' is unavailable for '${input.directory}'.`)
+ }
+ 
+ function matchesConfiguredConversation(
+@@ -185,13 +242,13 @@ export function createCommanderRuntime(input: CommanderRuntime) {
+ 
+   provider = input.provide({
+     state: () => input.store.value,
+-    reserve: async (reservation) => {
++    reserve: async (reservation, caller) => {
+       const endpoint = input.serverEndpoints.get(reservation.serverID)
+ 
+       if (!endpoint) throw new Error("Commander requires the OpenCode sidecar.")
+ 
+       const configured = configuredCommander()
+-      await validateConfiguredCommander({ endpoint, ...configured })
++      await validateConfiguredCommander({ endpoint, ...configured, signal: caller.signal })
+       const current = input.store.value
+ 
+       if (current.conversation) {
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+index 12126483b6..22f7f7404f 100644
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -1,6 +1,7 @@
+ import { isSessionNotFoundError } from "@opencode/client"
+ import { Session } from "@opencode/schema/session"
+ import { Button } from "@opencode/ui/button"
++import { showToast } from "@opencode/ui/toast"
+ import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+ import { Command, Panel, SettingsPage, TitlebarItem, type PanelTab, type Setup } from "../sdk"
+ import type definition from "./index"
+@@ -109,9 +110,9 @@ const setup: Setup<typeof definition> = (ctx) => {
+   }
+   const openGlobal = async () => {
+     const live = bridge()
+-    if (live.status !== "active") return
++    if (live.status !== "active") throw new Error(ctx.t("action.unavailable"))
+     const ipc = live.value
+-    if (!ipc) return
++    if (!ipc) throw new Error(ctx.t("action.unavailable"))
+ 
+     const initial = ipc.state()?.conversation
+     let current = initial
+@@ -149,6 +150,14 @@ const setup: Setup<typeof definition> = (ctx) => {
+     )
+   }
+ 
++  const open = () =>
++    void openGlobal().catch((error) =>
++      showToast({
++        variant: "error",
++        title: ctx.t("action.openFailed"),
++        description: error instanceof Error ? error.message : String(error),
++      }),
++    )
+   ctx.add(SettingsPage, {
+     id: "commander",
+     icon: "server",
+@@ -172,7 +181,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+           const live = bridge()
+           return live.status === "active" ? live.value.state()?.model : undefined
+         }}
+-        open={() => void openGlobal()}
++        open={open}
+       />
+     ),
+   })
+@@ -268,9 +277,9 @@ const setup: Setup<typeof definition> = (ctx) => {
+       label: "commander",
+       title,
+       expanded: true,
+-      tone: "success" as const,
++      tone: "inverse" as const,
+       mark,
+-      run: () => void openGlobal(),
++      run: open,
+     }
+   })
+ 
+@@ -286,7 +295,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+       return ctx.t("command.category.view")
+     },
+     enabled: true,
+-    run: () => void openGlobal(),
++    run: open,
+   }))
+ 
+   ctx.add(Panel, {
+@@ -294,7 +303,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+     region: "side",
+     list: (input) => (input.open.includes(panelID) ? [tab] : []),
+     render: () => (
+-      <button type="button" onClick={() => void openGlobal()}>
++      <button type="button" onClick={open}>
+         {ctx.t("action.open")}
+       </button>
+     ),
+diff --git a/packages/gui-extensions/src/sdk/registries.ts b/packages/gui-extensions/src/sdk/registries.ts
+index 6a526b5a64..908f01c178 100644
+--- a/packages/gui-extensions/src/sdk/registries.ts
++++ b/packages/gui-extensions/src/sdk/registries.ts
+@@ -540,8 +540,8 @@ export interface TitlebarItem {
+   readonly pressed?: boolean
+   /** Keeps the full label visible instead of using the compact hover-expanding pill. */
+   readonly expanded?: boolean
+-  /** Applies a semantic success treatment to an expanded item. */
+-  readonly tone?: "default" | "success"
++  /** Applies a semantic treatment to an expanded item. */
++  readonly tone?: "default" | "inverse" | "success"
+   /** Optional short mark shown before the item's icon. */
+   readonly mark?: string
+   /** Runs when the user clicks the pill, or the channel badge it toggles. Omit it for an item that only shows. */

@@ -1,0 +1,18 @@
+diff --git a/packages/desktop/src/main/service/background-service.ts b/packages/desktop/src/main/service/background-service.ts
+index 4b1fc8b7e..d9cc22e3d 100644
+--- a/packages/desktop/src/main/service/background-service.ts
++++ b/packages/desktop/src/main/service/background-service.ts
+@@ -34,8 +34,11 @@ const connect = Effect.fn("BackgroundService.connect")(function* (mode: "init
+   const path = yield* Path.Path
+   const desktopCli = yield* DesktopCli.Service
+   const runFork = Effect.runForkWith(yield* Effect.context<FileSystem.FileSystem | Path.Path>())
+-  const isolated = !app.isPackaged && process.env.OPENCODE_DESKTOP_ISOLATED_SERVER === "1"
+-  const isolatedPort = process.env.OPENCODE_DESKTOP_ISOLATED_SERVER_PORT
++  const packagedIsolation = app.isPackaged && process.env.DIGITALTWIN_OPENCODE_ISOLATED_SERVER === "1"
++  const isolated = packagedIsolation || (!app.isPackaged && process.env.OPENCODE_DESKTOP_ISOLATED_SERVER === "1")
++  const isolatedPort = packagedIsolation
++    ? process.env.DIGITALTWIN_OPENCODE_ISOLATED_SERVER_PORT
++    : process.env.OPENCODE_DESKTOP_ISOLATED_SERVER_PORT
+   const cli = yield* desktopCli.resolve
+   const version = mode === "initial" ? cli.version : undefined
+ 

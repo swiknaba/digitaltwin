@@ -1,0 +1,221 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+spike_root="$repo_root/local/macos-local-app-spike"
+toolchain_root="$spike_root/toolchain"
+opencode_source=${DIGITALTWIN_OPENCODE_SOURCE:-"$repo_root/local/opencode-commander-native-models"}
+app=${DIGITALTWIN_APP_OUTPUT:-"$spike_root/DigitalTwin.app"}
+build_root=${DIGITALTWIN_APP_BUILD_ROOT:-"$spike_root/build/candidate"}
+staged_app="$build_root/DigitalTwin.app"
+cli_dist="$build_root/opencode-cli-dist"
+hermes_runtime="$repo_root/local/hermes/runtime"
+hermes_python="$hermes_runtime/tools/python-3.14.7+20260901-darwin-arm64/bin/python3"
+hermes_anthropic_handoff="$hermes_runtime/anthropic-api-key-handoff"
+patch_dir="$repo_root/commander/opencode-ui-patch"
+expected_opencode_revision="1f4d07a4a519185955ae8ab2ea3607805509e386"
+
+fail() {
+  printf '%s\n' "macos-local-app-spike-build: $*" >&2
+  exit 78
+}
+
+case "$opencode_source" in
+  /*) ;;
+  *) fail "DIGITALTWIN_OPENCODE_SOURCE must be absolute" ;;
+esac
+
+case "$app" in
+  "$spike_root/DigitalTwin.app"|"$spike_root"/candidates/*.app) ;;
+  *) fail "DIGITALTWIN_APP_OUTPUT must be DigitalTwin.app or a .app under local/macos-local-app-spike/candidates" ;;
+esac
+
+case "$build_root" in
+  "$spike_root"/build/*) ;;
+  *) fail "DIGITALTWIN_APP_BUILD_ROOT must be below local/macos-local-app-spike/build" ;;
+esac
+
+if test "$app" = "$spike_root/DigitalTwin.app" && test -d "$app" && test "${DIGITALTWIN_REPLACE_DEFAULT_APP:-}" != "yes"; then
+  fail "refusing to replace the existing default app; select DIGITALTWIN_APP_OUTPUT or set DIGITALTWIN_REPLACE_DEFAULT_APP=yes"
+fi
+
+test -d "$opencode_source" || fail "prepared OpenCode source is missing: $opencode_source"
+test "$(git -C "$opencode_source" rev-parse --is-inside-work-tree 2>/dev/null || true)" = "true" || fail "OpenCode source is not a Git checkout"
+test "$(git -C "$opencode_source" rev-parse HEAD)" = "$expected_opencode_revision" || fail "OpenCode source must be $expected_opencode_revision"
+git -C "$opencode_source" diff --check
+# Patch 0049 modifies the packaging lines introduced by 0048, so its reverse-check proves the
+# complete final CLI-patching state without trying to reverse overlapping patches independently.
+git -C "$opencode_source" apply --check --reverse "$patch_dir/0049-commander-cli-stage-identity.patch" || fail "OpenCode source is missing maintained CLI patches 0048 and 0049"
+test -x "$opencode_source/packages/desktop/node_modules/.bin/electron-vite" || fail "run a frozen Bun install in the prepared OpenCode source first"
+
+remove_generated_path() {
+  target=$1
+  case "$target" in
+    "$spike_root/DigitalTwin.app"|"$spike_root"/candidates/*.app|"$spike_root"/build/*) ;;
+    *) fail "refusing to remove a path outside the generated app or build roots: $target" ;;
+  esac
+  test ! -e "$target" || rm -rf "$target"
+}
+
+remove_generated_path "$build_root/opencode-dist"
+remove_generated_path "$cli_dist"
+remove_generated_path "$staged_app"
+mkdir -p "$build_root/cache" "$build_root/tmp" "$(dirname "$app")"
+
+export BUN_INSTALL_CACHE_DIR="$build_root/cache/bun"
+export ELECTRON_BUILDER_CACHE="$build_root/cache/electron-builder"
+export ELECTRON_CACHE="$build_root/cache/electron"
+export TMPDIR="$build_root/tmp"
+
+(
+  cd "$opencode_source/packages/cli"
+  OPENCODE_CHANNEL=dev bun run build -- --single --skip-install --outdir="$cli_dist"
+)
+
+cli_build_id=$(shasum -a 256 "$cli_dist/cli-darwin-arm64/bin/opencode" | awk '{print substr($1, 1, 16)}')
+test -n "$cli_build_id" || fail "local OpenCode CLI build identity is empty"
+
+(
+  cd "$opencode_source/packages/desktop"
+  OPENCODE_CHANNEL=dev OPENCODE_CLI_DIST="$cli_dist" bun run typecheck
+  OPENCODE_CHANNEL=dev OPENCODE_CLI_DIST="$cli_dist" OPENCODE_CLI_BUILD_ID="$cli_build_id" bun run build
+  CSC_IDENTITY_AUTO_DISCOVERY=false OPENCODE_CHANNEL=dev OPENCODE_CLI_DIST="$cli_dist" OPENCODE_CLI_BUILD_ID="$cli_build_id" bun run package -- --mac --dir --arm64 --config.directories.output="$build_root/opencode-dist"
+)
+
+opencode_app="$build_root/opencode-dist/mac-arm64/OpenCode Dev.app"
+test -d "$opencode_app" || fail "fresh OpenCode package was not produced at $opencode_app"
+
+resources="$staged_app/Contents/Resources"
+
+case "$(uname -m)" in
+  arm64) ;;
+  *) printf '%s\n' "The macOS packaging spike supports arm64 hosts only" >&2; exit 69 ;;
+esac
+
+test -x "$toolchain_root/ruby/bin/ruby" || { printf '%s\n' "Run scripts/macos-local-app-spike-toolchain first" >&2; exit 78; }
+test -x "$toolchain_root/postgres/bin/pg_ctl" || { printf '%s\n' "PostgreSQL toolchain is missing" >&2; exit 78; }
+test -d "$toolchain_root/kirei-gems" || { printf '%s\n' "Kirei gems are missing" >&2; exit 78; }
+test -x "$hermes_python" || { printf '%s\n' "The project-local Hermes Python closure is missing" >&2; exit 78; }
+test -d "$hermes_anthropic_handoff/installs" || { printf '%s\n' "The project-local Hermes Anthropic handoff closure is missing" >&2; exit 78; }
+hermes_handoff_facts=
+for candidate in "$hermes_anthropic_handoff"/installs/*/facts.json; do
+  test -f "$candidate" || continue
+  test -z "$hermes_handoff_facts" || fail "Hermes Anthropic handoff has multiple install facts"
+  hermes_handoff_facts=$candidate
+done
+test -n "$hermes_handoff_facts" || fail "Hermes Anthropic handoff facts are missing"
+hermes_venv=$("$hermes_python" -I -c '
+import json
+import sys
+from pathlib import Path
+
+facts = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+venv = facts["packages"]["venv"]
+if "anthropic" not in venv["extras"]:
+    raise SystemExit("Hermes handoff closure is missing the Anthropic extra")
+print(venv["environment"])
+' "$hermes_handoff_facts")
+hermes_pm_runtime=$("$hermes_python" -I -c '
+import json
+import sys
+from pathlib import Path
+
+facts_path = Path(sys.argv[1])
+root = facts_path.parent / "pm-runtime"
+selected = json.loads((root / "selected.json").read_text(encoding="utf-8"))
+generation = selected["generation"]
+runtime = (root / generation).resolve()
+if not runtime.is_dir() or not (runtime / "pm-runtime.json").is_file():
+    raise SystemExit("Hermes handoff PM runtime is incomplete")
+print(runtime)
+' "$hermes_handoff_facts")
+test -d "$hermes_venv" || { printf '%s\n' "The Hermes dependency closure is missing" >&2; exit 78; }
+test -d "$hermes_pm_runtime" || { printf '%s\n' "The Hermes PM runtime closure is missing" >&2; exit 78; }
+
+mkdir -p "$resources/bin" "$staged_app/Contents/MacOS"
+cp "$repo_root/macos-local-app-spike/Info.plist" "$staged_app/Contents/Info.plist"
+cp "$repo_root/macos-local-app-spike/launcher.sh" "$staged_app/Contents/MacOS/DigitalTwin"
+chmod 755 "$staged_app/Contents/MacOS/DigitalTwin"
+ditto "$opencode_app" "$resources/OpenCode.app"
+ditto "$toolchain_root/ruby" "$resources/ruby"
+ditto "$toolchain_root/postgres" "$resources/postgres"
+ditto "$repo_root/integration-backend" "$resources/kirei"
+rm -rf "$resources/kirei/.git" "$resources/kirei/.bundle"
+ditto "$toolchain_root/kirei-gems" "$resources/kirei/vendor/bundle"
+mkdir -p "$resources/commander" "$resources/hermes/runtime" "$resources/hermes/profile"
+rsync -a --delete \
+  --exclude='.git' \
+  --exclude='.github' \
+  --exclude='node_modules' \
+  --exclude='__pycache__' \
+  --exclude='evals' \
+  --exclude='tests' \
+  --exclude='tests-js' \
+  --exclude='website' \
+  --exclude='contributors' \
+  --exclude='docker' \
+  --exclude='nix' \
+  "$hermes_runtime/source/" "$resources/hermes/source/"
+ditto "$hermes_runtime/tools/python-3.14.7+20260901-darwin-arm64" "$resources/hermes/runtime/python"
+ditto "$hermes_venv" "$resources/hermes/venv"
+ditto "$hermes_pm_runtime" "$resources/hermes/pm-runtime"
+find "$resources/hermes" -type d -name '__pycache__' -prune -exec rm -rf {} +
+rm -f "$resources/hermes/venv/bin/python"
+ln -s ../../runtime/python/bin/python3 "$resources/hermes/venv/bin/python"
+sed -i '' "s|^home = .*|home = $resources/hermes/runtime/python/bin|" "$resources/hermes/venv/pyvenv.cfg"
+find "$resources/hermes/venv/bin" -maxdepth 1 -type f -exec sed -i '' "1s|^#!.*python.*$|#!$resources/hermes/runtime/python/bin/python3|" {} \;
+rm -f "$resources/hermes/pm-runtime/bin/python"
+ln -s ../../runtime/python/bin/python3 "$resources/hermes/pm-runtime/bin/python"
+sed -i '' "s|^home = .*|home = ../runtime/python/bin|" "$resources/hermes/pm-runtime/pyvenv.cfg"
+find "$resources/hermes/pm-runtime/bin" -maxdepth 1 -type f -exec sed -i '' "1s|^#!.*python.*$|#!$resources/hermes/runtime/python/bin/python3|" {} \;
+"$resources/hermes/runtime/python/bin/python3" -I -c '
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / "source"))
+from scripts.bundles.payload import seal_pm_runtime
+
+seal_pm_runtime(root, root / "pm-runtime/bin/python3")
+' "$resources/hermes"
+"$resources/hermes/venv/bin/python" -I -c 'import anthropic, mcp, ruamel.yaml'
+cp "$repo_root/macos-local-app-spike/hermes-manifest.json" "$resources/hermes/manifest.json"
+cp "$repo_root/commander/hermes-profile-template/config.yaml.example" "$resources/hermes/profile/config.yaml.example"
+cp "$repo_root/commander/hermes-profile-template/SOUL.md" "$resources/hermes/profile/SOUL.md"
+cp "$repo_root/commander/hermes-profile-template/AGENTS.md" "$resources/hermes/profile/AGENTS.md"
+cp "$repo_root/commander/commander-agent-baseline.md" "$resources/commander/commander-agent-baseline.md"
+cp "$repo_root/macos-local-app-spike/hermes-launcher.sh" "$resources/bin/hermes"
+chmod 755 "$resources/bin/hermes"
+
+bun build "$repo_root/commander/hermes-adapter/server.ts" --compile --target=bun-darwin-arm64 --outfile "$resources/bin/hermes-adapter"
+bun build "$repo_root/commander/hermes-mcp/server.ts" --compile --target=bun-darwin-arm64 --outfile "$resources/bin/commander-mcp"
+test -x "$resources/bin/commander-mcp" || fail "Bundled Commander MCP executable is missing"
+
+patch_manifest=$(
+  for patch in "$patch_dir"/[0-9][0-9][0-9][0-9]-*.patch; do
+    shasum -a 256 "$patch"
+  done | shasum -a 256 | awk '{print $1}'
+)
+source_diff_sha=$(git -C "$opencode_source" diff --binary | shasum -a 256 | awk '{print $1}')
+"$toolchain_root/ruby/bin/ruby" -rjson -rtime -e '
+  destination, revision, diff_sha, patch_sha, source = ARGV
+  payload = {
+    "opencode_source_revision" => revision,
+    "opencode_source_diff_sha256" => diff_sha,
+    "commander_patch_manifest_sha256" => patch_sha,
+    "opencode_source" => source,
+    "assembled_at_utc" => Time.now.utc.iso8601,
+  }
+  File.write(destination, JSON.pretty_generate(payload) + "\n")
+' "$resources/build-provenance.json" "$(git -C "$opencode_source" rev-parse HEAD)" "$source_diff_sha" "$patch_manifest" "$opencode_source"
+
+# Do not discard a known-good canonical app until its replacement is fully
+# assembled. This keeps a failed build from leaving Finder with no launchable
+# DigitalTwin bundle.
+if test -e "$app"; then
+  remove_generated_path "$app"
+fi
+mv "$staged_app" "$app"
+
+printf '%s\n' "Built unsigned arm64 DigitalTwin app at $app"

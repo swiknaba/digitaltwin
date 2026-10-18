@@ -34,3 +34,13 @@ test("uses Hermes durable run, control, and SSE contracts", async () => {
     { path: "/v1/runs/run_1/stop", method: "POST", authorization: "Bearer adapter-only-token", idempotency: null, body: undefined },
   ])
 })
+
+test("treats a missing persisted session history as an empty transcript", async () => {
+  const client = new HermesGatewayClient(
+    new URL("http://127.0.0.1:8642"),
+    "adapter-only-token",
+    async () => new Response(JSON.stringify({ error: "missing" }), { status: 404 }),
+  )
+
+  assert.deepEqual(await client.history("missing-session"), [])
+})

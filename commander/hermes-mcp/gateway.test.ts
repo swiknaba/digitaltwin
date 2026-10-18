@@ -13,7 +13,7 @@ test("uses the installed OpenCode HTTP envelopes and only selects enabled explic
     calls.push({ path: `${url.pathname}${url.search}`, body, authorization: headers.get("Authorization") })
     const response = (() => {
       if (url.pathname === "/api/project") return [{ id: "project-1", canonical: "/srv/digitaltwin", name: "digitaltwin" }]
-      if (url.pathname === "/api/model") return { data: [
+      if (url.pathname === "/api/model/enabled") return { data: [
         { providerID: "anthropic", id: "claude-opus-5-5", name: "Claude Opus 5.5", enabled: true, variants: [{ id: "high" }] },
         { providerID: "opencode", id: "nemotron-3.5-super-vl-free", enabled: false, variants: [] },
       ] }
@@ -49,7 +49,7 @@ test("uses the installed OpenCode HTTP envelopes and only selects enabled explic
   }])
   assert.deepEqual(calls, [
     { path: "/api/project", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
-    { path: "/api/model?location%5Bdirectory%5D=%2Fsrv%2Fdigitaltwin", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
+    { path: "/api/model/enabled?location%5Bdirectory%5D=%2Fsrv%2Fdigitaltwin", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session", body: { id: "ses_hermes", location: { directory: "/srv/digitaltwin" }, model: { providerID: "anthropic", id: "claude-opus-5-5", variant: "high" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes/model", body: { model: { providerID: "anthropic", id: "claude-opus-5-5", variant: "high" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes/prompt", body: { id: "msg_hermes", text: "Start.", metadata: { fromCommander: true }, resume: true }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
@@ -208,6 +208,34 @@ test("normalizes a registered wildcard bind to loopback before using its private
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test("accepts the packaged OpenCode service registration filename", async () => {
+  const root = await mkdtemp(join(process.cwd(), "local/tmp/hermes-mcp-registration-packaged-"))
+  const registration = join(root, "service.json")
+  await writeFile(registration, `${JSON.stringify({ url: "http://127.0.0.1:3086", pid: process.pid, password: "private" })}\n`, { mode: 0o600 })
+  await chmod(registration, 0o600)
+  const request: typeof fetch = async (input) => {
+    const url = input instanceof URL ? input : new URL(input.toString())
+    assert.equal(url.pathname, "/api/info")
+    return new Response(JSON.stringify({ pid: process.pid }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+  try {
+    const source = new ServiceRegistrationOpenCodeSidecar(registration, request)
+    assert.equal((await source.resolve()).endpoint.href, "http://127.0.0.1:3086/")
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("refuses a registration filename outside the allowlist", () => {
+  assert.throws(
+    () => new ServiceRegistrationOpenCodeSidecar("/private/var/service-other.json"),
+    /service-local\.json or service\.json/,
+  )
 })
 
 test("refuses a service registration whose permissions expose the private credential", async () => {

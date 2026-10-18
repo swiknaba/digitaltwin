@@ -33,21 +33,23 @@ tool returns only enabled identities, display names, and variants. Commander
 then applies the configured task-tier instructions before passing one exact
 identity to creation. The bridge does not rank models or substitute a default.
 
-OpenCode publishes its desktop sidecar through an owner-only
-`service-local.json` registration, which is its supported local-client discovery
-contract. The approved Hermes control bearer is not that credential and is never
-repurposed for this bridge. Until an owner explicitly provides the absolute
+OpenCode publishes its desktop sidecar through an owner-only registration. The
+development sidecar uses `service-local.json`; the isolated packaged desktop
+sidecar uses `service.json`. Both are accepted only at an explicitly authorized,
+absolute path. The approved Hermes control bearer is not that credential and is
+never repurposed for this bridge. Until an owner explicitly provides the absolute
 `DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE` path to the MCP process,
 project operations fail closed before any request is sent to OpenCode. The MCP
 `initialize` and `tools/list` handshake remains usable without that path.
 
 When authorized, the bridge accepts only a current-user-owned, non-symlink
-`service-local.json` with no group or other permissions. It verifies the
-registration's loopback endpoint, normalizing only the desktop service's literal
-`0.0.0.0` wildcard bind to `127.0.0.1`, then Basic-authenticates `/api/info`.
-The discovered password is used only in memory for that request. A 401 causes
-one fresh registration discovery, so a desktop restart can rotate its credential
-without a copied password or persisted bridge secret.
+`service-local.json` or `service.json` with no group or other permissions. It
+verifies the registration's loopback endpoint, normalizing only the desktop
+service's literal `0.0.0.0` wildcard bind to `127.0.0.1`, then
+Basic-authenticates `/api/info`. The discovered password is used only in memory
+for that request. A 401 causes one fresh registration discovery, so a desktop
+restart can rotate its credential without a copied password or persisted bridge
+secret.
 
 Run `sh scripts/local-hermes-model` to open Hermes' interactive provider/model
 picker with `HOME`, `HERMES_HOME`, caches, and runtime state pinned below this

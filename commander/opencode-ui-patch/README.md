@@ -11,14 +11,19 @@ neither the bearer token nor the Hermes profile path; the local adapter requires
 the private loopback bearer header from the trusted desktop process or Kirei.
 
 Commander chooses one durable `{ providerID, modelID }` identity from the
-Hermes-confirmed portion of OpenCode's native visible model catalog, including
-the user's provider/model visibility preferences. The selection is not an
+Hermes-confirmed portion of OpenCode's native explicitly enabled model catalog.
+Every model is hidden by default, including free and built-in models; the user
+enables each model in native OpenCode settings. Those native visibility choices
+remain the single persisted source of truth for Commander and Hermes worker
+selection. The selection is not an
 OpenCode session setting: the adapter stores it for Commander only and restores
 it when the desktop process reopens. Hermes separately selects any project
 worker from the enabled inventory for each new project session, using the user's
-natural-language request only when they name a worker model. Commander never
-reads, copies, or configures OpenCode provider credentials; Hermes needs its
-separately approved authentication or shared LiteLLM route.
+natural-language request only when they name a worker model. The packaged
+launcher reads only an active native Anthropic key at process start and passes
+it to its local Hermes child as ephemeral process environment; it never copies
+the credential into Commander state, patch source, logs, or a second settings
+store. Other Hermes authentication remains separately approved.
 
 The active OpenCode continuation plugin owns exact-session follow-up bindings.
 Scheduled Kirei delivery independently uses the authenticated normal OpenCode
@@ -47,7 +52,7 @@ sh commander/opencode-ui-patch/prepare-opencode.sh
 The default target is `local/opencode`; pass an absolute checkout path only when
 an operator deliberately needs a different location. The script verifies the
 pinned revision, then applies all patches. The reviewed patch sequence is
-currently forty-two patches.
+currently forty-nine patches.
 It copies no configuration, credentials, persistent store, or operator state.
 
 For a local desktop walkthrough—including optional native-agent continuation and
