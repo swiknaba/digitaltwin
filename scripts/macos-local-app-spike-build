@@ -1,0 +1,53 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+spike_root="$repo_root/local/macos-local-app-spike"
+toolchain_root="$spike_root/toolchain"
+app="$spike_root/DigitalTwin.app"
+resources="$app/Contents/Resources"
+opencode_app="$repo_root/local/opencode-hermes-validation-clean/packages/desktop/dist/mac-arm64/OpenCode Dev.app"
+hermes_runtime="$repo_root/local/hermes/runtime"
+hermes_python="$hermes_runtime/tools/python-3.14.7+20260901-darwin-arm64/bin/python3"
+
+case "$(uname -m)" in
+  arm64) ;;
+  *) printf '%s\n' "The macOS packaging spike supports arm64 hosts only" >&2; exit 69 ;;
+esac
+
+test -x "$toolchain_root/ruby/bin/ruby" || { printf '%s\n' "Run scripts/macos-local-app-spike-toolchain first" >&2; exit 78; }
+test -x "$toolchain_root/postgres/bin/pg_ctl" || { printf '%s\n' "PostgreSQL toolchain is missing" >&2; exit 78; }
+test -d "$toolchain_root/kirei-gems" || { printf '%s\n' "Kirei gems are missing" >&2; exit 78; }
+test -d "$opencode_app" || { printf '%s\n' "Package OpenCode in local/opencode-hermes-validation-clean first" >&2; exit 78; }
+test -x "$hermes_python" || { printf '%s\n' "The project-local Hermes Python closure is missing" >&2; exit 78; }
+hermes_venv=$(
+  "$hermes_python" -I -c 'import hashlib, json; from pathlib import Path; source = Path("local/hermes/runtime/source").resolve(); key = hashlib.sha256(str(source).encode("utf-8")).hexdigest()[:16]; state = Path("local/hermes/commander-profile/installs") / key / "facts.json"; print(json.loads(state.read_text(encoding="utf-8"))["packages"]["venv"]["environment"])'
+)
+test -d "$hermes_venv" || { printf '%s\n' "The Hermes dependency closure is missing" >&2; exit 78; }
+
+rm -rf "$app"
+mkdir -p "$resources/bin" "$app/Contents/MacOS"
+cp "$repo_root/macos-local-app-spike/Info.plist" "$app/Contents/Info.plist"
+cp "$repo_root/macos-local-app-spike/launcher.sh" "$app/Contents/MacOS/DigitalTwin"
+chmod 755 "$app/Contents/MacOS/DigitalTwin"
+ditto "$opencode_app" "$resources/OpenCode.app"
+ditto "$toolchain_root/ruby" "$resources/ruby"
+ditto "$toolchain_root/postgres" "$resources/postgres"
+ditto "$repo_root/integration-backend" "$resources/kirei"
+rm -rf "$resources/kirei/.git" "$resources/kirei/.bundle"
+ditto "$toolchain_root/kirei-gems" "$resources/kirei/vendor/bundle"
+mkdir -p "$resources/hermes/runtime" "$resources/hermes/profile"
+rsync -a --delete --exclude='.git' --exclude='node_modules' --exclude='__pycache__' --exclude='evals' "$hermes_runtime/source/" "$resources/hermes/source/"
+ditto "$hermes_runtime/tools/python-3.14.7+20260901-darwin-arm64" "$resources/hermes/runtime/python"
+ditto "$hermes_venv" "$resources/hermes/venv"
+cp "$repo_root/macos-local-app-spike/hermes-manifest.json" "$resources/hermes/manifest.json"
+cp "$repo_root/commander/hermes-profile-template/config.yaml.example" "$resources/hermes/profile/config.yaml.example"
+cp "$repo_root/commander/hermes-profile-template/SOUL.md" "$resources/hermes/profile/SOUL.md"
+cp "$repo_root/commander/hermes-profile-template/AGENTS.md" "$resources/hermes/profile/AGENTS.md"
+cp "$repo_root/macos-local-app-spike/hermes-launcher.sh" "$resources/bin/hermes"
+chmod 755 "$resources/bin/hermes"
+
+bun build "$repo_root/commander/hermes-adapter/server.ts" --compile --target=bun-darwin-arm64 --outfile "$resources/bin/hermes-adapter"
+
+printf '%s\n' "Built unsigned arm64 DigitalTwin app at $app"

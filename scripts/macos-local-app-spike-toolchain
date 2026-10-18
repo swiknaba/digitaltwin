@@ -1,0 +1,77 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+spike_root="$repo_root/local/macos-local-app-spike"
+download_root="$spike_root/downloads"
+build_root="$spike_root/build"
+toolchain_root="$spike_root/toolchain"
+tmp_root="$spike_root/tmp"
+
+case "$(uname -m)" in
+  arm64) ;;
+  *) printf '%s\n' "The macOS packaging spike supports arm64 hosts only" >&2; exit 69 ;;
+esac
+
+mkdir -p "$download_root" "$build_root" "$toolchain_root" "$tmp_root"
+export TMPDIR="$tmp_root"
+
+download_with_sidecar() {
+  file=$1
+  url=$2
+  checksum_url=$3
+  if ! test -f "$download_root/$file"; then
+    curl --fail --location --retry 3 --output "$download_root/$file" "$url"
+  fi
+  curl --fail --location --retry 3 --output "$download_root/$file.sha256" "$checksum_url"
+  (cd "$download_root" && grep " $file$" "$file.sha256" | shasum --algorithm 256 --check)
+}
+
+ruby_file="ruby-4.0.7.tar.gz"
+postgres_file="postgresql-18.6.tar.bz2"
+if ! test -f "$download_root/$ruby_file"; then
+  curl --fail --location --retry 3 --output "$download_root/$ruby_file" "https://cache.ruby-lang.org/pub/ruby/4.0/$ruby_file"
+fi
+(cd "$download_root" && printf '%s  %s\n' "911ace20f90d068ca0e4dda6d0e4f0f81e52e52f2dd4f4004c721e253412e82d" "$ruby_file" | shasum --algorithm 256 --check)
+download_with_sidecar "$postgres_file" "https://ftp.postgresql.org/pub/source/v18.6/$postgres_file" "https://ftp.postgresql.org/pub/source/v18.6/$postgres_file.sha256"
+
+if ! test -x "$toolchain_root/ruby/bin/ruby"; then
+  if test -n "${DIGITALTWIN_RUBY_STAGE_SOURCE:-}"; then
+    test -x "$DIGITALTWIN_RUBY_STAGE_SOURCE/bin/ruby" || { printf '%s\n' "DIGITALTWIN_RUBY_STAGE_SOURCE must contain bin/ruby" >&2; exit 78; }
+    ditto "$DIGITALTWIN_RUBY_STAGE_SOURCE" "$toolchain_root/ruby"
+  else
+    rm -rf "$build_root/ruby-4.0.7"
+    tar -xzf "$download_root/$ruby_file" --directory "$build_root"
+    (
+      cd "$build_root/ruby-4.0.7"
+      ./configure --prefix="$toolchain_root/ruby" --disable-install-doc
+      make -j"${DIGITALTWIN_BUILD_JOBS:-4}"
+      make install
+    )
+  fi
+  "$toolchain_root/ruby/bin/ruby" --version | grep -q '^ruby 4\.0\.7 ' || { printf '%s\n' "Staged Ruby must be 4.0.7" >&2; exit 78; }
+fi
+
+if ! test -x "$toolchain_root/postgres/bin/pg_ctl"; then
+  rm -rf "$build_root/postgresql-18.6"
+  tar -xjf "$download_root/$postgres_file" --directory "$build_root"
+  (
+    cd "$build_root/postgresql-18.6"
+    ./configure --prefix="$toolchain_root/postgres" --without-readline --without-zlib --without-icu
+    make -j"${DIGITALTWIN_BUILD_JOBS:-4}"
+    make install-world
+  )
+fi
+
+if ! test -x "$toolchain_root/kirei-gems/ruby"; then
+  mkdir -p "$toolchain_root/kirei-gems"
+  (
+    cd "$repo_root/integration-backend"
+    PATH="$toolchain_root/ruby/bin:$toolchain_root/postgres/bin:$PATH" \
+      BUNDLE_PATH="$toolchain_root/kirei-gems" \
+      "$toolchain_root/ruby/bin/bundle" install --jobs 4
+  )
+fi
+
+printf '%s\n' "Prepared arm64 Ruby, PostgreSQL, and Kirei gems at $toolchain_root"
