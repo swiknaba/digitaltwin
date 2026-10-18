@@ -1,0 +1,452 @@
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -24,7 +24,16 @@
+ }>
+ type CommanderRequest = Readonly<{
+   readonly id: string
+-  readonly operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "selected-model" | "select-model"
++  readonly operation:
++    | "health"
++    | "start"
++    | "stop"
++    | "steer"
++    | "history"
++    | "status"
++    | "models"
++    | "selected-model"
++    | "select-model"
+   readonly requestID?: string
+   readonly runID?: string
+   readonly text?: string
+@@ -204,6 +213,11 @@
+         .history()
+         .then(reply)
+         .catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander history failed."))
++    if (request.operation === "status" && request.runID)
++      void live.value
++        .status(request.runID)
++        .then(reply)
++        .catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander run status failed."))
+     if (request.operation === "models")
+       void live.value
+         .models()
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -6,7 +6,10 @@
+ import { Composer } from "@/composer/composer"
+ import { createComposerModel } from "@/composer/model"
+ import { createMemoryComposerState } from "@/composer/state"
++import { DataProvider } from "@opencode/session-ui/context"
++import { SessionAssistantContent, SessionUserMessage } from "@opencode/session-ui/message"
+ import type { ActiveComposerAdapter, ComposerControls } from "@/composer/adapter"
++import type { SessionMessageAssistant, SessionMessageUser } from "@opencode/client/promise"
+ import type { ModelKey, ModelSelection } from "@/providers/models/selection"
+ import { ModelsProvider, useModels } from "@/providers/models/models"
+ import { useData } from "@/runtime/server/current"
+@@ -120,6 +123,8 @@
+   const [selectionError, setSelectionError] = createSignal<string>()
+   const [selected, setSelected] = createSignal<CommanderModel | undefined>(props.conversation.model)
+   const prompt = createMemoryComposerState(props.conversation.model ? { model: props.conversation.model } : undefined)
++  const completedRuns = new Set<string>()
++  let pollCompletion: (runID: string, remaining?: number) => void = () => undefined
+   let timelineElement: HTMLDivElement | undefined
+ 
+   // Preserve the native selector and visibility preferences, but only expose
+@@ -140,6 +145,10 @@
+     const key = selected() ?? prompt.model.current()
+     if (!key) return
+     return visibleModel(key)
++  }
++  const nativeModel = () => {
++    const model = selected() ?? prompt.model.current()
++    return { providerID: model?.providerID ?? "", id: model?.modelID ?? "", variant: model?.variant ?? undefined }
+   }
+   const ready = models.ready satisfies ModelSelection["ready"]
+ 
+@@ -249,7 +258,13 @@
+             requestID: input.id,
+             text: input.text,
+           })
+-          setRunID(result.id)
++          if (completedRuns.has(result.id)) {
++            completedRuns.delete(result.id)
++            setRunID(undefined)
++          } else {
++            setRunID(result.id)
++            pollCompletion(result.id)
++          }
+         } catch (error) {
+           setTimeline((current) =>
+             current.filter((item) => item.runID !== submittedTurn.runID || item.seq !== submittedTurn.seq),
+@@ -306,12 +321,52 @@
+ 
+   onMount(() => {
+     let disposed = false
+-    const loadHistory = async (replace: boolean) => {
++    const hydratingRuns = new Set<string>()
++    const loadHistory = async () => {
+       const items = await hermesRequest<readonly HermesTimelineEvent[]>({ operation: "history" })
+       if (disposed) return
+       const next = items.filter(validTimelineEvent)
+-      setTimeline((current) => (replace ? next : reconcileTimeline(current, next)))
++      setTimeline((current) => reconcileTimeline(current, next))
++    }
++    const refreshCompletedHistory = (runID: string) => {
++      if (hydratingRuns.has(runID)) return
++      hydratingRuns.add(runID)
++      const refresh = (remaining: number) => {
++        void loadHistory()
++          .catch(() => undefined)
++          .finally(() => {
++            if (!disposed && remaining > 0) {
++              window.setTimeout(() => refresh(remaining - 1), 300)
++              return
++            }
++            hydratingRuns.delete(runID)
++          })
++      }
++      refresh(5)
+     }
++    const completeRun = (id: string) => {
++      if (completedRuns.has(id)) return
++      completedRuns.add(id)
++      if (id === runID()) setRunID(undefined)
++      refreshCompletedHistory(id)
++    }
++    pollCompletion = (id, remaining = 60) => {
++      window.setTimeout(() => {
++        if (disposed || completedRuns.has(id)) return
++        void hermesRequest<unknown>({ operation: "status", runID: id }).then(
++          (result) => {
++            if (isCompletedHermesRun(result)) {
++              completeRun(id)
++              return
++            }
++            if (remaining > 0) pollCompletion(id, remaining - 1)
++          },
++          () => {
++            if (remaining > 0) pollCompletion(id, remaining - 1)
++          },
++        )
++      }, 500)
++    }
+     const receive = (event: Event) => {
+       if (!(event instanceof CustomEvent) || !validTimelineEvent(event.detail)) return
+       setTimeline((current) =>
+@@ -319,10 +374,9 @@
+           ? current
+           : [...current, event.detail],
+       )
+-      const completesCurrentRun = event.detail.type === "completed" && event.detail.runID === runID()
++      if (event.detail.type === "completed") completeRun(event.detail.runID)
+       if ((event.detail.type === "completed" || event.detail.type === "failed") && event.detail.runID === runID())
+         setRunID(undefined)
+-      if (completesCurrentRun) void loadHistory(true).catch(() => undefined)
+     }
+     window.addEventListener("opencode-commander-hermes-event", receive)
+     void hermesRequest<{ ok: boolean; hermes: boolean }>({ operation: "health" }).then(
+@@ -334,7 +388,7 @@
+           return
+         }
+         void Promise.all([
+-          loadHistory(false),
++          loadHistory(),
+           hermesRequest<readonly HermesModelOption[]>({ operation: "models" }),
+           hermesRequest<CommanderModelSelection>({ operation: "selected-model" }),
+         ]).then(
+@@ -364,6 +418,7 @@
+     )
+     onCleanup(() => {
+       disposed = true
++      pollCompletion = () => undefined
+       window.removeEventListener("opencode-commander-hermes-event", receive)
+     })
+   })
+@@ -400,36 +455,65 @@
+               Close
+             </Button>
+           </div>
+-          <div
+-            ref={timelineElement}
+-            class="min-h-0 flex-1 overflow-y-auto"
+-            onScroll={() => {
+-              const element = timelineElement
+-              if (!element) return
+-              setFollowTimeline(element.scrollHeight - element.clientHeight - element.scrollTop <= 24)
+-            }}
++          <DataProvider
++            directory={props.conversation.directory}
++            sessionID={props.conversation.sessionID}
++            data={{ session: [], session_status: {}, session_diff: {} }}
+           >
+-            <Show
+-              when={visibleTimeline().length > 0}
+-              fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}
++            <div
++              ref={timelineElement}
++              class="min-h-0 flex-1 overflow-y-auto"
++              onScroll={() => {
++                const element = timelineElement
++                if (!element) return
++                setFollowTimeline(element.scrollHeight - element.clientHeight - element.scrollTop <= 24)
++              }}
+             >
+-              <div class="space-y-3 p-5" data-slot="commander-hermes-timeline">
+-                <For each={visibleTimeline()}>
+-                  {(item) => (
+-                    <div class="rounded-md border border-v2-border-border-base p-3">
+-                      <p class="text-12-medium text-v2-text-text-muted">{timelineLabel(item)}</p>
+-                      <Show when={item.text}>
+-                        <p class="mt-1 whitespace-pre-wrap text-13-regular text-v2-text-text-base">{item.text}</p>
+-                      </Show>
+-                      <Show when={item.learning}>
+-                        <p class="mt-1 text-12-regular text-v2-text-text-muted">Learning: {item.learning}</p>
+-                      </Show>
+-                    </div>
+-                  )}
+-                </For>
+-              </div>
+-            </Show>
+-          </div>
++              <Show
++                when={visibleTimeline().length > 0}
++                fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}
++              >
++                <div class="space-y-1 p-5" data-slot="commander-hermes-timeline">
++                  <For each={visibleTimeline()}>
++                    {(item) => {
++                      const id = () => `commander:${item.runID}:${item.seq}`
++                      const model = () => nativeModel()
++                      const user = () => commanderUserMessage(id(), item)
++                      const assistant = () => commanderAssistantMessage(id(), item, model())
++
++                      return (
++                        <div class="w-full py-2" data-slot="session-turn-message-container">
++                          <Show when={item.type === "user" && item.text}>
++                            <div data-slot="session-turn-message-content">
++                              <SessionUserMessage
++                                sessionID={props.conversation.sessionID}
++                                message={user()}
++                                historicalAgent=""
++                                historicalModel={model()}
++                              />
++                            </div>
++                          </Show>
++                          <Show when={item.type !== "user" && item.text}>
++                            <div data-slot="session-turn-assistant-content">
++                              <SessionAssistantContent
++                                message={assistant()}
++                                content={assistant().content[0]!}
++                                contentID={`${id()}:text`}
++                                showAssistantCopyPartID={`${id()}:text`}
++                              />
++                            </div>
++                          </Show>
++                          <Show when={item.learning}>
++                            <p class="px-1 text-12-regular text-v2-text-text-muted">Learning: {item.learning}</p>
++                          </Show>
++                        </div>
++                      )
++                    }}
++                  </For>
++                </div>
++              </Show>
++            </div>
++          </DataProvider>
+           <div class="shrink-0 border-t border-v2-border-border-base p-4">
+             <Show when={runtimeError()}>
+               {(message) => (
+@@ -486,15 +570,43 @@
+   return !!value.providerID.trim() && !!value.providerName.trim() && !!value.modelID.trim()
+ }
+ 
+-function timelineLabel(item: HermesTimelineEvent): string {
+-  if (item.type === "user") return "You"
+-  if (item.type === "assistant" || item.type === "completed" || item.type === "output") return "Commander"
+-  return item.type
++function isCompletedHermesRun(value: unknown): boolean {
++  return !!value && typeof value === "object" && "status" in value && value.status === "completed"
+ }
+ 
++function commanderUserMessage(id: string, event: HermesTimelineEvent): SessionMessageUser {
++  return { id, type: "user", text: event.text ?? "", time: { created: Date.now() } }
++}
++
++function commanderAssistantMessage(
++  id: string,
++  event: HermesTimelineEvent,
++  model: SessionMessageAssistant["model"],
++): SessionMessageAssistant {
++  const now = Date.now()
++  return {
++    id,
++    type: "assistant",
++    agent: "commander",
++    model,
++    time: { created: now, completed: now },
++    content: [{ type: "text", text: event.text ?? "" }],
++    finish: "stop",
++  }
++}
++
+ function hermesRequest<T>(
+   request: Readonly<{
+-    operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "selected-model" | "select-model"
++    operation:
++      | "health"
++      | "start"
++      | "stop"
++      | "steer"
++      | "history"
++      | "status"
++      | "models"
++      | "selected-model"
++      | "select-model"
+     requestID?: string
+     runID?: string
+     text?: string
+diff --git a/packages/app/component-tests/commander-vite-fixture/main.tsx b/packages/app/component-tests/commander-vite-fixture/main.tsx
+--- a/packages/app/component-tests/commander-vite-fixture/main.tsx
++++ b/packages/app/component-tests/commander-vite-fixture/main.tsx
+@@ -20,7 +20,16 @@
+ type Model = { providerID: string; modelID: string }
+ type HermesRequest = {
+   id: string
+-  operation?: "health" | "history" | "models" | "selected-model" | "select-model" | "start" | "stop" | "steer"
++  operation?:
++    | "health"
++    | "history"
++    | "status"
++    | "models"
++    | "selected-model"
++    | "select-model"
++    | "start"
++    | "stop"
++    | "steer"
+   model?: Model
+   text?: string
+ }
+@@ -36,6 +45,7 @@
+       resetHermesRequests(): void
+       hermesInventoryRequests(): number
+       lastStartHasWorkerModel(): boolean
++      setCompletionEventDelivery(deliver: boolean): void
+       setModelVisibility(modelID: string, visible: boolean): boolean
+     }
+   }
+@@ -62,6 +72,8 @@
+   let hermesInventoryRequests = 0
+   let lastStartHasWorkerModel = false
+   let history: readonly HermesTimelineEvent[] = []
++  let delayedCompletionReply: HermesTimelineEvent | undefined
++  let deliverCompletionEvent = true
+   const open = () =>
+     window.dispatchEvent(new CustomEvent("opencode-commander-overlay", { detail: { conversation, model } }))
+   onMount(() => {
+@@ -90,9 +102,20 @@
+         return
+       }
+       if (request.operation === "history") {
++        if (delayedCompletionReply) {
++          const reply = delayedCompletionReply
++          delayedCompletionReply = undefined
++          window.setTimeout(() => {
++            history = [...history, reply]
++          }, 0)
++        }
+         reply(history)
+         return
+       }
++      if (request.operation === "status") {
++        reply({ status: "completed" })
++        return
++      }
+       if (request.operation === "select-model" && request.model) {
+         if (request.model.modelID === "rejected-model") reply(undefined, "Hermes rejected this model.")
+         else {
+@@ -107,20 +130,15 @@
+         if (hermesMode === "reject") reply(undefined, "Hermes is unavailable for this controlled test.")
+         else {
+           const runID = `run_${hermesRequests}`
+-          history = [
+-            { seq: 0, type: "user", runID: "history", text: request.text ?? "" },
+-            { seq: 1, type: "assistant", runID: "history", text: "fixture Commander reply" },
+-          ]
++          history = [{ seq: 0, type: "user", runID: "history", text: request.text ?? "" }]
++          delayedCompletionReply = { seq: 1, type: "assistant", runID: "history", text: "fixture Commander reply" }
++          if (deliverCompletionEvent)
++            window.dispatchEvent(
++              new CustomEvent("opencode-commander-hermes-event", {
++                detail: { seq: 1, type: "completed", runID },
++              }),
++            )
+           reply({ id: runID })
+-          window.setTimeout(
+-            () =>
+-              window.dispatchEvent(
+-                new CustomEvent("opencode-commander-hermes-event", {
+-                  detail: { seq: 1, type: "completed", runID },
+-                }),
+-              ),
+-            0,
+-          )
+         }
+       }
+       if (request.operation === "stop" || request.operation === "steer") reply({})
+@@ -134,6 +152,9 @@
+       hermesRequests: () => hermesRequests,
+       hermesInventoryRequests: () => hermesInventoryRequests,
+       lastStartHasWorkerModel: () => lastStartHasWorkerModel,
++      setCompletionEventDelivery: (deliver) => {
++        deliverCompletionEvent = deliver
++      },
+       resetHermesRequests: () => {
+         hermesRequests = 0
+       },
+diff --git a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+--- a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -92,7 +92,7 @@
+   expect(await page.evaluate(() => window.commanderFixture?.lastStartHasWorkerModel())).toBe(false)
+ })
+ 
+-test("Commander shows the original user turn once through submit, streaming, close/reopen, and history reload", async ({
++test("Commander hydrates a blank completion into native user and assistant messages without reopening", async ({
+   page,
+ }) => {
+   await page.goto("/")
+@@ -104,6 +104,9 @@
+   await overlay.getByRole("button", { name: "Send" }).click()
+   await expect(overlay.getByText(userText, { exact: true })).toHaveCount(1)
+   await expect(overlay.getByText("fixture Commander reply", { exact: true })).toHaveCount(1)
++  await expect(overlay.locator('[data-component="user-message"]')).toHaveCount(1)
++  await expect(overlay.locator('[data-component="text-part"]')).toHaveCount(1)
++  await expect(overlay.getByRole("button", { name: "Copy response" })).toHaveCount(1)
+ 
+   await overlay.getByRole("button", { name: "Close" }).click()
+   await page.evaluate(() => window.commanderFixture?.reopen())
+@@ -114,6 +117,21 @@
+   ).toHaveCount(0)
+ })
+ 
++test("Commander polls Hermes after a missed completion event and hydrates the native transcript", async ({ page }) => {
++  await page.goto("/")
++  await page.evaluate(() => window.commanderFixture?.setCompletionEventDelivery(false))
++  const overlay = page.locator('[data-slot="commander-native-overlay"]')
++  const prompt = overlay.locator('[contenteditable="true"]')
++  const userText = "Refresh the transcript when Hermes completed before the overlay received an event."
++
++  await prompt.fill(userText)
++  await overlay.getByRole("button", { name: "Send" }).click()
++  await expect(overlay.getByText(userText, { exact: true })).toHaveCount(1)
++  await expect(overlay.getByText("fixture Commander reply", { exact: true })).toHaveCount(1)
++  await expect(overlay.locator('[data-component="user-message"]')).toHaveCount(1)
++  await expect(overlay.locator('[data-component="text-part"]')).toHaveCount(1)
++})
++
+ test("Commander retains rejected Hermes drafts and submits a confirmed button retry once", async ({ page }) => {
+   await page.goto("/")
+   const overlay = page.locator('[data-slot="commander-native-overlay"]')
+
