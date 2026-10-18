@@ -1,0 +1,19 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+
+: "${DIGITALTWIN_HERMES_STATE_FILE:=$repo_root/local/hermes/commander-adapter-state.json}"
+: "${DIGITALTWIN_HERMES_ADAPTER_PORT:=3087}"
+: "${DIGITALTWIN_HERMES_API_URL:=http://127.0.0.1:8642}"
+: "${DIGITALTWIN_HERMES_ALLOWED_PROVIDER:=anthropic}"
+token_file="$repo_root/local/secrets/hermes-api-server-token"
+test -s "$token_file" || { printf '%s\n' "Hermes API token is required: $token_file" >&2; exit 78; }
+export DIGITALTWIN_HERMES_STATE_FILE DIGITALTWIN_HERMES_ADAPTER_PORT DIGITALTWIN_HERMES_API_URL DIGITALTWIN_HERMES_ALLOWED_PROVIDER
+export DIGITALTWIN_HERMES_API_TOKEN="$(cat "$token_file")"
+export DIGITALTWIN_HERMES_ADAPTER_TOKEN="$DIGITALTWIN_HERMES_API_TOKEN"
+
+cd "$repo_root"
+exec bun commander/hermes-adapter/server.ts

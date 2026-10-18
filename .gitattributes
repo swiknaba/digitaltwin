@@ -1,0 +1,2 @@
+# Unified diff artifacts need a single-space blank context line for git apply.
+commander/opencode-ui-patch/*.patch whitespace=-blank-at-eol

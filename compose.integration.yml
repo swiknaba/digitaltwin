@@ -1,2 +1,0 @@
-# Compatibility entrypoint; the reviewed core now lives in default compose.yml.
-services: {}

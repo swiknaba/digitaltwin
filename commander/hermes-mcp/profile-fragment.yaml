@@ -1,0 +1,18 @@
+# Merge this generated-path fragment into the approved project-local Hermes profile.
+# The desktop service-registration path is deliberately not represented here. The
+# stdio process exposes its MCP schema without it and fails project calls closed
+# until an owner authorizes DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE in its
+# launch environment. Do not add or copy the rotating service password.
+mcp_servers:
+  commander-delegation:
+    command: sh
+    args:
+      - -c
+      - 'exec "${DIGITALTWIN_REPO_ROOT:?DIGITALTWIN_REPO_ROOT is required}/scripts/local-hermes-commander-mcp"'
+    tools:
+      include:
+        - commander_list_projects
+        - commander_list_enabled_models
+        - commander_create_project_session
+        - commander_read_agent
+        - commander_continue_agent

@@ -1,5 +1,8 @@
 # Commander Hermes Integration Implementation Plan
 
+> **Superseded (2026-10-14):** The Hermes and Mattermost release plan is historical.
+> Commander now uses normal OpenCode session input and Kirei one-time FutureTasks.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Track progress with checkboxes.
 
 **Goal:** Run Commander through Hermes while preserving Kirei's verified orchestration and approval boundaries.

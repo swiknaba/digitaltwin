@@ -17,6 +17,9 @@ Dir[File.join(__dir__, "config/initializers", "*.rb")].each { require(_1) }
 APP_ROOT = T.let(T.must(__dir__), String)
 APP_LOADER = Zeitwerk::Loader.new
 APP_LOADER.tag = File.basename(__FILE__, ".rb")
+# The OpenCode delivery boundary intentionally uses the product's CamelCase
+# spelling rather than Zeitwerk's default `Opencode` inflection.
+APP_LOADER.inflector.inflect("opencode" => "OpenCode")
 # every application class lives in a domain: `app/domains/<domain>/` maps to `Domains::<Domain>`
 APP_LOADER.push_dir("#{File.dirname(__FILE__)}/app")
 APP_LOADER.setup

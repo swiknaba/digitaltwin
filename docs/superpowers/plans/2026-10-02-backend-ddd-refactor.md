@@ -1,5 +1,9 @@
 # Integration Backend DDD Refactor Implementation Plan
 
+> **Superseded in scope (2026-10-14):** Mattermost and Herdr/Hermes-specific
+> adapters in this historical refactor are not product requirements. Retain this
+> document for migration history only; FutureTasks remains the active Kirei domain.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Restructure `integration-backend/app` into layered DDD with private entities, public DTOs, Kirei persistence, and Kirei `Result` returns, without changing observable behavior.

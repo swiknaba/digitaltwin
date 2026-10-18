@@ -1,53 +1,66 @@
 # Digitaltwin
 
-Digitaltwin is a self-hosted AI team for people who want durable, reviewable work rather than a one-off chat answer. It gives an owner one place to talk to a team, start bounded coding or research workflows, keep the resulting decisions and artifacts in Git, and retain a clear human approval point.
+Digitaltwin is a thin companion to OpenCode. OpenCode owns project chats, agents, remote workspaces, and Git feedback; Digitaltwin adds Commander and durable future commitments.
 
 ## Why it exists
 
-Long-running AI work is difficult to trust when the request, session, code, review, and follow-up live in different places. Digitaltwin gives the person responsible for that work one team they can guide and inspect without treating an agent conversation as authority by itself:
-
-- A chat interface lets people and bots keep questions, direction, and results together; a CLI provides a second direct way to control agents.
-- A control service keeps the human, request, current work, and result connected so only authorized work moves forward.
-- Private agent environments give agents a durable place to complete bounded tasks without exposing their sessions.
-- Git keeps the specification, plan, changes, review evidence, and approvals available for inspection.
+Project work stays in OpenCode and Git. Commander is the one cross-project surface for durable context, follow-ups, and scheduled check-ins. Kirei stores and delivers future commitments only; it does not proxy ordinary project prompts, transcripts, agent events, approvals, or reviews.
 
 The outcome is a small remote team that can preserve context across restarts and make its work inspectable, while still stopping for the human decisions that matter.
 
 ```mermaid
-flowchart TD
-  human[Human]
-  access[Chat or CLI]
-  commander[Commander<br/> as optional copilot]
-  agents[Agents]
-
-  human <--> access
-  access <--> agents
-  access <--> commander
-  commander <--> agents
+flowchart LR
+  project[OpenCode project session] --> git[Git]
+  commander[Commander] <--> opencode[OpenCode session API]
+  kirei[Kirei future tasks] <--> opencode
 ```
 
-People can work directly with agents through chat or a CLI. They can also ask Commander to coordinate a fleet; Commander is an optional copilot, not a required gateway. Each connection is two-way, so questions, direction, status, and results can travel both ways. This diagram shows the product flow, not implementation technology.
+This diagram is the intended product boundary, not a claim of production runtime connectivity.
 
 ## Commander
 
-Commander is an optional copilot for coordinating a fleet, sharing status, and helping people steer work. People can also work directly with agents through chat or a CLI.
+Commander opens beside an existing OpenCode project session without replacing it.
+Its normal continuation and Kirei check-ins use the existing authenticated
+OpenCode session API; no private Node bridge or browser credential path exists.
 
 ## What is available today
 
-The reviewed local core can build and start PostgreSQL, a plugin-free Mattermost image, Kirei web and background-job processes, and the Runtime. It has durable jobs, migrations, health checks, private socket ownership, checksum-pinned Runtime clients, synthetic callback coverage, and restart/durable-job checks.
-
-It is **not yet an enabled autonomous fleet**. Dispatch remains hard-blocked until authenticated chat/thread behavior, actual CLI lifecycle and settled-state evidence, and a selected Commander MCP round trip are captured. Signed mobile push/deep links, production infrastructure, provider credentials, and deployment operations also need their own operator evidence and authorization.
+The reviewed local core now starts PostgreSQL plus Kirei web and worker processes only. It includes versioned one-time FutureTasks, durable due-job executions, disposition records, and a fail-closed OpenCode delivery boundary. Operator-provided OpenCode authorization and live desktop interaction remain validation work outside this repository.
 
 ## Components
 
 | Component | Responsibility |
 | --- | --- |
-| [integration-backend/](integration-backend/README.md) | Kirei control plane: verified chat intake, durable workflow state, Commander coordination, review gates, callbacks, and outbox delivery. |
-| [agent-runtime/](agent-runtime/README.md) | Non-root Herdr and the supported CLIs, with persistent home/workspaces and the backend-owned callback/MCP clients. |
-| [chat-backend/](chat-backend/README.md) | Pinned, minimally derived Mattermost Team Edition artifact and local chat configuration. |
-| [push-service/](push-service/README.md) | The existing Mattermost push-proxy artifact and its non-secret compatibility/configuration contract. |
-| [mobile-apps/](mobile-apps/README.md) | Reproducible recipes for our unsigned Mattermost-based iOS/Android builds. |
-| [scripts/](scripts/README.md) and [tests/](tests/README.md) | Local Compose setup plus cross-service checks and evidence. |
+| [integration-backend/](integration-backend/README.md) | Kirei future-task persistence and worker boundary. |
+| [commander/](commander/opencode-ui-patch/README.md) | OpenCode Commander patch and normal-session continuation contract. |
+| [commander/future-work/](commander/future-work/SKILL.md) | Shared future-check-in operating skill for supported agents. |
+| [scripts/](scripts/README.md) and [tests/](tests/README.md) | Local Kirei/PostgreSQL checks and migration evidence. |
+
+## Run everything locally
+
+With Postgres.app already running on `127.0.0.1:5432`, start Kirei web, the
+Kirei worker, and the prepared patched OpenCode desktop from the repository root:
+
+```sh
+sh scripts/local-overmind
+```
+
+The checked-in `.env.overmind` contains only ordinary local database, port, and
+path settings. It creates `digitaltwin_local` and `digitaltwin_local_test` only
+when absent, refuses databases owned by another role, and keeps its socket,
+heartbeats, logs, and temporary files under `local/`.
+
+```sh
+sh scripts/local-overmind status
+sh scripts/local-overmind logs
+sh scripts/local-overmind stop
+```
+
+OpenCode is the single desktop process and starts its local sidecar itself; do
+not run a separate OpenCode server. The first start needs the prepared
+`local/opencode` checkout described in [`commander/LOCAL_E2E.md`](commander/LOCAL_E2E.md).
+Commander defaults are checked into `.env.overmind`; provider credentials remain
+in the user's existing OpenCode setup.
 
 ## Run the credential-free local core with Docker
 
@@ -57,24 +70,19 @@ Docker Desktop (or a compatible Docker daemon) must be running. The sample value
 docker compose --env-file .env.example config --quiet
 scripts/acceptance config
 scripts/acceptance dependencies
-docker compose --env-file .env.example build mattermost
 scripts/dev
 ```
 
-`scripts/dev` preserves an existing ignored `.env`, stages the checksum-verified callback client, and runs `docker compose up -d --wait`. The default core starts PostgreSQL, Mattermost, backend web and background-job services, and Runtime after migrations and volume initialization. Run `scripts/dev --build` after changing an image input; it removes this stack's superseded dangling images after a successful rebuild.
+`scripts/dev` preserves an existing ignored `.env` and runs `docker compose up -d --wait`. The default core starts PostgreSQL plus Kirei web and worker services after migrations. Run `scripts/dev --build` after changing an image input; it removes this stack's superseded dangling images after a successful rebuild.
 
-For the equivalent manual flow, run `cp .env.example .env`, `scripts/prepare-callback-context`, then `docker compose up -d --wait`. Visit the local Mattermost port in `compose.yml` and use backend `/livez` or `/readyz` only as process health signals—not as evidence that provider/chat dispatch works.
+For the equivalent manual flow, run `cp .env.example .env`, then `docker compose up -d --wait`. Use backend `/livez` or `/readyz` only as process health signals—not as evidence of a production Commander runtime.
 
 Stop the local stack with `docker compose down`; volumes are retained for the next boot. Use `docker compose down --volumes` only for deliberately disposable data. Changing `.env` does not rotate roles in an existing PostgreSQL volume.
 
-The `chat-validation` listener and `push` profiles are opt-in. They require separately supplied authenticated identities, mappings, and credentials; do not enable them merely to make a health check green. Production deployment, networking, TLS, backups, and secrets belong to the infrastructure repository or hosting platform, not this Compose file.
+OpenCode installation, operator runtime credentials, mobile access, production deployment, networking, TLS, backups, and secrets remain outside this Compose file.
 
 ## Learn more
 
 - [Repository layout and parallel build](docs/repository-layout-and-parallel-build.md)
 - [Shared service boundaries and validation gates](docs/interfaces/service-boundaries.md)
-- [Local integration wiring and evidence](docs/interfaces/local-integration.md)
-- [Foundation validation checkpoint](docs/interfaces/foundation-validation.md)
-- [Phase 0 fleet specification](docs/agent-fleet-architecture-and-review.md)
-- [Commander routing setup and acceptance](docs/interfaces/commander-routing-setup.md)
-- [Phase 1 group calls and AI voice](docs/phase-1-voice-commander.md)
+- [Commander OpenCode patch](commander/opencode-ui-patch/README.md)

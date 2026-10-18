@@ -1,0 +1,79 @@
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -4,7 +4,7 @@ import { useDialog } from "@opencode/ui/context/dialog"
+ import { TextShimmer } from "@opencode/ui/text-shimmer"
+ import { DataProvider } from "@opencode/session-ui/context"
+ import { SessionTimeline } from "@opencode/session-ui/timeline"
+-import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
++import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+ import { CommentsProvider } from "@/composer/comments"
+ import { Composer } from "@/composer/composer"
+ import { createComposerModel } from "@/composer/model"
+@@ -113,6 +113,14 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   const models = useModels()
+   const [failed, setFailed] = createSignal(false)
+   const [runID, setRunID] = createSignal<string>()
++  const [followTimeline, setFollowTimeline] = createSignal(true)
++  let timelineElement: HTMLDivElement | undefined
++  const scrollTimelineToBottom = () => {
++    timelineElement?.scrollTo({ top: timelineElement.scrollHeight, behavior: "auto" })
++  }
++  const queueTimelineBottom = () => {
++    requestAnimationFrame(() => requestAnimationFrame(scrollTimelineToBottom))
++  }
+   const [transport, setTransport] = createSignal<CommanderTransport>("checking")
+   const [runtimeError, setRuntimeError] = createSignal<string>()
+   const [timeline, setTimeline] = createSignal<readonly HermesTimelineEvent[]>([])
+@@ -218,7 +226,10 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+     ready: prompt.ready,
+     controls,
+     working: () => transport() === "hermes" ? !!runID() : data.session.status(props.conversation.sessionID) === "running",
+-    submitted: () => undefined,
++    submitted: () => {
++      setFollowTimeline(true)
++      queueTimelineBottom()
++    },
+     setEditor: () => undefined,
+     session: () => ({
+       id: props.conversation.sessionID,
+@@ -258,6 +269,22 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+     diffs: [],
+   }))
+ 
++  createEffect(() => {
++    data.session.message.list(props.conversation.sessionID).length
++    data.session.status(props.conversation.sessionID)
++    timeline().length
++    if (followTimeline()) queueTimelineBottom()
++  })
++
++  onMount(() => {
++    const observer = new MutationObserver(() => {
++      if (followTimeline()) queueTimelineBottom()
++    })
++    if (timelineElement) observer.observe(timelineElement, { childList: true, subtree: true })
++    queueTimelineBottom()
++    onCleanup(() => observer.disconnect())
++  })
++
+   onMount(() => {
+     let disposed = false
+     const receive = (event: Event) => {
+@@ -354,7 +381,15 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+               Close
+             </Button>
+           </div>
+-          <div class="min-h-0 flex-1 overflow-y-auto">
++          <div
++            ref={timelineElement}
++            class="min-h-0 flex-1 overflow-y-auto"
++            onScroll={() => {
++              const element = timelineElement
++              if (!element) return
++              setFollowTimeline(element.scrollHeight - element.clientHeight - element.scrollTop <= 24)
++            }}
++          >
+             <Show
+               when={!failed()}
+               fallback={

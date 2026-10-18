@@ -1,0 +1,604 @@
+--- a/packages/app/src/composer/submit.ts
++++ b/packages/app/src/composer/submit.ts
+@@ -140,12 +140,39 @@
+ 
+       if (!started) return
+       const session = started.session
+-
+-      input.addToHistory(value.prompt, value.mode)
+-      input.resetHistory()
+       const restore = () => restoreSubmission(input, submission, value, comments)
+ 
+       if (value.mode === "normal" && !command) {
++        // Commander asks a separate runtime to admit the message. Unlike the
++        // normal sidecar prompt API, that admission is not observable through
++        // the session inbox, so retain the draft until the runtime confirms it.
++        if (session.commanderPrompt) {
++          session.handoff?.set(handoffMessage(value))
++          const optimisticBusy = !input.adapter.working()
++
++          try {
++            await started.cleanupReady
++            await started.complete?.()
++            await sendPrompt(session, value, input.adapter.controls().model.selection.trackSessionCommit, () => {
++              if (optimisticBusy) session.data.session.setStatus(session.id, "running")
++            })
++          } catch (error) {
++            input.notify.failed("prompt", error)
++            return
++          }
++
++          input.adapter.submitted()
++          input.addToHistory(value.prompt, value.mode)
++          input.resetHistory()
++          submission.context.forEach((item) => submission.target().context.remove(item.key))
++          input.comments.clear()
++          clearSubmission(input, submission)
++
++          return
++        }
++
++        input.addToHistory(value.prompt, value.mode)
++        input.resetHistory()
+         session.handoff?.set(handoffMessage(value))
+         const optimisticBusy = !input.adapter.working()
+ 
+@@ -176,6 +203,9 @@
+ 
+         return
+       }
++
++      input.addToHistory(value.prompt, value.mode)
++      input.resetHistory()
+ 
+       await started.cleanupReady
+       await started.complete?.()
+@@ -525,9 +555,13 @@
+     },
+   }
+ 
+-  const sending = session.commanderPrompt
+-    ? session.commanderPrompt({ id: value.id, text: request.text })
+-    : session.data.session.prompt(admission).catch(() => session.data.session.prompt(admission))
++  if (session.commanderPrompt) {
++    await session.commanderPrompt({ id: value.id, text: request.text })
++    onAdmit()
++    return
++  }
++
++  const sending = session.data.session.prompt(admission).catch(() => session.data.session.prompt(admission))
+   onAdmit()
+   await sending
+ }
+--- a/packages/app/src/composer/submit.test.ts
++++ b/packages/app/src/composer/submit.test.ts
+@@ -98,6 +98,7 @@
+ function session(input: {
+   calls: string[]
+   prompt?: (value: Parameters<ComposerSession["data"]["session"]["prompt"]>[0]) => Promise<void>
++  commanderPrompt?: ComposerSession["commanderPrompt"]
+   handoff?: ComposerSession["handoff"]
+   statuses?: ("idle" | "running")[]
+   current?: ComposerSession["current"]
+@@ -113,6 +114,7 @@
+     handoff: input.handoff,
+     current: input.current ?? (() => undefined),
+     admitted: input.admitted ?? (() => false),
++    commanderPrompt: input.commanderPrompt,
+     api: {
+       switchAgent:
+         input.switchAgent ??
+@@ -585,5 +587,61 @@
+ 
+     expect(calls).toEqual([])
+     expect(state.current().some((part) => part.type === "image")).toBe(true)
++  })
++
++  test("retains a Commander draft until Hermes confirms a single admission", async () => {
++    const state = createMemoryComposerState({ prompt: "keep this draft" }).capture()
++    const calls: string[] = []
++    const history: string[] = []
++    const admitted = Promise.withResolvers<void>()
++    const started = Promise.withResolvers<void>()
++    let requests = 0
++    const target = session({
++      calls,
++      commanderPrompt: async (request) => {
++        requests += 1
++        expect(request.text).toBe("keep this draft")
++        started.resolve()
++        await admitted.promise
++      },
++    })
++    const submission = submitInput(active(state, target), undefined, "normal", undefined, history)
++    const first = submission.submit(new Event("submit"))
++    await started.promise
++    await submission.submit(new Event("submit"))
++    expect(requests).toBe(1)
++    expect(history).toEqual([])
++    expect(state.current()).toMatchObject([{ type: "text", content: "keep this draft" }])
++    admitted.resolve()
++    await first
++    expect(history).toEqual(["add:keep this draft"])
++    expect(state.current()).toEqual([{ type: "text", content: "", start: 0, end: 0 }])
++    expect(calls).toEqual(["switch-agent", "switch-model"])
+   })
++
++  test("keeps a Commander draft and reports a rejected Hermes admission", async () => {
++    const state = createMemoryComposerState({ prompt: "do not lose this" }).capture()
++    const failures: unknown[] = []
++    const history: string[] = []
++    let requests = 0
++    const target = session({
++      calls: [],
++      commanderPrompt: async () => {
++        requests += 1
++        throw new Error("Hermes is unavailable")
++      },
++    })
++    await submitInput(
++      active(state, target),
++      { missingSelection() {}, unqueueable() {}, failed: (_kind, error) => failures.push(error) },
++      "normal",
++      undefined,
++      history,
++    ).submit(new Event("submit"))
++    expect(requests).toBe(1)
++    expect(history).toEqual([])
++    expect(state.current()).toMatchObject([{ type: "text", content: "do not lose this" }])
++    expect(failures).toHaveLength(1)
++    expect(failures[0]).toBeInstanceOf(Error)
++  })
+ })
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -2,13 +2,16 @@
+ import { Dialog, DialogBody } from "@opencode/ui/dialog"
+ import { useDialog } from "@opencode/ui/context/dialog"
+ import { TextShimmer } from "@opencode/ui/text-shimmer"
+-import { For, Show, createSignal, onCleanup, onMount } from "solid-js"
++import { DataProvider } from "@opencode/session-ui/context"
++import { SessionTimeline } from "@opencode/session-ui/timeline"
++import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+ import { CommentsProvider } from "@/composer/comments"
+ import { Composer } from "@/composer/composer"
+ import { createComposerModel } from "@/composer/model"
+ import { createMemoryComposerState } from "@/composer/state"
+ import type { ActiveComposerAdapter, ComposerControls } from "@/composer/adapter"
+ import type { ModelKey, ModelSelection } from "@/providers/models/selection"
++import { ModelsProvider, useModels } from "@/providers/models/models"
+ import { useData } from "@/runtime/server/current"
+ import { useServerSDK } from "@/runtime/server/client"
+ import { FileProvider } from "@/workspaces/files/model"
+@@ -35,6 +38,7 @@
+   readonly agent: string
+   readonly model?: CommanderModel
+ }>
++type CommanderTransport = "checking" | "hermes" | "opencode"
+ function conversationFrom(value: unknown): CommanderConversation | undefined {
+   if (!value || typeof value !== "object" || !("conversation" in value)) return
+   const item = value.conversation
+@@ -91,21 +95,26 @@
+ 
+ function CommanderOverlayProviders(props: { conversation: CommanderConversation; onClose(): void }) {
+   return (
+-    <LocationProvider directory={props.conversation.directory}>
+-      <FileProvider>
+-        <CommentsProvider>
+-          <CommanderOverlay conversation={props.conversation} onClose={props.onClose} />
+-        </CommentsProvider>
+-      </FileProvider>
+-    </LocationProvider>
++    <ModelsProvider directory={props.conversation.directory}>
++      <LocationProvider directory={props.conversation.directory}>
++        <FileProvider>
++          <CommentsProvider>
++            <CommanderOverlay conversation={props.conversation} onClose={props.onClose} />
++          </CommentsProvider>
++        </FileProvider>
++      </LocationProvider>
++    </ModelsProvider>
+   )
+ }
+ 
+ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(): void }) {
+   const data = useData()
+   const server = useServerSDK()
++  const models = useModels()
+   const [failed, setFailed] = createSignal(false)
+   const [runID, setRunID] = createSignal<string>()
++  const [transport, setTransport] = createSignal<CommanderTransport>("checking")
++  const [runtimeError, setRuntimeError] = createSignal<string>()
+   const [timeline, setTimeline] = createSignal<readonly HermesTimelineEvent[]>([])
+   const [inventory, setInventory] = createSignal<readonly HermesModelOption[]>([])
+   const [modelsReady, setModelsReady] = createSignal(false)
+@@ -114,6 +123,10 @@
+   const [selected, setSelected] = createSignal<CommanderModel | undefined>(props.conversation.model)
+   const prompt = createMemoryComposerState(props.conversation.model ? { model: props.conversation.model } : undefined)
+   const currentModel = () => {
++    if (transport() === "opencode") {
++      const key = prompt.model.current()
++      return key ? models.find(key) : undefined
++    }
+     const option = inventory().find(
+       (item) => item.providerID === selected()?.providerID && item.modelID === selected()?.modelID,
+     )
+@@ -143,13 +156,18 @@
+     ready,
+     current: currentModel,
+     recent: () => {
++      if (transport() === "opencode") return models.recent.list().map(models.find).filter((item): item is NonNullable<typeof item> => !!item)
+       const current = currentModel()
+       return current ? [current] : []
+     },
+-    list: () => inventory().map(inventoryItem),
++    list: () => transport() === "opencode" ? models.list().filter((item) => models.visible({ providerID: item.provider.id, modelID: item.id })) : inventory().map(inventoryItem),
+     cycle: () => undefined,
+     set: (key: ModelKey | undefined, _options?: { recent?: boolean }) => {
+       if (!key) return
++      if (transport() === "opencode") {
++        if (models.find(key)) prompt.model.set({ ...key })
++        return
++      }
+       const item = inventory().find(
+         (candidate) => candidate.providerID === key.providerID && candidate.modelID === key.modelID,
+       )
+@@ -159,14 +177,20 @@
+       }
+       void chooseModel(item)
+     },
+-    visible: () => true,
+-    setVisibility: () => undefined,
++    visible: (key) => transport() === "opencode" ? models.visible(key) : true,
++    setVisibility: (key, visible) => {
++      if (transport() === "opencode") models.setVisibility(key, visible)
++    },
+     variant: {
+       configured: () => undefined,
+-      selected: () => undefined,
+-      current: () => undefined,
+-      list: () => [],
+-      set: () => undefined,
++      selected: () => transport() === "opencode" ? prompt.model.current()?.variant ?? undefined : undefined,
++      current: () => transport() === "opencode" ? prompt.model.current()?.variant ?? undefined : undefined,
++      list: () => transport() === "opencode" ? Object.keys(currentModel()?.variants ?? {}) : [],
++      set: (variant) => {
++        if (transport() !== "opencode") return
++        const value = prompt.model.current()
++        if (value) prompt.model.set({ ...value, variant })
++      },
+       cycle: () => undefined,
+     },
+   }
+@@ -178,14 +202,14 @@
+       visible: false,
+       select: () => undefined,
+     },
+-    model: { selection, paid: true, loading: !modelsReady() || selecting() },
++    model: { selection, paid: true, loading: transport() === "checking" || (transport() === "hermes" ? !modelsReady() || selecting() : !models.ready()) },
+   })
+   const adapter: ActiveComposerAdapter = {
+     kind: "active-session",
+     state: prompt.capture(),
+     ready: prompt.ready,
+     controls,
+-    working: () => !!runID(),
++    working: () => transport() === "hermes" ? !!runID() : data.session.status(props.conversation.sessionID) === "running",
+     submitted: () => undefined,
+     setEditor: () => undefined,
+     session: () => ({
+@@ -197,23 +221,35 @@
+       admitted: (id) =>
+         data.session.input.has(props.conversation.sessionID, id) ||
+         !!data.session.message.get(props.conversation.sessionID, id),
+-      commanderPrompt: async (input) => {
+-        const result = await hermesRequest<{ id: string }>({
+-          operation: "start",
+-          requestID: input.id,
+-          text: input.text,
+-        })
+-        setRunID(result.id)
++      commanderPrompt: transport() === "opencode" ? undefined : async (input) => {
++        if (transport() !== "hermes") throw new Error("Commander is still checking whether Hermes is available. Your draft was not sent.")
++        setRuntimeError(undefined)
++        try {
++          const result = await hermesRequest<{ id: string }>({ operation: "start", requestID: input.id, text: input.text })
++          setRunID(result.id)
++        } catch (error) {
++          const message = error instanceof Error ? error.message : "Commander could not start Hermes. Your draft was not sent."
++          setRuntimeError(message)
++          throw error
++        }
+       },
+     }),
+     interrupt: () => {
+       const id = runID()
++      if (transport() === "opencode") return server.api.session.interrupt({ sessionID: props.conversation.sessionID, resume: true }).then(() => undefined).catch(() => undefined)
+       return id ? hermesRequest({ operation: "stop", runID: id }).then(() => undefined) : Promise.resolve()
+     },
+   }
+   const composer = createComposerModel(adapter)
++  const directDocument = createMemo(() => ({
++    sessionID: props.conversation.sessionID,
++    messages: data.session.message.list(props.conversation.sessionID),
++    status: data.session.status(props.conversation.sessionID) === "running" ? { type: "busy" as const } : { type: "idle" as const },
++    diffs: [],
++  }))
+ 
+   onMount(() => {
++    let disposed = false
+     const receive = (event: Event) => {
+       if (!(event instanceof CustomEvent) || !validTimelineEvent(event.detail)) return
+       setTimeline((current) =>
+@@ -225,27 +261,47 @@
+         setRunID(undefined)
+     }
+     window.addEventListener("opencode-commander-hermes-event", receive)
+-    onCleanup(() => window.removeEventListener("opencode-commander-hermes-event", receive))
+-    void hermesRequest<readonly HermesModelOption[]>({ operation: "models" })
+-      .then((items) => {
+-        const available = items.filter(validHermesModel)
+-        setInventory(available)
+-        if (
+-          selected() &&
+-          !available.some((item) => item.providerID === selected()?.providerID && item.modelID === selected()?.modelID)
+-        ) {
+-          setSelectionError("The saved Hermes model is no longer available.")
++    void hermesRequest<{ ok: boolean; hermes: boolean }>({ operation: "health" }).then(
++      (health) => {
++        if (disposed) return
++        if (!health.ok || !health.hermes) {
++          setTransport("opencode")
++          setRuntimeError("Hermes is unavailable. Commander is using its existing OpenCode conversation.")
++          void Promise.all([
++            data.session.message.sync(props.conversation.sessionID),
++            data.session.pending.sync(props.conversation.sessionID),
++          ]).catch(() => setFailed(true))
++          return
+         }
+-      })
+-      .catch((error) =>
+-        setSelectionError(error instanceof Error ? error.message : "Commander models could not be loaded."),
+-      )
+-      .finally(() => setModelsReady(true))
+-    void hermesRequest<readonly HermesTimelineEvent[]>({ operation: "history" })
+-      .then((items) => {
+-        setTimeline((current) => (current.length > 0 ? current : items.filter(validTimelineEvent)))
+-      })
+-      .catch(() => setFailed(true))
++        setTransport("hermes")
++        void hermesRequest<readonly HermesModelOption[]>({ operation: "models" })
++          .then((items) => {
++            const available = items.filter(validHermesModel)
++            setInventory(available)
++            if (selected() && !available.some((item) => item.providerID === selected()?.providerID && item.modelID === selected()?.modelID)) {
++              setSelectionError("The saved Hermes model is no longer available.")
++            }
++          })
++          .catch((error) => setSelectionError(error instanceof Error ? error.message : "Commander models could not be loaded."))
++          .finally(() => setModelsReady(true))
++        void hermesRequest<readonly HermesTimelineEvent[]>({ operation: "history" })
++          .then((items) => setTimeline((current) => current.length > 0 ? current : items.filter(validTimelineEvent)))
++          .catch(() => setFailed(true))
++      },
++      () => {
++        if (disposed) return
++        setTransport("opencode")
++        setRuntimeError("Hermes is unavailable. Commander is using its existing OpenCode conversation.")
++        void Promise.all([
++          data.session.message.sync(props.conversation.sessionID),
++          data.session.pending.sync(props.conversation.sessionID),
++        ]).catch(() => setFailed(true))
++      },
++    )
++    onCleanup(() => {
++      disposed = true
++      window.removeEventListener("opencode-commander-hermes-event", receive)
++    })
+   })
+ 
+   return (
+@@ -258,6 +314,12 @@
+               <p class="text-12-regular text-v2-text-text-muted">
+                 One persistent conversation, available from every project.
+               </p>
++              <Show when={transport() === "checking"}>
++                <p class="text-12-regular text-v2-text-text-muted" role="status">Checking Hermes availability…</p>
++              </Show>
++              <Show when={transport() === "hermes"}>
++                <p class="text-12-regular text-v2-text-text-muted" role="status">Using Hermes.</p>
++              </Show>
+             </div>
+             <Button size="small" variant="ghost" onClick={props.onClose}>
+               Close
+@@ -273,28 +335,51 @@
+               }
+             >
+               <Show
+-                when={timeline().length > 0}
+-                fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}
++                when={transport() === "opencode"}
++                fallback={
++                  <Show
++                    when={timeline().length > 0}
++                    fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}
++                  >
++                    <div class="space-y-3 p-5" data-slot="commander-hermes-timeline">
++                      <For each={timeline()}>
++                        {(item) => (
++                          <div class="rounded-md border border-v2-border-border-base p-3">
++                            <p class="text-12-medium text-v2-text-text-muted">{item.type}</p>
++                            <Show when={item.text}>
++                              <p class="mt-1 whitespace-pre-wrap text-13-regular text-v2-text-text-base">{item.text}</p>
++                            </Show>
++                            <Show when={item.learning}>
++                              <p class="mt-1 text-12-regular text-v2-text-text-muted">Learning: {item.learning}</p>
++                            </Show>
++                          </div>
++                        )}
++                      </For>
++                    </div>
++                  </Show>
++                }
+               >
+-                <div class="space-y-3 p-5" data-slot="commander-hermes-timeline">
+-                  <For each={timeline()}>
+-                    {(item) => (
+-                      <div class="rounded-md border border-v2-border-border-base p-3">
+-                        <p class="text-12-medium text-v2-text-text-muted">{item.type}</p>
+-                        <Show when={item.text}>
+-                          <p class="mt-1 whitespace-pre-wrap text-13-regular text-v2-text-text-base">{item.text}</p>
+-                        </Show>
+-                        <Show when={item.learning}>
+-                          <p class="mt-1 text-12-regular text-v2-text-text-muted">Learning: {item.learning}</p>
+-                        </Show>
+-                      </div>
+-                    )}
+-                  </For>
+-                </div>
++                <DataProvider
++                  data={{
++                    session: data.session.get(props.conversation.sessionID) ? [data.session.get(props.conversation.sessionID)!] : [],
++                    session_status: { [props.conversation.sessionID]: directDocument().status },
++                    session_diff: { [props.conversation.sessionID]: [] },
++                  }}
++                  directory={props.conversation.directory}
++                  sessionID={props.conversation.sessionID}
++                  copy={(text) => navigator.clipboard.writeText(text)}
++                >
++                  <Show when={directDocument().messages.length > 0} fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}>
++                    <SessionTimeline document={directDocument()} class="pb-5" />
++                  </Show>
++                </DataProvider>
+               </Show>
+             </Show>
+           </div>
+           <div class="shrink-0 border-t border-v2-border-border-base p-4">
++            <Show when={runtimeError()}>
++              {(message) => <p class="mb-2 text-12-regular text-v2-text-text-critical" role="alert">{message()}</p>}
++            </Show>
+             <Show when={selectionError()}>
+               {(message) => (
+                 <p class="mb-2 text-12-regular text-v2-text-text-critical" role="alert">
+@@ -367,7 +452,7 @@
+ 
+ function hermesRequest<T>(
+   request: Readonly<{
+-    operation: "start" | "stop" | "steer" | "history" | "models" | "select-model"
++    operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "select-model"
+     requestID?: string
+     runID?: string
+     text?: string
+--- a/packages/app/component-tests/commander-vite-fixture/main.tsx
++++ b/packages/app/component-tests/commander-vite-fixture/main.tsx
+@@ -17,7 +17,7 @@
+   agent: "commander",
+ }
+ type Model = { providerID: string; modelID: string }
+-type HermesRequest = { id: string; operation: "history" | "models" | "select-model" | "start" | "stop"; model?: Model }
++type HermesRequest = { id: string; operation: "health" | "history" | "models" | "select-model" | "start" | "stop"; model?: Model }
+ 
+ const hermesModels = [
+   { providerID: "fixture-hermes", providerName: "Fixture Hermes", modelID: "commander-small" },
+@@ -43,6 +43,7 @@
+         window.dispatchEvent(
+           new CustomEvent("opencode-commander-hermes-response", { detail: { id: request.id, result, error } }),
+         )
++      if (request.operation === "health") reply({ ok: true, hermes: true })
+       if (request.operation === "models") reply(hermesModels)
+       if (request.operation === "history") reply([])
+       if (request.operation === "select-model" && request.model) {
+--- a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -6,6 +6,7 @@
+   await page.goto("/")
+   const overlay = page.locator('[data-slot="commander-native-overlay"]')
+   await expect(overlay).toBeVisible()
++  await expect(overlay.getByText("Using Hermes.")).toBeVisible()
+   await expect(overlay.getByText("Commander is ready when you are.")).toBeVisible()
+ 
+   const picker = overlay.locator('[data-action="composer-model"]')
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -36,6 +36,9 @@
+ export const CommanderRun = Schema.Struct({ id: Schema.String, sessionID: Schema.String })
+ export type CommanderRun = typeof CommanderRun.Type
+ 
++export const CommanderHealth = Schema.Struct({ ok: Schema.Boolean, hermes: Schema.Boolean })
++export type CommanderHealth = typeof CommanderHealth.Type
++
+ export const CommanderEvent = Schema.Struct({
+   seq: Schema.Number,
+   type: Schema.String,
+@@ -66,6 +69,7 @@
+   state: CommanderBridgeState,
+   methods: {
+     reserve: { input: CommanderReservation, output: CommanderBridgeState },
++    health: { output: CommanderHealth },
+     models: { output: Schema.Array(CommanderModelOption) },
+     selectModel: { input: CommanderModel, output: CommanderBridgeState },
+     start: { input: CommanderRunRequest, output: CommanderRun },
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -5,6 +5,7 @@
+   CommanderBridge,
+   CommanderBridgeState,
+   CommanderEvent,
++  CommanderHealth,
+   CommanderModelOption,
+   CommanderRun,
+   type CommanderConversation,
+@@ -166,6 +167,15 @@
+ 
+       return next
+     },
++    health: async () => {
++      const token = process.env.DIGITALTWIN_HERMES_ADAPTER_TOKEN
++      if (!token) return { ok: true, hermes: false }
++      const response = await fetch(adapterURL("/health"))
++      if (!response.ok) return { ok: true, hermes: false }
++      const decoded = Schema.decodeUnknownOption(CommanderHealth)(await response.json())
++      if (Option.isNone(decoded)) throw new Error("Commander Hermes adapter returned an invalid health response.")
++      return decoded.value
++    },
+     models: hermesModels,
+     selectModel: async (model) => {
+       const current = input.store.value
+--- a/packages/gui-extensions/src/commander/main.test.ts
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -228,3 +228,12 @@
+     model: { providerID: "operator", modelID: "configured-model" },
+   })
+ })
++
++test("Commander explicitly selects the OpenCode transport when Hermes is not configured", async () => {
++  delete process.env.DIGITALTWIN_HERMES_ADAPTER_TOKEN
++
++  await expect(runtime(persistent({ revision: 0 })).bridge.health(undefined, caller)).resolves.toEqual({
++    ok: true,
++    hermes: false,
++  })
++})
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -23,7 +23,7 @@
+ }>
+ type CommanderRequest = Readonly<{
+   readonly id: string
+-  readonly operation: "start" | "stop" | "steer" | "history" | "models" | "select-model"
++  readonly operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "select-model"
+   readonly requestID?: string
+   readonly runID?: string
+   readonly text?: string
+@@ -150,6 +150,11 @@
+       window.dispatchEvent(
+         new CustomEvent("opencode-commander-hermes-response", { detail: { id: request.id, result, error } }),
+       )
++    if (request.operation === "health")
++      void live.value
++        .health()
++        .then(reply)
++        .catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander runtime check failed."))
+     if (request.operation === "start" && request.requestID && request.text)
+       void live.value
+         .start({ requestID: request.requestID, text: request.text })

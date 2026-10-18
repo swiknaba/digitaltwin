@@ -1,0 +1,59 @@
+diff --git a/packages/gui-extensions/src/commander/i18n/en.ts b/packages/gui-extensions/src/commander/i18n/en.ts
+index 674b611..97279ef 100644
+--- a/packages/gui-extensions/src/commander/i18n/en.ts
++++ b/packages/gui-extensions/src/commander/i18n/en.ts
+@@ -1,6 +1,7 @@
+ export default {
+   title: "Commander",
+   "action.open": "Open Commander",
++  "action.unavailable": "Open a project session to use Commander.",
+   "command.open": "Open Commander",
+   "command.description": "Open the Commander control surface for this project session.",
+   "command.category.view": "View",
+diff --git a/packages/gui-extensions/src/commander/panel.tsx b/packages/gui-extensions/src/commander/panel.tsx
+index 86460bb..e55b71e 100644
+--- a/packages/gui-extensions/src/commander/panel.tsx
++++ b/packages/gui-extensions/src/commander/panel.tsx
+@@ -1,7 +1,7 @@
+ import { useExtension } from "../sdk"
+ import type definition from "./index"
+ 
+-export function CommanderPanel() {
++export default function CommanderPanel() {
+   const extension = useExtension<typeof definition>()
+ 
+   return (
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+index 6a9aab0..4e74b2d 100644
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -1,4 +1,5 @@
+ import { lazy, onCleanup, Suspense } from "solid-js"
++import { showToast } from "@opencode/ui/toast"
+ import { Command, onIdle, Panel, TitlebarItem, type PanelTab, type Setup } from "../sdk"
+ import type definition from "./index"
+ 
+@@ -12,15 +13,20 @@ const setup: Setup<typeof definition> = (ctx) => {
+     get title() {
+       return ctx.t("title")
+     },
+-    pinned: true,
+-    closable: false,
++    closable: "hover",
+     dom: { tab: "session-side-panel-commander-tab", panel: "session-side-panel-commander-tabpanel" },
+   }
+ 
+   const open = () => {
+     const session = ctx.sessions.current()
+ 
+-    if (session) ctx.layout.open(panelKey, session, { tab: "select" })
++    if (!session) {
++      showToast({ title: ctx.t("action.unavailable") })
++
++      return
++    }
++
++    ctx.layout.open(panelKey, session, { tab: "select" })
+   }
+ 
+   onCleanup(onIdle(() => void CommanderPanel.preload()))

@@ -1,0 +1,158 @@
+diff --git a/packages/gui-extensions/src/commander/i18n/en.ts b/packages/gui-extensions/src/commander/i18n/en.ts
+new file mode 100644
+index 0000000..674b611
+--- /dev/null
++++ b/packages/gui-extensions/src/commander/i18n/en.ts
+@@ -0,0 +1,10 @@
++export default {
++  title: "Commander",
++  "action.open": "Open Commander",
++  "command.open": "Open Commander",
++  "command.description": "Open the Commander control surface for this project session.",
++  "command.category.view": "View",
++  "panel.title": "Commander",
++  "panel.description": "Commander is ready for a trusted bridge connection.",
++  "panel.status": "Bridge not connected",
++}
+diff --git a/packages/gui-extensions/src/commander/index.ts b/packages/gui-extensions/src/commander/index.ts
+new file mode 100644
+index 0000000..44a1ad9
+--- /dev/null
++++ b/packages/gui-extensions/src/commander/index.ts
+@@ -0,0 +1,7 @@
++import { Extension } from "../sdk"
++import en from "./i18n/en"
++
++export default Extension.define({
++  id: "commander",
++  i18n: { en },
++})
+diff --git a/packages/gui-extensions/src/commander/panel.tsx b/packages/gui-extensions/src/commander/panel.tsx
+new file mode 100644
+index 0000000..86460bb
+--- /dev/null
++++ b/packages/gui-extensions/src/commander/panel.tsx
+@@ -0,0 +1,14 @@
++import { useExtension } from "../sdk"
++import type definition from "./index"
++
++export function CommanderPanel() {
++  const extension = useExtension<typeof definition>()
++
++  return (
++    <div class="flex h-full flex-col gap-2 p-4">
++      <h2 class="text-14-medium text-v2-text-text-base">{extension.t("panel.title")}</h2>
++      <p class="text-13-regular text-v2-text-text-muted">{extension.t("panel.description")}</p>
++      <p class="text-13-regular text-v2-text-text-muted">{extension.t("panel.status")}</p>
++    </div>
++  )
++}
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+new file mode 100644
+index 0000000..6a9aab0
+--- /dev/null
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -0,0 +1,66 @@
++import { lazy, onCleanup, Suspense } from "solid-js"
++import { Command, onIdle, Panel, TitlebarItem, type PanelTab, type Setup } from "../sdk"
++import type definition from "./index"
++
++const panelID = "main"
++
++const setup: Setup<typeof definition> = (ctx) => {
++  const panelKey = `${ctx.id}:${panelID}`
++  const CommanderPanel = lazy(() => import("./panel"))
++  const tab: PanelTab = {
++    id: panelID,
++    get title() {
++      return ctx.t("title")
++    },
++    pinned: true,
++    closable: false,
++    dom: { tab: "session-side-panel-commander-tab", panel: "session-side-panel-commander-tabpanel" },
++  }
++
++  const open = () => {
++    const session = ctx.sessions.current()
++
++    if (session) ctx.layout.open(panelKey, session, { tab: "select" })
++  }
++
++  onCleanup(onIdle(() => void CommanderPanel.preload()))
++
++  ctx.add(TitlebarItem, {
++    id: "open",
++    label: ctx.t("title"),
++    title: ctx.t("action.open"),
++    icon: "cube",
++    run: open,
++  })
++
++  ctx.add(
++    Command,
++    () => ({
++      id: "open",
++      get title() {
++        return ctx.t("command.open")
++      },
++      get description() {
++        return ctx.t("command.description")
++      },
++      get group() {
++        return ctx.t("command.category.view")
++      },
++      enabled: !!ctx.sessions.current(),
++      run: open,
++    }),
++  )
++
++  ctx.add(Panel, {
++    id: panelID,
++    region: "side",
++    list: (input) => (input.open.includes(panelID) ? [tab] : []),
++    render: () => (
++      <Suspense>
++        <CommanderPanel />
++      </Suspense>
++    ),
++  })
++}
++
++export default setup
+diff --git a/packages/gui-extensions/src/main.ts b/packages/gui-extensions/src/main.ts
+index 8b5267d..c98ae88 100644
+--- a/packages/gui-extensions/src/main.ts
++++ b/packages/gui-extensions/src/main.ts
+@@ -12,6 +12,7 @@ import updater from "./updater"
+ import ssh from "./ssh"
+ import wsl from "./wsl"
+ import microsoftOffice from "./microsoft-office"
++import commander from "./commander"
+ 
+ /**
+  * Built-in extensions with their main entries. Lists every built-in so their ids stay reserved. `builtins.typecheck.ts`
+@@ -31,4 +32,5 @@ export const builtins = Extension.compose(
+   { ...ssh, main: () => import("./ssh/main") },
+   { ...wsl, main: () => import("./wsl/main") },
+   microsoftOffice,
++  commander,
+ )
+diff --git a/packages/gui-extensions/src/renderer.ts b/packages/gui-extensions/src/renderer.ts
+index f5f1754..62265bf 100644
+--- a/packages/gui-extensions/src/renderer.ts
++++ b/packages/gui-extensions/src/renderer.ts
+@@ -25,6 +25,8 @@ import wsl from "./wsl"
+ import wslRenderer from "./wsl/renderer"
+ import microsoftOffice from "./microsoft-office"
+ import microsoftOfficeRenderer from "./microsoft-office/renderer"
++import commander from "./commander"
++import commanderRenderer from "./commander/renderer"
+ 
+ // The window renders once every built-in is active, so the small renderer entries load with the app, like the
+ // features they replaced. Heavy UI stays behind `lazy()` inside them.
+@@ -49,4 +51,5 @@ export const builtins = Extension.compose(
+   { ...ssh, renderer: eager(sshRenderer) },
+   { ...wsl, renderer: eager(wslRenderer) },
+   { ...microsoftOffice, renderer: eager(microsoftOfficeRenderer) },
++  { ...commander, renderer: eager(commanderRenderer) },
+ )

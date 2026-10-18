@@ -1,0 +1,31 @@
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -1,3 +1,2 @@
+ import { lazy, onCleanup, Suspense } from "solid-js"
+-import { showToast } from "@opencode/ui/toast"
+ import { Command, onIdle, Panel, TitlebarItem, type PanelTab, type Setup } from "../sdk"
+@@ -8,3 +7,2 @@
+ const setup: Setup<typeof definition> = (ctx) => {
+-  const panelKey = `${ctx.id}:${panelID}`
+   const CommanderPanel = lazy(() => import("./panel"))
+@@ -19,16 +19,6 @@
+   }
+-
+-  const open = () => {
+-    const session = ctx.sessions.current()
+-
+-    if (!session) {
+-      showToast({ title: ctx.t("action.unavailable") })
+-
+-      return
+-    }
+-
+-    ctx.layout.open(panelKey, session, { tab: "select" })
+-  }
+-  const openGlobal = () => ctx.dialogs.open(() => <CommanderDialog />)
+-
++  const openGlobal = () => {
++    ctx.dialogs.open(() => <CommanderDialog />)
++  }
++
+   onCleanup(onIdle(() => void CommanderPanel.preload()))

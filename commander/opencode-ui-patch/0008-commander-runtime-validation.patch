@@ -1,0 +1,305 @@
+diff --git a/packages/app/component-tests/commander-panel.spec.ts b/packages/app/component-tests/commander-panel.spec.ts
+index 03567f2..1e865b0 100644
+--- a/packages/app/component-tests/commander-panel.spec.ts
++++ b/packages/app/component-tests/commander-panel.spec.ts
+@@ -9,9 +9,11 @@ const modules = {
+   fixture,
+   commander: sourceURL(new URL("../../gui-extensions/src/commander/index.ts", import.meta.url)),
+   contract: sourceURL(new URL("../../gui-extensions/src/commander/contract.ts", import.meta.url)),
++  panel: sourceURL(new URL("../../gui-extensions/src/commander/panel.tsx", import.meta.url)),
+   renderer: sourceURL(new URL("../../gui-extensions/src/commander/renderer.tsx", import.meta.url)),
+   project: sourceURL(new URL("../../schema/src/project.ts", import.meta.url)),
+   session: sourceURL(new URL("../../schema/src/session.ts", import.meta.url)),
++  timeline: sourceURL(new URL("../../session-ui/src/timeline/session-timeline.tsx", import.meta.url)),
+ }
+ 
+ type CommanderState = {
+@@ -26,7 +28,7 @@ type CommanderData = {
+     create(input: { id: string; title: string; location: { directory: string }; agent: string }): { request: Promise<void> }
+     prompt(input: SessionPromptInput): Promise<void>
+     status(sessionID: string): DataSessionStatus
+-    readonly message: { list(sessionID: string): readonly []; sync(sessionID: string): Promise<void> }
++    readonly message: { list(sessionID: string): readonly object[]; sync(sessionID: string): Promise<void> }
+     readonly pending: { sync(sessionID: string): Promise<void> }
+   }
+ }
+@@ -85,6 +87,7 @@ story("Commander reserves one neutral session, sends a msg_ prompt, interrupts i
+     const [state, setState] = createSignal(initialState)
+     const [status, setStatus] = createSignal(initialStatus)
+     const [exists, setExists] = createSignal(false)
++    const [messages, setMessages] = createSignal<readonly object[]>([])
+     const calls: Calls = { reserve: [], create: [], prompt: [], interrupt: [] }
+     let report = () => {}
+ 
+@@ -118,10 +121,18 @@ story("Commander reserves one neutral session, sends a msg_ prompt, interrupts i
+         prompt: async (input) => {
+           calls.prompt.push(input)
+           setStatus("running")
++          setMessages([{
++            id: "msg_commander_stream",
++            type: "assistant",
++            agent: "commander",
++            model: { providerID: "sidecar", id: "commander" },
++            content: [{ type: "text", text: "The Commander stream is visible." }],
++            time: { created: 2 },
++          }])
+           report()
+         },
+         status: () => status(),
+-        message: { list: () => [], sync: async () => {} },
++        message: { list: () => messages(), sync: async () => {} },
+         pending: { sync: async () => {} },
+       },
+     }
+@@ -229,6 +240,7 @@ story("Commander reserves one neutral session, sends a msg_ prompt, interrupts i
+   await panel.getByRole("textbox").fill("Continue the release review")
+   await panel.getByRole("button", { name: "Send", exact: true }).click()
+   await expect(panel.getByRole("button", { name: "Stop", exact: true })).toBeVisible()
++  await expect(panel.getByText("The Commander stream is visible.", { exact: true })).toBeVisible()
+   await panel.getByRole("button", { name: "Stop", exact: true }).click()
+ 
+   await page.evaluate(() => document.querySelector<HTMLElement>("[data-testid='session-region-fixture']")?.dispatchEvent(new Event("commander-loss")))
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+index b223d85..2a9219c 100644
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -1,35 +1,95 @@
+-import type { MainSetup } from "../sdk/main"
+ import { Agent } from "@opencode/schema/agent"
++import { Option, Schema } from "effect"
++import type { IpcImpl, IpcProvider, MainSetup, ServerEndpoint, ServerEndpoints } from "../sdk/main"
+ import { CommanderBridge, CommanderBridgeState, type CommanderConversation } from "./contract"
+ import type definition from "./index"
+ 
+-function configuredConversation(input: Readonly<{ serverID: "sidecar"; sessionID: CommanderConversation["sessionID"] }>): CommanderConversation {
++type CommanderStore = Readonly<{
++  readonly value: CommanderBridgeState
++  set(value: CommanderBridgeState): void
++}>
++
++type CommanderBridgeSpec = typeof CommanderBridge.spec
++
++type CommanderRuntime = Readonly<{
++  store: CommanderStore
++  serverEndpoints: Pick<ServerEndpoints, "get">
++  provide(impl: IpcImpl<CommanderBridgeSpec>): IpcProvider<CommanderBridgeSpec>
++}>
++
++const AgentListResponse = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Agent.ID })) })
++
++function configuredCommander() {
+   const directory = process.env.DIGITALTWIN_COMMANDER_WORKSPACE
+   const agent = process.env.DIGITALTWIN_COMMANDER_AGENT
+ 
+   if (!directory || !directory.startsWith("/")) throw new Error("DIGITALTWIN_COMMANDER_WORKSPACE must be an absolute operator-managed workspace path.")
++
+   if (!agent) throw new Error("DIGITALTWIN_COMMANDER_AGENT must name an operator-managed Commander agent.")
+ 
+-  return { ...input, directory, agent: Agent.ID.make(agent) }
++  return { directory, agent: Agent.ID.make(agent) }
+ }
+ 
+-const setup: MainSetup<typeof definition> = (ctx) => {
+-  const stored = ctx.stores.conversation
+-  const provider = ctx.provide(CommanderBridge, {
+-    state: () => stored.value,
+-    reserve: (input) => {
+-      const current = stored.value
++async function validateConfiguredCommander(input: Readonly<{ endpoint: ServerEndpoint; directory: string; agent: Agent.ID }>) {
++  const url = new URL("/api/agent", input.endpoint.url)
++  url.searchParams.set("location[directory]", input.directory)
+ 
+-      if (current.conversation) return current
+-      if (!ctx.serverEndpoints.get(input.serverID)) throw new Error("Commander requires the OpenCode sidecar.")
++  const response = await fetch(url, { headers: input.endpoint.headers })
++
++  if (!response.ok) throw new Error(`Commander could not validate its configured agent with the OpenCode sidecar (${response.status}).`)
++
++  const body: unknown = await response.json()
++  const agents = Schema.decodeUnknownOption(AgentListResponse)(body)
++
++  if (Option.isNone(agents) || !agents.value.data.some((agent) => agent.id === input.agent)) {
++    throw new Error(`Configured Commander agent '${input.agent}' is unavailable for '${input.directory}'.`)
++  }
++}
++
++function matchesConfiguredConversation(saved: CommanderConversation, configured: Readonly<{ directory: string; agent: Agent.ID }>) {
++  return saved.directory === configured.directory && saved.agent === configured.agent
++}
+ 
+-      const next: CommanderBridgeState = { revision: current.revision + 1, conversation: configuredConversation(input) }
+-      stored.set(next)
++/** Installs the durable Commander bridge over the app's normal authenticated sidecar endpoint. */
++export function createCommanderRuntime(input: CommanderRuntime) {
++  let provider: IpcProvider<CommanderBridgeSpec>
++
++  provider = input.provide({
++    state: () => input.store.value,
++    reserve: async (reservation) => {
++      const endpoint = input.serverEndpoints.get(reservation.serverID)
++
++      if (!endpoint) throw new Error("Commander requires the OpenCode sidecar.")
++
++      const configured = configuredCommander()
++      await validateConfiguredCommander({ endpoint, ...configured })
++      const current = input.store.value
++
++      if (current.conversation) {
++        if (!matchesConfiguredConversation(current.conversation, configured)) {
++          throw new Error("Commander saved state does not match the current operator workspace or agent. Clear the saved Commander state before changing either setting.")
++        }
++
++        return current
++      }
++
++      const next: CommanderBridgeState = { revision: current.revision + 1, conversation: { ...reservation, ...configured } }
++      input.store.set(next)
+       provider.changed()
+ 
+       return next
+     },
+   })
++
++  return provider
++}
++
++const setup: MainSetup<typeof definition> = (ctx) => {
++  createCommanderRuntime({
++    store: ctx.stores.conversation,
++    serverEndpoints: ctx.serverEndpoints,
++    provide: (impl) => ctx.provide(CommanderBridge, impl),
++  })
+ }
+ 
+ export default setup
+diff --git a/packages/gui-extensions/src/commander/main.test.ts b/packages/gui-extensions/src/commander/main.test.ts
+new file mode 100644
+index 0000000..f5592f3
+--- /dev/null
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -0,0 +1,125 @@
++import { afterEach, beforeEach, expect, test } from "bun:test"
++import { Agent } from "@opencode/schema/agent"
++import { Session } from "@opencode/schema/session"
++import type { IpcImpl, IpcProvider, ServerEndpoint } from "../sdk/main"
++import { CommanderBridge, type CommanderBridgeState } from "./contract"
++import { createCommanderRuntime } from "./main"
++
++const caller = { window: 1, signal: AbortSignal.timeout(1_000) }
++
++const configured = { directory: "/srv/digitaltwin/commander", agent: "commander" }
++
++const original = { workspace: process.env.DIGITALTWIN_COMMANDER_WORKSPACE, agent: process.env.DIGITALTWIN_COMMANDER_AGENT, fetch: globalThis.fetch }
++
++type CommanderBridgeSpec = typeof CommanderBridge.spec
++
++beforeEach(() => {
++  process.env.DIGITALTWIN_COMMANDER_WORKSPACE = configured.directory
++  process.env.DIGITALTWIN_COMMANDER_AGENT = configured.agent
++})
++
++afterEach(() => {
++  process.env.DIGITALTWIN_COMMANDER_WORKSPACE = original.workspace
++  process.env.DIGITALTWIN_COMMANDER_AGENT = original.agent
++  globalThis.fetch = original.fetch
++})
++
++function persistent(initial: CommanderBridgeState) {
++  let value = initial
++
++  return {
++    store: {
++      get value() {
++        return value
++      },
++      set(next: CommanderBridgeState) {
++        value = next
++      },
++    },
++  }
++}
++
++function runtime(backing: ReturnType<typeof persistent>, endpoint: ServerEndpoint | undefined = sidecar()) {
++  let bridge: IpcImpl<CommanderBridgeSpec> | undefined
++  let changes = 0
++
++  const provider: IpcProvider<CommanderBridgeSpec> = {
++    changed: () => {
++      changes += 1
++    },
++    emit: () => {},
++    dispose: () => {},
++  }
++
++  createCommanderRuntime({
++    store: backing.store,
++    serverEndpoints: { get: () => endpoint },
++    provide: (impl) => {
++      bridge = impl
++
++      return provider
++    },
++  })
++
++  if (!bridge) throw new Error("Commander bridge was not provided")
++
++  return { bridge, changes: () => changes }
++}
++
++function sidecar(): ServerEndpoint {
++  return { id: "sidecar", url: "http://127.0.0.1:4096", headers: { authorization: "Bearer sidecar" }, local: true }
++}
++
++function agents(ids: readonly string[]) {
++  const request = async (...[input, init]: Parameters<typeof fetch>) => {
++    const url = new URL(input.toString())
++    expect(url.pathname).toBe("/api/agent")
++    expect(url.searchParams.get("location[directory]")).toBe(configured.directory)
++    expect(init?.headers).toEqual({ authorization: "Bearer sidecar" })
++
++    return Response.json({ location: { directory: configured.directory }, data: ids.map((id) => ({ id })) })
++  }
++
++  globalThis.fetch = Object.assign(request, { preconnect: original.fetch.preconnect })
++}
++
++test("Commander recreates from persisted state only after validating its configured sidecar agent", async () => {
++  agents([configured.agent])
++  const backing = persistent({ revision: 0 })
++  const first = runtime(backing)
++  const session = Session.ID.make("ses_commander_persisted")
++
++  await expect(first.bridge.reserve({ serverID: "sidecar", sessionID: session }, caller)).resolves.toMatchObject({
++    revision: 1,
++    conversation: { serverID: "sidecar", sessionID: session, directory: configured.directory, agent: configured.agent },
++  })
++  expect(first.changes()).toBe(1)
++
++  const recreated = runtime(backing)
++  await expect(recreated.bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_ignored") }, caller)).resolves.toEqual(backing.store.value)
++  expect(recreated.changes()).toBe(0)
++})
++
++test("Commander rejects missing or changed persisted agent configuration without rewriting it", async () => {
++  process.env.DIGITALTWIN_COMMANDER_AGENT = "retired"
++  agents([configured.agent])
++
++  const missing = persistent({
++    revision: 4,
++    conversation: { serverID: "sidecar", sessionID: Session.ID.make("ses_missing"), directory: configured.directory, agent: Agent.ID.make("retired") },
++  })
++
++  await expect(runtime(missing).bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_new") }, caller)).rejects.toThrow("Configured Commander agent 'retired' is unavailable")
++  expect(missing.store.value.revision).toBe(4)
++
++  process.env.DIGITALTWIN_COMMANDER_AGENT = configured.agent
++  agents([configured.agent])
++
++  const changed = persistent({
++    revision: 5,
++    conversation: { serverID: "sidecar", sessionID: Session.ID.make("ses_changed"), directory: "/srv/old", agent: Agent.ID.make(configured.agent) },
++  })
++
++  await expect(runtime(changed).bridge.reserve({ serverID: "sidecar", sessionID: Session.ID.make("ses_newer") }, caller)).rejects.toThrow("saved state does not match the current operator workspace or agent")
++  expect(changed.store.value.revision).toBe(5)
++})

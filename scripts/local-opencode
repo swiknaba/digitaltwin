@@ -1,0 +1,51 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+export DIGITALTWIN_REPO_ROOT="$repo_root"
+
+test -d "$DIGITALTWIN_COMMANDER_WORKSPACE" || {
+  printf '%s\n' "Commander workspace does not exist: $DIGITALTWIN_COMMANDER_WORKSPACE" >&2
+  exit 78
+}
+
+case "$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" in
+  /*) commander_plugin_directory="$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" ;;
+  *) commander_plugin_directory="$repo_root/$DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_DIR" ;;
+esac
+
+test -f "$commander_plugin_directory/index.ts" || {
+  printf '%s\n' "Commander continuation plugin is not installed; run scripts/local-setup first." >&2
+  exit 78
+}
+
+case "$commander_plugin_directory" in
+  *'"'*|*'\\'*)
+    printf '%s\n' "Commander continuation plugin path cannot be represented safely in OpenCode config." >&2
+    exit 78
+    ;;
+esac
+
+# A user's global Commander continuation plugin can be discovered before this
+# stack-local directory. Disable only that known global ID, then give the
+# setup-owned copy its dedicated local ID. This preserves the user's normal
+# OpenCode config, model settings, permissions, credentials, and sessions.
+export DIGITALTWIN_COMMANDER_CONTINUATION_PLUGIN_ID="digitaltwin-commander-continuation-local"
+commander_plugin_config="{\"plugins\":[\"-digitaltwin-commander-continuation\",\"$commander_plugin_directory\"]}"
+if [ -z "${OPENCODE_CONFIG_CONTENT:-}" ]; then
+  export OPENCODE_CONFIG_CONTENT="$commander_plugin_config"
+elif ! printf '%s' "$OPENCODE_CONFIG_CONTENT" | grep -Fq "$commander_plugin_directory"; then
+  printf '%s\n' "OPENCODE_CONFIG_CONTENT is already set and does not include the stack-local Commander continuation plugin: $commander_plugin_directory" >&2
+  exit 78
+fi
+
+hermes_token_file="$repo_root/local/secrets/hermes-api-server-token"
+if [ -s "$hermes_token_file" ]; then
+  export DIGITALTWIN_HERMES_ADAPTER_URL="${DIGITALTWIN_HERMES_ADAPTER_URL:-http://127.0.0.1:3087}"
+  export DIGITALTWIN_HERMES_ADAPTER_TOKEN="$(cat "$hermes_token_file")"
+fi
+
+cd "$repo_root/local/opencode"
+exec bun run dev:desktop

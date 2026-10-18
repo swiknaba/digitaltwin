@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+
+profile="$repo_root/local/hermes/commander-profile"
+runtime_root="$repo_root/local/hermes/runtime"
+runtime_source="$runtime_root/source"
+runtime_launcher="$runtime_source/.hermes/bin/hermes"
+
+test -f "$profile/config.yaml" || { printf '%s\n' "Hermes profile configuration is required: $profile/config.yaml" >&2; exit 78; }
+test -x "$runtime_launcher" || { printf '%s\n' "Project-local Hermes runtime is required: $runtime_launcher" >&2; exit 78; }
+
+umask 077
+mkdir -p "$runtime_root/cache" "$runtime_root/config" "$runtime_root/data" "$runtime_root/home" "$runtime_root/run" "$runtime_root/state" "$runtime_root/uv-cache" "$runtime_root/uv-python"
+export HOME="$runtime_root/home"
+export HERMES_HOME="$profile"
+export HERMES_INSTALL_ROOT="$runtime_source"
+export HERMES_RUNTIME_DIR="$runtime_root/tools"
+export XDG_CACHE_HOME="$runtime_root/cache"
+export XDG_CONFIG_HOME="$runtime_root/config"
+export XDG_DATA_HOME="$runtime_root/data"
+export XDG_RUNTIME_DIR="$runtime_root/run"
+export XDG_STATE_HOME="$runtime_root/state"
+export UV_CACHE_DIR="$runtime_root/uv-cache"
+export UV_PYTHON_INSTALL_DIR="$runtime_root/uv-python"
+
+cd "$repo_root"
+exec "$runtime_launcher" pm install --extra mcp

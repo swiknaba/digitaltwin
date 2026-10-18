@@ -1,0 +1,65 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+
+profile="$repo_root/local/hermes/commander-profile"
+token_file="$repo_root/local/secrets/hermes-api-server-token"
+runtime_root="$repo_root/local/hermes/runtime"
+runtime_source="$runtime_root/source"
+revision_file="$repo_root/commander/hermes-runtime-revision"
+bootstrap_installer="/Users/lr/.hermes/hermes-agent/scripts/install.sh"
+
+test -f "$profile/config.yaml" || { printf '%s\n' "Hermes profile configuration is required: $profile/config.yaml" >&2; exit 78; }
+test -s "$token_file" || { printf '%s\n' "Hermes API token is required: $token_file" >&2; exit 78; }
+test -r "$revision_file" || { printf '%s\n' "Pinned Hermes revision is required: $revision_file" >&2; exit 78; }
+test -r "$bootstrap_installer" || { printf '%s\n' "An installed official Hermes bootstrap is required: $bootstrap_installer" >&2; exit 78; }
+
+revision=$(tr -d '[:space:]' < "$revision_file")
+case "$revision" in
+  *[!0123456789abcdef]*)
+    printf '%s\n' "Pinned Hermes revision must be a 40-character lowercase SHA: $revision_file" >&2
+    exit 78
+    ;;
+esac
+test "${#revision}" -eq 40 || {
+  printf '%s\n' "Pinned Hermes revision must be a 40-character lowercase SHA: $revision_file" >&2
+  exit 78
+}
+
+umask 077
+mkdir -p \
+  "$runtime_root/cache" \
+  "$runtime_root/config" \
+  "$runtime_root/data" \
+  "$runtime_root/gateway-locks" \
+  "$runtime_root/home" \
+  "$runtime_root/run" \
+  "$runtime_root/state" \
+  "$runtime_root/tools" \
+  "$runtime_root/uv-python" \
+  "$runtime_root/uv-cache"
+
+export HOME="$runtime_root/home"
+export HERMES_HOME="$profile"
+export HERMES_INSTALL_DIR="$runtime_source"
+export HERMES_RUNTIME_DIR="$runtime_root/tools"
+export HERMES_GATEWAY_LOCK_DIR="$runtime_root/gateway-locks"
+export HERMES_REPO_URL="https://github.com/NousResearch/hermes-agent.git"
+export UV_CACHE_DIR="$runtime_root/uv-cache"
+export XDG_CACHE_HOME="$runtime_root/cache"
+export XDG_CONFIG_HOME="$runtime_root/config"
+export XDG_DATA_HOME="$runtime_root/data"
+export XDG_RUNTIME_DIR="$runtime_root/run"
+export XDG_STATE_HOME="$runtime_root/state"
+export UV_PYTHON_INSTALL_DIR="$runtime_root/uv-python"
+
+exec sh "$bootstrap_installer" \
+  --non-interactive \
+  --skip-browser \
+  --skip-computer-use \
+  --commit "$revision" \
+  --dir "$runtime_source" \
+  --hermes-home "$profile"

@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+profile="$repo_root/local/hermes/commander-profile"
+template="$repo_root/commander/hermes-profile-template"
+
+test -s "$repo_root/local/secrets/hermes-api-server-token" || {
+  printf '%s\n' "Hermes API bearer token is required at local/secrets/hermes-api-server-token." >&2
+  exit 78
+}
+mkdir -p "$profile"
+for file in AGENTS.md SOUL.md; do
+  test -e "$profile/$file" || cp "$template/$file" "$profile/$file"
+done
+test -f "$profile/config.yaml" || cp "$template/config.yaml.example" "$profile/config.yaml"
+chmod 700 "$profile"
+chmod 600 "$profile/config.yaml" "$profile/AGENTS.md" "$profile/SOUL.md"
+printf '%s\n' "$profile"

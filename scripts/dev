@@ -8,8 +8,6 @@ umask 077
 if [ ! -e .env ]; then
   cp .env.example .env
 fi
-scripts/prepare-callback-context
-
 rebuild=
 if [ "${1:-}" = "--build" ]; then
   rebuild=1

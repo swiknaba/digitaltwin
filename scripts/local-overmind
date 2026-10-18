@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+socket="$repo_root/local/runtime/overmind.sock"
+
+case "${1:-start}" in
+  start)
+    . "$repo_root/scripts/local-env"
+    sh "$repo_root/scripts/local-setup"
+    exec overmind start --daemonize --no-port --root "$repo_root" --procfile "$repo_root/Procfile.local" --socket "$socket" --title digitaltwin-local
+    ;;
+  status)
+    exec overmind status --socket "$socket"
+    ;;
+  logs)
+    exec overmind echo --socket "$socket"
+    ;;
+  stop)
+    test -S "$socket" || {
+      printf '%s\n' "DigitalTwin local stack is already stopped."
+      exit 0
+    }
+    exec overmind quit --socket "$socket"
+    ;;
+  *)
+    printf '%s\n' "usage: $0 [start|status|logs|stop]" >&2
+    exit 64
+    ;;
+esac

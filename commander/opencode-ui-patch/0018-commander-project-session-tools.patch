@@ -1,0 +1,129 @@
+diff --git a/packages/plugin/src/promise/project.ts b/packages/plugin/src/promise/project.ts
+new file mode 100644
+index 0000000..8e820c2
+--- /dev/null
++++ b/packages/plugin/src/promise/project.ts
+@@ -0,0 +1,3 @@
++import type { OpenCodeClient } from "@opencode/client"
++
++export interface ProjectDomain extends Pick<OpenCodeClient["project"], "list"> {}
+diff --git a/packages/plugin/src/effect/project.ts b/packages/plugin/src/effect/project.ts
+new file mode 100644
+index 0000000..9e1b15f
+--- /dev/null
++++ b/packages/plugin/src/effect/project.ts
+@@ -0,0 +1,3 @@
++import type { ProjectApi } from "@opencode/client/effect/api"
++
++export interface ProjectDomain extends Pick<ProjectApi<unknown>, "list"> {}
+diff --git a/packages/plugin/src/promise/plugin.ts b/packages/plugin/src/promise/plugin.ts
+index ed94b09..37f6c87 100644
+--- a/packages/plugin/src/promise/plugin.ts
++++ b/packages/plugin/src/promise/plugin.ts
+@@ -12,6 +12,7 @@ import type { MCPDomain } from "./mcp.js"
+ import type { ModelDomain } from "./model.js"
+ import type { PermissionDomain } from "./permission.js"
+ import type { ProviderDomain } from "./provider.js"
++import type { ProjectDomain } from "./project.js"
+ import type { ReferenceDomain } from "./reference.js"
+ import type { RpcDomain } from "./rpc.js"
+ import type { SessionDomain } from "./session.js"
+@@ -41,6 +42,7 @@ export interface Context {
+   readonly permission: PermissionDomain
+   readonly plugin: Pick<PluginApi, "list">
+   readonly provider: ProviderDomain
++  readonly project: ProjectDomain
+   readonly reference: ReferenceDomain
+   readonly rpc: RpcDomain
+   readonly session: SessionDomain
+diff --git a/packages/plugin/src/effect/plugin.ts b/packages/plugin/src/effect/plugin.ts
+index b19fac7..80b781a 100644
+--- a/packages/plugin/src/effect/plugin.ts
++++ b/packages/plugin/src/effect/plugin.ts
+@@ -12,6 +12,7 @@ import type { MCPDomain } from "./mcp.js"
+ import type { ModelDomain } from "./model.js"
+ import type { PermissionDomain } from "./permission.js"
+ import type { ProviderDomain } from "./provider.js"
++import type { ProjectDomain } from "./project.js"
+ import type { ReferenceDomain } from "./reference.js"
+ import type { RpcDomain } from "./rpc.js"
+ import type { SessionDomain } from "./session.js"
+@@ -41,6 +42,7 @@ export interface Context {
+   readonly permission: PermissionDomain
+   readonly plugin: Pick<PluginApi<unknown>, "list">
+   readonly provider: ProviderDomain
++  readonly project: ProjectDomain
+   readonly reference: ReferenceDomain
+   readonly rpc: RpcDomain
+   readonly session: SessionDomain
+diff --git a/packages/plugin/src/promise/adapter.ts b/packages/plugin/src/promise/adapter.ts
+index ff5efd1..d703ddf 100644
+--- a/packages/plugin/src/promise/adapter.ts
++++ b/packages/plugin/src/promise/adapter.ts
+@@ -351,6 +351,9 @@ export function fromPromise(plugin: Plugin) {
+             transform: transform(host.provider),
+             reload: () => run(host.provider.reload()),
+           },
++          project: {
++            list: () => run(host.project.list()).then((projects) => projects.map((project) => ({ ...project, sandboxes: [...project.sandboxes] }))),
++          },
+           integration: {
+             list: adaptApiMethod(IntegrationEndpoints["integration.list"], host.integration.list),
+             get: adaptApiMethod(IntegrationEndpoints["integration.get"], host.integration.get),
+diff --git a/packages/core/src/plugin/host.ts b/packages/core/src/plugin/host.ts
+index d6d2781..d4c2de2 100644
+--- a/packages/core/src/plugin/host.ts
++++ b/packages/core/src/plugin/host.ts
+@@ -6,7 +6,7 @@ import { EventManifest } from "@opencode/schema/event-manifest"
+ import type { Event } from "@opencode/schema/event"
+ import { ServerConfig } from "@opencode/schema/mcp"
+ import { App } from "../app.js"
+-import { Effect, Schema, Stream } from "effect"
++import { Effect, Option, Schema, Stream } from "effect"
+ import { Agent } from "../agent.js"
+ import { AISDK } from "../aisdk.js"
+ import { Command } from "../command.js"
+@@ -21,6 +21,7 @@ import { Mcp } from "../mcp/index.js"
+ import { Session } from "../session.js"
+ import { PersistentPty } from "../persistent-pty.js"
+ import { Provider } from "../provider.js"
++import { Project } from "../project.js"
+ import { Reference } from "../reference.js"
+ import { Rpc } from "../rpc.js"
+ import { AbsolutePath, type DeepMutable } from "../schema.js"
+@@ -52,6 +53,7 @@ export const make = Effect.fn("PluginHost.make")(function* (
+   const agents = yield* Agent.Service
+   const aisdk = yield* AISDK.Service
+   const providers = yield* Provider.Service
++  const projects = yield* Effect.serviceOption(Project.Service)
+   const models = yield* Model.Service
+   const commands = yield* Command.Service
+   const bus = yield* Bus.Service
+@@ -224,6 +226,13 @@ export const make = Effect.fn("PluginHost.make")(function* (
+           })
+         }),
+     },
++    project: {
++      list: () =>
++        Option.match(projects, {
++          onNone: () => Effect.succeed([]),
++          onSome: (service) => Effect.map(service.list(), mutable),
++        }),
++    },
+     model: {
+       list: () => response(models.available()),
+       default: () => response(models.default()),
+diff --git a/packages/core/test/plugin/host.ts b/packages/core/test/plugin/host.ts
+index 108846d..52c0853 100644
+--- a/packages/core/test/plugin/host.ts
++++ b/packages/core/test/plugin/host.ts
+@@ -51,6 +51,9 @@ export function host(overrides: Overrides = {}): Plugin.Context {
+       transform: () => Effect.die("unused provider.transform"),
+       reload: () => Effect.die("unused provider.reload"),
+     },
++    project: overrides.project ?? {
++      list: () => Effect.die("unused project.list"),
++    },
+     model: overrides.model ?? {
+       list: () => Effect.die("unused model.list"),
+       default: () => Effect.die("unused model.default"),

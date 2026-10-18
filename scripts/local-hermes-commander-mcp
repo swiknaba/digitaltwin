@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$repo_root/scripts/local-env"
+
+: "${DIGITALTWIN_HERMES_DELEGATION_STATE:=$repo_root/local/hermes/commander-delegation-state.json}"
+: "${DIGITALTWIN_HERMES_PROVENANCE_SUBJECT:=hermes-profile-local}"
+export DIGITALTWIN_HERMES_DELEGATION_STATE DIGITALTWIN_HERMES_PROVENANCE_SUBJECT
+if [ -n "${DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE:-}" ]; then
+  export DIGITALTWIN_OPENCODE_SERVICE_REGISTRATION_FILE
+fi
+
+cd "$repo_root"
+exec bun commander/hermes-mcp/server.ts

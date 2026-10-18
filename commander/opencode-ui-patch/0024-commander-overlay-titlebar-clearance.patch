@@ -1,0 +1,24 @@
+--- a/packages/app/src/runtime/commander-overlay-layout.ts
++++ b/packages/app/src/runtime/commander-overlay-layout.ts
+@@ -1,2 +1,2 @@
+ export const commanderOverlayContainerClass =
+-  "!h-[min(900px,calc(100vh-24px))] !w-[min(1240px,calc(100vw-24px))] !min-h-[min(620px,calc(100vh-24px))] !min-w-[min(720px,calc(100vw-24px))] !max-h-[calc(100vh-24px)] !max-w-[calc(100vw-24px)] resize"
++  "!mt-[calc(env(titlebar-area-height,36px)+16px)] !h-[min(780px,calc(100vh-env(titlebar-area-height,36px)-64px))] !w-[min(1120px,calc(100vw-64px))] !min-h-[min(560px,calc(100vh-env(titlebar-area-height,36px)-64px))] !min-w-[min(640px,calc(100vw-64px))] !max-h-[calc(100vh-env(titlebar-area-height,36px)-64px)] !max-w-[calc(100vw-64px)] resize"
+--- a/packages/app/src/runtime/commander-overlay-layout.test.ts
++++ b/packages/app/src/runtime/commander-overlay-layout.test.ts
+@@ -3,10 +3,11 @@
+ 
+ describe("Commander overlay layout", () => {
+   test("sizes the native dialog container instead of only its clipped content", () => {
+-    expect(commanderOverlayContainerClass).toContain("!w-[min(1240px,calc(100vw-24px))]")
+-    expect(commanderOverlayContainerClass).toContain("!h-[min(900px,calc(100vh-24px))]")
+-    expect(commanderOverlayContainerClass).toContain("!min-h-[min(620px,calc(100vh-24px))]")
+-    expect(commanderOverlayContainerClass).toContain("!min-w-[min(720px,calc(100vw-24px))]")
++    expect(commanderOverlayContainerClass).toContain("env(titlebar-area-height,36px)")
++    expect(commanderOverlayContainerClass).toContain("!mt-[calc(env(titlebar-area-height,36px)+16px)]")
++    expect(commanderOverlayContainerClass).toContain("!w-[min(1120px,calc(100vw-64px))]")
++    expect(commanderOverlayContainerClass).toContain("!min-h-[min(560px,calc(100vh-env(titlebar-area-height,36px)-64px))]")
++    expect(commanderOverlayContainerClass).toContain("!min-w-[min(640px,calc(100vw-64px))]")
+     expect(commanderOverlayContainerClass).toContain("resize")
+   })
+ })
