@@ -1,0 +1,498 @@
+diff --git a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+index 4190cef..b487f82 100644
+--- a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -73,6 +73,20 @@ test("Commander excludes disabled native models and reapplies visibility on reop
+   await expect(page.locator('[data-option-key="fixture:commander-large"]')).toBeVisible()
+ })
+ 
++test("Commander starts with no implicit model and admits one only after native settings enable it", async ({ page }) => {
++  await page.goto("/?visibility=none")
++  const overlay = page.locator('[data-slot="commander-native-overlay"]')
++  const picker = overlay.locator('[data-action="composer-model"]')
++
++  await expect(overlay.getByRole("button", { name: "Send" })).toBeDisabled()
++  await picker.click()
++  await expect(page.locator('[data-option-key^="fixture:"]')).toHaveCount(0)
++
++  expect(await page.evaluate(() => window.commanderFixture?.setModelVisibility("commander-small", true))).toBe(true)
++  await expect(picker).toContainText("commander-small")
++  await expect(overlay.getByRole("button", { name: "Send" })).toBeEnabled()
++})
++
+ test("Commander delegates economical worker selection without a stale client override", async ({ page }) => {
+   await page.goto("/")
+   const overlay = page.locator('[data-slot="commander-native-overlay"]')
+@@ -166,6 +180,8 @@ test("Commander does not fall back to an OpenCode conversation when Hermes is un
+   await expect(
+     overlay.getByText("Hermes is unavailable. Commander cannot send messages until its harness returns.").first(),
+   ).toBeVisible()
++  await expect(overlay.getByRole("alert")).toHaveCount(1)
++  await expect(overlay.getByText("Commander is ready when you are.")).toHaveCount(0)
+   await expect(overlay.getByText("Using Hermes with the selected Commander model.")).toHaveCount(0)
+   await expect(overlay.getByRole("button", { name: "Send" })).toBeDisabled()
+ })
+diff --git a/packages/app/component-tests/commander-vite-fixture/main.tsx b/packages/app/component-tests/commander-vite-fixture/main.tsx
+index 486f960..28421fe 100644
+--- a/packages/app/component-tests/commander-vite-fixture/main.tsx
++++ b/packages/app/component-tests/commander-vite-fixture/main.tsx
+@@ -56,6 +56,10 @@ let setFixtureModelVisibility: ((modelID: string, visible: boolean) => void) | u
+ function ModelVisibilityFixture() {
+   const models = useModels()
+   onMount(() => {
++    if (new URLSearchParams(window.location.search).get("visibility") === "none") {
++      setFixtureModelVisibility = (modelID, visible) => models.setVisibility({ providerID: "fixture", modelID }, visible)
++      return
++    }
+     for (const modelID of ["commander-small", "commander-large", "rejected-model"]) {
+       models.setVisibility({ providerID: "fixture", modelID }, true)
+     }
+diff --git a/packages/app/src/providers/models/models.tsx b/packages/app/src/providers/models/models.tsx
+index b872852..cc3af80 100644
+--- a/packages/app/src/providers/models/models.tsx
++++ b/packages/app/src/providers/models/models.tsx
+@@ -1,5 +1,5 @@
+ import { type Accessor, createMemo } from "solid-js"
+-import { filter, firstBy, flat, groupBy, mapValues, pipe, uniqueBy, values } from "remeda"
++import { uniqueBy } from "remeda"
+ import { createSimpleContext } from "@opencode/ui/context"
+ import { useProviders } from "@/providers/catalog/providers"
+ import { useGlobal } from "@/runtime/server/runtime"
+@@ -10,9 +10,6 @@ type Visibility = "show" | "hide"
+ 
+ const RECENT_LIMIT = 5
+ 
+-// luxon's diffNow().as("months") used an average month; keep the same window.
+-const sixMonths = 6 * 30.436875 * 24 * 60 * 60 * 1000
+-
+ function modelKey(model: ModelKey) {
+   return `${model.providerID}:${model.modelID}`
+ }
+@@ -32,45 +29,6 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
+     ),
+   )
+ 
+-  // Release dates as epoch ms; an unparseable date is NaN and never counts as recent.
+-  const release = createMemo(
+-    () =>
+-      new Map(
+-        available().map(
+-          (model) => [modelKey({ providerID: model.provider.id, modelID: model.id }), Date.parse(model.release_date)] as const,
+-        ),
+-      ),
+-  )
+-
+-  const latest = createMemo(() =>
+-    pipe(
+-      available(),
+-      filter((x) => {
+-        const released = release().get(modelKey({ providerID: x.provider.id, modelID: x.id })) ?? NaN
+-
+-        return Math.abs(Date.now() - released) < sixMonths
+-      }),
+-      groupBy((x) => x.provider.id),
+-      mapValues((models) =>
+-        pipe(
+-          models,
+-          groupBy((x) => x.family),
+-          values(),
+-          (groups) =>
+-            groups.flatMap((g) => {
+-              const first = firstBy(g, [(x) => x.release_date, "desc"])
+-
+-              return first ? [{ modelID: first.id, providerID: first.provider.id }] : []
+-            }),
+-        ),
+-      ),
+-      values(),
+-      flat(),
+-    ),
+-  )
+-
+-  const latestSet = createMemo(() => new Set(latest().map((x) => modelKey(x))))
+-
+   const visibility = createMemo(() => {
+     const map = new Map<string, Visibility>()
+ 
+@@ -105,14 +63,7 @@ const createModelsController = (directory: Accessor<string | undefined>) => {
+     const key = modelKey(model)
+     const state = visibility().get(key)
+ 
+-    if (state === "hide") return false
+-
+-    if (state === "show") return true
+-
+-    if (latestSet().has(key)) return true
+-
+-    // Models without a parseable release date stay visible.
+-    return !Number.isFinite(release().get(key) ?? NaN)
++    return state === "show"
+   }
+ 
+   const setVisibility = (model: ModelKey, state: boolean) => {
+diff --git a/packages/app/src/providers/models/selection.tsx b/packages/app/src/providers/models/selection.tsx
+index 4b82b05..d4f57ef 100644
+--- a/packages/app/src/providers/models/selection.tsx
++++ b/packages/app/src/providers/models/selection.tsx
+@@ -119,7 +119,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
+     const validModel = (model: ModelKey) => {
+       const provider = providers.all().get(model.providerID)
+ 
+-      return !!provider?.models[model.modelID] && connected().has(model.providerID)
++      return !!provider?.models[model.modelID] && connected().has(model.providerID) && models.visible(model)
+     }
+ 
+     const firstModel = (...items: Array<() => ModelKey | undefined>) => {
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+index a115919..74350fa 100644
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -471,7 +471,11 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+             >
+               <Show
+                 when={visibleTimeline().length > 0}
+-                fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}
++                fallback={
++                  <Show when={transport() !== "unavailable"}>
++                    <p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>
++                  </Show>
++                }
+               >
+                 <div class="space-y-1 p-5" data-slot="commander-hermes-timeline">
+                   <For each={visibleTimeline()}>
+@@ -515,13 +519,6 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+             </div>
+           </DataProvider>
+           <div class="shrink-0 border-t border-v2-border-border-base p-4">
+-            <Show when={runtimeError()}>
+-              {(message) => (
+-                <p class="mb-2 text-12-regular text-v2-text-text-critical" role="alert">
+-                  {message()}
+-                </p>
+-              )}
+-            </Show>
+             <Show when={selectionError()}>
+               {(message) => (
+                 <p class="mb-2 text-12-regular text-v2-text-text-critical" role="alert">
+diff --git a/packages/client/src/effect/api/api.ts b/packages/client/src/effect/api/api.ts
+index 5310d67..4b9adfd 100644
+--- a/packages/client/src/effect/api/api.ts
++++ b/packages/client/src/effect/api/api.ts
+@@ -1389,9 +1389,14 @@ export type ModelDefaultInput = { readonly location?: { readonly directory?: str
+ export type ModelDefaultOutput = { readonly location: Location.PublicRef; readonly data: Model.Info | undefined }
+ export type ModelDefaultOperation<E = never> = (input?: ModelDefaultInput) => Effect.Effect<ModelDefaultOutput, E>
+ 
++export type ModelEnabledInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
++export type ModelEnabledOutput = { readonly location: Location.PublicRef; readonly data: ReadonlyArray<Model.Info> }
++export type ModelEnabledOperation<E = never> = (input?: ModelEnabledInput) => Effect.Effect<ModelEnabledOutput, E>
++
+ export interface ModelApi<E = never> {
+   readonly list: ModelListOperation<E>
+   readonly default: ModelDefaultOperation<E>
++  readonly enabled: ModelEnabledOperation<E>
+ }
+ 
+ export type GenerateTextInput = { readonly prompt: string; readonly model?: Model.Ref | undefined }
+diff --git a/packages/client/src/effect/generated/client.ts b/packages/client/src/effect/generated/client.ts
+index c407bd2..e657beb 100644
+--- a/packages/client/src/effect/generated/client.ts
++++ b/packages/client/src/effect/generated/client.ts
+@@ -113,6 +113,8 @@ import type {
+   ModelListOutput,
+   ModelDefaultInput,
+   ModelDefaultOutput,
++  ModelEnabledInput,
++  ModelEnabledOutput,
+   GenerateTextInput,
+   GenerateTextOutput,
+   ProviderListInput,
+@@ -848,9 +850,15 @@ const EndpointModelDefault = (raw: RawClient["server.model"]) => (input?: ModelD
+     raw["model.default"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+   )
+ 
++const EndpointModelEnabled = (raw: RawClient["server.model"]) => (input?: ModelEnabledInput) =>
++  preserveEffect<ModelEnabledOutput>()(
++    raw["model.enabled"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
++  )
++
+ const adaptGroupModel = (raw: RawClient["server.model"]) => ({
+   list: EndpointModelList(raw),
+   default: EndpointModelDefault(raw),
++  enabled: EndpointModelEnabled(raw),
+ })
+ 
+ const EndpointGenerateText = (raw: RawClient["server.generate"]) => (input: GenerateTextInput) =>
+diff --git a/packages/client/src/promise/generated/client.ts b/packages/client/src/promise/generated/client.ts
+index 50e1548..8b9f8ef 100644
+--- a/packages/client/src/promise/generated/client.ts
++++ b/packages/client/src/promise/generated/client.ts
+@@ -107,6 +107,8 @@ import type {
+   ModelListOutput,
+   ModelDefaultInput,
+   ModelDefaultOutput,
++  ModelEnabledInput,
++  ModelEnabledOutput,
+   GenerateTextInput,
+   GenerateTextOutput,
+   ProviderListInput,
+@@ -1136,6 +1138,18 @@ export function make(options: ClientOptions) {
+           },
+           requestOptions,
+         ),
++      enabled: (input?: ModelEnabledInput, requestOptions?: RequestOptions) =>
++        request<ModelEnabledOutput>(
++          {
++            method: "GET",
++            path: `/api/model/enabled`,
++            query: { location: input?.["location"] },
++            successStatus: 200,
++            declaredStatuses: [400, 401, 404, 503],
++            empty: false,
++          },
++          requestOptions,
++        ),
+     },
+     generate: {
+       text: (input: GenerateTextInput, requestOptions?: RequestOptions) =>
+diff --git a/packages/client/src/promise/generated/types.ts b/packages/client/src/promise/generated/types.ts
+index 47b1aa3..c3d7fd8 100644
+--- a/packages/client/src/promise/generated/types.ts
++++ b/packages/client/src/promise/generated/types.ts
+@@ -5731,6 +5731,12 @@ export type ModelDefaultInput = {
+ 
+ export type ModelDefaultOutput = { location: LocationPublicRef; data: ModelInfo | null }
+ 
++export type ModelEnabledInput = {
++  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
++}
++
++export type ModelEnabledOutput = { location: LocationPublicRef; data: Array<ModelInfo> }
++
+ export type GenerateTextInput = {
+   readonly prompt: {
+     readonly prompt: string
+diff --git a/packages/core/src/plugin/host.ts b/packages/core/src/plugin/host.ts
+index d4c2de2..e65bbec 100644
+--- a/packages/core/src/plugin/host.ts
++++ b/packages/core/src/plugin/host.ts
+@@ -236,6 +236,7 @@ export const make = Effect.fn("PluginHost.make")(function* (
+     model: {
+       list: () => response(models.available()),
+       default: () => response(models.default()),
++      enabled: () => response(models.available()),
+       reload: models.reload,
+       transform: (callback) =>
+         models.transform((editor) =>
+diff --git a/packages/plugin/src/promise/adapter.ts b/packages/plugin/src/promise/adapter.ts
+index d703ddf..14176b2 100644
+--- a/packages/plugin/src/promise/adapter.ts
++++ b/packages/plugin/src/promise/adapter.ts
+@@ -342,6 +342,7 @@ export function fromPromise(plugin: Plugin) {
+           model: {
+             list: adaptApiMethod(ModelEndpoints["model.list"], host.model.list),
+             default: adaptApiMethod(ModelEndpoints["model.default"], host.model.default),
++            enabled: adaptApiMethod(ModelEndpoints["model.enabled"], host.model.enabled),
+             transform: transform(host.model),
+             reload: () => run(host.model.reload()),
+           },
+diff --git a/packages/protocol/src/groups/model.ts b/packages/protocol/src/groups/model.ts
+index 8df7d46..5afbb36 100644
+--- a/packages/protocol/src/groups/model.ts
++++ b/packages/protocol/src/groups/model.ts
+@@ -37,6 +37,22 @@ export const ModelGroup = HttpApiGroup.make("server.model")
+         }),
+       ),
+   )
++  .add(
++    HttpApiEndpoint.get("model.enabled", "/api/model/enabled", {
++      query: LocationQuery,
++      success: Location.response(Schema.Array(Model.Info)),
++      error: ServiceUnavailableError,
++    })
++      .annotateMerge(locationQueryOpenApi)
++      .annotateMerge(
++        OpenApi.annotations({
++          identifier: "model.enabled",
++          summary: "List explicitly enabled models",
++          description:
++            "Retrieve models explicitly enabled in the local desktop model settings. This endpoint is for local automation that must honor the user's native model choices.",
++        }),
++      ),
++  )
+   .annotateMerge(
+     OpenApi.annotations({
+       title: "model",
+diff --git a/packages/server/src/handlers/model.ts b/packages/server/src/handlers/model.ts
+index 5af4334..edaeed1 100644
+--- a/packages/server/src/handlers/model.ts
++++ b/packages/server/src/handlers/model.ts
+@@ -1,5 +1,8 @@
+ import { Model } from "@opencode/core/model"
+-import { Effect } from "effect"
++import { existsSync } from "node:fs"
++import path from "node:path"
++import { DatabaseSync } from "node:sqlite"
++import { Effect, Option, Schema } from "effect"
+ import { HttpApiBuilder } from "effect/http-api"
+ import { Api } from "../api"
+ import { awaitPlugins, response } from "../location"
+@@ -23,5 +26,71 @@ export const ModelHandler = HttpApiBuilder.group(Api, "server.model", (handlers)
+           return yield* response(models.default())
+         }),
+       )
++      .handle(
++        "model.enabled",
++        Effect.fn(function* () {
++          yield* awaitPlugins
++          const models = yield* Model.Service
++          const enabled = desktopEnabledModels()
++          return yield* response(
++            models.available().pipe(
++              Effect.map((available) => available.filter((model) => enabled.has(modelKey(model.providerID, model.id)))),
++            ),
++          )
++        }),
++      )
+   }),
+ )
++
++const DesktopModelState = Schema.Struct({
++  user: Schema.Array(
++    Schema.Struct({
++      providerID: Schema.String,
++      modelID: Schema.String,
++      visibility: Schema.Literals(["show", "hide"]),
++    }),
++  ),
++})
++
++function desktopEnabledModels(): ReadonlySet<string> {
++  const root = process.env.DIGITALTWIN_OPENCODE_DATA_ROOT
++
++  if (!root) return new Set()
++
++  const file = path.join(root, "desktop", "drafts.sqlite")
++
++  if (!existsSync(file)) return new Set()
++
++  try {
++    const database = new DatabaseSync(file, { readOnly: true })
++
++    try {
++      const row = database
++        .prepare("SELECT value FROM state WHERE name = ? AND key = ?")
++        .get("opencode.global.dat", "model")
++      const value = columnValue(row)
++      const decoded = value === undefined
++        ? Option.none()
++        : Schema.decodeUnknownOption(Schema.fromJsonString(DesktopModelState))(value)
++
++      return Option.match(decoded, {
++        onNone: () => new Set(),
++        onSome: (state) => new Set(state.user.filter((item) => item.visibility === "show").map((item) => modelKey(item.providerID, item.modelID))),
++      })
++    } finally {
++      database.close()
++    }
++  } catch {
++    // A local automation must never select a model when desktop preferences are unreadable.
++    return new Set()
++  }
++}
++
++function columnValue(value: unknown): string | undefined {
++  if (!value || typeof value !== "object" || !("value" in value) || typeof value.value !== "string") return
++  return value.value
++}
++
++function modelKey(providerID: string, modelID: string) {
++  return `${providerID}:${modelID}`
++}
+diff --git a/packages/server/test/model.test.ts b/packages/server/test/model.test.ts
+index da28b37..4bd5e0d 100644
+--- a/packages/server/test/model.test.ts
++++ b/packages/server/test/model.test.ts
+@@ -1,5 +1,6 @@
+ import fs from "node:fs/promises"
+ import path from "node:path"
++import { DatabaseSync } from "node:sqlite"
+ import { expect } from "bun:test"
+ import { Effect } from "effect"
+ import { tmpdir } from "../../core/test/fixture/tmpdir"
+@@ -37,6 +38,76 @@ it.live("waits for plugin initialization before listing models", () =>
+   }),
+ )
+ 
++it.live("lists only models explicitly enabled in native desktop settings for local automation", () =>
++  Effect.gen(function* () {
++    const project = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("opencode-model-enabled-endpoint-")))
++    const desktop = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("opencode-desktop-model-settings-")))
++    const previous = process.env.DIGITALTWIN_OPENCODE_DATA_ROOT
++    process.env.DIGITALTWIN_OPENCODE_DATA_ROOT = desktop.path
++    yield* Effect.addFinalizer(() =>
++      Effect.sync(() => {
++        if (previous === undefined) delete process.env.DIGITALTWIN_OPENCODE_DATA_ROOT
++        else process.env.DIGITALTWIN_OPENCODE_DATA_ROOT = previous
++      }),
++    )
++    yield* Effect.promise(() =>
++      fs.writeFile(
++        path.join(project.path, "opencode.json"),
++        JSON.stringify({
++          providers: {
++            custom: {
++              package: "aisdk:@ai-sdk/openai-compatible",
++              settings: { apiKey: "secret" },
++              models: { explicitlyEnabled: {}, implicitlyAvailable: {} },
++            },
++          },
++        }),
++      ),
++    )
++    yield* Effect.promise(() => fs.mkdir(path.join(desktop.path, "desktop"), { recursive: true }))
++    yield* Effect.sync(() => writeDesktopModelSettings(desktop.path))
++    const server = yield* startServer(project.path)
++    const url = new URL("/api/model/enabled", server.base)
++    url.searchParams.set("location[directory]", project.path)
++    const response = yield* Effect.promise(() => fetch(url, { headers: server.headers }))
++
++    expect(response.status).toBe(200)
++    const body: unknown = yield* Effect.promise(() => response.json())
++    if (!isRecord(body) || !Array.isArray(body["data"])) throw new Error("Expected an enabled model list response")
++    expect(body["data"].map(modelID)).toEqual(["explicitlyEnabled"])
++  }),
++)
++
++function writeDesktopModelSettings(root: string) {
++  const desktop = path.join(root, "desktop")
++  const file = path.join(desktop, "drafts.sqlite")
++  const database = new DatabaseSync(file)
++
++  try {
++    database.exec("CREATE TABLE state (name TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (name, key))")
++    database
++      .prepare("INSERT INTO state (name, key, value, updated_at) VALUES (?, ?, ?, ?)")
++      .run(
++        "opencode.global.dat",
++        "model",
++        JSON.stringify({
++          user: [
++            { providerID: "custom", modelID: "explicitlyEnabled", visibility: "show" },
++            { providerID: "custom", modelID: "implicitlyAvailable", visibility: "hide" },
++          ],
++        }),
++        Date.now(),
++      )
++  } finally {
++    database.close()
++  }
++}
++
++function modelID(value: unknown): string | undefined {
++  if (!isRecord(value) || typeof value["id"] !== "string") return
++  return value["id"]
++}
++
+ function isRecord(value: unknown): value is Record<string, unknown> {
+   return typeof value === "object" && value !== null && !Array.isArray(value)
+ }

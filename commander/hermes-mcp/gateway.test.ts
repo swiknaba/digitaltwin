@@ -13,7 +13,7 @@ test("uses the installed OpenCode HTTP envelopes and only selects enabled explic
     calls.push({ path: `${url.pathname}${url.search}`, body, authorization: headers.get("Authorization") })
     const response = (() => {
       if (url.pathname === "/api/project") return [{ id: "project-1", canonical: "/srv/digitaltwin", name: "digitaltwin" }]
-      if (url.pathname === "/api/model") return { data: [
+      if (url.pathname === "/api/model/enabled") return { data: [
         { providerID: "anthropic", id: "claude-opus-5-5", name: "Claude Opus 5.5", enabled: true, variants: [{ id: "high" }] },
         { providerID: "opencode", id: "nemotron-3.5-super-vl-free", enabled: false, variants: [] },
       ] }
@@ -49,7 +49,7 @@ test("uses the installed OpenCode HTTP envelopes and only selects enabled explic
   }])
   assert.deepEqual(calls, [
     { path: "/api/project", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
-    { path: "/api/model?location%5Bdirectory%5D=%2Fsrv%2Fdigitaltwin", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
+    { path: "/api/model/enabled?location%5Bdirectory%5D=%2Fsrv%2Fdigitaltwin", body: undefined, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session", body: { id: "ses_hermes", location: { directory: "/srv/digitaltwin" }, model: { providerID: "anthropic", id: "claude-opus-5-5", variant: "high" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes/model", body: { model: { providerID: "anthropic", id: "claude-opus-5-5", variant: "high" } }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },
     { path: "/api/session/ses_hermes/prompt", body: { id: "msg_hermes", text: "Start.", metadata: { fromCommander: true }, resume: true }, authorization: "Basic b3BlbmNvZGU6YXBwcm92ZWQtcHJpdmF0ZS1wYXNzd29yZA==" },

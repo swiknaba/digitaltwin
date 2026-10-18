@@ -5,7 +5,7 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 spike_root="$repo_root/local/macos-local-app-spike"
 toolchain_root="$spike_root/toolchain"
-opencode_source=${DIGITALTWIN_OPENCODE_SOURCE:-"$repo_root/local/opencode-packaged-fresh"}
+opencode_source=${DIGITALTWIN_OPENCODE_SOURCE:-"$repo_root/local/opencode-commander-native-models"}
 app=${DIGITALTWIN_APP_OUTPUT:-"$spike_root/DigitalTwin.app"}
 build_root=${DIGITALTWIN_APP_BUILD_ROOT:-"$spike_root/build/candidate"}
 staged_app="$build_root/DigitalTwin.app"
@@ -42,7 +42,7 @@ test -d "$opencode_source" || fail "prepared OpenCode source is missing: $openco
 test "$(git -C "$opencode_source" rev-parse --is-inside-work-tree 2>/dev/null || true)" = "true" || fail "OpenCode source is not a Git checkout"
 test "$(git -C "$opencode_source" rev-parse HEAD)" = "$expected_opencode_revision" || fail "OpenCode source must be $expected_opencode_revision"
 git -C "$opencode_source" diff --check
-git -C "$opencode_source" apply --check --reverse "$patch_dir/0046-commander-packaged-readiness-and-native-tone.patch" || fail "OpenCode source is missing maintained patch 0046"
+git -C "$opencode_source" apply --check --reverse "$patch_dir/0047-commander-native-enabled-models.patch" || fail "OpenCode source is missing maintained patch 0047"
 test -x "$opencode_source/packages/desktop/node_modules/.bin/electron-vite" || fail "run a frozen Bun install in the prepared OpenCode source first"
 
 remove_generated_path() {

@@ -66,7 +66,7 @@ export class OpenCodeHttpGateway implements OpenCodeCommanderGateway {
 
   async listAvailableModels(directory: string): Promise<readonly CommanderAvailableModel[]> {
     const query = new URLSearchParams({ "location[directory]": directory })
-    const response = await this.json(`/api/model?${query.toString()}`)
+    const response = await this.json(`/api/model/enabled?${query.toString()}`)
     if (!object(response) || !Array.isArray(response.data)) throw new Error("OpenCode returned an invalid model list.")
     return response.data.flatMap(availableModel)
   }

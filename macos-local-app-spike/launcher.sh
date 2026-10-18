@@ -130,8 +130,48 @@ ensure_hermes_token() {
   test -n "$api_token" || { printf '%s\n' "Unable to generate the local Hermes control token" >&2; exit 78; }
 }
 
+load_active_anthropic_credential() {
+  credential_database="$opencode_root/data/opencode/opencode.db"
+
+  if ! test -f "$credential_database"; then
+    unset ANTHROPIC_API_KEY
+    return
+  fi
+
+  active_anthropic_key=$("$resources/hermes/runtime/python/bin/python3" -I -c '
+import json
+import sqlite3
+import sys
+
+try:
+    connection = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+    try:
+        row = connection.execute(
+            "SELECT value FROM credential WHERE integration_id = ? AND active = 1 ORDER BY time_updated DESC LIMIT 1",
+            ("anthropic",),
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is not None:
+        value = json.loads(row[0])
+        key = value.get("key") if value.get("type") == "key" else None
+        if isinstance(key, str) and key:
+            print(key, end="")
+except (json.JSONDecodeError, OSError, sqlite3.Error):
+    pass
+' "$credential_database" 2>/dev/null || true)
+
+  if test -n "$active_anthropic_key"; then
+    export ANTHROPIC_API_KEY="$active_anthropic_key"
+    return
+  fi
+
+  unset ANTHROPIC_API_KEY
+}
+
 start_hermes() {
   ensure_hermes_token
+  load_active_anthropic_credential
   mkdir -p "$hermes_home"
   if ! test -f "$hermes_home/config.yaml"; then
     cp "$resources/hermes/profile/config.yaml.example" "$hermes_home/config.yaml"
@@ -154,6 +194,9 @@ start_hermes() {
     export API_SERVER_KEY="$api_token"
     exec "$resources/bin/hermes" gateway
   ) >> "$log_root/hermes.log" 2>&1 &
+  # The native credential is solely for Hermes. Do not pass it on to the
+  # adapter, Kirei, or the OpenCode process that this launcher starts next.
+  unset ANTHROPIC_API_KEY active_anthropic_key
   echo $! > "$(pid_file hermes)"
   wait_for "Hermes API listener" hermes_rejects_anonymous_request
 }
@@ -297,9 +340,11 @@ launch() {
   trap 'stop' 0
   trap 'exit 0' 1 2 15
 
-  # OpenCode is the native interface. Starting it first avoids a long Finder
-  # bounce while the isolated local services initialise. The Commander bridge
-  # handles the sidecar becoming available after the UI.
+  # OpenCode starts before the remaining local services to keep Finder
+  # responsive, but it must inherit the same ephemeral adapter token those
+  # services will use.
+  ensure_hermes_token
+  export DIGITALTWIN_HERMES_ADAPTER_TOKEN="$api_token"
   launch_opencode &
   opencode_launcher_pid=$!
 
