@@ -108,7 +108,11 @@ start_kirei() {
   ) >> "$log_root/kirei-migrate.log" 2>&1
   (
     cd "$kirei"
-    exec "$ruby" -rbundler/setup "$bundled_bin/falcon" serve --bind "http://0.0.0.0:$web_port" --count 1 --config "$kirei/config.ru"
+    # Falcon defaults to its forked container on macOS. The packaged Ruby
+    # runtime can receive SIGILL in child processes, which leaves Finder
+    # waiting before Electron is reached. This local single-process app uses
+    # Falcon's threaded container instead.
+    exec "$ruby" -rbundler/setup "$bundled_bin/falcon" serve --threaded --bind "http://0.0.0.0:$web_port" --count 1 --config "$kirei/config.ru"
   ) >> "$log_root/kirei-web.log" 2>&1 &
   echo $! > "$(pid_file kirei-web)"
   (
@@ -290,9 +294,9 @@ verify() {
 }
 
 launch() {
-  start
   trap 'stop' 0
-  trap 'stop; exit 0' 1 2 15
+  trap 'exit 0' 1 2 15
+  start
   launch_opencode
 }
 

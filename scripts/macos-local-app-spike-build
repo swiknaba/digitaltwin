@@ -5,11 +5,74 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 spike_root="$repo_root/local/macos-local-app-spike"
 toolchain_root="$spike_root/toolchain"
-app="$spike_root/DigitalTwin.app"
-resources="$app/Contents/Resources"
-opencode_app="$repo_root/local/opencode-hermes-validation-clean/packages/desktop/dist/mac-arm64/OpenCode Dev.app"
+opencode_source=${DIGITALTWIN_OPENCODE_SOURCE:-"$repo_root/local/opencode-packaged-fresh"}
+app=${DIGITALTWIN_APP_OUTPUT:-"$spike_root/DigitalTwin.app"}
+build_root=${DIGITALTWIN_APP_BUILD_ROOT:-"$spike_root/build/candidate"}
 hermes_runtime="$repo_root/local/hermes/runtime"
 hermes_python="$hermes_runtime/tools/python-3.14.7+20260901-darwin-arm64/bin/python3"
+patch_dir="$repo_root/commander/opencode-ui-patch"
+expected_opencode_revision="1f4d07a4a519185955ae8ab2ea3607805509e386"
+
+fail() {
+  printf '%s\n' "macos-local-app-spike-build: $*" >&2
+  exit 78
+}
+
+case "$opencode_source" in
+  /*) ;;
+  *) fail "DIGITALTWIN_OPENCODE_SOURCE must be absolute" ;;
+esac
+
+case "$app" in
+  "$spike_root/DigitalTwin.app"|"$spike_root"/candidates/*.app) ;;
+  *) fail "DIGITALTWIN_APP_OUTPUT must be DigitalTwin.app or a .app under local/macos-local-app-spike/candidates" ;;
+esac
+
+case "$build_root" in
+  "$spike_root"/build/*) ;;
+  *) fail "DIGITALTWIN_APP_BUILD_ROOT must be below local/macos-local-app-spike/build" ;;
+esac
+
+if test "$app" = "$spike_root/DigitalTwin.app" && test -d "$app" && test "${DIGITALTWIN_REPLACE_DEFAULT_APP:-}" != "yes"; then
+  fail "refusing to replace the existing default app; select DIGITALTWIN_APP_OUTPUT or set DIGITALTWIN_REPLACE_DEFAULT_APP=yes"
+fi
+
+test -d "$opencode_source" || fail "prepared OpenCode source is missing: $opencode_source"
+test "$(git -C "$opencode_source" rev-parse --is-inside-work-tree 2>/dev/null || true)" = "true" || fail "OpenCode source is not a Git checkout"
+test "$(git -C "$opencode_source" rev-parse HEAD)" = "$expected_opencode_revision" || fail "OpenCode source must be $expected_opencode_revision"
+git -C "$opencode_source" diff --check
+git -C "$opencode_source" apply --check --reverse "$patch_dir/0046-commander-packaged-readiness-and-native-tone.patch" || fail "OpenCode source is missing maintained patch 0046"
+test -x "$opencode_source/packages/desktop/node_modules/.bin/electron-vite" || fail "run a frozen Bun install in the prepared OpenCode source first"
+
+remove_generated_path() {
+  target=$1
+  case "$target" in
+    "$spike_root/DigitalTwin.app"|"$spike_root"/candidates/*.app|"$spike_root"/build/*) ;;
+    *) fail "refusing to remove a path outside the generated app or build roots: $target" ;;
+  esac
+  test ! -e "$target" || rm -rf "$target"
+}
+
+remove_generated_path "$build_root/opencode-dist"
+remove_generated_path "$app"
+mkdir -p "$build_root/cache" "$build_root/tmp" "$(dirname "$app")"
+
+export BUN_INSTALL_CACHE_DIR="$build_root/cache/bun"
+export ELECTRON_BUILDER_CACHE="$build_root/cache/electron-builder"
+export ELECTRON_CACHE="$build_root/cache/electron"
+export TMPDIR="$build_root/tmp"
+
+(
+  cd "$opencode_source/packages/desktop"
+  OPENCODE_CHANNEL=dev bun run typecheck
+  OPENCODE_CHANNEL=dev bun run build
+  CSC_IDENTITY_AUTO_DISCOVERY=false OPENCODE_CHANNEL=dev bun run package -- --mac --dir --arm64 --config.directories.output="$build_root/opencode-dist"
+)
+
+opencode_app="$build_root/opencode-dist/mac-arm64/OpenCode Dev.app"
+test -d "$opencode_app" || fail "fresh OpenCode package was not produced at $opencode_app"
+
+resources="$app/Contents/Resources"
 
 case "$(uname -m)" in
   arm64) ;;
@@ -19,14 +82,12 @@ esac
 test -x "$toolchain_root/ruby/bin/ruby" || { printf '%s\n' "Run scripts/macos-local-app-spike-toolchain first" >&2; exit 78; }
 test -x "$toolchain_root/postgres/bin/pg_ctl" || { printf '%s\n' "PostgreSQL toolchain is missing" >&2; exit 78; }
 test -d "$toolchain_root/kirei-gems" || { printf '%s\n' "Kirei gems are missing" >&2; exit 78; }
-test -d "$opencode_app" || { printf '%s\n' "Package OpenCode in local/opencode-hermes-validation-clean first" >&2; exit 78; }
 test -x "$hermes_python" || { printf '%s\n' "The project-local Hermes Python closure is missing" >&2; exit 78; }
 hermes_venv=$(
   "$hermes_python" -I -c 'import hashlib, json; from pathlib import Path; source = Path("local/hermes/runtime/source").resolve(); key = hashlib.sha256(str(source).encode("utf-8")).hexdigest()[:16]; state = Path("local/hermes/commander-profile/installs") / key / "facts.json"; print(json.loads(state.read_text(encoding="utf-8"))["packages"]["venv"]["environment"])'
 )
 test -d "$hermes_venv" || { printf '%s\n' "The Hermes dependency closure is missing" >&2; exit 78; }
 
-rm -rf "$app"
 mkdir -p "$resources/bin" "$app/Contents/MacOS"
 cp "$repo_root/macos-local-app-spike/Info.plist" "$app/Contents/Info.plist"
 cp "$repo_root/macos-local-app-spike/launcher.sh" "$app/Contents/MacOS/DigitalTwin"
@@ -38,9 +99,22 @@ ditto "$repo_root/integration-backend" "$resources/kirei"
 rm -rf "$resources/kirei/.git" "$resources/kirei/.bundle"
 ditto "$toolchain_root/kirei-gems" "$resources/kirei/vendor/bundle"
 mkdir -p "$resources/commander" "$resources/hermes/runtime" "$resources/hermes/profile"
-rsync -a --delete --exclude='.git' --exclude='node_modules' --exclude='__pycache__' --exclude='evals' "$hermes_runtime/source/" "$resources/hermes/source/"
+rsync -a --delete \
+  --exclude='.git' \
+  --exclude='.github' \
+  --exclude='node_modules' \
+  --exclude='__pycache__' \
+  --exclude='evals' \
+  --exclude='tests' \
+  --exclude='tests-js' \
+  --exclude='website' \
+  --exclude='contributors' \
+  --exclude='docker' \
+  --exclude='nix' \
+  "$hermes_runtime/source/" "$resources/hermes/source/"
 ditto "$hermes_runtime/tools/python-3.14.7+20260901-darwin-arm64" "$resources/hermes/runtime/python"
 ditto "$hermes_venv" "$resources/hermes/venv"
+find "$resources/hermes" -type d -name '__pycache__' -prune -exec rm -rf {} +
 rm -f "$resources/hermes/venv/bin/python"
 ln -s ../../runtime/python/bin/python3 "$resources/hermes/venv/bin/python"
 sed -i '' "s|^home = .*|home = $resources/hermes/runtime/python/bin|" "$resources/hermes/venv/pyvenv.cfg"
@@ -54,5 +128,23 @@ cp "$repo_root/macos-local-app-spike/hermes-launcher.sh" "$resources/bin/hermes"
 chmod 755 "$resources/bin/hermes"
 
 bun build "$repo_root/commander/hermes-adapter/server.ts" --compile --target=bun-darwin-arm64 --outfile "$resources/bin/hermes-adapter"
+
+patch_manifest=$(
+  for patch in "$patch_dir"/[0-9][0-9][0-9][0-9]-*.patch; do
+    shasum -a 256 "$patch"
+  done | shasum -a 256 | awk '{print $1}'
+)
+source_diff_sha=$(git -C "$opencode_source" diff --binary | shasum -a 256 | awk '{print $1}')
+"$toolchain_root/ruby/bin/ruby" -rjson -rtime -e '
+  destination, revision, diff_sha, patch_sha, source = ARGV
+  payload = {
+    "opencode_source_revision" => revision,
+    "opencode_source_diff_sha256" => diff_sha,
+    "commander_patch_manifest_sha256" => patch_sha,
+    "opencode_source" => source,
+    "assembled_at_utc" => Time.now.utc.iso8601,
+  }
+  File.write(destination, JSON.pretty_generate(payload) + "\n")
+' "$resources/build-provenance.json" "$(git -C "$opencode_source" rev-parse HEAD)" "$source_diff_sha" "$patch_manifest" "$opencode_source"
 
 printf '%s\n' "Built unsigned arm64 DigitalTwin app at $app"

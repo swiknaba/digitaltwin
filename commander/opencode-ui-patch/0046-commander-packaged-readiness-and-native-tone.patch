@@ -1,0 +1,209 @@
+diff --git a/packages/app/src/runtime/extension/titlebar-items.tsx b/packages/app/src/runtime/extension/titlebar-items.tsx
+--- a/packages/app/src/runtime/extension/titlebar-items.tsx
++++ b/packages/app/src/runtime/extension/titlebar-items.tsx
+@@ -36,13 +36,14 @@ export function TitlebarItems(props: { items: ReturnType<typeof useTitlebarItem
+ 
+ function TitlebarItemButton(props: { item: TitlebarItem; vertical?: boolean }) {
+   const expanded = () => !!props.item.expanded
++  const inverse = () => props.item.tone === "inverse"
+   const success = () => props.item.tone === "success"
+   const label = () => (
+     <span
+-      style={success() ? { color: "rgb(255 255 255)" } : undefined}
+       class="shrink-0 text-[11px] leading-4 text-v2-text-text-accent [font-weight:530] opacity-0 motion-safe:transition-all duration-150 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0 motion-reduce:translate-x-0"
+       classList={{
+-        "!text-white opacity-100 motion-safe:transition-none": expanded(),
++        "!text-v2-background-bg-base opacity-100 motion-safe:transition-none": expanded() && inverse(),
++        "!text-white opacity-100 motion-safe:transition-none": expanded() && success(),
+         "ms-px me-4 -translate-x-2 rtl:translate-x-2": props.vertical && !expanded(),
+         "ms-2 me-px translate-x-2 rtl:-translate-x-2": !props.vertical && !expanded(),
+         "translate-x-0": expanded(),
+@@ -66,13 +67,13 @@ function TitlebarItemButton(props: { item: TitlebarItem; vertical?: boolean }) {
+       <button
+         type="button"
+         class="z-10 flex h-full items-center overflow-hidden rounded-full bg-v2-icon-icon-accent/20 text-v2-icon-icon-accent transition-[background-color] duration-150 ease-out group-hover:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] group-focus-within:bg-[color-mix(in_srgb,var(--v2-icon-icon-accent)_20%,var(--v2-background-bg-deep))] focus-visible:outline-none disabled:opacity-60 motion-reduce:transition-none [app-region:no-drag]"
+-        style={success() ? { color: "rgb(255 255 255)" } : undefined}
+         classList={{
+           "absolute top-0 w-full": !expanded(),
+           "static w-auto px-3": expanded(),
+           "start-0 justify-start": props.vertical,
+           "end-0 justify-end": !props.vertical,
+           "!bg-surface-success-strong !text-white hover:!bg-surface-success-base hover:!text-white focus-visible:!text-white group-hover:!bg-surface-success-base group-hover:!text-white group-focus-within:!bg-surface-success-base group-focus-within:!text-white disabled:!text-white": success(),
++          "!bg-v2-text-text-base !text-v2-background-bg-base hover:!bg-v2-text-text-base hover:!text-v2-background-bg-base focus-visible:!text-v2-background-bg-base group-hover:!bg-v2-text-text-base group-hover:!text-v2-background-bg-base group-focus-within:!bg-v2-text-text-base group-focus-within:!text-v2-background-bg-base disabled:!text-v2-background-bg-base": inverse(),
+         }}
+         onClick={() => props.item.run?.()}
+         disabled={!!props.item.busy}
+diff --git a/packages/gui-extensions/src/commander/i18n/en.ts b/packages/gui-extensions/src/commander/i18n/en.ts
+--- a/packages/gui-extensions/src/commander/i18n/en.ts
++++ b/packages/gui-extensions/src/commander/i18n/en.ts
+@@ -1,7 +1,8 @@
+ export default {
+   title: "Commander",
+   "action.open": "Open Commander",
+-  "action.unavailable": "Open a project session to use Commander.",
++  "action.unavailable": "Commander is still starting. Try again in a moment.",
++  "action.openFailed": "Commander could not open.",
+   "command.open": "Open Commander",
+   "command.description": "Open the Commander control surface for this project session.",
+   "command.category.view": "View",
+diff --git a/packages/gui-extensions/src/commander/main.test.ts b/packages/gui-extensions/src/commander/main.test.ts
+--- a/packages/gui-extensions/src/commander/main.test.ts
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -169,6 +169,31 @@ test("Commander rejects missing or changed persisted agent configuration without
+   expect(changed.store.value.revision).toBe(5)
+ })
+ 
++test("Commander waits once for the sidecar to discover its seeded agent", async () => {
++  let requests = 0
++  const request = async (...[input, init]: Parameters<typeof fetch>) => {
++    const url = new URL(input.toString())
++    expect(url.pathname).toBe("/api/agent")
++    expect(url.searchParams.get("location[directory]")).toBe(configured.directory)
++    expect(init?.headers).toEqual({ authorization: "Bearer sidecar" })
++    requests += 1
++
++    return Response.json({
++      location: { directory: configured.directory },
++      data: requests === 1 ? [] : [{ id: configured.agent }],
++    })
++  }
++  globalThis.fetch = Object.assign(request, { preconnect: original.fetch.preconnect })
++
++  await expect(
++    runtime(persistent({ revision: 0 })).bridge.reserve(
++      { serverID: "sidecar", sessionID: Session.ID.make("ses_commander_agent_ready") },
++      caller,
++    ),
++  ).resolves.toMatchObject({ conversation: { agent: configured.agent } })
++  expect(requests).toBe(2)
++})
++
+ test("Commander returns the exact Hermes model inventory and persists only an adapter-confirmed selection", async () => {
+   const session = Session.ID.make("ses_commander_model")
+   const backing = persistent({
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -27,6 +27,8 @@ type CommanderRuntime = Readonly<{
+ }>
+ 
+ const AgentListResponse = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Agent.ID })) })
++const CommanderAgentRetryDelayMilliseconds = 250
++const CommanderAgentAttempts = 2
+ const HermesModelInventory = Schema.Array(
+   Schema.Struct({ provider: Schema.String, providerName: Schema.String, model: Schema.String }),
+ )
+@@ -159,17 +161,23 @@ async function validateConfiguredCommander(
+   const url = new URL("/api/agent", input.endpoint.url)
+   url.searchParams.set("location[directory]", input.directory)
+ 
+-  const response = await fetch(url, { headers: input.endpoint.headers })
++  for (let attempt = 0; attempt < CommanderAgentAttempts; attempt += 1) {
++    const response = await fetch(url, { headers: input.endpoint.headers })
+ 
+-  if (!response.ok)
+-    throw new Error(`Commander could not validate its configured agent with the OpenCode sidecar (${response.status}).`)
++    if (!response.ok)
++      throw new Error(`Commander could not validate its configured agent with the OpenCode sidecar (${response.status}).`)
+ 
+-  const body: unknown = await response.json()
+-  const agents = Schema.decodeUnknownOption(AgentListResponse)(body)
++    const body: unknown = await response.json()
++    const agents = Schema.decodeUnknownOption(AgentListResponse)(body)
+ 
+-  if (Option.isNone(agents) || !agents.value.data.some((agent) => agent.id === input.agent)) {
+-    throw new Error(`Configured Commander agent '${input.agent}' is unavailable for '${input.directory}'.`)
++    if (Option.isSome(agents) && agents.value.data.some((agent) => agent.id === input.agent)) return
++
++    if (attempt + 1 < CommanderAgentAttempts) {
++      await new Promise<void>((resolve) => setTimeout(resolve, CommanderAgentRetryDelayMilliseconds))
++    }
+   }
++
++  throw new Error(`Configured Commander agent '${input.agent}' is unavailable for '${input.directory}'.`)
+ }
+ 
+ function matchesConfiguredConversation(
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -1,6 +1,7 @@
+ import { isSessionNotFoundError } from "@opencode/client"
+ import { Session } from "@opencode/schema/session"
+ import { Button } from "@opencode/ui/button"
++import { showToast } from "@opencode/ui/toast"
+ import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+ import { Command, Panel, SettingsPage, TitlebarItem, type PanelTab, type Setup } from "../sdk"
+ import type definition from "./index"
+@@ -109,9 +110,9 @@ const setup: Setup<typeof definition> = (ctx) => {
+   }
+   const openGlobal = async () => {
+     const live = bridge()
+-    if (live.status !== "active") return
++    if (live.status !== "active") throw new Error(ctx.t("action.unavailable"))
+     const ipc = live.value
+-    if (!ipc) return
++    if (!ipc) throw new Error(ctx.t("action.unavailable"))
+ 
+     const initial = ipc.state()?.conversation
+     let current = initial
+@@ -148,7 +149,15 @@ const setup: Setup<typeof definition> = (ctx) => {
+       }),
+     )
+   }
+ 
++  const open = () =>
++    void openGlobal().catch((error) =>
++      showToast({
++        variant: "error",
++        title: ctx.t("action.openFailed"),
++        description: error instanceof Error ? error.message : String(error),
++      }),
++    )
+   ctx.add(SettingsPage, {
+     id: "commander",
+     icon: "server",
+@@ -267,9 +276,9 @@ const setup: Setup<typeof definition> = (ctx) => {
+       label: "commander",
+       title,
+       expanded: true,
+-      tone: "success" as const,
++      tone: "inverse" as const,
+       mark,
+-      run: () => void openGlobal(),
++      run: open,
+     }
+   })
+ 
+@@ -285,7 +294,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+       return ctx.t("command.category.view")
+     },
+     enabled: true,
+-    run: () => void openGlobal(),
++    run: open,
+   }))
+ 
+   ctx.add(Panel, {
+@@ -293,7 +302,7 @@ const setup: Setup<typeof definition> = (ctx) => {
+     region: "side",
+     list: (input) => (input.open.includes(panelID) ? [tab] : []),
+     render: () => (
+-      <button type="button" onClick={() => void openGlobal()}>
++      <button type="button" onClick={open}>
+         {ctx.t("action.open")}
+       </button>
+     ),
+diff --git a/packages/gui-extensions/src/sdk/registries.ts b/packages/gui-extensions/src/sdk/registries.ts
+--- a/packages/gui-extensions/src/sdk/registries.ts
++++ b/packages/gui-extensions/src/sdk/registries.ts
+@@ -540,8 +540,8 @@ export interface TitlebarItem {
+   readonly pressed?: boolean
+   /** Keeps the full label visible instead of using the compact hover-expanding pill. */
+   readonly expanded?: boolean
+-  /** Applies a semantic success treatment to an expanded item. */
+-  readonly tone?: "default" | "success"
++  /** Applies a semantic treatment to an expanded item. */
++  readonly tone?: "default" | "inverse" | "success"
+   /** Optional short mark shown before the item's icon. */
+   readonly mark?: string
+   /** Runs when the user clicks the pill, or the channel badge it toggles. Omit it for an item that only shows. */

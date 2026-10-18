@@ -11,8 +11,8 @@ The spike creates an unsigned, project-local `DigitalTwin.app` under
 services, launches the nested patched OpenCode Electron application, waits for
 that process, then stops the services when OpenCode quits. It is not a second
 desktop UI. The real OpenCode Electron application is bundled as a nested
-resource and is built from the maintained 45-patch Commander chain in the
-existing validation checkout.
+resource and is compiled from the maintained 46-patch Commander chain in a
+fresh prepared checkout; the packager never copies a prior desktop artifact.
 
 The production follow-up will move the same supervisor into OpenCode's existing
 `ApplicationLifecycle` Effect layer.  That layer already owns `before-quit`,
@@ -87,11 +87,15 @@ decisions and are deliberately not masked as spike validation.
 
 ## Build and verification
 
-Run the two project-local scripts in order:
+Prepare a clean pinned OpenCode checkout, then run the two project-local
+packaging scripts:
 
 ```sh
+git -C local/opencode worktree add --detach "$PWD/local/opencode-packaged-fresh" 1f4d07a4a519185955ae8ab2ea3607805509e386
+sh commander/opencode-ui-patch/prepare-opencode.sh "$PWD/local/opencode-packaged-fresh"
+(cd local/opencode-packaged-fresh && bun install --frozen-lockfile)
 scripts/macos-local-app-spike-toolchain
-scripts/macos-local-app-spike-build
+DIGITALTWIN_OPENCODE_SOURCE="$PWD/local/opencode-packaged-fresh" scripts/macos-local-app-spike-build
 ```
 
 The toolchain script fetches only the official Ruby and PostgreSQL source URLs,
@@ -101,8 +105,26 @@ the macOS 27.0 SDK components installed; the local build verifies the resulting
 `socket`, `strscan`, and `bigdecimal` extensions.  The build script packages the
 adapter into a self-contained Bun executable, stages the Hermes closure without
 any ignored profile data, rewrites its sealed virtual-environment launch paths
-to bundle-relative Python, and copies the already-built OpenCode app from the
-isolated validation checkout.
+to bundle-relative Python, and compiles a fresh OpenCode app from the supplied
+prepared checkout. The bundle includes `Contents/Resources/build-provenance.json`
+with the pinned source revision, the prepared-source diff hash, and the
+maintained-patch manifest hash.
+
+For a candidate while the Finder app is running, select a separate generated
+output and build root. The packager refuses to replace an existing default app
+unless `DIGITALTWIN_REPLACE_DEFAULT_APP=yes` is explicit:
+
+```sh
+DIGITALTWIN_OPENCODE_SOURCE="$PWD/local/opencode-packaged-fresh" \
+  DIGITALTWIN_APP_OUTPUT="$PWD/local/macos-local-app-spike/candidates/DigitalTwin-candidate.app" \
+  DIGITALTWIN_APP_BUILD_ROOT="$PWD/local/macos-local-app-spike/build/candidate" \
+  scripts/macos-local-app-spike-build
+```
+
+The staged Hermes payload excludes source tests, website, contributor material,
+and Python bytecode caches. It retains the runtime source and sealed dependency
+environment; further slimming requires a separately verified Hermes runtime
+closure rather than deleting provider or gateway dependencies ad hoc.
 
 Launching `DigitalTwin.app` normally runs the complete application with no
 terminal setup or credential file: open
@@ -122,8 +144,11 @@ and worker readiness, Hermes's unauthenticated rejection endpoint (no provider
 call), adapter health, ordered shutdown, and a fresh restart.  It does not send
 a model request, mutate the active profile, or launch the user's running stack.
 
-The desktop acceptance build additionally uses the 0043--0045 maintained
+The desktop acceptance build additionally uses the 0043--0046 maintained
 OpenCode patches. They keep Electron's user data and XDG roots under the
 app-private data directory, choose a fixed app-private sidecar port, and use
 the bundled CLI's canonical registration name so the native renderer can reach
 its own sidecar even while a normal OpenCode development service is running.
+Patch 0046 gives the seeded Commander agent a bounded sidecar-discovery retry,
+surfaces opening errors to the user, and uses the neutral native inverse titlebar
+treatment instead of the previous green success pill.
