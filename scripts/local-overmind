@@ -18,6 +18,10 @@ case "${1:-start}" in
     exec overmind echo --socket "$socket"
     ;;
   stop)
+    test -S "$socket" || {
+      printf '%s\n' "DigitalTwin local stack is already stopped."
+      exit 0
+    }
     exec overmind quit --socket "$socket"
     ;;
   *)
