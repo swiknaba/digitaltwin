@@ -49,11 +49,14 @@ The wrapper uses independent loopback ports (15432, 13000, 18642, 13087, and
 13086 for OpenCode's bundled sidecar by default), so it does not bind the
 normal local stack's ports. Its packaged sidecar uses its own state root and
 registration file, and shutdown verifies that registration points to an
-app-private staged executable before terminating it. It requires an
-*existing* API-server token file when starting Hermes.  The token is read into
-the child environment, never copied into the app, profile, logs, or Git.  The
-profile is created from the credential-free tracked Commander template, so it
-cannot inherit the active user's Hermes login state.
+app-private staged executable before terminating it. Each app launch generates
+a fresh control token in memory for the loopback Hermes gateway and adapter;
+it is not a provider credential and is never written to the app, profile,
+logs, command arguments, or Git. The gateway token is removed before Electron
+starts; the separate adapter token is consumed by Commander main-process code
+and is never sent through the renderer bridge. The profile is created from the
+credential-free tracked Commander template, so it cannot inherit the active
+user's Hermes login state.
 
 ## Runtime provenance and licenses
 
@@ -101,14 +104,18 @@ any ignored profile data, rewrites its sealed virtual-environment launch paths
 to bundle-relative Python, and copies the already-built OpenCode app from the
 isolated validation checkout.
 
-Launching `DigitalTwin.app` normally runs the complete application. For a
-non-GUI service verification, pass an existing local API-server token file
-explicitly rather than writing a new credential:
+Launching `DigitalTwin.app` normally runs the complete application with no
+terminal setup or credential file: open
+`local/macos-local-app-spike/DigitalTwin.app` in Finder. For a non-GUI service
+verification:
 
 ```sh
-DIGITALTWIN_HERMES_API_TOKEN_FILE="$PWD/local/secrets/hermes-api-server-token" \
-  local/macos-local-app-spike/DigitalTwin.app/Contents/MacOS/DigitalTwin verify
+local/macos-local-app-spike/DigitalTwin.app/Contents/MacOS/DigitalTwin verify
 ```
+
+The launch-only control token does not grant provider access. A separately
+configured approved provider is still required before a live Commander prompt
+can run.
 
 `verify` proves bundle-relative executable paths, Postgres readiness, Kirei web
 and worker readiness, Hermes's unauthenticated rejection endpoint (no provider

@@ -18,7 +18,7 @@ web_port=${DIGITALTWIN_APP_WEB_PORT:-13000}
 hermes_port=${DIGITALTWIN_APP_HERMES_PORT:-18642}
 adapter_port=${DIGITALTWIN_APP_ADAPTER_PORT:-13087}
 opencode_port=${DIGITALTWIN_APP_OPENCODE_PORT:-13086}
-token_file=${DIGITALTWIN_HERMES_API_TOKEN_FILE:-}
+api_token=
 
 for port in "$postgres_port" "$web_port" "$hermes_port" "$adapter_port" "$opencode_port"; do
   case "$port" in
@@ -120,15 +120,20 @@ start_kirei() {
   wait_for "Kirei worker" "$resources/ruby/bin/ruby" "$kirei/bin/health" worker
 }
 
+ensure_hermes_token() {
+  test -n "$api_token" && return
+  api_token=$("$resources/ruby/bin/ruby" -rsecurerandom -e 'print SecureRandom.hex(32)')
+  test -n "$api_token" || { printf '%s\n' "Unable to generate the local Hermes control token" >&2; exit 78; }
+}
+
 start_hermes() {
-  test -n "$token_file" && test -s "$token_file" || { printf '%s\n' "DIGITALTWIN_HERMES_API_TOKEN_FILE must name an existing token file" >&2; exit 78; }
+  ensure_hermes_token
   mkdir -p "$hermes_home"
   if ! test -f "$hermes_home/config.yaml"; then
     cp "$resources/hermes/profile/config.yaml.example" "$hermes_home/config.yaml"
     cp "$resources/hermes/profile/SOUL.md" "$hermes_home/SOUL.md"
     cp "$resources/hermes/profile/AGENTS.md" "$hermes_home/AGENTS.md"
   fi
-  api_token=$(< "$token_file")
   export HERMES_HOME="$hermes_home"
   export HERMES_INSTALL_ROOT="$resources/hermes/source"
   export HERMES_RUNTIME_DIR="$resources/hermes/runtime"
@@ -138,11 +143,13 @@ start_hermes() {
   export XDG_DATA_HOME="$data_root/hermes/data"
   export XDG_RUNTIME_DIR="$run_root/hermes"
   export XDG_STATE_HOME="$data_root/hermes/state"
-  export API_SERVER_KEY="$api_token"
   export API_SERVER_HOST=127.0.0.1
   export API_SERVER_PORT="$hermes_port"
   mkdir -p "$HERMES_GATEWAY_LOCK_DIR" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_RUNTIME_DIR" "$XDG_STATE_HOME"
-  "$resources/bin/hermes" gateway >> "$log_root/hermes.log" 2>&1 &
+  (
+    export API_SERVER_KEY="$api_token"
+    exec "$resources/bin/hermes" gateway
+  ) >> "$log_root/hermes.log" 2>&1 &
   echo $! > "$(pid_file hermes)"
   wait_for "Hermes API listener" hermes_rejects_anonymous_request
 }
@@ -153,11 +160,12 @@ hermes_rejects_anonymous_request() {
 }
 
 start_adapter() {
+  ensure_hermes_token
   export DIGITALTWIN_HERMES_STATE_FILE="$data_root/hermes/adapter-state.json"
   export DIGITALTWIN_HERMES_ADAPTER_PORT="$adapter_port"
   export DIGITALTWIN_HERMES_API_URL="http://127.0.0.1:$hermes_port"
-  export DIGITALTWIN_HERMES_API_TOKEN="$(< "$token_file")"
-  export DIGITALTWIN_HERMES_ADAPTER_TOKEN="$DIGITALTWIN_HERMES_API_TOKEN"
+  export DIGITALTWIN_HERMES_API_TOKEN="$api_token"
+  export DIGITALTWIN_HERMES_ADAPTER_TOKEN="$api_token"
   export DIGITALTWIN_HERMES_ALLOWED_PROVIDER=anthropic
   "$resources/bin/hermes-adapter" >> "$log_root/hermes-adapter.log" 2>&1 &
   echo $! > "$(pid_file hermes-adapter)"
@@ -195,7 +203,7 @@ launch_opencode() {
   export DIGITALTWIN_OPENCODE_ISOLATED_SERVER_PORT="$opencode_port"
   export OPENCODE_DESKTOP_SERVER_CHANNEL=local
   export OPENCODE_DESKTOP_DISABLE_PROTOCOL_REGISTRATION=1
-  unset BUNDLE_GEMFILE BUNDLE_IGNORE_CONFIG BUNDLE_PATH GEM_HOME GEM_PATH RUBYLIB RUBYOPT ZDOTDIR
+  unset API_SERVER_KEY BUNDLE_GEMFILE BUNDLE_IGNORE_CONFIG BUNDLE_PATH DIGITALTWIN_HERMES_API_TOKEN GEM_HOME GEM_PATH RUBYLIB RUBYOPT ZDOTDIR
 
   "$opencode_executable" >> "$log_root/opencode.log" 2>&1 &
   echo $! > "$(pid_file opencode)"
@@ -247,6 +255,7 @@ stop_opencode_sidecar() {
 }
 
 start() {
+  ensure_hermes_token
   start_postgres
   start_kirei
   start_hermes
