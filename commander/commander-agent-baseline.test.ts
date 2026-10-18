@@ -10,6 +10,8 @@ test("treats existing-work follow-ups as results before instructions", async () 
   assert.match(baseline, /commander_list_enabled_models/)
   assert.match(baseline, /cheapest tier, such as Haiku/)
   assert.match(baseline, /Reserve the top tier for the main Commander session/)
+  assert.match(baseline, /only after matching it to exactly one\n+enabled inventory entry/)
+  assert.match(baseline, /opaque identifiers in\n+structured tool inputs and results/)
 })
 
 test("keeps the active Hermes persona and authenticated handoff aligned with worker policy", async () => {
@@ -17,5 +19,7 @@ test("keeps the active Hermes persona and authenticated handoff aligned with wor
   const gateway = await readFile(new URL("../scripts/local-hermes-gateway", import.meta.url), "utf8")
   assert.match(templateSoul, /call `commander_list_enabled_models` for the target project/)
   assert.match(templateSoul, /cheapest tier, such as Haiku/)
+  assert.match(templateSoul, /only when exactly one enabled entry matches/)
+  assert.match(templateSoul, /opaque identifiers in structured tool inputs and results/)
   assert.match(gateway, /ln -sfn "\$profile\/SOUL\.md" "\$handoff_soul"/)
 })
