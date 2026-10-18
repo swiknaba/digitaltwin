@@ -10,14 +10,15 @@ its durable Hermes session through typed main-process IPC. The renderer receives
 neither the bearer token nor the Hermes profile path; the local adapter requires
 the private loopback bearer header from the trusted desktop process or Kirei.
 
-Commander chooses one durable `{ providerID, modelID }` identity from OpenCode's
-native visible model catalog, including the user's provider/model visibility
-preferences. The selection is not an OpenCode session setting:
-the adapter stores it for Commander only, then passes that exact identity with a
-required model lock to every Hermes run. A missing or stale identity blocks
-Commander instead of falling back to an ordinary OpenCode provider. Commander
-never reads, copies, or configures OpenCode provider credentials; Hermes needs
-its separately approved authentication or shared LiteLLM route.
+Commander chooses one durable `{ providerID, modelID }` identity from the
+Hermes-confirmed portion of OpenCode's native visible model catalog, including
+the user's provider/model visibility preferences. The selection is not an
+OpenCode session setting: the adapter stores it for Commander only and restores
+it when the desktop process reopens. Hermes separately selects any project
+worker from the enabled inventory for each new project session, using the user's
+natural-language request only when they name a worker model. Commander never
+reads, copies, or configures OpenCode provider credentials; Hermes needs its
+separately approved authentication or shared LiteLLM route.
 
 The active OpenCode continuation plugin owns exact-session follow-up bindings.
 Scheduled Kirei delivery independently uses the authenticated normal OpenCode
@@ -46,7 +47,7 @@ sh commander/opencode-ui-patch/prepare-opencode.sh
 The default target is `local/opencode`; pass an absolute checkout path only when
 an operator deliberately needs a different location. The script verifies the
 pinned revision, then applies all patches. The reviewed patch sequence is
-currently thirty-eight patches.
+currently forty patches.
 It copies no configuration, credentials, persistent store, or operator state.
 
 For a local desktop walkthrough—including optional native-agent continuation and

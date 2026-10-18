@@ -1,0 +1,631 @@
+diff --git a/packages/gui-extensions/src/commander/contract.ts b/packages/gui-extensions/src/commander/contract.ts
+index 8471a04..07fc241 100644
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -48,7 +48,7 @@ export const CommanderEvent = Schema.Struct({
+ })
+ export type CommanderEvent = typeof CommanderEvent.Type
+ 
+-export const CommanderRunRequest = Schema.Struct({ requestID: Schema.String, text: Schema.String, workerModel: Schema.optional(CommanderModel) })
++export const CommanderRunRequest = Schema.Struct({ requestID: Schema.String, text: Schema.String })
+ export const CommanderRunControl = Schema.Struct({ runID: Schema.String, text: Schema.optional(Schema.String) })
+ 
+ export const CommanderReservation = Schema.Struct({
+
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+index c84dba5..c557000 100644
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -8,11 +8,20 @@ import type definition from "./index"
+ const panelID = "main"
+ 
+ type CommanderOverlayEvent = Readonly<{
+-  readonly conversation: Readonly<{ readonly serverID: "sidecar"; readonly sessionID: string; readonly directory: string; readonly agent: string }>
++  readonly conversation: Readonly<{
++    readonly serverID: "sidecar"
++    readonly sessionID: string
++    readonly directory: string
++    readonly agent: string
++  }>
+   readonly model?: CommanderModelEvent
+ }>
+ 
+-type CommanderModelEvent = Readonly<{ readonly providerID: string; readonly modelID: string; readonly variant?: string }>
++type CommanderModelEvent = Readonly<{
++  readonly providerID: string
++  readonly modelID: string
++  readonly variant?: string
++}>
+ type CommanderRequest = Readonly<{
+   readonly id: string
+   readonly operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "select-model"
+@@ -20,7 +29,6 @@ type CommanderRequest = Readonly<{
+   readonly runID?: string
+   readonly text?: string
+   readonly model?: CommanderModelEvent
+-  readonly workerModel?: CommanderModelEvent
+ }>
+ 
+ function isCommanderModel(value: unknown): value is CommanderModelEvent {
+@@ -58,7 +66,9 @@ const setup: Setup<typeof definition> = (ctx) => {
+     const current = conversation()
+     const target = server()
+     if (!current || !target) return
+-    const attention = (target.data.session.form.list(current.sessionID)?.length ?? 0) > 0 || (target.data.session.permission.list(current.sessionID)?.length ?? 0) > 0
++    const attention =
++      (target.data.session.form.list(current.sessionID)?.length ?? 0) > 0 ||
++      (target.data.session.permission.list(current.sessionID)?.length ?? 0) > 0
+     const working = target.data.session.status(current.sessionID) === "running"
+     const unread = !dialogOpen() && !!latestAssistant() && latestAssistant()!.id !== lastRead()
+     return { attention, working, unread }
+@@ -123,7 +133,11 @@ const setup: Setup<typeof definition> = (ctx) => {
+       target.data.session.message.sync(current.sessionID),
+       target.data.session.pending.sync(current.sessionID),
+     ])
+-    window.dispatchEvent(new CustomEvent<CommanderOverlayEvent>("opencode-commander-overlay", { detail: { conversation: current, model: ipc.state()?.model } }))
++    window.dispatchEvent(
++      new CustomEvent<CommanderOverlayEvent>("opencode-commander-overlay", {
++        detail: { conversation: current, model: ipc.state()?.model },
++      }),
++    )
+   }
+ 
+   ctx.add(SettingsPage, {
+@@ -134,7 +148,14 @@ const setup: Setup<typeof definition> = (ctx) => {
+       return ctx.t("settings.title")
+     },
+     get entries() {
+-      return [{ id: "settings-commander-model", title: ctx.t("settings.model.title"), description: ctx.t("settings.model.description"), keywords: "hermes model provider picker" }]
++      return [
++        {
++          id: "settings-commander-model",
++          title: ctx.t("settings.model.title"),
++          description: ctx.t("settings.model.description"),
++          keywords: "hermes model provider picker",
++        },
++      ]
+     },
+     render: () => (
+       <CommanderSettings
+@@ -157,17 +178,46 @@ const setup: Setup<typeof definition> = (ctx) => {
+       window.dispatchEvent(
+         new CustomEvent("opencode-commander-hermes-response", { detail: { id: request.id, result, error } }),
+       )
+-    if (request.operation === "health") void live.value.health().then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander runtime check failed."))
++    if (request.operation === "health")
++      void live.value
++        .health()
++        .then(reply)
++        .catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander runtime check failed."))
+     if (request.operation === "start" && request.requestID && request.text) {
+-      if (request.workerModel !== undefined && !isCommanderModel(request.workerModel)) reply(undefined, "Commander received an invalid native worker model.")
+-      else void live.value.start({ requestID: request.requestID, text: request.text, ...(request.workerModel === undefined ? {} : { workerModel: request.workerModel }) }).then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander request failed."))
++      void live.value
++        .start({ requestID: request.requestID, text: request.text })
++        .then(reply)
++        .catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander request failed."))
+     }
+-    if (request.operation === "stop" && request.runID) void live.value.stop(request.runID).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander stop failed."))
+-    if (request.operation === "steer" && request.runID && request.text) void live.value.steer({ runID: request.runID, text: request.text }).then(() => reply({})).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander steer failed."))
+-    if (request.operation === "history") void live.value.history().then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander history failed."))
+-    if (request.operation === "models") void live.value.models().then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander models could not be loaded."))
++    if (request.operation === "stop" && request.runID)
++      void live.value
++        .stop(request.runID)
++        .then(() => reply({}))
++        .catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander stop failed."))
++    if (request.operation === "steer" && request.runID && request.text)
++      void live.value
++        .steer({ runID: request.runID, text: request.text })
++        .then(() => reply({}))
++        .catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander steer failed."))
++    if (request.operation === "history")
++      void live.value
++        .history()
++        .then(reply)
++        .catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander history failed."))
++    if (request.operation === "models")
++      void live.value
++        .models()
++        .then(reply)
++        .catch((error) =>
++          reply(undefined, error instanceof Error ? error.message : "Commander models could not be loaded."),
++        )
+     if (request.operation === "select-model" && request.model && isCommanderModel(request.model)) {
+-      void live.value.selectModel(request.model).then(reply).catch((error) => reply(undefined, error instanceof Error ? error.message : "Commander model selection failed."))
++      void live.value
++        .selectModel(request.model)
++        .then(reply)
++        .catch((error) =>
++          reply(undefined, error instanceof Error ? error.message : "Commander model selection failed."),
++        )
+     }
+   }
+   window.addEventListener("opencode-commander-hermes-request", hermes)
+@@ -203,25 +253,31 @@ const setup: Setup<typeof definition> = (ctx) => {
+     }
+   })
+ 
+-  ctx.add(
+-    Command,
+-    () => ({
+-      id: "open",
+-      get title() {
+-        return ctx.t("command.open")
+-      },
+-      get description() {
+-        return ctx.t("command.description")
+-      },
+-      get group() {
+-        return ctx.t("command.category.view")
+-      },
+-      enabled: true,
+-      run: () => void openGlobal(),
+-    }),
+-  )
++  ctx.add(Command, () => ({
++    id: "open",
++    get title() {
++      return ctx.t("command.open")
++    },
++    get description() {
++      return ctx.t("command.description")
++    },
++    get group() {
++      return ctx.t("command.category.view")
++    },
++    enabled: true,
++    run: () => void openGlobal(),
++  }))
+ 
+-  ctx.add(Panel, { id: panelID, region: "side", list: (input) => (input.open.includes(panelID) ? [tab] : []), render: () => <button type="button" onClick={() => void openGlobal()}>{ctx.t("action.open")}</button> })
++  ctx.add(Panel, {
++    id: panelID,
++    region: "side",
++    list: (input) => (input.open.includes(panelID) ? [tab] : []),
++    render: () => (
++      <button type="button" onClick={() => void openGlobal()}>
++        {ctx.t("action.open")}
++      </button>
++    ),
++  })
+ }
+ 
+ export default setup
+@@ -236,7 +292,9 @@ function CommanderSettings(props: { model(): CommanderModelEvent | undefined; op
+     <div class="settings-tab-body">
+       <div class="settings-section">
+         <h2 class="settings-tab-title">Commander</h2>
+-        <p class="text-12-regular text-v2-text-text-muted">Commander always sends through Hermes using the single model chosen here.</p>
++        <p class="text-12-regular text-v2-text-text-muted">
++          Commander always sends through Hermes using the single model chosen here.
++        </p>
+         <div class="mt-5" data-component="settings-list">
+           <div data-component="settings-row">
+             <div data-slot="settings-row-copy">
+@@ -244,11 +302,16 @@ function CommanderSettings(props: { model(): CommanderModelEvent | undefined; op
+               <div data-slot="settings-row-description">{selected()}</div>
+             </div>
+             <div data-slot="settings-row-control" data-action="settings-commander-model">
+-              <Button size="normal" variant="neutral" onClick={props.open}>Select model</Button>
++              <Button size="normal" variant="neutral" onClick={props.open}>
++                Select model
++              </Button>
+             </div>
+           </div>
+         </div>
+-        <p class="mt-4 text-12-regular text-v2-text-text-muted">The picker shows models already enabled in OpenCode. Hermes receives only the selected provider and model for each run; it never reads OpenCode credentials.</p>
++        <p class="mt-4 text-12-regular text-v2-text-text-muted">
++          The picker shows models already enabled in OpenCode. Hermes receives only the selected provider and model for
++          each run; it never reads OpenCode credentials.
++        </p>
+       </div>
+     </div>
+   )
+
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+index 328bc0f..cfbb8e0 100644
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -86,33 +86,13 @@ async function models(): Promise<readonly CommanderModelOption[]> {
+   }))
+ }
+ 
+-function withWorkerModelPolicy(
+-  request: Readonly<{
+-    text: string
+-    workerModel?: Readonly<{ providerID: string; modelID: string; variant?: string }>
+-  }>,
+-): string {
+-  if (request.workerModel === undefined) {
+-    return [
+-      AutomaticWorkerPolicyHeader,
+-      "For a new project session without an explicit human model choice, first call commander_list_enabled_models for the target project. Use only the returned enabled inventory.",
+-      "If the human clearly names a provider/model or an unambiguous model name, treat that as their choice only when exactly one enabled inventory entry matches. Use that exact entry as worker_model. If the choice is unavailable or ambiguous, ask one concise clarifying question and do not create a project session.",
+-      "Use the cheapest tier, such as Haiku, for search, summaries, and mechanical edits. Use the middle tier, such as Sonnet, for specified implementation work. Reserve the top tier for the main Commander session.",
+-      "If the appropriate tier is unavailable, report the missing configuration instead of inventing a profile or relying on an OpenCode default. Create only with the exact enabled worker_model you selected. For an existing project-session follow-up, do not pass worker_model unless the user explicitly requests a model change.",
+-      "Write ordinary replies as a natural-language summary. Keep exact session, decision, and other opaque identifiers in structured tool inputs and results; include an exact identifier in a reply only when the human explicitly asks for it.",
+-      "User request:",
+-      request.text,
+-    ].join("\n\n")
+-  }
+-  const workerModel = JSON.stringify({
+-    provider_id: request.workerModel.providerID,
+-    model_id: request.workerModel.modelID,
+-    ...(request.workerModel.variant === undefined ? {} : { variant: request.workerModel.variant }),
+-  })
++function withWorkerModelPolicy(request: Readonly<{ text: string }>): string {
+   return [
+-    ExplicitWorkerPolicyHeader,
+-    `For a new project session, call commander_create_project_session with this exact worker_model: ${workerModel}.`,
+-    "For an existing project-session follow-up, call commander_continue_agent without worker_model unless the user explicitly requests a model change. Never rely on an OpenCode default for a new project session.",
++    AutomaticWorkerPolicyHeader,
++    "For a new project session, first call commander_list_enabled_models for the target project. Use only the returned enabled inventory.",
++    "If the human clearly names a provider/model or an unambiguous model name, treat that as their choice for this request only when exactly one enabled inventory entry matches. Use that exact entry as worker_model. Keep it for later requests only when the human explicitly asks to do so. If the choice is unavailable or ambiguous, ask one concise clarifying question and do not create a project session.",
++    "Otherwise choose the cheapest tier, such as Haiku, for search, summaries, and mechanical edits. Use the middle tier, such as Sonnet, for specified implementation work. Reserve the top tier for the main Commander session.",
++    "If the appropriate tier is unavailable, report the missing configuration instead of inventing a profile or relying on an OpenCode default. Create only with the exact enabled worker_model you selected. For an existing project-session follow-up, do not pass worker_model unless the user explicitly requests a model change.",
+     "Write ordinary replies as a natural-language summary. Keep exact session, decision, and other opaque identifiers in structured tool inputs and results; include an exact identifier in a reply only when the human explicitly asks for it.",
+     "User request:",
+     request.text,
+
+diff --git a/packages/gui-extensions/src/commander/main.test.ts b/packages/gui-extensions/src/commander/main.test.ts
+index 94c7b45..23c140a 100644
+--- a/packages/gui-extensions/src/commander/main.test.ts
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -261,45 +261,7 @@ test("Commander reports Hermes unavailable when its adapter is not configured",
+   })
+ })
+ 
+-test("Commander relays the native visible worker selection as a no-default creation policy", async () => {
+-  const backing = persistent({
+-    revision: 2,
+-    conversation: {
+-      serverID: "sidecar",
+-      sessionID: Session.ID.make("ses_commander_worker_model"),
+-      directory: configured.directory,
+-      agent: Agent.ID.make(configured.agent),
+-    },
+-  })
+-  const first = runtime(backing)
+-  const requests = hermes([])
+-
+-  await expect(
+-    first.bridge.start(
+-      {
+-        requestID: "worker-model-request",
+-        text: "Ask Advoport to reply only: fixture pong",
+-        workerModel: { providerID: "anthropic", modelID: "claude-haiku-5-5", variant: "low" },
+-      },
+-      caller,
+-    ),
+-  ).resolves.toEqual({ id: "cmd_fixture", sessionID: "hermes_fixture" })
+-
+-  const body = requests.find((request) => request.path === "/runs")?.body
+-  expect(body).toEqual({
+-    request_id: "worker-model-request",
+-    text: [
+-      "Native Commander worker policy (not user-authored text):",
+-      'For a new project session, call commander_create_project_session with this exact worker_model: {"provider_id":"anthropic","model_id":"claude-haiku-5-5","variant":"low"}.',
+-      "For an existing project-session follow-up, call commander_continue_agent without worker_model unless the user explicitly requests a model change. Never rely on an OpenCode default for a new project session.",
+-      "Write ordinary replies as a natural-language summary. Keep exact session, decision, and other opaque identifiers in structured tool inputs and results; include an exact identifier in a reply only when the human explicitly asks for it.",
+-      "User request:",
+-      "Ask Advoport to reply only: fixture pong",
+-    ].join("\n\n"),
+-  })
+-})
+-
+-test("Commander asks Hermes to select an enabled economical tier when the user has not overridden the worker model", async () => {
++test("Commander sends no client worker-model override and asks Hermes to select an enabled economical tier", async () => {
+   const backing = persistent({
+     revision: 2,
+     conversation: {
+@@ -327,9 +289,9 @@ test("Commander asks Hermes to select an enabled economical tier when the user h
+     request_id: "economical-model-request",
+     text: [
+       "Native Commander worker selection policy (not user-authored text):",
+-      "For a new project session without an explicit human model choice, first call commander_list_enabled_models for the target project. Use only the returned enabled inventory.",
+-      "If the human clearly names a provider/model or an unambiguous model name, treat that as their choice only when exactly one enabled inventory entry matches. Use that exact entry as worker_model. If the choice is unavailable or ambiguous, ask one concise clarifying question and do not create a project session.",
+-      "Use the cheapest tier, such as Haiku, for search, summaries, and mechanical edits. Use the middle tier, such as Sonnet, for specified implementation work. Reserve the top tier for the main Commander session.",
++      "For a new project session, first call commander_list_enabled_models for the target project. Use only the returned enabled inventory.",
++      "If the human clearly names a provider/model or an unambiguous model name, treat that as their choice for this request only when exactly one enabled inventory entry matches. Use that exact entry as worker_model. Keep it for later requests only when the human explicitly asks to do so. If the choice is unavailable or ambiguous, ask one concise clarifying question and do not create a project session.",
++      "Otherwise choose the cheapest tier, such as Haiku, for search, summaries, and mechanical edits. Use the middle tier, such as Sonnet, for specified implementation work. Reserve the top tier for the main Commander session.",
+       "If the appropriate tier is unavailable, report the missing configuration instead of inventing a profile or relying on an OpenCode default. Create only with the exact enabled worker_model you selected. For an existing project-session follow-up, do not pass worker_model unless the user explicitly requests a model change.",
+       "Write ordinary replies as a natural-language summary. Keep exact session, decision, and other opaque identifiers in structured tool inputs and results; include an exact identifier in a reply only when the human explicitly asks for it.",
+       "User request:",
+@@ -366,6 +328,7 @@ test("Commander tells automatic worker selection to honor a clear human model ch
+   const text = body && typeof body === "object" && "text" in body ? body.text : undefined
+   expect(typeof text).toBe("string")
+   expect(text).toContain("If the human clearly names a provider/model or an unambiguous model name")
+-  expect(text).toContain("only when exactly one enabled inventory entry matches")
++  expect(text).toContain("their choice for this request only when exactly one enabled inventory entry matches")
++  expect(text).toContain("Keep it for later requests only when the human explicitly asks to do so")
+   expect(text).toContain("Use anthropic/claude-sonnet-5-5 for this implementation.")
+ })
+
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+index c82bbc1..22e47eb 100644
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -119,8 +119,6 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   const [selecting, setSelecting] = createSignal(false)
+   const [selectionError, setSelectionError] = createSignal<string>()
+   const [selected, setSelected] = createSignal<CommanderModel | undefined>(props.conversation.model)
+-  const [workerSelection, setWorkerSelection] = createSignal<CommanderModel>()
+-  const [commanderSelectsWorker, setCommanderSelectsWorker] = createSignal(true)
+   const prompt = createMemoryComposerState(props.conversation.model ? { model: props.conversation.model } : undefined)
+   let timelineElement: HTMLDivElement | undefined
+ 
+@@ -136,18 +134,8 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+           offeredByHermes({ providerID: item.provider.id, modelID: item.id }) &&
+           models.visible({ providerID: item.provider.id, modelID: item.id }),
+       )
+-  const workerModels = commanderModels
+   const visibleModel = (key: Readonly<{ providerID: string; modelID: string }>) =>
+     offeredByHermes(key) && models.visible(key) ? models.find(key) : undefined
+-  const workerModel = () => {
+-    if (commanderSelectsWorker()) return
+-    const explicit = workerSelection()
+-    if (
+-      explicit &&
+-      workerModels().some((item) => item.provider.id === explicit.providerID && item.id === explicit.modelID)
+-    )
+-      return explicit
+-  }
+   const currentModel = () => {
+     const key = selected() ?? prompt.model.current()
+     if (!key) return
+@@ -243,7 +231,6 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+         if (transport() !== "hermes")
+           throw new Error("Hermes is unavailable. Commander cannot send messages until its harness returns.")
+         if (!currentModel()) throw new Error("Choose an enabled Commander model before sending.")
+-        const selectedWorker = workerModel()
+         const submittedTurn: HermesTimelineEvent = {
+           seq: 0,
+           type: "user",
+@@ -261,7 +248,6 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+             operation: "start",
+             requestID: input.id,
+             text: input.text,
+-            ...(selectedWorker === undefined ? {} : { workerModel: selectedWorker }),
+           })
+           setRunID(result.id)
+         } catch (error) {
+@@ -285,6 +271,7 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+   const scrollTimelineToBottom = () =>
+     timelineElement?.scrollTo({ top: timelineElement.scrollHeight, behavior: "auto" })
+   const queueTimelineBottom = () => requestAnimationFrame(() => requestAnimationFrame(scrollTimelineToBottom))
++  const visibleTimeline = () => timeline().filter((item) => item.text || item.learning)
+ 
+   createEffect(() => {
+     if (!models.ready()) return
+@@ -319,6 +306,12 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+ 
+   onMount(() => {
+     let disposed = false
++    const loadHistory = async (replace: boolean) => {
++      const items = await hermesRequest<readonly HermesTimelineEvent[]>({ operation: "history" })
++      if (disposed) return
++      const next = items.filter(validTimelineEvent)
++      setTimeline((current) => (replace ? next : reconcileTimeline(current, next)))
++    }
+     const receive = (event: Event) => {
+       if (!(event instanceof CustomEvent) || !validTimelineEvent(event.detail)) return
+       setTimeline((current) =>
+@@ -326,8 +319,10 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+           ? current
+           : [...current, event.detail],
+       )
++      const completesCurrentRun = event.detail.type === "completed" && event.detail.runID === runID()
+       if ((event.detail.type === "completed" || event.detail.type === "failed") && event.detail.runID === runID())
+         setRunID(undefined)
++      if (completesCurrentRun) void loadHistory(true).catch(() => undefined)
+     }
+     window.addEventListener("opencode-commander-hermes-event", receive)
+     void hermesRequest<{ ok: boolean; hermes: boolean }>({ operation: "health" }).then(
+@@ -339,12 +334,11 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+           return
+         }
+         void Promise.all([
+-          hermesRequest<readonly HermesTimelineEvent[]>({ operation: "history" }),
++          loadHistory(false),
+           hermesRequest<readonly HermesModelOption[]>({ operation: "models" }),
+         ]).then(
+-          ([items, options]) => {
++          ([, options]) => {
+             if (disposed) return
+-            setTimeline((current) => reconcileTimeline(current, items.filter(validTimelineEvent)))
+             setInventory(options.filter(validHermesModel))
+             setTransport("hermes")
+           },
+@@ -397,36 +391,9 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+                 )}
+               </Show>
+             </div>
+-            <div class="flex shrink-0 items-center gap-2" data-slot="commander-overlay-actions">
+-              <select
+-                aria-label="Project worker model"
+-                data-action="commander-worker-model"
+-                title="Project worker model"
+-                class="w-40 rounded-md border border-v2-border-border-base bg-v2-background-bg-base px-2 py-1 text-12-regular text-v2-text-text-base"
+-                value={workerModelValue(workerModel())}
+-                onChange={(event) => {
+-                  const selected = workerModels().find(
+-                    (item) =>
+-                      workerModelValue({ providerID: item.provider.id, modelID: item.id }) ===
+-                      event.currentTarget.value,
+-                  )
+-                  setCommanderSelectsWorker(selected === undefined)
+-                  setWorkerSelection(selected ? { providerID: selected.provider.id, modelID: selected.id } : undefined)
+-                }}
+-              >
+-                <option value="">Let Commander choose</option>
+-                <For each={workerModels()}>
+-                  {(item) => (
+-                    <option value={workerModelValue({ providerID: item.provider.id, modelID: item.id })}>
+-                      {item.provider.name} / {item.name}
+-                    </option>
+-                  )}
+-                </For>
+-              </select>
+-              <Button size="small" variant="ghost" onClick={props.onClose}>
+-                Close
+-              </Button>
+-            </div>
++            <Button size="small" variant="ghost" onClick={props.onClose}>
++              Close
++            </Button>
+           </div>
+           <div
+             ref={timelineElement}
+@@ -438,11 +405,11 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+             }}
+           >
+             <Show
+-              when={timeline().length > 0}
++              when={visibleTimeline().length > 0}
+               fallback={<p class="p-6 text-13-regular text-v2-text-text-muted">Commander is ready when you are.</p>}
+             >
+               <div class="space-y-3 p-5" data-slot="commander-hermes-timeline">
+-                <For each={timeline()}>
++                <For each={visibleTimeline()}>
+                   {(item) => (
+                     <div class="rounded-md border border-v2-border-border-base p-3">
+                       <p class="text-12-medium text-v2-text-text-muted">{timelineLabel(item)}</p>
+@@ -520,10 +487,6 @@ function timelineLabel(item: HermesTimelineEvent): string {
+   return item.type
+ }
+ 
+-function workerModelValue(model: CommanderModel | undefined): string {
+-  return model === undefined ? "" : `${encodeURIComponent(model.providerID)}:${encodeURIComponent(model.modelID)}`
+-}
+-
+ function hermesRequest<T>(
+   request: Readonly<{
+     operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "select-model"
+@@ -531,7 +494,6 @@ function hermesRequest<T>(
+     runID?: string
+     text?: string
+     model?: CommanderModel
+-    workerModel?: CommanderModel
+   }>,
+ ): Promise<T> {
+   const id = crypto.randomUUID()
+
+diff --git a/packages/app/component-tests/commander-vite-fixture/main.tsx b/packages/app/component-tests/commander-vite-fixture/main.tsx
+index a2a885e..b37d7e9 100644
+--- a/packages/app/component-tests/commander-vite-fixture/main.tsx
++++ b/packages/app/component-tests/commander-vite-fixture/main.tsx
+@@ -36,7 +36,7 @@ declare global {
+       hermesRequests(): number
+       resetHermesRequests(): void
+       hermesInventoryRequests(): number
+-      lastStartWorkerModel(): Model | undefined
++      lastStartHasWorkerModel(): boolean
+       setModelVisibility(modelID: string, visible: boolean): boolean
+     }
+   }
+@@ -61,7 +61,7 @@ function Fixture() {
+     new URLSearchParams(window.location.search).get("hermes") === "unavailable" ? "unavailable" : "available"
+   let hermesRequests = 0
+   let hermesInventoryRequests = 0
+-  let lastStartWorkerModel: Model | undefined
++  let lastStartHasWorkerModel = false
+   let history: readonly HermesTimelineEvent[] = []
+   const open = () =>
+     window.dispatchEvent(new CustomEvent("opencode-commander-overlay", { detail: { conversation, model } }))
+@@ -100,20 +100,20 @@ function Fixture() {
+       }
+       if (request.operation === "start") {
+         hermesRequests += 1
+-        lastStartWorkerModel = request.workerModel
++        lastStartHasWorkerModel = request.workerModel !== undefined
+         if (hermesMode === "reject") reply(undefined, "Hermes is unavailable for this controlled test.")
+         else {
+           const runID = `run_${hermesRequests}`
+           history = [
+             { seq: 0, type: "user", runID: "history", text: request.text ?? "" },
+-            { seq: 1, type: "completed", runID: "history", text: "fixture Commander reply" },
++            { seq: 1, type: "assistant", runID: "history", text: "fixture Commander reply" },
+           ]
+           reply({ id: runID })
+           window.setTimeout(
+             () =>
+               window.dispatchEvent(
+                 new CustomEvent("opencode-commander-hermes-event", {
+-                  detail: { seq: 1, type: "completed", runID, text: "fixture Commander reply" },
++                  detail: { seq: 1, type: "completed", runID },
+                 }),
+               ),
+             0,
+@@ -130,7 +130,7 @@ function Fixture() {
+       },
+       hermesRequests: () => hermesRequests,
+       hermesInventoryRequests: () => hermesInventoryRequests,
+-      lastStartWorkerModel: () => lastStartWorkerModel,
++      lastStartHasWorkerModel: () => lastStartHasWorkerModel,
+       resetHermesRequests: () => {
+         hermesRequests = 0
+       },
+
+diff --git a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+index 4976894..8c24859 100644
+--- a/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
++++ b/packages/app/component-tests/commander-vite-fixture/commander-vite-fixture.spec.ts
+@@ -23,14 +23,12 @@ test("Commander shows only Hermes-confirmed native visible models, confirms sele
+   await expect(picker).toContainText("commander-large")
+ 
+   const prompt = overlay.locator('[contenteditable="true"]')
+-  await overlay.getByLabel("Project worker model").selectOption("fixture:commander-small")
++  await expect(overlay.getByLabel("Project worker model")).toHaveCount(0)
+   await prompt.fill("send this from Commander")
+   await expect(overlay.getByRole("button", { name: "Send" })).toBeEnabled()
+   await overlay.getByRole("button", { name: "Send" }).click({ force: true })
+   await expect.poll(() => page.evaluate(() => window.commanderFixture?.hermesRequests())).toBe(1)
+-  await expect
+-    .poll(() => page.evaluate(() => window.commanderFixture?.lastStartWorkerModel()))
+-    .toEqual({ providerID: "fixture", modelID: "commander-small" })
++  expect(await page.evaluate(() => window.commanderFixture?.lastStartHasWorkerModel())).toBe(false)
+ 
+   await page.evaluate(() => window.commanderFixture?.reopen())
+   await expect(overlay).toBeVisible()
+@@ -75,7 +73,7 @@ test("Commander excludes disabled native models and reapplies visibility on reop
+   await expect(page.locator('[data-option-key="fixture:commander-large"]')).toBeVisible()
+ })
+ 
+-test("Commander delegates economical worker selection when the user has not overridden it", async ({ page }) => {
++test("Commander delegates economical worker selection without a stale client override", async ({ page }) => {
+   await page.goto("/")
+   const overlay = page.locator('[data-slot="commander-native-overlay"]')
+   const prompt = overlay.locator('[contenteditable="true"]')
+@@ -85,21 +83,13 @@ test("Commander delegates economical worker selection when the user has not over
+   await page.locator('[data-option-key="fixture:commander-small"]').click()
+   await expect(picker).toContainText("commander-small")
+ 
+-  const workerPicker = overlay.getByLabel("Project worker model")
+-  await expect(workerPicker).toHaveValue("")
+-  const pickerBounds = await workerPicker.boundingBox()
+-  const closeBounds = await overlay.getByRole("button", { name: "Close" }).boundingBox()
+-  expect(pickerBounds).not.toBeNull()
+-  expect(closeBounds).not.toBeNull()
+-  expect(pickerBounds!.width).toBeLessThanOrEqual(160)
+-  expect(pickerBounds!.x).toBeLessThan(closeBounds!.x)
+-  expect(Math.abs(pickerBounds!.y - closeBounds!.y)).toBeLessThanOrEqual(8)
++  await expect(overlay.getByLabel("Project worker model")).toHaveCount(0)
+   await prompt.fill("do not use a hidden default")
+   await overlay.getByRole("button", { name: "Send" }).click()
+ 
+   await expect(prompt).toHaveText("")
+   await expect.poll(() => page.evaluate(() => window.commanderFixture?.hermesRequests())).toBe(1)
+-  expect(await page.evaluate(() => window.commanderFixture?.lastStartWorkerModel())).toBeUndefined()
++  expect(await page.evaluate(() => window.commanderFixture?.lastStartHasWorkerModel())).toBe(false)
+ })
+ 
+ test("Commander shows the original user turn once through submit, streaming, close/reopen, and history reload", async ({
+@@ -131,7 +121,6 @@ test("Commander retains rejected Hermes drafts and submits a confirmed button re
+   await page.evaluate(() => window.commanderFixture?.setHermesMode("reject"))
+ 
+   const prompt = overlay.locator('[contenteditable="true"]')
+-  await overlay.getByLabel("Project worker model").selectOption("fixture:commander-small")
+   await prompt.fill("keep this Commander draft")
+   await overlay.getByRole("button", { name: "Send" }).click()
+

@@ -1,0 +1,216 @@
+diff --git a/packages/gui-extensions/src/commander/contract.ts b/packages/gui-extensions/src/commander/contract.ts
+index 07fc241946..77006d768a 100644
+--- a/packages/gui-extensions/src/commander/contract.ts
++++ b/packages/gui-extensions/src/commander/contract.ts
+@@ -25,6 +25,9 @@ export const CommanderModel = Schema.Struct({
+ 
+ export type CommanderModel = typeof CommanderModel.Type
+ 
++export const CommanderSelectedModel = Schema.Struct({ model: Schema.optional(CommanderModel) })
++export type CommanderSelectedModel = typeof CommanderSelectedModel.Type
++
+ export const CommanderModelOption = Schema.Struct({
+   providerID: Schema.String,
+   providerName: Schema.String,
+@@ -71,6 +74,7 @@ export const CommanderBridge = Ipc.define({
+     reserve: { input: CommanderReservation, output: CommanderBridgeState },
+     health: { output: CommanderHealth },
+     models: { output: Schema.Array(CommanderModelOption) },
++    selectedModel: { output: CommanderSelectedModel },
+     selectModel: { input: CommanderModel, output: CommanderBridgeState },
+     start: { input: CommanderRunRequest, output: CommanderRun },
+     status: { input: Schema.String, output: Schema.Unknown },
+diff --git a/packages/gui-extensions/src/commander/renderer.tsx b/packages/gui-extensions/src/commander/renderer.tsx
+index c55700069b..3da83b17ee 100644
+--- a/packages/gui-extensions/src/commander/renderer.tsx
++++ b/packages/gui-extensions/src/commander/renderer.tsx
+@@ -24,7 +24,7 @@ type CommanderModelEvent = Readonly<{
+ }>
+ type CommanderRequest = Readonly<{
+   readonly id: string
+-  readonly operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "select-model"
++  readonly operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "selected-model" | "select-model"
+   readonly requestID?: string
+   readonly runID?: string
+   readonly text?: string
+@@ -211,6 +211,13 @@ const setup: Setup<typeof definition> = (ctx) => {
+         .catch((error) =>
+           reply(undefined, error instanceof Error ? error.message : "Commander models could not be loaded."),
+         )
++    if (request.operation === "selected-model")
++      void live.value
++        .selectedModel()
++        .then(reply)
++        .catch((error) =>
++          reply(undefined, error instanceof Error ? error.message : "Commander selected model could not be loaded."),
++        )
+     if (request.operation === "select-model" && request.model && isCommanderModel(request.model)) {
+       void live.value
+         .selectModel(request.model)
+diff --git a/packages/gui-extensions/src/commander/main.ts b/packages/gui-extensions/src/commander/main.ts
+index cfbb8e07a5..584ef8ba10 100644
+--- a/packages/gui-extensions/src/commander/main.ts
++++ b/packages/gui-extensions/src/commander/main.ts
+@@ -6,6 +6,7 @@ import {
+   CommanderBridgeState,
+   CommanderEvent,
+   CommanderHealth,
++  CommanderModel,
+   CommanderModelOption,
+   CommanderRun,
+   type CommanderConversation,
+@@ -29,6 +30,9 @@ const AgentListResponse = Schema.Struct({ data: Schema.Array(Schema.Struct({ id:
+ const HermesModelInventory = Schema.Array(
+   Schema.Struct({ provider: Schema.String, providerName: Schema.String, model: Schema.String }),
+ )
++const HermesAdapterState = Schema.Struct({
++  model: Schema.optional(Schema.Struct({ provider: Schema.String, model: Schema.String })),
++})
+ const ExplicitWorkerPolicyHeader = "Native Commander worker policy (not user-authored text):"
+ const AutomaticWorkerPolicyHeader = "Native Commander worker selection policy (not user-authored text):"
+ const UserRequestMarker = "\n\nUser request:\n\n"
+@@ -86,6 +90,13 @@ async function models(): Promise<readonly CommanderModelOption[]> {
+   }))
+ }
+ 
++async function selectedAdapterModel(): Promise<CommanderModel | undefined> {
++  const decoded = Schema.decodeUnknownOption(HermesAdapterState)(await adapter("/state"))
++  if (Option.isNone(decoded)) throw new Error("Commander Hermes adapter returned an invalid selected model.")
++  const model = decoded.value.model
++  return model ? { providerID: model.provider, modelID: model.model } : undefined
++}
++
+ function withWorkerModelPolicy(request: Readonly<{ text: string }>): string {
+   return [
+     AutomaticWorkerPolicyHeader,
+@@ -212,6 +223,15 @@ export function createCommanderRuntime(input: CommanderRuntime) {
+       return decoded.value
+     },
+     models,
++    selectedModel: async () => {
++      const model = await selectedAdapterModel()
++      if (!model) return {}
++      const current = input.store.value
++      if (current.model?.providerID === model.providerID && current.model.modelID === model.modelID) return { model }
++      input.store.set({ ...current, revision: current.revision + 1, model })
++      provider.changed()
++      return { model }
++    },
+     selectModel: async (model) => {
+       const current = input.store.value
+ 
+diff --git a/packages/gui-extensions/src/commander/main.test.ts b/packages/gui-extensions/src/commander/main.test.ts
+index 23c140a277..6d78cdfda3 100644
+--- a/packages/gui-extensions/src/commander/main.test.ts
++++ b/packages/gui-extensions/src/commander/main.test.ts
+@@ -94,6 +94,7 @@ function hermes(
+   options: readonly { provider: string; providerName: string; model: string }[],
+   modelStatus = 200,
+   history: readonly { role: "user" | "assistant"; content: string }[] = [],
++  selectedModel?: { provider: string; model: string },
+ ) {
+   const requests: Array<{ path: string; method: string; body: unknown }> = []
+   const request = async (...[input, init]: Parameters<typeof fetch>) => {
+@@ -104,6 +105,7 @@ function hermes(
+     if (url.pathname === "/model") return Response.json({ revision: 4 }, { status: modelStatus })
+     if (url.pathname === "/runs") return Response.json({ id: "cmd_fixture", sessionID: "hermes_fixture" })
+     if (url.pathname === "/history") return Response.json(history)
++    if (url.pathname === "/state") return Response.json(selectedModel ? { model: selectedModel } : {})
+     throw new Error(`unexpected Hermes request ${url.pathname}`)
+   }
+   globalThis.fetch = Object.assign(request, { preconnect: original.fetch.preconnect })
+@@ -228,6 +230,30 @@ test("Commander leaves its saved model untouched when Hermes rejects the selecti
+   })
+ })
+ 
++test("Commander restores the Hermes-held model when its persisted app state is empty", async () => {
++  const backing = persistent({
++    revision: 7,
++    conversation: {
++      serverID: "sidecar",
++      sessionID: Session.ID.make("ses_commander_restored_model"),
++      directory: configured.directory,
++      agent: Agent.ID.make(configured.agent),
++    },
++  })
++  const first = runtime(backing)
++  const requests = hermes([], 200, [], { provider: "fixture", model: "restored-model" })
++
++  await expect(first.bridge.selectedModel(undefined, caller)).resolves.toEqual({
++    model: { providerID: "fixture", modelID: "restored-model" },
++  })
++  expect(backing.store.value).toMatchObject({
++    revision: 8,
++    model: { providerID: "fixture", modelID: "restored-model" },
++  })
++  expect(first.changes()).toBe(1)
++  expect(requests).toEqual([{ path: "/state", method: "GET", body: undefined }])
++})
++
+ test("Commander history restores the original user request and hides only its known worker-policy envelope", async () => {
+   const backing = persistent({ revision: 0 })
+   const originalRequest = "Summarize the latest worker result without changing files."
+diff --git a/packages/app/src/runtime/commander-overlay.tsx b/packages/app/src/runtime/commander-overlay.tsx
+index 22e47eb11e..de4014102a 100644
+--- a/packages/app/src/runtime/commander-overlay.tsx
++++ b/packages/app/src/runtime/commander-overlay.tsx
+@@ -336,10 +336,15 @@ function CommanderOverlay(props: { conversation: CommanderConversation; onClose(
+         void Promise.all([
+           loadHistory(false),
+           hermesRequest<readonly HermesModelOption[]>({ operation: "models" }),
++          hermesRequest<CommanderModelSelection>({ operation: "selected-model" }),
+         ]).then(
+-          ([, options]) => {
++          ([, options, restored]) => {
+             if (disposed) return
+             setInventory(options.filter(validHermesModel))
++            if (restored.model) {
++              setSelected(restored.model)
++              prompt.model.set(restored.model)
++            }
+             setTransport("hermes")
+           },
+           () => {
+@@ -489,7 +494,7 @@ function timelineLabel(item: HermesTimelineEvent): string {
+ 
+ function hermesRequest<T>(
+   request: Readonly<{
+-    operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "select-model"
++    operation: "health" | "start" | "stop" | "steer" | "history" | "models" | "selected-model" | "select-model"
+     requestID?: string
+     runID?: string
+     text?: string
+diff --git a/packages/app/component-tests/commander-vite-fixture/main.tsx b/packages/app/component-tests/commander-vite-fixture/main.tsx
+index b37d7e9ab8..cdbd2909f9 100644
+--- a/packages/app/component-tests/commander-vite-fixture/main.tsx
++++ b/packages/app/component-tests/commander-vite-fixture/main.tsx
+@@ -20,9 +20,8 @@ const conversation = {
+ type Model = { providerID: string; modelID: string }
+ type HermesRequest = {
+   id: string
+-  operation?: "health" | "history" | "models" | "select-model" | "start" | "stop" | "steer"
++  operation?: "health" | "history" | "models" | "selected-model" | "select-model" | "start" | "stop" | "steer"
+   model?: Model
+-  workerModel?: Model
+   text?: string
+ }
+ type HermesTimelineEvent = Readonly<{ seq: number; type: string; runID: string; text?: string }>
+@@ -86,6 +85,10 @@ function Fixture() {
+         ])
+         return
+       }
++      if (request.operation === "selected-model") {
++        reply({ model })
++        return
++      }
+       if (request.operation === "history") {
+         reply(history)
+         return
+@@ -101,5 +104,5 @@ function Fixture() {
+       }
+       if (request.operation === "start") {
+         hermesRequests += 1
+-        lastStartHasWorkerModel = request.workerModel !== undefined
++        lastStartHasWorkerModel = "workerModel" in request
+         if (hermesMode === "reject") reply(undefined, "Hermes is unavailable for this controlled test.")
+         else {

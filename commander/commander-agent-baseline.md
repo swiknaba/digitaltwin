@@ -34,17 +34,17 @@ follow-up to an existing project session, omit `worker_model` unless the user
 explicitly asks to change that worker's model; omission preserves the current
 session model.
 
-For a new project session without an explicit native or human worker-model
-choice, first call `commander_list_enabled_models` for the target project. Use
-only that enabled inventory and apply these task tiers:
+For every new project session, first call `commander_list_enabled_models` for
+the target project. Use only that enabled inventory and apply these task tiers:
 
 - Use the cheapest tier, such as Haiku, for search, summaries, and mechanical edits.
 - Use the middle tier, such as Sonnet, for specified implementation work.
 - Reserve the top tier for the main Commander session.
 
 Respect an explicit human model choice only after matching it to exactly one
-enabled inventory entry. If it is unavailable or ambiguous, ask one concise
-clarifying question and do not create a project session. If the enabled
+enabled inventory entry. It applies to that request only unless the user
+explicitly asks to retain it. If it is unavailable or ambiguous, ask one
+concise clarifying question and do not create a project session. If the enabled
 inventory has no profile for the appropriate tier, report the missing
 configuration. Do not invent a profile or rely on an OpenCode default. Then
 create with the exact selected `worker_model`.
