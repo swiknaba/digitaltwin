@@ -6,6 +6,7 @@ app_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 resources="$app_root/Contents/Resources"
 default_data_root="$(CDPATH= cd -- "$app_root/.." && pwd)/data"
 data_root=${DIGITALTWIN_APP_DATA_ROOT:-$default_data_root}
+short_data_root="$(CDPATH= cd -- "$app_root/../.." && pwd)/dt"
 
 case "$data_root" in
   /*) ;;
@@ -33,9 +34,21 @@ pid_root="$run_root/pids"
 mkdir -p "$run_root" "$log_root" "$pid_root" "$data_root/heartbeats" "$data_root/home" "$data_root/tmp"
 umask 077
 
+if test "$data_root" = "$default_data_root"; then
+  if ! test -e "$short_data_root"; then
+    ln -s "$data_root" "$short_data_root"
+  fi
+  if test -d "$short_data_root"; then
+    hermes_home="$short_data_root/h"
+  fi
+fi
+
 export HOME="$data_root/home"
 export TMPDIR="$data_root/tmp"
 export PATH="$resources/postgres/bin:$resources/ruby/bin:/usr/bin:/bin"
+unset GEM_HOME GEM_PATH RUBYOPT BUNDLE_BIN_PATH BUNDLE_GEMFILE BUNDLE_PATH BUNDLE_USER_CONFIG
+export BUNDLE_IGNORE_CONFIG=1
+export RUBYLIB="$resources/ruby/lib/ruby/4.0.0:$resources/ruby/lib/ruby/4.0.0/arm64-darwin27"
 
 pid_file() { printf '%s/%s.pid\n' "$pid_root" "$1"; }
 
@@ -49,7 +62,7 @@ wait_for() {
   label=$1
   shift
   attempts=0
-  until "$@"; do
+  until "$@" >/dev/null 2>&1; do
     attempts=$((attempts + 1))
     if test "$attempts" -ge 60; then
       printf '%s\n' "Timed out waiting for $label" >&2
@@ -74,6 +87,10 @@ start_postgres() {
 
 start_kirei() {
   kirei="$resources/kirei"
+  ruby="$resources/ruby/bin/ruby"
+  bundled_bin="$kirei/vendor/bundle/ruby/4.0.0/bin"
+  test -x "$bundled_bin/rake" || { printf '%s\n' "Kirei rake executable is missing from the bundled gems" >&2; exit 78; }
+  test -x "$bundled_bin/falcon" || { printf '%s\n' "Kirei Falcon executable is missing from the bundled gems" >&2; exit 78; }
   export DATABASE_URL="postgres://digitaltwin@127.0.0.1:$postgres_port/digitaltwin_spike"
   export PORT="$web_port"
   export HEARTBEAT_DIR="$data_root/heartbeats"
@@ -81,16 +98,16 @@ start_kirei() {
   export BUNDLE_GEMFILE="$kirei/Gemfile"
   (
     cd "$kirei"
-    "$resources/ruby/bin/bundle" exec rake db:migrate
+    "$ruby" -rbundler/setup "$bundled_bin/rake" db:migrate
   ) >> "$log_root/kirei-migrate.log" 2>&1
   (
     cd "$kirei"
-    exec "$resources/ruby/bin/ruby" bin/web
+    exec "$ruby" -rbundler/setup "$bundled_bin/falcon" serve --bind "http://0.0.0.0:$web_port" --count 1 --config "$kirei/config.ru"
   ) >> "$log_root/kirei-web.log" 2>&1 &
   echo $! > "$(pid_file kirei-web)"
   (
     cd "$kirei"
-    exec "$resources/ruby/bin/ruby" bin/worker
+    exec "$ruby" -rbundler/setup bin/worker
   ) >> "$log_root/kirei-worker.log" 2>&1 &
   echo $! > "$(pid_file kirei-worker)"
   wait_for "Kirei web" "$resources/ruby/bin/ruby" "$kirei/bin/health" web

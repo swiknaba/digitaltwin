@@ -49,7 +49,7 @@ The selected native versions follow the repository locks and source releases:
 
 | Runtime | Version | Source / license decision |
 | --- | --- | --- |
-| Ruby | 4.0.7 | Verify the official source tarball with its published SHA-256; the backend lock requires Ruby 4.0.7.  The spike stages an exact existing arm64 4.0.7 closure only when the current Xcode cannot compile that source. |
+| Ruby | 4.0.7 | Verify the official source tarball with its published SHA-256 and compile it into the project-local toolchain; the backend lock requires Ruby 4.0.7. |
 | PostgreSQL | 18.6 | Compile the official PostgreSQL source release used by `compose.yml`; it is under the PostgreSQL License. |
 | Python for Hermes | 3.14.7 | Hermes requires Python `>=3.11,<3.15`.  The spike stages the existing project-local arm64 Python closure while a source-built closure is made reproducible; Python 3.14.7 publishes source hashes and is under the PSF license. |
 | Hermes Agent | `3f62bc534296ece8d89b94bd20ddad0fc34791d3` | Stage the pinned project-local source, Python, and sealed dependency venv closure without profile or credential state.  Hermes Agent is MIT licensed. |
@@ -81,15 +81,13 @@ scripts/macos-local-app-spike-build
 
 The toolchain script fetches only the official Ruby and PostgreSQL source URLs,
 checks their hashes, compiles arm64 resources, and installs the locked Kirei
-gems into its staging directory.  On the current Xcode 27 SDK, Ruby 4.0.7's
-bundled `socket`, `strscan`, and `bigdecimal` extensions fail to compile against
-the Darwin 27 headers.  For this local assembly spike only, pass an explicit
-already-installed exact Ruby closure through `DIGITALTWIN_RUBY_STAGE_SOURCE`; it
-is copied into the app and is not a runtime dependency.  A clean official Ruby
-source build remains a release gate.  The build script packages the adapter into
-a self-contained Bun executable, stages the Hermes closure without any ignored
-profile data, and copies the already-built OpenCode app from the isolated
-validation checkout.
+gems into its staging directory.  Ruby 4.0.7 builds cleanly with Xcode 27.1 and
+the macOS 27.0 SDK components installed; the local build verifies the resulting
+`socket`, `strscan`, and `bigdecimal` extensions.  The build script packages the
+adapter into a self-contained Bun executable, stages the Hermes closure without
+any ignored profile data, rewrites its sealed virtual-environment launch paths
+to bundle-relative Python, and copies the already-built OpenCode app from the
+isolated validation checkout.
 
 For a run, pass an existing local API-server token file explicitly rather than
 writing a new credential:

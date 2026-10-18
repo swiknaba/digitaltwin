@@ -37,19 +37,14 @@ fi
 download_with_sidecar "$postgres_file" "https://ftp.postgresql.org/pub/source/v18.6/$postgres_file" "https://ftp.postgresql.org/pub/source/v18.6/$postgres_file.sha256"
 
 if ! test -x "$toolchain_root/ruby/bin/ruby"; then
-  if test -n "${DIGITALTWIN_RUBY_STAGE_SOURCE:-}"; then
-    test -x "$DIGITALTWIN_RUBY_STAGE_SOURCE/bin/ruby" || { printf '%s\n' "DIGITALTWIN_RUBY_STAGE_SOURCE must contain bin/ruby" >&2; exit 78; }
-    ditto "$DIGITALTWIN_RUBY_STAGE_SOURCE" "$toolchain_root/ruby"
-  else
-    rm -rf "$build_root/ruby-4.0.7"
-    tar -xzf "$download_root/$ruby_file" --directory "$build_root"
-    (
-      cd "$build_root/ruby-4.0.7"
-      ./configure --prefix="$toolchain_root/ruby" --disable-install-doc
-      make -j"${DIGITALTWIN_BUILD_JOBS:-4}"
-      make install
-    )
-  fi
+  rm -rf "$build_root/ruby-4.0.7"
+  tar -xzf "$download_root/$ruby_file" --directory "$build_root"
+  (
+    cd "$build_root/ruby-4.0.7"
+    ./configure --prefix="$toolchain_root/ruby" --disable-install-doc
+    make -j"${DIGITALTWIN_BUILD_JOBS:-4}"
+    make install
+  )
   "$toolchain_root/ruby/bin/ruby" --version | grep -q '^ruby 4\.0\.7 ' || { printf '%s\n' "Staged Ruby must be 4.0.7" >&2; exit 78; }
 fi
 
